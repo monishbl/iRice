@@ -1,0 +1,704 @@
+// Settings: the views only the "about" page group's pages have (custom rows
+// and row controls; src/surfaces/settings/pages/about/*.rs fills them): the
+// update notes (UpdateNotes.qml), the packages affected, the steps and the
+// progress (WavyProgress.qml), the output (LogView.qml), the bug report's
+// boxes and screenshot, the health checks' status, the login items and the
+// apps to add, an import's preview lines. A row's `sub` says which view;
+// it reports through SBus.act(id, int, float, string).
+//
+// Not as the QML: Material's progress is a flat bar (no wave: Slint has no
+// way to draw the moving sine as a path of the bar's width); update notes'
+// Markdown shows as plain text (links not clickable).
+
+import { Theme } from "@tessera/theme.slint";
+import { SIc, SOpt, SetRow, SBlock, SBus, SG, SM, SIcon, SFocusRing, SSwitch, SSlider, SSegmented, SChoice, SButton, SField, SChip, SSwatch, SFilled } from "settings-kit.slint";
+
+// (no custom blocks in this group: its views are rows)
+export component AboutBlock inherits VerticalLayout {
+    in property <SBlock> b;
+}
+
+// A field that commits on Enter only (a search: leaving it doesn't pick)
+component AField {
+    in property <string> text;
+    in property <string> placeholder;
+    in property <string> label;
+    callback edited(string);
+    callback accepted(string);
+    callback escaped();
+    preferred-width: 240px;
+    height: Theme.material ? 40px : 28px;
+    if Theme.material: SFilled { active: input.has-focus; hovered: ta.has-hover; }
+    if !Theme.material: Rectangle {
+        border-radius: Theme.radius-control - 2px;
+        background: Theme.fill;
+        border-width: 1px;
+        border-color: input.has-focus ? Theme.accent : Theme.separator;
+    }
+    ta := TouchArea {
+        mouse-cursor: MouseCursor.text;
+        clicked => { input.focus(); }
+    }
+    Rectangle {
+        x: Theme.material ? 16px : 10px;
+        width: parent.width - 2 * self.x;
+        clip: true;
+        input := TextInput {
+            width: 100%;
+            height: 100%;
+            text: root.text;
+            vertical-alignment: center;
+            single-line: true;
+            color: Theme.label;
+            selection-background-color: Theme.material ? Theme.m3-primary.with-alpha(0.3) : Theme.accent.with-alpha(0.4);
+            font-size: Theme.body;
+            accessible-label: root.label != "" ? root.label : root.placeholder;
+            edited => { root.edited(self.text); }
+            accepted => { root.accepted(self.text); }
+            key-pressed(e) => {
+                if e.text == Key.Escape { root.escaped(); return accept; }
+                reject
+            }
+        }
+        if input.text == "" && !input.has-focus: Text {
+            width: 100%;
+            height: 100%;
+            text: root.placeholder;
+            color: Theme.tertiary;
+            font-size: Theme.body;
+            vertical-alignment: center;
+            overflow: elide;
+            accessible-role: AccessibleRole.none;
+        }
+    }
+}
+
+// Text as a terminal shows it (LogView.qml): a dark scrolling box; `follow`
+// keeps the end in view as text comes, unless you scrolled up to read
+component LogBox inherits Rectangle {
+    in property <string> text;
+    in property <bool> follow;
+    border-radius: Theme.material ? 16px : 8px;
+    background: Theme.material ? Theme.m3-inverse-surface : Theme.dark ? #0e0e10 : #18181b;
+    clip: true;
+    accessible-role: AccessibleRole.text;
+    accessible-label: text;
+    flick := Flickable {
+        x: 10px;
+        y: 10px;
+        width: parent.width - 20px;
+        height: parent.height - 20px;
+        content-height: body.preferred-height;
+        property <bool> at-end: true;
+        changed content-y => {
+            self.at-end = -self.content-y >= self.content-height - self.height - 4px;
+        }
+        changed content-height => {
+            if root.follow && self.at-end {
+                self.content-y = -max(0px, self.content-height - self.height);
+            }
+        }
+        body := Text {
+            width: flick.width;
+            text: root.text;
+            wrap: char-wrap;
+            color: Theme.material ? Theme.m3-inverse-on-surface : #d4d4d8;
+            font-family: Theme.mono;
+            font-size: 11px;
+            accessible-role: AccessibleRole.none;
+        }
+    }
+}
+
+// One of the bug report's boxes: a label over a few lines of text
+component TextBox inherits VerticalLayout {
+    in property <string> label;
+    in property <string> hint;
+    in property <string> value;
+    callback edited(string);
+    spacing: 6px;
+    Text {
+        text: label;
+        color: Theme.label;
+        font-size: Theme.body;
+    }
+    Rectangle {
+        height: 88px;
+        border-radius: Theme.material ? 20px : Theme.radius-control;
+        background: Theme.material ? (area.has-focus ? Theme.m3-surface-container-highest : Theme.m3-surface-container-highest) : Theme.fill;
+        border-width: Theme.material ? (area.has-focus ? 2px : 0) : 1px;
+        border-color: Theme.material ? Theme.m3-primary : area.has-focus ? Theme.accent : Theme.separator;
+        clip: true;
+        TouchArea {
+            mouse-cursor: MouseCursor.text;
+            clicked => { area.focus(); }
+        }
+        area := TextInput {
+            x: 12px;
+            y: 10px;
+            width: parent.width - 24px;
+            height: parent.height - 20px;
+            text: root.value;
+            single-line: false;
+            wrap: word-wrap;
+            color: Theme.label;
+            selection-background-color: Theme.material ? Theme.m3-primary.with-alpha(0.3) : Theme.accent.with-alpha(0.4);
+            font-size: Theme.body;
+            accessible-label: root.label;
+            edited => { root.edited(self.text); }
+        }
+        if area.text == "": Text {
+            x: 12px;
+            y: 10px;
+            text: root.hint;
+            color: Theme.tertiary;
+            font-size: Theme.body;
+            accessible-role: AccessibleRole.none;
+        }
+    }
+}
+
+// An app's icon, or a quiet tile while it's read
+component AppPic {
+    in property <image> source;
+    in property <length> size;
+    width: size;
+    height: size;
+    if source.width > 0: Image {
+        width: 100%;
+        height: 100%;
+        source: root.source;
+        image-fit: contain;
+        accessible-role: AccessibleRole.none;
+    }
+    if source.width == 0: Rectangle {
+        border-radius: size / 4.4;
+        background: Theme.fill;
+    }
+}
+
+export component AboutCtl {
+    in property <SetRow> r;
+    property <length> pad: Theme.material ? 20px : 14px;
+    property <bool> whole: r.kind == "custom";
+
+    // Material: the custom row's own tile (Group.qml's), its corners round
+    // at the group's ends
+    if whole && Theme.material && r.sub != "shot": Rectangle {
+        border-top-left-radius: r.from > 0 ? 24px : 4px;
+        border-top-right-radius: r.from > 0 ? 24px : 4px;
+        border-bottom-left-radius: r.to > 0 ? 24px : 4px;
+        border-bottom-right-radius: r.to > 0 ? 24px : 4px;
+        background: Theme.m3-surface-container-high;
+    }
+    if whole && Theme.material && r.sub == "shot": Rectangle {
+        border-top-left-radius: r.from > 0 ? 24px : 4px;
+        border-top-right-radius: r.from > 0 ? 24px : 4px;
+        border-bottom-left-radius: r.to > 0 ? 24px : 4px;
+        border-bottom-right-radius: r.to > 0 ? 24px : 4px;
+        background: Theme.m3-surface-container-high;
+    }
+
+    VerticalLayout {
+        // ── Update notes ──
+        if whole && r.sub == "notes": VerticalLayout {
+            padding-left: pad;
+            padding-right: pad;
+            padding-top: 14px;
+            padding-bottom: 14px;
+            spacing: 16px;
+            for e in r.data: VerticalLayout {
+                spacing: 6px;
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+                    Text {
+                        text: e.text;
+                        color: Theme.label;
+                        font-size: 16px;
+                        font-weight: 600;
+                        vertical-alignment: bottom;
+                    }
+                    if e.detail != "": Text {
+                        text: e.detail;
+                        color: Theme.secondary;
+                        font-size: Theme.small;
+                        vertical-alignment: bottom;
+                    }
+                }
+                Text {
+                    text: e.id;
+                    wrap: word-wrap;
+                    color: Theme.label;
+                    font-size: 14px;
+                }
+            }
+            if r.text != "": Text {
+                text: r.text;
+                wrap: word-wrap;
+                color: Theme.label;
+                font-size: 14px;
+            }
+            if r.num > 1: HorizontalLayout {
+                alignment: start;
+                Text {
+                    text: r.on ? "Show only the latest" : "Show all notes (" + r.num + ")";
+                    color: Theme.accent-ink;
+                    font-size: Theme.small;
+                    font-weight: 500;
+                    accessible-role: AccessibleRole.button;
+                    accessible-label: self.text;
+                    accessible-action-default => { SBus.act(r.id, 0, 0, ""); }
+                    TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { SBus.act(r.id, 0, 0, ""); }
+                    }
+                }
+            }
+        }
+
+        // ── Packages affected ──
+        if whole && r.sub == "pkgs": VerticalLayout {
+            padding-bottom: 8px;
+            for l in r.data: VerticalLayout {
+                // a heading
+                if l.style == 0: HorizontalLayout {
+                    padding-left: pad;
+                    padding-top: 12px;
+                    padding-bottom: 4px;
+                    Text {
+                        text: l.text;
+                        color: Theme.label;
+                        font-size: Theme.small;
+                        font-weight: 600;
+                    }
+                }
+                // a package: name, a badge, versions or a reason
+                if l.style == 1: Rectangle {
+                    height: 26px;
+                    opacity: l.off ? 0.5 : 1;
+                    HorizontalLayout {
+                        padding-left: pad;
+                        padding-right: pad;
+                        spacing: 0;
+                        Text {
+                            text: l.text;
+                            overflow: elide;
+                            vertical-alignment: center;
+                            color: Theme.label;
+                            font-size: Theme.small;
+                            font-weight: 500;
+                        }
+                        if l.id != "": HorizontalLayout {
+                            padding-left: 8px;
+                            alignment: center;
+                            VerticalLayout {
+                                alignment: center;
+                                Rectangle {
+                                    height: 18px;
+                                    border-radius: 9px;
+                                    background: Theme.fill;
+                                    HorizontalLayout {
+                                        padding-left: 6px;
+                                        padding-right: 6px;
+                                        Text {
+                                            text: l.id;
+                                            overflow: elide;
+                                            horizontal-alignment: center;
+                                            vertical-alignment: center;
+                                            color: Theme.secondary;
+                                            font-size: Theme.caption;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Text {
+                            horizontal-stretch: 1;
+                            text: l.detail;
+                            overflow: elide;
+                            horizontal-alignment: right;
+                            vertical-alignment: center;
+                            color: Theme.secondary;
+                            font-family: l.on ? Theme.mono : Theme.font;
+                            font-size: Theme.caption;
+                        }
+                    }
+                }
+                // "and N more" / "Show fewer"
+                if l.style == 2: HorizontalLayout {
+                    padding-left: pad;
+                    padding-top: 2px;
+                    padding-bottom: 6px;
+                    alignment: start;
+                    Text {
+                        text: l.text;
+                        color: Theme.accent;
+                        font-size: Theme.small;
+                        accessible-role: AccessibleRole.button;
+                        accessible-label: self.text;
+                        accessible-action-default => { SBus.act(r.id, 0, l.num, ""); }
+                        TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { SBus.act(r.id, 0, l.num, ""); }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── The steps, the current one bold ──
+        if whole && r.sub == "steps": HorizontalLayout {
+            height: 30px;
+            padding-left: pad;
+            padding-right: pad;
+            alignment: start;
+            for st[i] in r.data: HorizontalLayout {
+                if i > 0: Text {
+                    text: "  ·  ";
+                    vertical-alignment: center;
+                    color: Theme.secondary;
+                    font-size: Theme.small;
+                }
+                Text {
+                    text: st.text;
+                    vertical-alignment: center;
+                    color: Theme.secondary;
+                    font-size: Theme.small;
+                    font-weight: st.on ? 700 : 400;
+                }
+            }
+        }
+
+        // ── Progress (WavyProgress.qml) and how far ──
+        if whole && r.sub == "progress": HorizontalLayout {
+            height: 32px;
+            padding-left: pad;
+            padding-right: pad;
+            spacing: 12px;
+            Rectangle {
+                horizontal-stretch: 1;
+                property <float> v: max(0, min(1, r.num));
+                property <length> stroke: 4px;
+                // track
+                Rectangle {
+                    x: Theme.material ? min(parent.width, parent.width * parent.v + 4px + 2px) : 0;
+                    y: (parent.height - self.height) / 2;
+                    width: Theme.material ? max(0px, parent.width - self.x) : parent.width;
+                    height: parent.stroke;
+                    border-radius: 2px;
+                    background: Theme.material ? Theme.m3-secondary-container : Theme.toggle-off;
+                    if Theme.material: Rectangle {
+                        x: parent.width - 4px;
+                        width: 4px;
+                        height: 4px;
+                        border-radius: 2px;
+                        background: Theme.m3-primary;
+                    }
+                }
+                // done
+                Rectangle {
+                    x: 0;
+                    y: (parent.height - self.height) / 2;
+                    width: parent.width * parent.v;
+                    height: parent.stroke;
+                    border-radius: 2px;
+                    background: Theme.material ? Theme.m3-primary : Theme.accent;
+                    animate width { duration: 200ms; }
+                }
+                accessible-role: AccessibleRole.progress-indicator;
+                accessible-value: round(self.v * 100) + "%";
+            }
+            Text {
+                text: r.text;
+                vertical-alignment: center;
+                color: Theme.secondary;
+                font-size: Theme.small;
+            }
+        }
+
+        // ── The output (LogView.qml) ──
+        if whole && r.sub == "log": VerticalLayout {
+            padding: r.on ? 10px : 12px;
+            LogBox {
+                height: (r.on ? r.num - 20 : r.num) * 1px;
+                text: r.text;
+                follow: r.on;
+            }
+        }
+
+        // ── The bug report's boxes ──
+        if whole && r.sub == "boxes": VerticalLayout {
+            padding-left: Theme.material ? 20px : 12px;
+            padding-right: Theme.material ? 20px : 12px;
+            padding-top: Theme.material ? 16px : 12px;
+            padding-bottom: Theme.material ? 16px : 12px;
+            spacing: 16px;
+            for bx[i] in r.data: TextBox {
+                label: bx.text;
+                hint: bx.detail;
+                value: bx.id;
+                edited(t) => { SBus.act(r.id, i, 0, t); }
+            }
+        }
+
+        // ── The screenshot ──
+        if whole && r.sub == "shot": HorizontalLayout {
+            padding: 12px;
+            alignment: start;
+            Image {
+                property <length> w: min(SBus.page-width - 24px, 480px);
+                width: w;
+                height: r.image.width > 0 ? w * r.image.height / r.image.width : 0px;
+                source: r.image;
+                image-fit: contain;
+                accessible-role: AccessibleRole.image;
+                accessible-label: "The screenshot";
+            }
+        }
+
+        // ── A login item ──
+        if whole && r.sub == "item": Rectangle {
+            height: Theme.material ? 64px : 52px;
+            HorizontalLayout {
+                padding-left: Theme.material ? 20px : 14px;
+                padding-right: Theme.material ? 12px : 8px;
+                spacing: Theme.material ? 16px : 12px;
+                VerticalLayout {
+                    alignment: center;
+                    AppPic {
+                        source: r.image;
+                        size: Theme.material ? 32px : 28px;
+                        opacity: r.enabled ? 1 : 0.45;
+                    }
+                }
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    alignment: center;
+                    spacing: 2px;
+                    Text {
+                        text: r.label;
+                        overflow: elide;
+                        color: r.enabled ? Theme.label : Theme.secondary;
+                        font-size: Theme.material ? 16px : Theme.body;
+                    }
+                    Text {
+                        text: r.detail;
+                        overflow: elide;
+                        color: Theme.secondary;
+                        font-size: Theme.material ? 14px : Theme.caption;
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    padding-left: Theme.material ? 4px : 0;
+                    if r.enabled: VerticalLayout {
+                        alignment: center;
+                        SSwitch {
+                            on: r.on;
+                            label: "Start " + r.label + " when you log in";
+                            toggled => { SBus.act(r.id, 0, 0, "toggle"); }
+                        }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        menu-btn := Rectangle {
+                            width: 28px;
+                            height: 28px;
+                            border-radius: Theme.material ? 14px : Theme.radius-control - 2px;
+                            background: mta.pressed ? Theme.fill-pressed : mta.has-hover ? Theme.fill : transparent;
+                            accessible-role: AccessibleRole.button;
+                            accessible-label: "Options for " + r.label;
+                            accessible-action-default => { SBus.menu(r.text, self.absolute-position.x, self.absolute-position.y, self.width, self.height); }
+                            SIcon { g: SG.dots; size: 16px; color: Theme.tertiary; }
+                            mta := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => { SBus.menu(r.text, menu-btn.absolute-position.x, menu-btn.absolute-position.y, menu-btn.width, menu-btn.height); }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── An app to add ──
+        if whole && r.sub == "hit": Rectangle {
+            height: Theme.material ? 56px : 48px;
+            background: Theme.material ? transparent : hta.pressed ? Theme.fill-pressed : hta.has-hover ? Theme.fill : transparent;
+            hta := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { SBus.act(r.id, 0, 0, ""); }
+            }
+            HorizontalLayout {
+                padding-left: Theme.material ? 20px : 14px;
+                padding-right: Theme.material ? 20px : 14px;
+                spacing: Theme.material ? 16px : 12px;
+                VerticalLayout {
+                    alignment: center;
+                    AppPic {
+                        source: r.image;
+                        size: Theme.material ? 32px : 28px;
+                    }
+                }
+                Text {
+                    horizontal-stretch: 1;
+                    text: r.label;
+                    overflow: elide;
+                    vertical-alignment: center;
+                    color: Theme.label;
+                    font-size: Theme.material ? 16px : Theme.body;
+                }
+                VerticalLayout {
+                    alignment: center;
+                    SButton {
+                        text: "Add";
+                        label: r.label;
+                        clicked => { SBus.act(r.id, 0, 0, ""); }
+                    }
+                }
+            }
+        }
+
+        // ── An import's preview: what changes ──
+        if whole && r.sub == "lines": VerticalLayout {
+            for l in r.data: HorizontalLayout {
+                padding-left: Theme.material ? 20px : 14px;
+                padding-right: Theme.material ? 20px : 14px;
+                padding-top: 7px;
+                padding-bottom: 7px;
+                spacing: 10px;
+                VerticalLayout {
+                    alignment: center;
+                    SIcon { g: l.icon; size: 12px; color: Theme.tertiary; }
+                }
+                Text {
+                    horizontal-stretch: 1;
+                    text: l.text;
+                    wrap: word-wrap;
+                    vertical-alignment: center;
+                    color: Theme.label;
+                    font-size: Theme.small;
+                }
+            }
+        }
+        // ── … and what's skipped ──
+        if whole && r.sub == "skips": VerticalLayout {
+            for l in r.data: HorizontalLayout {
+                padding-left: Theme.material ? 42px : 36px;
+                padding-right: Theme.material ? 20px : 14px;
+                padding-top: 6px;
+                padding-bottom: 6px;
+                Text {
+                    text: l.text;
+                    wrap: word-wrap;
+                    color: Theme.secondary;
+                    font-size: Theme.small;
+                }
+            }
+        }
+
+        // ── Controls on a row's right ──
+        // A health check: its buttons, then the status as a dot and a word
+        if !whole && r.sub == "health": HorizontalLayout {
+            spacing: 10px;
+            alignment: end;
+            for o[i] in r.opts: VerticalLayout {
+                alignment: center;
+                SButton {
+                    text: o.text;
+                    icon: o.icon;
+                    style: o.style;
+                    busy: o.on;
+                    enabled: !o.off;
+                    label: r.label;
+                    clicked => { SBus.act(r.id, i, 0, ""); }
+                }
+            }
+            HorizontalLayout {
+                spacing: 6px;
+                VerticalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: 8px;
+                        height: 8px;
+                        border-radius: 4px;
+                        background: r.index == 0 ? Theme.success : r.index == 1 ? Theme.warning : r.index == 2 ? Theme.danger : Theme.tertiary;
+                    }
+                }
+                Text {
+                    text: r.value;
+                    vertical-alignment: center;
+                    color: r.index == 0 || r.index == 3 ? Theme.secondary : Theme.label;
+                    font-size: Theme.small;
+                    font-weight: r.index == 2 ? 600 : 400;
+                }
+            }
+        }
+        // Buttons, then a switch (the bug report's attachments)
+        if !whole && r.sub == "btnswitch": HorizontalLayout {
+            spacing: 8px;
+            alignment: end;
+            for o[i] in r.opts: VerticalLayout {
+                alignment: center;
+                SButton {
+                    text: o.text;
+                    icon: o.icon;
+                    style: o.style;
+                    label: r.label;
+                    clicked => { SBus.act(r.id, i, 0, ""); }
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                SSwitch {
+                    on: r.on;
+                    enabled: r.enabled;
+                    label: r.label;
+                    toggled => { SBus.act(r.id, -1, 0, "toggle"); }
+                }
+            }
+        }
+        // Search apps: the field (Enter adds the first), and Cancel
+        if !whole && r.sub == "search": HorizontalLayout {
+            spacing: 8px;
+            AField {
+                width: 240px;
+                text: r.text;
+                placeholder: r.placeholder;
+                label: "Search apps to add";
+                edited(t) => { SBus.act(r.id, 0, 0, t); }
+                accepted(t) => { SBus.act(r.id, 1, 0, t); }
+                escaped => { SBus.act(r.value, 0, 0, ""); }
+            }
+            VerticalLayout {
+                alignment: center;
+                SButton {
+                    text: "Cancel";
+                    clicked => { SBus.act(r.value, 0, 0, ""); }
+                }
+            }
+        }
+        // A path typed in (no file dialog): the field and its buttons
+        if !whole && r.sub == "path": HorizontalLayout {
+            spacing: 8px;
+            AField {
+                width: r.width > 0 ? r.width : 260px;
+                text: r.text;
+                placeholder: r.placeholder;
+                label: r.label;
+                edited(t) => { SBus.act(r.id, 0, 0, t); }
+                accepted(t) => { SBus.act(r.id, 1, 0, t); }
+            }
+            for o[i] in r.opts: VerticalLayout {
+                alignment: center;
+                SButton {
+                    text: o.text;
+                    style: o.style;
+                    enabled: !o.off;
+                    label: r.label;
+                    clicked => { SBus.act(r.value, i, 0, ""); }
+                }
+            }
+        }
+    }
+}

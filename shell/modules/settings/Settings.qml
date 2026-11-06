@@ -12,8 +12,13 @@ import "SettingsIndex.js" as SettingsIndex
 // it its own way: Glass a translucent sidebar beside the pane
 // (SettingsGlass.qml), Material Android's two panes (SettingsMaterial.qml).
 Scope {
+    // (drawn in Rust while tessera-ui says it draws it, rust.surfaces:
+    // settings: this window then never loads, and the bridge forwards
+    // Panels' opening and paging and what only this shell knows)
+    RustBridge {}
+
     LazyLoader {
-        active: Panels.settingsOpen
+        active: Panels.settingsOpen && !RustUi.drawing("settings")
 
         FloatingWindow {
             id: win

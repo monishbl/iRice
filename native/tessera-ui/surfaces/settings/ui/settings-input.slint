@@ -1,0 +1,619 @@
+// Settings: the views only the "input" page group's pages have
+// (src/surfaces/settings/pages/input): Keyboard's shortcut rows, its form
+// (the key recorder, ShortcutRecorder.qml; the app list), the trackpad's
+// gesture rows, Import and export's lines, and the bits between groups
+// (the search bar, notes, the form's head and buttons). The block's or
+// row's `sub` says which; each reports through SBus.act(id, int, float,
+// string). A custom row draws Material's tile itself (`r.num`: 0 between,
+// 1 first, 2 last, 3 alone).
+
+import { Theme } from "@tessera/theme.slint";
+import { Keycap } from "@tessera/widgets.slint";
+import { SIc, SOpt, SetRow, SBlock, SBus, SG, SM, SIcon, SFocusRing, SSwitch, SSlider, SSegmented, SChoice, SButton, SField, SChip, SSwatch, SFilled } from "settings-kit.slint";
+
+global IG {
+    out property <SIc> arrow-right: { p: "\u{e06c}", m: "\u{e5c8}" };
+}
+
+// Material's tile behind a custom row (Group.qml's), corners by its place
+component Tile inherits Rectangle {
+    in property <float> place;
+    property <bool> top: place == 1 || place == 3;
+    property <bool> bottom: place == 2 || place == 3;
+    background: Theme.material ? Theme.m3-surface-container-high : transparent;
+    border-top-left-radius: Theme.material ? (top ? 24px : 4px) : 0;
+    border-top-right-radius: Theme.material ? (top ? 24px : 4px) : 0;
+    border-bottom-left-radius: Theme.material ? (bottom ? 24px : 4px) : 0;
+    border-bottom-right-radius: Theme.material ? (bottom ? 24px : 4px) : 0;
+}
+
+// A text field whose text the page can set again (`gen` counts each time),
+// as TextField.qml in both looks
+component InField {
+    in property <string> text;
+    in property <float> gen;
+    in property <string> placeholder;
+    in property <length> field-height: Theme.material ? 40px : 28px;
+    in property <string> label;
+    callback edited(string);
+    callback committed(string);
+    changed gen => { input.text = root.text; }
+    preferred-width: 220px;
+    height: field-height;
+    if Theme.material: SFilled { active: input.has-focus; hovered: ta.has-hover; }
+    if !Theme.material: Rectangle {
+        border-radius: Theme.radius-control - 2px;
+        background: Theme.fill;
+        border-width: 1px;
+        border-color: input.has-focus ? Theme.accent : Theme.separator;
+    }
+    ta := TouchArea {
+        mouse-cursor: MouseCursor.text;
+        clicked => { input.focus(); }
+    }
+    Rectangle {
+        x: Theme.material ? 16px : 10px;
+        width: parent.width - 2 * self.x;
+        clip: true;
+        input := TextInput {
+            width: 100%;
+            height: 100%;
+            text: root.text;
+            vertical-alignment: center;
+            single-line: true;
+            color: Theme.label;
+            selection-background-color: Theme.material ? Theme.m3-primary.with-alpha(0.3) : Theme.accent.with-alpha(0.4);
+            font-size: Theme.body;
+            accessible-label: root.label != "" ? root.label : root.placeholder;
+            edited => { root.edited(self.text); }
+            accepted => { root.committed(self.text); }
+        }
+        if input.text == "" && !input.has-focus: Text {
+            width: 100%;
+            height: 100%;
+            text: root.placeholder;
+            color: Theme.tertiary;
+            font-size: Theme.body;
+            vertical-alignment: center;
+            overflow: elide;
+            accessible-role: AccessibleRole.none;
+        }
+    }
+}
+
+// A ghost "…" button (IconButton.qml) that opens a row's menu under it
+component Dots inherits Rectangle {
+    in property <string> menu-id;
+    in property <bool> lit;
+    in property <string> label;
+    width: 28px;
+    height: 28px;
+    border-radius: Theme.material ? (ta.pressed ? 8px : self.height / 2) : Theme.radius-control - 2px;
+    background: Theme.material ? Theme.m3-on-surface-variant.with-alpha(ta.pressed ? 0.1 : ta.has-hover ? 0.08 : 0)
+        : ta.pressed ? Theme.fill-pressed : ta.has-hover ? Theme.fill : transparent;
+    animate background { duration: SM.hover; }
+    accessible-role: AccessibleRole.button;
+    accessible-label: label;
+    accessible-action-default => { open(); }
+    public function open() {
+        SBus.menu(menu-id, self.absolute-position.x, self.absolute-position.y, self.width, self.height);
+    }
+    SIcon { g: SG.dots; size: 16px; color: lit || ta.has-hover ? Theme.label : Theme.tertiary; }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.open(); }
+    }
+}
+
+// Buttons in a row of their own, at its right (a form's, a preview's)
+component Buttons inherits HorizontalLayout {
+    in property <SetRow> r;
+    in property <[SOpt]> items;
+    in property <int> base;
+    spacing: 8px;
+    alignment: end;
+    for o[i] in items: VerticalLayout {
+        alignment: center;
+        SButton {
+            text: o.text;
+            icon: o.icon;
+            style: o.style;
+            busy: o.on;
+            enabled: !o.off;
+            label: r.label;
+            clicked => { SBus.act(r.id, base + i, 0, ""); }
+        }
+    }
+}
+
+// ── A shortcut in the list (shortcuts.qml's BindRow): its name, what's
+// changed, its keys, and its menu (the whole row opens it) ──
+component BindRow inherits Tile {
+    in property <SetRow> r;
+    place: r.num;
+    min-height: Theme.material ? 56px : 44px;
+    accessible-role: AccessibleRole.button;
+    accessible-label: r.label;
+    accessible-description: r.detail;
+    accessible-action-default => { dots.open(); }
+    if !Theme.material: Rectangle {
+        background: ta.pressed ? Theme.fill-pressed : ta.has-hover ? Theme.fill : transparent;
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { dots.open(); }
+    }
+    HorizontalLayout {
+        padding-left: Theme.material ? 20px : 14px;
+        padding-right: Theme.material ? 12px : 8px;
+        spacing: 8px;
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            padding-top: 10px;
+            padding-bottom: 10px;
+            padding-right: Theme.material ? 8px : 4px;
+            spacing: 2px;
+            Text {
+                text: r.label;
+                overflow: elide;
+                color: r.enabled ? Theme.label : Theme.secondary;
+                font-size: Theme.material ? 16px : Theme.body;
+                accessible-role: AccessibleRole.none;
+            }
+            if r.detail != "": Text {
+                text: r.detail;
+                overflow: elide;
+                color: Theme.secondary;
+                font-size: Theme.material ? 14px : Theme.caption;
+                accessible-role: AccessibleRole.none;
+            }
+        }
+        HorizontalLayout {
+            spacing: 4px;
+            opacity: r.enabled ? 1 : 0.4;
+            for k in r.data: VerticalLayout {
+                alignment: center;
+                Keycap { text: k.text; }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            dots := Dots { menu-id: r.id; lit: ta.has-hover; label: "Options for " + r.label; }
+        }
+    }
+}
+
+// ── A gesture (mouse-gestures.qml's GestureRow, and the new one):
+// [fingers] [direction] → [action], what's wrong under them, its menu ──
+component GestureRow inherits Tile {
+    in property <SetRow> r;
+    place: r.num;
+    HorizontalLayout {
+        padding-left: Theme.material ? 20px : 14px;
+        padding-right: Theme.material ? 12px : 8px;
+        padding-top: r.id == "" ? (Theme.material ? 16px : 12px) : (Theme.material ? 12px : 10px);
+        padding-bottom: r.id == "" ? 8px : (Theme.material ? 12px : 10px);
+        spacing: 8px;
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: r.id == "" ? 8px : 6px;
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
+                opacity: r.enabled ? 1 : 0.5;
+                if r.data.length >= 3: SChoice {
+                    width: Theme.material ? 120px : 104px;
+                    cid: r.data[0].id;
+                    opts: [r.data[0]];
+                    current: 0;
+                    label: "Fingers";
+                }
+                if r.data.length >= 3: SChoice {
+                    width: Theme.material ? 160px : 136px;
+                    cid: r.data[1].id;
+                    opts: [r.data[1]];
+                    current: 0;
+                    label: "Direction";
+                }
+                VerticalLayout {
+                    alignment: center;
+                    SIcon { g: IG.arrow-right; size: 14px; color: Theme.tertiary; }
+                }
+                if r.data.length >= 3: SChoice {
+                    width: 200px;
+                    cid: r.data[2].id;
+                    opts: [r.data[2]];
+                    current: 0;
+                    label: "Action";
+                }
+            }
+            if r.detail != "": Text {
+                text: r.detail;
+                wrap: word-wrap;
+                color: r.tone == 4 ? Theme.warning : Theme.secondary;
+                font-size: Theme.material ? 14px : Theme.caption;
+            }
+        }
+        if r.id != "": VerticalLayout {
+            alignment: center;
+            Dots { menu-id: r.id; label: "Options for this gesture"; }
+        }
+    }
+}
+
+// ── ShortcutRecorder.qml: the modifiers as chips, then the box that
+// catches one key; or the keys as text ──
+component Recorder inherits Tile {
+    in property <SetRow> r;
+    place: r.num;
+    VerticalLayout {
+        padding-left: Theme.material ? 20px : 14px;
+        padding-right: Theme.material ? 20px : 14px;
+        padding-top: Theme.material ? 16px : 14px;
+        padding-bottom: Theme.material ? 16px : 14px;
+        spacing: 12px;
+        if !r.on: HorizontalLayout {
+            spacing: 8px;
+            alignment: start;
+            for m[i] in r.data: VerticalLayout {
+                alignment: center;
+                SChip {
+                    height: 32px;
+                    text: m.text;
+                    on: m.on;
+                    solid: true;
+                    clicked => { SBus.act(r.id, i, 0, ""); }
+                }
+            }
+            Text {
+                height: 32px;
+                vertical-alignment: center;
+                text: "+";
+                color: Theme.tertiary;
+                font-size: Theme.title;
+            }
+            catcher := Rectangle {
+                width: 168px;
+                height: 32px;
+                border-radius: Theme.material ? self.height / 2 : Theme.radius-control;
+                background: Theme.material ? transparent : fs.has-focus ? Theme.accent.with-alpha(0.12) : Theme.fill;
+                border-width: Theme.material ? 0 : fs.has-focus ? 2px : 1px;
+                border-color: fs.has-focus ? Theme.accent : Theme.separator;
+                accessible-role: AccessibleRole.text-input;
+                accessible-label: "Key: " + (r.value != "" ? r.value : "none") + ". Press a key to change it.";
+                if Theme.material: SFilled { active: fs.has-focus; }
+                Text {
+                    x: Theme.material ? 16px : 10px;
+                    width: parent.width - 2 * self.x;
+                    height: parent.height;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                    overflow: elide;
+                    text: fs.has-focus ? "Press a key…" : r.value != "" ? r.value : "Click, then press a key";
+                    color: fs.has-focus || r.value == "" ? Theme.secondary : Theme.label;
+                    font-size: Theme.body;
+                    font-weight: r.value != "" && !fs.has-focus ? 600 : 400;
+                    accessible-role: AccessibleRole.none;
+                }
+                TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { fs.focus(); }
+                }
+                // One key, then the box lets go (it never traps the keyboard)
+                fs := FocusScope {
+                    key-pressed(e) => {
+                        if e.text == Key.Shift || e.text == Key.ShiftR || e.text == Key.Control || e.text == Key.ControlR || e.text == Key.Alt || e.text == Key.AltGr || e.text == Key.Meta || e.text == Key.MetaR {
+                            return accept;
+                        }
+                        let held = (e.modifiers.shift ? 1 : 0) + (e.modifiers.control ? 2 : 0) + (e.modifiers.alt ? 4 : 0) + (e.modifiers.meta ? 8 : 0);
+                        SBus.act(r.id, 10, held, e.text);
+                        self.clear-focus();
+                        accept
+                    }
+                }
+            }
+        }
+        if r.on: VerticalLayout {
+            spacing: 4px;
+            HorizontalLayout {
+                alignment: start;
+                InField {
+                    width: min(root.width - 2 * (Theme.material ? 20px : 14px), 420px);
+                    field-height: 32px;
+                    text: r.text;
+                    gen: r.num;
+                    placeholder: "SUPER + SHIFT + S";
+                    label: "Keys";
+                    edited(t) => { SBus.act(r.id, 20, 0, t); }
+                }
+            }
+            Text {
+                wrap: word-wrap;
+                text: "Hyprland key names joined with +, for example SUPER + mouse:272 (left click), SUPER + code:86 (a key by its code) or XF86AudioPlay.";
+                color: Theme.secondary;
+                font-size: Theme.caption;
+            }
+        }
+        HorizontalLayout {
+            alignment: start;
+            SButton {
+                text: r.on ? "Use the key picker" : "Edit as text";
+                clicked => { SBus.act(r.id, 21, 0, ""); }
+            }
+        }
+    }
+}
+
+// ── An app in the form's list (its icon, name, a tick when chosen) ──
+component AppRow inherits Tile {
+    in property <SetRow> r;
+    place: r.num;
+    height: Theme.material ? 48px : 40px;
+    accessible-role: AccessibleRole.radio-button;
+    accessible-label: r.label;
+    accessible-checked: r.on;
+    accessible-action-default => { SBus.act(r.id, 0, 0, ""); }
+    Rectangle {
+        border-radius: Theme.material ? 4px : 0;
+        background: r.on ? Theme.accent-tint : Theme.material ? transparent : ta.pressed ? Theme.fill-pressed : ta.has-hover ? Theme.fill : transparent;
+    }
+    Image {
+        x: Theme.material ? 20px : 14px;
+        y: (parent.height - self.height) / 2;
+        width: 24px;
+        height: 24px;
+        source: r.image;
+        image-fit: contain;
+    }
+    Text {
+        x: (Theme.material ? 20px : 14px) + 24px + (Theme.material ? 16px : 10px);
+        width: parent.width - self.x - 48px;
+        height: parent.height;
+        vertical-alignment: center;
+        overflow: elide;
+        text: r.label;
+        color: Theme.label;
+        font-size: Theme.material ? 16px : Theme.body;
+        font-weight: r.on ? 600 : 400;
+        accessible-role: AccessibleRole.none;
+    }
+    if r.on: SIcon {
+        x: parent.width - self.width - (Theme.material ? 20px : 14px);
+        g: SG.check;
+        bold: true;
+        size: 14px;
+        color: Theme.accent-ink;
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { SBus.act(r.id, 0, 0, ""); }
+    }
+}
+
+// A custom row or row control (`r.group == "input"`)
+export component InputCtl inherits VerticalLayout {
+    in property <SetRow> r;
+    property <bool> whole: r.kind == "custom";
+    // Rows of their own
+    if whole && r.sub == "bind": BindRow { r: r; }
+    if whole && r.sub == "gesture": GestureRow { r: r; }
+    if whole && r.sub == "recorder": Recorder { r: r; }
+    if whole && r.sub == "app": AppRow { r: r; }
+    if whole && r.sub == "buttons": Tile {
+        place: r.num;
+        HorizontalLayout {
+            padding-left: Theme.material ? 20px : 14px;
+            padding-right: Theme.material ? 20px : 14px;
+            padding-top: 8px;
+            padding-bottom: Theme.material ? 16px : 12px;
+            Buttons { r: r; items: r.data; base: 0; }
+        }
+    }
+    if whole && r.sub == "segmented": Tile {
+        place: r.num;
+        height: Theme.material ? 64px : 54px;
+        SSegmented {
+            x: Theme.material ? 20px : 14px;
+            width: parent.width - 2 * self.x;
+            y: (parent.height - self.height) / 2;
+            opts: r.opts.length > 0 ? r.opts : r.data;
+            current: r.index;
+            label: "What it does";
+            selected(i) => { SBus.act(r.id, i, 0, ""); }
+        }
+    }
+    if whole && r.sub == "search": Tile {
+        place: r.num;
+        height: Theme.material ? 56px : 48px;
+        InField {
+            x: Theme.material ? 20px : 14px;
+            width: parent.width - 2 * self.x;
+            y: (parent.height - self.height) / 2;
+            text: r.text;
+            gen: r.num;
+            placeholder: r.placeholder;
+            edited(t) => { SBus.act(r.id, 0, 0, t); }
+            committed(t) => { SBus.act(r.id, 1, 0, t); }
+        }
+    }
+    if whole && r.sub == "line": Tile {
+        place: r.num;
+        HorizontalLayout {
+            padding-left: Theme.material ? 20px : 14px;
+            padding-right: Theme.material ? 20px : 14px;
+            padding-top: 7px;
+            padding-bottom: 7px;
+            spacing: 10px;
+            VerticalLayout {
+                alignment: center;
+                SIcon { g: r.data.length > 0 ? r.data[0].icon : SG.info; size: 12px; color: Theme.tertiary; }
+            }
+            Text {
+                horizontal-stretch: 1;
+                text: r.label;
+                wrap: word-wrap;
+                color: Theme.label;
+                font-size: Theme.small;
+            }
+        }
+    }
+    if whole && r.sub == "skip": Tile {
+        place: r.num;
+        HorizontalLayout {
+            padding-left: Theme.material ? 42px : 36px;
+            padding-right: Theme.material ? 20px : 14px;
+            padding-top: 6px;
+            padding-bottom: 6px;
+            Text {
+                text: r.label;
+                wrap: word-wrap;
+                color: Theme.secondary;
+                font-size: Theme.small;
+            }
+        }
+    }
+    // Controls on a settings row's right
+    if !whole && r.sub == "icon" && r.data.length > 0: SIcon {
+        g: r.data[0].icon;
+        fill: r.data[0].on;
+        size: r.data[0].style == 4 ? 20px : 18px;
+        color: r.data[0].style == 4 ? Theme.warning : r.data[0].style == 3 ? Theme.success : Theme.secondary;
+    }
+    if !whole && r.sub == "field": InField {
+        width: r.width > 0 ? r.width : 220px;
+        text: r.text;
+        gen: r.num;
+        placeholder: r.placeholder;
+        label: r.label;
+        edited(t) => { SBus.act(r.id, 0, 0, t); }
+        committed(t) => { SBus.act(r.id, 1, 0, t); }
+    }
+    if !whole && r.sub == "fieldbtns": HorizontalLayout {
+        spacing: 8px;
+        VerticalLayout {
+            alignment: center;
+            InField {
+                width: r.width > 0 ? r.width : 260px;
+                text: r.text;
+                gen: r.num;
+                placeholder: r.placeholder;
+                label: r.label;
+                edited(t) => { SBus.act(r.id, 0, 0, t); }
+                committed(t) => { SBus.act(r.id, 1, 0, t); }
+            }
+        }
+        Buttons { r: r; items: r.data; base: 10; }
+    }
+}
+
+// A custom block (`b.kind == "custom" && b.group == "input"`)
+export component InputBlock inherits VerticalLayout {
+    in property <SBlock> b;
+    // The line above the gestures: what they are, and Add gesture
+    if b.sub == "addbar": HorizontalLayout {
+        spacing: 12px;
+        HorizontalLayout {
+            horizontal-stretch: 1;
+            padding-left: Theme.material ? 16px : 4px;
+            Text {
+                vertical-alignment: center;
+                overflow: elide;
+                text: b.title;
+                color: Theme.secondary;
+                font-size: Theme.small;
+            }
+        }
+        SButton {
+            text: b.text;
+            icon: SG.plus;
+            style: 1;
+            enabled: b.data.length > 0 && b.data[0].on;
+            clicked => { SBus.act(b.id, 0, 0, ""); }
+        }
+    }
+    // Keyboard's search, with Add shortcut
+    if b.sub == "searchbar": HorizontalLayout {
+        spacing: 12px;
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            InField {
+                text: b.text;
+                gen: b.num;
+                placeholder: "Search by name or keys, like “super s” or “ctrl print”";
+                label: "Search shortcuts";
+                edited(t) => { SBus.act(b.id, 0, 0, t); }
+            }
+        }
+        SButton {
+            text: b.data.length > 0 ? b.data[0].text : "Add shortcut";
+            icon: SG.plus;
+            style: 1;
+            enabled: b.data.length > 0 && b.data[0].on;
+            clicked => { SBus.act(b.id, 2, 0, ""); }
+        }
+    }
+    // A line of text between the groups: loading, or the form's error
+    if b.sub == "note": HorizontalLayout {
+        padding-left: Theme.material ? 16px : 4px;
+        Text {
+            text: b.text;
+            wrap: word-wrap;
+            color: b.num == 2 ? Theme.danger : Theme.secondary;
+            font-size: b.num == 2 ? Theme.small : Theme.body;
+        }
+    }
+    // The form's head: back to the list, and what's being changed
+    if b.sub == "formhead": HorizontalLayout {
+        height: 44px;
+        spacing: 8px;
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 28px;
+                height: 28px;
+                border-radius: Theme.material ? self.height / 2 : Theme.radius-control - 2px;
+                background: Theme.material ? Theme.m3-on-surface-variant.with-alpha(bta.pressed ? 0.1 : bta.has-hover ? 0.08 : 0) : bta.pressed ? Theme.fill-pressed : bta.has-hover ? Theme.fill : transparent;
+                accessible-role: AccessibleRole.button;
+                accessible-label: "Back to all shortcuts";
+                accessible-action-default => { SBus.act(b.id, 0, 0, ""); }
+                SIcon { g: SG.caret-left; size: 16px; color: Theme.label; }
+                bta := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { SBus.act(b.id, 0, 0, ""); }
+                }
+            }
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 2px;
+            Text {
+                text: b.title;
+                overflow: elide;
+                color: Theme.label;
+                font-size: Theme.title;
+                font-weight: 600;
+            }
+            if b.text != "": Text {
+                text: b.text;
+                overflow: elide;
+                color: Theme.secondary;
+                font-size: Theme.caption;
+            }
+        }
+    }
+    // The form's Cancel and Save, at the right
+    if b.sub == "actions": HorizontalLayout {
+        spacing: 8px;
+        alignment: end;
+        for o[i] in b.data: SButton {
+            text: o.text;
+            style: o.style;
+            enabled: !o.off;
+            clicked => { SBus.act(b.id, i, 0, ""); }
+        }
+    }
+}

@@ -1,0 +1,570 @@
+// Settings: the views only the "notify" page group's pages have (custom blocks
+// and row controls; src/surfaces/settings/pages/notify/ fills them). The
+// block's or row's `sub` says which view; its data, num, image and rows
+// carry what it shows; it reports through SBus.act(id, int, float, string).
+//
+// Rows (NotifyCtl, `r.sub`):
+//   entry    a field that acts only on Enter, then empties (act 1 with the text)
+//   item     a whole clickable row: a picture (r.num >= 1), label, detail,
+//            an icon on the right (accent, filled when r.on) or a chevron
+//            (r.text == "chevron"); r.index: 1 first, 2 last (Material's
+//            tile corners); r.from / r.to: its least height in Glass /
+//            Material (focus.qml's modes, windowrules.qml's AppRow)
+//   sound    SoundRow's Play, Choose…, Reset (r.opts: act i) and its switch
+//            (shown when r.step > 0, r.on: act -1)
+//   icons    a Focus mode's icon (IconButtons, 6 a line: act i)
+//   days     a schedule's days, one letter each at a fixed width (act i)
+//   stepper  minus, "Space 3", plus (act -1 / 1; r.opts[k].off: can't)
+//   size     width × height fields (act 1 with "w\nh" when either commits)
+// Blocks (NotifyBlock, `b.sub`):
+//   note     a line of text on the captions' edge (b.num: 0 tertiary,
+//            1 secondary, 2 danger; 3 secondary at body size)
+//   listhead the rules' caption and Add app (act b.id)
+//   empty    No window rules, and Choose app (act b.id)
+//   search   back (act 0), the search field (typing: act 1, Enter: act 2)
+//   edithead back (act 0), the app, Remove rule (b.on: shown; act 1)
+
+import { Theme } from "@tessera/theme.slint";
+import { SIc, SOpt, SetRow, SBlock, SBus, SG, SM, SIcon, SFocusRing, SSwitch, SSlider, SSegmented, SChoice, SButton, SField, SChip, SSwatch, SFilled } from "settings-kit.slint";
+
+// A ghost icon button (IconButton.qml)
+component Ghost inherits Rectangle {
+    in property <SIc> icon;
+    in property <bool> fill;
+    in property <color> ink: Theme.secondary;
+    in property <length> size: 16px;
+    in property <string> label;
+    callback clicked();
+    width: Theme.material ? 40px : 28px;
+    height: self.width;
+    border-radius: Theme.material ? self.height / 2 : Theme.radius-control - 2px;
+    background: Theme.material ? Theme.m3-on-surface-variant.with-alpha(ta.pressed ? 0.1 : ta.has-hover ? 0.08 : 0) : ta.pressed ? Theme.fill-pressed : ta.has-hover ? Theme.fill : transparent;
+    animate background { duration: SM.hover; }
+    accessible-role: AccessibleRole.button;
+    accessible-label: label;
+    accessible-action-default => { clicked(); }
+    SIcon { g: icon; fill: root.fill; size: root.size; color: ink; }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// One letter, at a fixed width (focus.qml's days: Chip, tick off, solid)
+component DayChip inherits Rectangle {
+    in property <string> text;
+    in property <bool> on;
+    callback clicked();
+    property <float> layer: ta.pressed ? 0.1 : ta.has-hover ? 0.08 : 0;
+    width: Theme.material ? 40px : 30px;
+    height: Theme.material ? 32px : 26px;
+    border-radius: Theme.material ? 8px : self.height / 2;
+    background: Theme.material ? (on ? Theme.m3-secondary-container.mix(Theme.m3-on-secondary-container, 1 - layer) : Theme.m3-on-surface-variant.with-alpha(layer))
+        : on ? (ta.pressed ? Theme.accent.darker(0.15) : Theme.accent) : ta.pressed ? Theme.fill-pressed : ta.has-hover ? Theme.fill-hover : Theme.fill;
+    border-width: Theme.material && !on ? 1px : 0;
+    border-color: Theme.m3-outline-variant;
+    animate background { duration: SM.hover; }
+    accessible-role: AccessibleRole.checkbox;
+    accessible-label: text;
+    accessible-checked: on;
+    accessible-action-default => { clicked(); }
+    Text {
+        text: root.text;
+        color: Theme.material ? (on ? Theme.m3-on-secondary-container : Theme.m3-on-surface-variant) : on ? Theme.on-accent : Theme.label;
+        font-size: Theme.material ? 14px : Theme.small;
+        font-weight: 500;
+        accessible-role: AccessibleRole.none;
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// A width or height field (windowrules.qml's Default size): commits on
+// Enter and when it loses focus, and says what's typed in it
+component SizeField {
+    in property <string> text;
+    in property <string> placeholder;
+    out property <string> typed: input.text;
+    callback committed();
+    width: 72px;
+    height: Theme.material ? 40px : 28px;
+    if Theme.material: SFilled { active: input.has-focus; hovered: false; }
+    if !Theme.material: Rectangle {
+        border-radius: Theme.radius-control - 2px;
+        background: Theme.fill;
+        border-width: 1px;
+        border-color: input.has-focus ? Theme.accent : Theme.separator;
+    }
+    Rectangle {
+        x: Theme.material ? 16px : 10px;
+        width: parent.width - 2 * self.x;
+        clip: true;
+        input := TextInput {
+            width: 100%;
+            height: 100%;
+            text: root.text;
+            vertical-alignment: center;
+            single-line: true;
+            color: Theme.label;
+            font-size: Theme.body;
+            selection-background-color: Theme.material ? Theme.m3-primary.with-alpha(0.3) : Theme.accent.with-alpha(0.4);
+            accessible-label: root.placeholder;
+            accepted => { root.committed(); }
+            changed has-focus => {
+                if !self.has-focus { root.committed(); }
+            }
+        }
+        if input.text == "" && !input.has-focus: Text {
+            width: 100%;
+            height: 100%;
+            vertical-alignment: center;
+            text: root.placeholder;
+            color: Theme.tertiary;
+            font-size: Theme.body;
+            accessible-role: AccessibleRole.none;
+        }
+    }
+}
+
+// A field that acts only on Enter, then empties (focus.qml's Add a mode:
+// TextField with commitOnBlur off)
+component EntryField {
+    in property <string> placeholder;
+    in property <string> action;
+    in property <string> label;
+    preferred-width: 200px;
+    height: Theme.material ? 40px : 28px;
+    if Theme.material: SFilled { active: input.has-focus; hovered: false; }
+    if !Theme.material: Rectangle {
+        border-radius: Theme.radius-control - 2px;
+        background: Theme.fill;
+        border-width: 1px;
+        border-color: input.has-focus ? Theme.accent : Theme.separator;
+    }
+    Rectangle {
+        x: Theme.material ? 16px : 10px;
+        width: parent.width - 2 * self.x;
+        clip: true;
+        input := TextInput {
+            width: 100%;
+            height: 100%;
+            vertical-alignment: center;
+            single-line: true;
+            color: Theme.label;
+            font-size: Theme.body;
+            selection-background-color: Theme.material ? Theme.m3-primary.with-alpha(0.3) : Theme.accent.with-alpha(0.4);
+            accessible-label: root.label;
+            accepted => {
+                if self.text != "" {
+                    SBus.act(root.action, 1, 0, self.text);
+                    self.text = "";
+                }
+            }
+        }
+        if input.text == "" && !input.has-focus: Text {
+            width: 100%;
+            height: 100%;
+            vertical-alignment: center;
+            text: root.placeholder;
+            color: Theme.tertiary;
+            font-size: Theme.body;
+            accessible-role: AccessibleRole.none;
+        }
+    }
+}
+
+// A whole clickable row (focus.qml's mode rows, windowrules.qml's AppRow)
+component ItemRow {
+    in property <SetRow> r;
+    property <bool> first: mod(r.index, 2) == 1;
+    property <bool> last: r.index >= 2;
+    property <bool> pic: r.num >= 1;
+    min-height: Theme.material ? max(56px, r.to * 1px) : max(44px, r.from * 1px);
+    accessible-role: AccessibleRole.button;
+    accessible-label: r.label;
+    accessible-description: r.detail;
+    accessible-action-default => { SBus.act(r.id, 0, 0, ""); }
+    if Theme.material: Rectangle {
+        border-top-left-radius: first ? 24px : 4px;
+        border-top-right-radius: first ? 24px : 4px;
+        border-bottom-left-radius: last ? 24px : 4px;
+        border-bottom-right-radius: last ? 24px : 4px;
+        background: ta.has-hover ? Theme.m3-surface-container-high.mix(Theme.m3-on-surface, 0.92) : Theme.m3-surface-container-high;
+        animate background { duration: SM.hover; }
+    }
+    if !Theme.material: Rectangle {
+        background: ta.pressed ? Theme.fill-pressed : ta.has-hover ? Theme.fill : transparent;
+        animate background { duration: SM.hover; }
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { SBus.act(r.id, 0, 0, ""); }
+        HorizontalLayout {
+            padding-left: Theme.material ? 20px : 14px;
+            padding-right: Theme.material ? 16px : 14px;
+            spacing: 0;
+            if pic: VerticalLayout {
+                alignment: center;
+                padding-right: Theme.material ? 16px : 12px;
+                Image {
+                    width: Theme.material ? 40px : 28px;
+                    height: self.width;
+                    source: r.image;
+                    image-fit: contain;
+                    accessible-role: AccessibleRole.none;
+                }
+            }
+            VerticalLayout {
+                horizontal-stretch: 1;
+                alignment: center;
+                spacing: 2px;
+                padding-top: Theme.material ? 12px : 8px;
+                padding-bottom: Theme.material ? 12px : 8px;
+                padding-right: 12px;
+                Text {
+                    text: r.label;
+                    overflow: elide;
+                    color: Theme.label;
+                    font-size: Theme.material ? 16px : Theme.body;
+                    accessible-role: AccessibleRole.none;
+                }
+                if r.detail != "": Text {
+                    text: r.detail;
+                    overflow: elide;
+                    color: Theme.secondary;
+                    font-size: Theme.material ? 14px : Theme.caption;
+                    accessible-role: AccessibleRole.none;
+                }
+            }
+            if r.icon.p != "": VerticalLayout {
+                alignment: center;
+                SIcon {
+                    g: r.icon;
+                    fill: r.on;
+                    size: 18px;
+                    color: r.on ? Theme.accent : Theme.secondary;
+                }
+            }
+            if r.icon.p == "" && r.text == "chevron": VerticalLayout {
+                alignment: center;
+                SIcon {
+                    g: SG.caret-right;
+                    bold: !Theme.material;
+                    size: Theme.material ? 24px : 12px;
+                    color: Theme.tertiary;
+                }
+            }
+        }
+    }
+}
+
+// A custom row or row control (`r.group == "notify"`)
+export component NotifyCtl inherits VerticalLayout {
+    in property <SetRow> r;
+    alignment: center;
+    if r.sub == "item": ItemRow { r: r; }
+    if r.sub == "entry": EntryField {
+        width: r.width > 0 ? r.width : 200px;
+        placeholder: r.placeholder;
+        action: r.id;
+        label: r.label;
+    }
+    if r.sub == "sound": HorizontalLayout {
+        spacing: 8px;
+        alignment: end;
+        for o[i] in r.opts: VerticalLayout {
+            alignment: center;
+            SButton {
+                text: o.text;
+                icon: o.icon;
+                style: o.style;
+                enabled: !o.off;
+                label: r.label;
+                clicked => { SBus.act(r.id, i, 0, ""); }
+            }
+        }
+        if r.step > 0: VerticalLayout {
+            alignment: center;
+            SSwitch {
+                on: r.on;
+                label: r.label;
+                toggled => { SBus.act(r.id, -1, 0, ""); }
+            }
+        }
+    }
+    if r.sub == "icons": VerticalLayout {
+        spacing: 2px;
+        HorizontalLayout {
+            spacing: 2px;
+            alignment: end;
+            for o[i] in r.opts: Rectangle {
+                width: i < 6 ? (Theme.material ? 40px : 28px) : 0;
+                height: Theme.material ? 40px : 28px;
+                visible: i < 6;
+                if i < 6: Ghost {
+                    icon: o.icon;
+                    fill: o.on;
+                    ink: o.on ? Theme.accent : Theme.secondary;
+                    label: o.text;
+                    clicked => { SBus.act(r.id, i, 0, ""); }
+                }
+            }
+        }
+        HorizontalLayout {
+            spacing: 2px;
+            alignment: end;
+            for o[i] in r.opts: Rectangle {
+                width: i >= 6 ? (Theme.material ? 40px : 28px) : 0;
+                height: Theme.material ? 40px : 28px;
+                visible: i >= 6;
+                if i >= 6: Ghost {
+                    icon: o.icon;
+                    fill: o.on;
+                    ink: o.on ? Theme.accent : Theme.secondary;
+                    label: o.text;
+                    clicked => { SBus.act(r.id, i, 0, ""); }
+                }
+            }
+        }
+    }
+    if r.sub == "days": HorizontalLayout {
+        spacing: 4px;
+        alignment: end;
+        for o[i] in r.opts: DayChip {
+            text: o.text;
+            on: o.on;
+            clicked => { SBus.act(r.id, i, 0, ""); }
+        }
+    }
+    if r.sub == "stepper": HorizontalLayout {
+        spacing: 4px;
+        alignment: end;
+        Ghost {
+            icon: SG.minus;
+            ink: r.opts.length > 0 && r.opts[0].off ? Theme.tertiary : Theme.label;
+            label: "Previous space";
+            clicked => { SBus.act(r.id, -1, 0, ""); }
+        }
+        Text {
+            width: 64px;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            text: r.value;
+            color: Theme.label;
+            font-size: Theme.body;
+        }
+        Ghost {
+            icon: SG.plus;
+            ink: r.opts.length > 1 && r.opts[1].off ? Theme.tertiary : Theme.label;
+            label: "Next space";
+            clicked => { SBus.act(r.id, 1, 0, ""); }
+        }
+    }
+    if r.sub == "size": HorizontalLayout {
+        spacing: 8px;
+        alignment: end;
+        wf := SizeField {
+            text: r.opts.length > 0 ? r.opts[0].text : "";
+            placeholder: "Width";
+            committed => { SBus.act(r.id, 1, 0, wf.typed + "\n" + hf.typed); }
+        }
+        Text {
+            vertical-alignment: center;
+            text: "×";
+            color: Theme.secondary;
+            font-size: Theme.body;
+        }
+        hf := SizeField {
+            text: r.opts.length > 1 ? r.opts[1].text : "";
+            placeholder: "Height";
+            committed => { SBus.act(r.id, 1, 0, wf.typed + "\n" + hf.typed); }
+        }
+    }
+}
+
+// The rules' search field (windowrules.qml's picker): focused as it shows
+component SearchBox {
+    in property <string> placeholder;
+    in property <string> action;
+    height: Theme.material ? 40px : 28px;
+    if Theme.material: SFilled { active: input.has-focus; hovered: false; }
+    if !Theme.material: Rectangle {
+        border-radius: Theme.radius-control - 2px;
+        background: Theme.fill;
+        border-width: 1px;
+        border-color: input.has-focus ? Theme.accent : Theme.separator;
+    }
+    Rectangle {
+        x: Theme.material ? 16px : 10px;
+        width: parent.width - 2 * self.x;
+        clip: true;
+        input := TextInput {
+            width: 100%;
+            height: 100%;
+            vertical-alignment: center;
+            single-line: true;
+            color: Theme.label;
+            font-size: Theme.body;
+            selection-background-color: Theme.material ? Theme.m3-primary.with-alpha(0.3) : Theme.accent.with-alpha(0.4);
+            accessible-label: root.placeholder;
+            init => { self.focus(); }
+            edited => { SBus.act(root.action, 1, 0, self.text); }
+            accepted => { SBus.act(root.action, 2, 0, self.text); }
+        }
+        if input.text == "": Text {
+            width: 100%;
+            height: 100%;
+            vertical-alignment: center;
+            text: root.placeholder;
+            color: Theme.tertiary;
+            font-size: Theme.body;
+            accessible-role: AccessibleRole.none;
+        }
+    }
+}
+
+// A custom block (`b.kind == "custom" && b.group == "notify"`)
+export component NotifyBlock inherits VerticalLayout {
+    in property <SBlock> b;
+    if b.sub == "note": HorizontalLayout {
+        padding-left: Theme.material ? 16px : 4px;
+        Text {
+            text: b.text;
+            wrap: word-wrap;
+            color: b.num >= 2.5 ? Theme.secondary : b.num >= 1.5 ? Theme.danger : b.num >= 0.5 ? Theme.secondary : Theme.tertiary;
+            font-size: b.num >= 2.5 ? Theme.body : Theme.caption;
+        }
+    }
+    if b.sub == "listhead": HorizontalLayout {
+        height: 28px;
+        spacing: 12px;
+        padding-left: Theme.material ? 16px : 4px;
+        Text {
+            horizontal-stretch: 1;
+            vertical-alignment: center;
+            overflow: elide;
+            text: b.text;
+            color: Theme.secondary;
+            font-size: Theme.small;
+        }
+        VerticalLayout {
+            alignment: center;
+            SButton {
+                text: "Add app";
+                icon: SG.plus;
+                style: 1;
+                clicked => { SBus.act(b.id, 0, 0, ""); }
+            }
+        }
+    }
+    if b.sub == "empty": HorizontalLayout {
+        alignment: center;
+        padding-top: 32px;
+        padding-bottom: 32px;
+        VerticalLayout {
+            width: min(360px, SBus.page-width);
+            spacing: 8px;
+            SIcon {
+                g: b.data.length > 0 ? b.data[0].icon : SG.info;
+                size: 40px;
+                color: Theme.tertiary;
+            }
+            Rectangle { height: 4px; }
+            Text {
+                horizontal-alignment: center;
+                text: "No window rules";
+                color: Theme.label;
+                font-size: Theme.title;
+                font-weight: 600;
+            }
+            Text {
+                horizontal-alignment: center;
+                wrap: word-wrap;
+                text: "Choose an app to set how its windows open: floating, on a space, opaque, maximized or at a set size.";
+                color: Theme.secondary;
+                font-size: Theme.body;
+            }
+            Rectangle { height: 24px; }
+            HorizontalLayout {
+                alignment: center;
+                SButton {
+                    text: "Choose app";
+                    icon: SG.plus;
+                    style: 1;
+                    clicked => { SBus.act(b.id, 0, 0, ""); }
+                }
+            }
+        }
+    }
+    if b.sub == "search": HorizontalLayout {
+        spacing: 8px;
+        VerticalLayout {
+            alignment: center;
+            Ghost {
+                icon: SG.caret-left;
+                ink: Theme.label;
+                label: "Back to all rules";
+                clicked => { SBus.act(b.id, 0, 0, ""); }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 1;
+            SearchBox { action: b.id; placeholder: b.text; }
+        }
+    }
+    if b.sub == "edithead": HorizontalLayout {
+        height: 44px;
+        spacing: 8px;
+        VerticalLayout {
+            alignment: center;
+            Ghost {
+                icon: SG.caret-left;
+                ink: Theme.label;
+                label: "Back to all rules";
+                clicked => { SBus.act(b.id, 0, 0, ""); }
+            }
+        }
+        if b.num >= 1: VerticalLayout {
+            alignment: center;
+            Image {
+                width: 36px;
+                height: 36px;
+                source: b.image;
+                image-fit: contain;
+                accessible-role: AccessibleRole.none;
+            }
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 2px;
+            padding-left: 4px;
+            padding-right: 12px;
+            Text {
+                text: b.title;
+                overflow: elide;
+                color: Theme.label;
+                font-size: Theme.title;
+                font-weight: 600;
+            }
+            Text {
+                text: b.text;
+                overflow: elide;
+                color: Theme.secondary;
+                font-size: Theme.caption;
+            }
+        }
+        if b.on: VerticalLayout {
+            alignment: center;
+            SButton {
+                text: "Remove rule";
+                icon: SG.trash;
+                style: 2;
+                clicked => { SBus.act(b.id, 1, 0, ""); }
+            }
+        }
+    }
+}

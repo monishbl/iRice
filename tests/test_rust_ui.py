@@ -205,6 +205,29 @@ class Agreement(unittest.TestCase):
         handled = set(re.findall(r'^\s*"([a-z]+)" =>', rs.split("fn command(")[1].split("fn output_removed")[0], re.M))
         self.assertEqual((sent | {"open", "close"}) - handled, set(), "sent but not handled")
         self.assertIn("shell::closed(NAME)", rs)
+
+    def test_settings_steps_aside_and_its_bridge_talks(self):
+        # Settings opens through Panels.openSettings as before: its window
+        # never loads while tessera-ui draws it, the bridge forwards opening,
+        # paging and closing, and answers what the window asks; every page
+        # group's act is one its bridge file answers (surfaces/settings)
+        settings = (ROOT / "shell/modules/settings/Settings.qml").read_text()
+        self.assertIn('Panels.settingsOpen && !RustUi.drawing("settings")', settings)
+        self.assertIn("RustBridge {}", settings)
+        bridge = (ROOT / "shell/modules/settings/RustBridge.qml").read_text()
+        for word in ('cmd: "open"', 'cmd: "page"', 'cmd: "close"', "function onSettingsCall(", 'case "close":', 'case "page":', 'case "pick":', 'case "act":'):
+            self.assertIn(word, bridge)
+        rs = (surface("settings") / "src/lib.rs").read_text()
+        for word in ('v.get("feed")', 'v.get("picked")', '"open" =>', '"page" =>', '"close" =>'):
+            self.assertIn(word, rs)
+        for group in ("look", "notify", "devices", "input", "accounts", "system", "about"):
+            qml = (ROOT / f"shell/modules/settings/RustBridge{group.capitalize()}.qml").read_text()
+            self.assertIn(f"feed: {{ {group}: feed }}", qml)
+            answered = set(re.findall(r'case "([A-Za-z.]+)":', qml)) | ({"ie.x"} if 'what.startsWith("ie.")' in qml else set())
+            for p in (surface("settings") / f"src/pages/{group}").glob("*.rs"):
+                for what in re.findall(rf'cx\.ask\("{group}", "([A-Za-z.]+)"', p.read_text()):
+                    self.assertTrue(what in answered or (what.startswith("ie.") and "ie.x" in answered), f"{group}: {what}")
+
     def test_the_wallpaper_and_its_picker(self):
         # the picker is a panel (its PanelLoader steps aside; choosing and
         # Open folder are the shell's); the background hears the day's sun

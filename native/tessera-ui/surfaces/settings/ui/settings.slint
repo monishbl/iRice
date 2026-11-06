@@ -1,0 +1,1169 @@
+// Settings (rust.surfaces: settings): the window, its sidebar and search,
+// and the page Rust builds as blocks of rows (src/surfaces/settings).
+// Compare shell/modules/settings: Settings.qml (the window's logic),
+// SettingsGlass.qml (a translucent sidebar beside the pane) and
+// SettingsMaterial.qml (Android's two panes), Group.qml, Row.qml,
+// SubpageLink.qml, MoreOptions.qml, PagePart.qml, ActionMenu.qml, Toast.qml.
+// The controls are settings-kit.slint's; the views only some pages have
+// (previews, lists, editors) are each page group's own file below.
+
+import { Theme } from "@tessera/theme.slint";
+import { Busy } from "@tessera/widgets.slint";
+import { SIc, SOpt, SetRow, SBlock, SSection, SResult, SBus, SG, SM, SIcon, SFocusRing, SSwitch, SSlider, SWordSlider, SSegmented, SChoice, SButton, SField, SChip, SSwatch, SFilled } from "settings-kit.slint";
+import { LookBlock, LookCtl } from "settings-look.slint";
+import { NotifyBlock, NotifyCtl } from "settings-notify.slint";
+import { DevicesBlock, DevicesCtl } from "settings-devices.slint";
+import { InputBlock, InputCtl } from "settings-input.slint";
+import { AccountsBlock, AccountsCtl } from "settings-accounts.slint";
+import { SystemBlock, SystemCtl } from "settings-system.slint";
+import { AboutBlock, AboutCtl } from "settings-about.slint";
+
+export { SIc, SOpt, SetRow, SBlock, SSection, SResult, SBus }
+
+// ── A row's control (Row.qml's slot) ────────────────────────────────────
+component Control {
+    in property <SetRow> r;
+    in property <string> menu-open; // the id whose list is open
+    property <length> w: r.width > 0 ? r.width : 220px;
+    if r.control == "switch": SSwitch {
+        on: r.on;
+        enabled: r.enabled;
+        label: r.label;
+        toggled => { SBus.act(r.id, 0, 0, "toggle"); }
+    }
+    if r.control == "slider" && r.low == "" && r.high == "": SSlider {
+        width: w;
+        value: r.num;
+        from: r.from;
+        to: r.to;
+        step: r.step;
+        enabled: r.enabled;
+        label: r.label;
+        moved(v) => { SBus.act(r.id, 0, v, ""); }
+    }
+    if r.control == "slider" && (r.low != "" || r.high != ""): SWordSlider {
+        width: w;
+        value: r.num;
+        from: r.from;
+        to: r.to;
+        step: r.step;
+        low: r.low;
+        high: r.high;
+        enabled: r.enabled;
+        label: r.label;
+        moved(v) => { SBus.act(r.id, 0, v, ""); }
+    }
+    if r.control == "segmented": SSegmented {
+        width: r.width > 0 ? r.width : self.preferred-width;
+        opts: r.opts;
+        current: r.index;
+        enabled: r.enabled;
+        label: r.label;
+        selected(i) => { SBus.act(r.id, i, 0, ""); }
+    }
+    if r.control == "choice": SChoice {
+        width: r.width > 0 ? r.width : self.preferred-width;
+        cid: r.id;
+        opts: r.opts;
+        current: r.index;
+        placeholder: r.placeholder != "" ? r.placeholder : "Choose";
+        enabled: r.enabled;
+        open: root.menu-open == r.id;
+        label: r.label;
+    }
+    if r.control == "button": SButton {
+        text: r.text;
+        // (no icon: r.icon is the row's own, drawn before its label)
+        style: r.style;
+        busy: r.busy;
+        enabled: r.enabled;
+        label: r.label;
+        clicked => { SBus.act(r.id, 0, 0, ""); }
+    }
+    if r.control == "buttons": HorizontalLayout {
+        spacing: 8px;
+        alignment: end;
+        for o[i] in r.opts: VerticalLayout {
+            alignment: center;
+            SButton {
+                text: o.text;
+                icon: o.icon;
+                style: o.style;
+                busy: o.on;
+                enabled: r.enabled && !o.off;
+                label: r.label;
+                clicked => { SBus.act(r.id, i, 0, ""); }
+            }
+        }
+    }
+    if r.control == "field": SField {
+        width: w;
+        text: r.text;
+        placeholder: r.placeholder;
+        secret: r.secret;
+        enabled: r.enabled;
+        label: r.label;
+        edited(t) => { SBus.act(r.id, 0, 0, t); }
+        committed(t) => { SBus.act(r.id, 1, 0, t); }
+    }
+    if r.control == "path": HorizontalLayout {
+        spacing: 8px;
+        VerticalLayout {
+            alignment: center;
+            SField {
+                width: r.width > 0 ? r.width : 200px;
+                text: r.text;
+                placeholder: r.placeholder;
+                enabled: r.enabled;
+                label: r.label;
+                committed(t) => { SBus.act(r.id, 1, 0, t); }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            SButton {
+                text: r.busy ? "Choosing…" : "Choose…";
+                enabled: r.enabled && !r.busy;
+                label: r.label;
+                clicked => { SBus.act(r.id, 2, 0, ""); }
+            }
+        }
+    }
+    if r.control == "chips": HorizontalLayout {
+        spacing: 6px;
+        alignment: end;
+        for o[i] in r.opts: VerticalLayout {
+            alignment: center;
+            SChip {
+                text: o.text;
+                on: o.on;
+                enabled: r.enabled && !o.off;
+                clicked => { SBus.act(r.id, i, 0, ""); }
+            }
+        }
+    }
+    if r.control == "swatches": HorizontalLayout {
+        spacing: 8px;
+        alignment: end;
+        for o[i] in r.opts: VerticalLayout {
+            alignment: center;
+            SSwatch {
+                o: o;
+                clicked => { SBus.act(r.id, i, 0, ""); }
+            }
+        }
+    }
+    if r.control == "value": Text {
+        text: r.value;
+        color: Theme.secondary;
+        font-size: Theme.material ? 14px : Theme.body;
+        vertical-alignment: center;
+        horizontal-alignment: right;
+    }
+    if r.control == "spinner": Busy {}
+    if r.control == "custom" && r.group == "look": LookCtl { r: r; }
+    if r.control == "custom" && r.group == "notify": NotifyCtl { r: r; }
+    if r.control == "custom" && r.group == "devices": DevicesCtl { r: r; }
+    if r.control == "custom" && r.group == "input": InputCtl { r: r; }
+    if r.control == "custom" && r.group == "accounts": AccountsCtl { r: r; }
+    if r.control == "custom" && r.group == "system": SystemCtl { r: r; }
+    if r.control == "custom" && r.group == "about": AboutCtl { r: r; }
+}
+
+// Where a search result landed: it says where it is (the page scrolls
+// there) and a ring fades in and out (Glass: the accent ring; Material: a
+// primary tint, as Android marks the setting a search opened)
+component Flash inherits Rectangle {
+    in property <bool> on;
+    property <float> shown: on ? 1 : 0;
+    animate shown { duration: on ? 150ms : 400ms; easing: on ? ease-out : ease-in; }
+    changed on => {
+        if on {
+            SBus.reveal-y = self.absolute-position.y;
+            SBus.reveal-h = self.height;
+            SBus.reveal-seq += 1;
+        }
+    }
+    // (it fills what it's in; the ring reaches 4 px past its sides)
+    background: transparent;
+    Rectangle {
+        x: -4px;
+        width: root.width + 8px;
+        border-radius: Theme.material ? 16px : 12px;
+        background: Theme.material ? Theme.m3-primary.with-alpha(0.16 * root.shown) : transparent;
+        border-width: 2px;
+        border-color: (Theme.material ? Theme.m3-primary : Theme.accent).with-alpha(root.shown);
+    }
+}
+
+// ── A row (Row.qml / SubpageLink.qml), with Material's tile ─────────────
+component RowView {
+    in property <SetRow> r;
+    in property <bool> first;
+    in property <bool> last;
+    in property <string> menu-open;
+    property <length> pad: Theme.material ? 20px : 14px;
+    property <bool> link: r.kind == "link";
+    property <bool> has-icon: r.icon.p != "" || r.icon.m != "";
+    min-height: r.kind == "custom" ? 0 : Theme.material ? 56px : 44px;
+    // Material: the row's tile, the group's outer corners round
+    if Theme.material && r.kind != "custom": Rectangle {
+        border-top-left-radius: first ? 24px : 4px;
+        border-top-right-radius: first ? 24px : 4px;
+        border-bottom-left-radius: last ? 24px : 4px;
+        border-bottom-right-radius: last ? 24px : 4px;
+        background: hover.has-hover ? Theme.m3-surface-container-high.mix(Theme.m3-on-surface, 0.92) : Theme.m3-surface-container-high;
+        animate background { duration: SM.hover; }
+    }
+    // Glass: a hairline above every row but the first; a link's hover fill
+    if !Theme.material && !first: Rectangle {
+        x: 14px;
+        y: 0;
+        width: parent.width - 28px;
+        height: 1px;
+        background: Theme.separator;
+    }
+    if !Theme.material && link: Rectangle {
+        x: 2px;
+        y: 2px;
+        width: parent.width - 4px;
+        height: parent.height - 4px;
+        border-radius: 8px;
+        background: hover.pressed ? Theme.fill-hover : hover.has-hover ? Theme.fill : transparent;
+        animate background { duration: SM.hover; }
+    }
+    hover := TouchArea {
+        mouse-cursor: link ? MouseCursor.pointer : MouseCursor.default;
+        clicked => { if link && r.enabled { SBus.act(r.id, 0, 0, ""); } }
+        if r.kind == "custom" && r.group == "look": LookCtl { r: r; }
+        if r.kind == "custom" && r.group == "notify": NotifyCtl { r: r; }
+        if r.kind == "custom" && r.group == "devices": DevicesCtl { r: r; }
+        if r.kind == "custom" && r.group == "input": InputCtl { r: r; }
+        if r.kind == "custom" && r.group == "accounts": AccountsCtl { r: r; }
+        if r.kind == "custom" && r.group == "system": SystemCtl { r: r; }
+        if r.kind == "custom" && r.group == "about": AboutCtl { r: r; }
+        if r.kind == "text": HorizontalLayout {
+            padding-left: pad;
+            padding-right: pad;
+            padding-top: Theme.material ? 14px : 10px;
+            padding-bottom: Theme.material ? 14px : 10px;
+            Text {
+                text: r.label;
+                wrap: word-wrap;
+                color: r.tone == 2 ? Theme.danger : r.tone == 0 ? Theme.label : Theme.secondary;
+                font-size: Theme.material ? 14px : Theme.small;
+            }
+        }
+        if r.kind == "row" || r.kind == "link": HorizontalLayout {
+            padding-left: pad;
+            padding-right: link ? (Theme.material ? 16px : 12px) : pad;
+            spacing: 0;
+            if has-icon: VerticalLayout {
+                alignment: center;
+                padding-right: link ? (Theme.material ? 16px : 10px) : (Theme.material ? 16px : 12px);
+                SIcon {
+                    g: r.icon;
+                    size: link ? (Theme.material ? 24px : 18px) : Theme.material ? 24px : 20px;
+                    color: link ? Theme.secondary : Theme.material ? Theme.m3-on-surface-variant : Theme.tertiary;
+                }
+            }
+            VerticalLayout {
+                horizontal-stretch: 1;
+                alignment: center;
+                spacing: 2px;
+                padding-top: Theme.material ? 12px : 10px;
+                padding-bottom: Theme.material ? 12px : 10px;
+                padding-right: r.control != "" || link ? (Theme.material ? 16px : 12px) : 0;
+                Text {
+                    text: r.label;
+                    wrap: word-wrap;
+                    color: r.tone == 1 ? Theme.secondary : r.tone == 2 ? Theme.danger : r.tone == 3 ? Theme.success : Theme.label;
+                    font-size: Theme.material ? 16px : Theme.body;
+                }
+                if r.detail != "": Text {
+                    text: r.detail;
+                    wrap: word-wrap;
+                    color: Theme.secondary;
+                    font-size: Theme.material ? 14px : Theme.caption;
+                }
+            }
+            if link: HorizontalLayout {
+                spacing: Theme.material ? 8px : 6px;
+                if r.value != "": Text {
+                    text: r.value;
+                    vertical-alignment: center;
+                    color: Theme.secondary;
+                    font-size: Theme.material ? 14px : Theme.body;
+                    accessible-role: AccessibleRole.none;
+                }
+                VerticalLayout {
+                    alignment: center;
+                    SIcon {
+                        g: SG.caret-right;
+                        bold: !Theme.material;
+                        size: Theme.material ? 24px : 12px;
+                        color: Theme.tertiary;
+                    }
+                }
+            }
+            if !link && r.control != "": VerticalLayout {
+                alignment: center;
+                padding-top: 8px;
+                padding-bottom: 8px;
+                Control { r: r; menu-open: root.menu-open; }
+            }
+        }
+    }
+    // (a link is one button for screen readers)
+    if link: Rectangle {
+        accessible-role: AccessibleRole.button;
+        accessible-label: r.label;
+        accessible-description: r.detail;
+        accessible-action-default => { SBus.act(r.id, 0, 0, ""); }
+    }
+    Flash { on: r.flash; }
+}
+
+// ── A group (Group.qml): its caption, the platter, its footer ───────────
+component GroupView inherits VerticalLayout {
+    in property <SBlock> b;
+    in property <string> menu-open;
+    spacing: Theme.material ? 8px : 6px;
+    opacity: b.dim ? 0.45 : 1;
+    if b.title != "": Text {
+        x: Theme.material ? 16px : 4px;
+        text: b.title;
+        color: Theme.material ? Theme.m3-primary : Theme.secondary;
+        font-size: Theme.material ? 14px : Theme.small;
+        font-weight: Theme.material ? 500 : 600;
+        letter-spacing: Theme.material ? 0.1px : 0;
+        accessible-role: AccessibleRole.text;
+    }
+    Rectangle {
+        border-radius: 12px;
+        background: Theme.material ? transparent : Theme.dark ? #ffffff0d : white;
+        border-width: Theme.material ? 0 : 1px;
+        border-color: Theme.separator;
+        VerticalLayout {
+            spacing: Theme.material ? 2px : 0;
+            for row[i] in b.rows: RowView {
+                r: row;
+                first: i == 0;
+                last: i == b.rows.length - 1;
+                menu-open: root.menu-open;
+            }
+        }
+        // (dimmed: its rows can't be used now)
+        if b.dim: TouchArea {}
+    }
+    if b.footer != "": HorizontalLayout {
+        padding-left: Theme.material ? 16px : 4px;
+        padding-right: Theme.material ? 16px : 4px;
+        Text {
+            text: b.footer;
+            wrap: word-wrap;
+            color: Theme.material ? Theme.m3-on-surface-variant : Theme.tertiary;
+            font-size: Theme.material ? 12px : Theme.caption;
+            letter-spacing: Theme.material ? 0.4px : 0;
+        }
+    }
+}
+
+// MoreOptions.qml's button: Glass a text button in the accent; Material a
+// tonal pill
+component MoreButton {
+    in property <SBlock> b;
+    height: 44px;
+    accessible-role: AccessibleRole.button;
+    accessible-label: b.on ? "Fewer options" : "More options";
+    accessible-action-default => { SBus.act(b.id, 0, 0, ""); }
+    forward-focus: fs;
+    fs := FocusScope {
+        key-pressed(e) => {
+            if e.text == " " || e.text == Key.Return { SBus.act(b.id, 0, 0, ""); return accept; }
+            reject
+        }
+    }
+    pill := Rectangle {
+        x: Theme.material ? 0 : -4px;
+        y: (parent.height - self.height) / 2;
+        width: lr.preferred-width + (Theme.material ? 32px : 16px);
+        height: Theme.material ? 40px : 30px;
+        border-radius: self.height / 2;
+        background: Theme.material ? Theme.m3-secondary-container.mix(Theme.m3-on-secondary-container, ta.pressed ? 0.9 : ta.has-hover ? 0.92 : 1) : ta.has-hover ? Theme.fill : transparent;
+        animate background { duration: SM.hover; }
+        SFocusRing { shown: fs.has-focus; radius: parent.border-radius; }
+        lr := HorizontalLayout {
+            alignment: center;
+            spacing: 6px;
+            Text {
+                text: b.on ? "Fewer options" : "More options";
+                vertical-alignment: center;
+                color: Theme.material ? Theme.m3-on-secondary-container : Theme.accent-ink;
+                font-size: Theme.material ? 14px : Theme.body;
+                font-weight: 500;
+                accessible-role: AccessibleRole.none;
+            }
+            SIcon {
+                g: SG.caret-down;
+                bold: true;
+                size: 12px;
+                color: Theme.material ? Theme.m3-on-secondary-container : Theme.accent-ink;
+                transform-rotation: b.on ? 180deg : 0deg;
+                animate transform-rotation { duration: SM.hover; easing: ease-out; }
+            }
+        }
+        ta := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { SBus.act(b.id, 0, 0, ""); }
+        }
+    }
+}
+
+// ── A block on the page ─────────────────────────────────────────────────
+component BlockView inherits VerticalLayout {
+    in property <SBlock> b;
+    in property <string> menu-open;
+    padding-top: b.above;
+    if b.kind == "group": GroupView { b: b; menu-open: root.menu-open; }
+    // A part's heading (PagePart.qml)
+    if b.kind == "heading": Rectangle {
+        HorizontalLayout {
+            padding-top: Theme.material ? 16px : 12px;
+            padding-left: Theme.material ? 0 : 4px;
+            Text {
+                text: b.title;
+                wrap: word-wrap;
+                color: Theme.label;
+                font-size: Theme.material ? 22px : Theme.title;
+                font-weight: Theme.material ? 400 : 600;
+                accessible-role: AccessibleRole.text;
+            }
+        }
+        Flash { on: b.flash; }
+    }
+    if b.kind == "more": MoreButton { b: b; }
+    if b.kind == "text": HorizontalLayout {
+        padding-left: Theme.material ? 16px : 4px;
+        padding-right: Theme.material ? 16px : 4px;
+        Text {
+            text: b.text;
+            wrap: word-wrap;
+            color: Theme.material ? Theme.m3-on-surface-variant : Theme.secondary;
+            font-size: Theme.material ? 14px : Theme.caption;
+        }
+    }
+    if b.kind == "custom" && b.group == "look": LookBlock { b: b; }
+    if b.kind == "custom" && b.group == "notify": NotifyBlock { b: b; }
+    if b.kind == "custom" && b.group == "devices": DevicesBlock { b: b; }
+    if b.kind == "custom" && b.group == "input": InputBlock { b: b; }
+    if b.kind == "custom" && b.group == "accounts": AccountsBlock { b: b; }
+    if b.kind == "custom" && b.group == "system": SystemBlock { b: b; }
+    if b.kind == "custom" && b.group == "about": AboutBlock { b: b; }
+}
+
+// A thin scroll indicator (ScrollIndicator.qml) while there's more
+component ScrollBar inherits Rectangle {
+    in property <length> content-y;
+    in property <length> viewport-h;
+    in property <length> visible-h;
+    property <bool> needed: viewport-h > visible-h + 1px;
+    width: 4px;
+    border-radius: 2px;
+    background: needed ? Theme.label.with-alpha(0.25) : transparent;
+    height: needed ? max(24px, visible-h * visible-h / viewport-h) : 0;
+    y: needed ? (-content-y / (viewport-h - visible-h)) * (visible-h - self.height) : 0;
+}
+
+// ── The window ──────────────────────────────────────────────────────────
+export component SettingsWindow inherits Window {
+    in property <length> win-w: 860px;
+    in property <length> win-h: 620px;
+    in property <length> radius: 20px;
+    in property <[SSection]> sections;
+    in property <[SResult]> results;
+    in property <bool> searching; // a query is typed: results in place of the sections
+    in property <[SBlock]> blocks;
+    in property <string> page-title; // the page's (a subpage's pageTitle, else its section's name)
+    in property <string> crumb; // the section's name, on a subpage
+    in property <bool> is-sub;
+    in property <bool> can-back;
+    in property <bool> can-forward;
+    in property <string> section-id;
+    // the window's menu (a Choice's list, ActionMenu.qml)
+    in property <bool> menu-open;
+    in property <string> menu-id;
+    in property <[SOpt]> menu-items;
+    in property <length> menu-x;
+    in property <length> menu-y;
+    in property <length> menu-w;
+    in property <length> menu-h;
+    // the toast (Toast.qml)
+    in property <string> toast-text;
+    in property <bool> toast-undo;
+    in property <bool> toast-shown;
+    in property <bool> spin: true; // (Material's open page cookie turns; not with Reduce motion)
+    in property <string> cookie; // Material's cookie9 outline (shapes.rs), 0..100
+    callback go(string);
+    callback query(string);
+    callback query-commit();
+    callback back();
+    callback forward();
+    callback crumb-clicked();
+    callback menu-pick(int);
+    callback menu-dismiss();
+    callback undo();
+    callback close-window();
+    callback drag(length, length);
+    callback key-nav(int); // the sidebar's keys: -1 up, 1 down, -2 home, 2 end
+
+    public function page-changed() {
+        page-scroll.content-y = 0;
+    }
+    public function focus-search() {
+        search-input.focus();
+    }
+    public function clear-search() {
+        search-input.text = "";
+    }
+
+    preferred-width: win-w;
+    preferred-height: win-h;
+    min-width: 640px;
+    min-height: 480px;
+    background: transparent;
+    default-font-family: Theme.font;
+    default-font-size: Theme.body;
+    title: "Tessera Settings";
+
+    // A search landed on a row: scroll it into view, 80 px from the top
+    property <int> reveal-seq: SBus.reveal-seq;
+    changed reveal-seq => {
+        let top = SBus.reveal-y - page-scroll.absolute-position.y - page-scroll.content-y;
+        page-scroll.content-y = -max(0px, min(page-scroll.content-height - page-scroll.height, top - 80px));
+    }
+
+    forward-focus: keys;
+    keys := FocusScope {
+        key-pressed(e) => {
+            if e.modifiers.alt && e.text == Key.LeftArrow { root.back(); return accept; }
+            if e.modifiers.alt && e.text == Key.RightArrow { root.forward(); return accept; }
+            if e.modifiers.control && e.text == "f" { search-input.focus(); return accept; }
+            if e.modifiers.control && e.text == "z" && toast-shown && toast-undo { root.undo(); return accept; }
+            if e.text == Key.Escape {
+                if menu-open { root.menu-dismiss(); return accept; }
+                root.close-window();
+                return accept;
+            }
+            if e.text == Key.UpArrow && !searching { root.key-nav(-1); return accept; }
+            if e.text == Key.DownArrow && !searching { root.key-nav(1); return accept; }
+            reject
+        }
+    }
+
+    frame := Rectangle {
+        clip: true;
+        border-radius: root.radius;
+        background: Theme.material ? Theme.m3-surface : transparent;
+
+        // ── The sidebar: Glass's translucent list, Material's list pane ──
+        side := Rectangle {
+            width: Theme.material ? 300px : 230px;
+            height: parent.height;
+            background: Theme.material ? Theme.m3-surface-container : Theme.dark ? #1f1f24c7 : #f0f0f5cc;
+
+            // Glass: scrolled down and idle, the search folds into a magnifier
+            property <bool> folded: !Theme.material && side-scroll.content-y < -4px && !search-input.has-focus && !searching && !fold-hover.has-hover;
+
+            search := Rectangle {
+                x: Theme.material ? 16px : 10px;
+                y: Theme.material ? 16px : 14px;
+                width: parent.width - (Theme.material ? 32px : 20px);
+                height: Theme.material ? 52px : 28px;
+                fold-hover := TouchArea {
+                    mouse-cursor: MouseCursor.text;
+                    clicked => { search-input.focus(); }
+                }
+                field := Rectangle {
+                    width: side.folded ? 28px : parent.width;
+                    animate width { duration: SM.hover; easing: ease-out; }
+                    opacity: side.folded ? 0 : 1;
+                    animate opacity { duration: SM.hover; }
+                    border-radius: Theme.material ? self.height / 2 : Theme.radius-control - 2px;
+                    background: Theme.material ? (search-input.has-focus ? Theme.m3-surface-container-highest : fold-hover.has-hover ? Theme.m3-surface-container-high.mix(Theme.m3-on-surface, 0.92) : Theme.m3-surface-container-high) : Theme.fill;
+                    animate background { duration: SM.hover; }
+                    border-width: Theme.material ? 0 : 1px;
+                    border-color: search-input.has-focus ? Theme.accent : Theme.separator;
+                    if Theme.material: SIcon {
+                        x: 16px;
+                        g: SG.search;
+                        size: 22px;
+                        color: Theme.m3-on-surface-variant;
+                    }
+                    Rectangle {
+                        x: Theme.material ? 50px : 10px;
+                        width: parent.width - self.x - (clear.visible ? 48px : Theme.material ? 20px : 10px);
+                        clip: true;
+                        search-input := TextInput {
+                            width: 100%;
+                            height: 100%;
+                            vertical-alignment: center;
+                            single-line: true;
+                            color: Theme.label;
+                            selection-background-color: Theme.material ? Theme.m3-primary.with-alpha(0.3) : Theme.accent.with-alpha(0.4);
+                            font-size: Theme.material ? 16px : Theme.body;
+                            accessible-label: "Search settings";
+                            edited => { root.query(self.text); }
+                            accepted => { root.query-commit(); }
+                            key-pressed(e) => {
+                                if e.text == Key.Escape {
+                                    self.text = "";
+                                    root.query("");
+                                    self.clear-focus();
+                                    keys.focus();
+                                    return accept;
+                                }
+                                reject
+                            }
+                        }
+                        if search-input.text == "": Text {
+                            width: 100%;
+                            height: 100%;
+                            vertical-alignment: center;
+                            text: Theme.material ? "Search settings" : "Search";
+                            color: Theme.material ? Theme.m3-on-surface-variant : Theme.tertiary;
+                            font-size: Theme.material ? 16px : Theme.body;
+                            accessible-role: AccessibleRole.none;
+                        }
+                    }
+                    clear := Rectangle {
+                        visible: Theme.material && search-input.text != "";
+                        x: parent.width - 48px;
+                        y: (parent.height - 40px) / 2;
+                        width: 40px;
+                        height: 40px;
+                        border-radius: 20px;
+                        background: Theme.m3-on-surface-variant.with-alpha(clear-ta.has-hover ? 0.08 : 0);
+                        accessible-role: AccessibleRole.button;
+                        accessible-label: "Clear search";
+                        accessible-action-default => { search-input.text = ""; root.query(""); }
+                        SIcon { g: SG.x; size: 20px; color: Theme.m3-on-surface-variant; }
+                        clear-ta := TouchArea {
+                            clicked => {
+                                search-input.text = "";
+                                root.query("");
+                                search-input.focus();
+                            }
+                        }
+                    }
+                }
+                // (folded: the magnifier)
+                if side.folded: Rectangle {
+                    x: 0;
+                    width: 28px;
+                    height: 28px;
+                    border-radius: Theme.radius-control - 2px;
+                    background: mag.has-hover ? Theme.fill : transparent;
+                    accessible-role: AccessibleRole.button;
+                    accessible-label: "Search";
+                    SIcon { g: SG.search; size: 16px; color: Theme.secondary; }
+                    mag := TouchArea { clicked => { search-input.focus(); } }
+                }
+            }
+
+            side-scroll := Flickable {
+                y: search.y + search.height + (Theme.material ? 12px : 10px);
+                height: parent.height - self.y;
+                content-height: side-list.preferred-height + 16px;
+                side-list := VerticalLayout {
+                    x: Theme.material ? 12px : 10px;
+                    width: side.width - (Theme.material ? 24px : 20px);
+                    alignment: start;
+                    spacing: 2px;
+                    // The pages, under their group headings
+                    if !searching: Rectangle {
+                        VerticalLayout {
+                            spacing: 2px;
+                            for s[i] in sections: VerticalLayout {
+                                if s.group != "": HorizontalLayout {
+                                    padding-left: Theme.material ? 16px : 8px;
+                                    padding-top: i == 0 ? (Theme.material ? 4px : 0) : (Theme.material ? 18px : 12px);
+                                    padding-bottom: Theme.material ? 8px : 4px;
+                                    Text {
+                                        text: s.group;
+                                        color: Theme.material ? Theme.m3-on-surface-variant : Theme.tertiary;
+                                        font-size: Theme.material ? 12px : Theme.caption;
+                                        font-weight: Theme.material ? 500 : 600;
+                                        letter-spacing: Theme.material ? 0.5px : 0;
+                                    }
+                                }
+                                item := Rectangle {
+                                    height: Theme.material ? 48px : 32px;
+                                    border-radius: Theme.material ? 24px : 8px;
+                                    background: Theme.material ? (s.current ? Theme.m3-secondary-container : transparent)
+                                        : s.current ? Theme.accent : ita.has-hover ? Theme.fill : transparent;
+                                    accessible-role: AccessibleRole.tab;
+                                    accessible-label: s.name;
+                                    accessible-item-selected: s.current;
+                                    accessible-action-default => { root.go(s.id); }
+                                    // (Material: the state layer)
+                                    if Theme.material: Rectangle {
+                                        border-radius: 24px;
+                                        background: (s.current ? Theme.m3-on-secondary-container : Theme.m3-on-surface).with-alpha(ita.pressed ? 0.1 : ita.has-hover ? 0.08 : 0);
+                                        animate background { duration: SM.hover; }
+                                    }
+                                    // Glass: the icon on its coloured tile
+                                    if !Theme.material: Rectangle {
+                                        x: 6px;
+                                        y: (parent.height - 22px) / 2;
+                                        width: 22px;
+                                        height: 22px;
+                                        border-radius: 6px;
+                                        background: s.color;
+                                        SIcon { g: { p: s.icon.p, m: "" }; fill: true; size: 13px; color: white; }
+                                    }
+                                    // Material: a tonal circle; the open page's a
+                                    // primary cookie, turning slowly
+                                    if Theme.material: Rectangle {
+                                        x: 8px;
+                                        y: (parent.height - 34px) / 2;
+                                        width: 34px;
+                                        height: 34px;
+                                        if !s.current: Rectangle {
+                                            border-radius: 17px;
+                                            background: Theme.m3-secondary-container;
+                                        }
+                                        if s.current: Path {
+                                            width: 100%;
+                                            height: 100%;
+                                            viewbox-width: 100;
+                                            viewbox-height: 100;
+                                            commands: root.cookie;
+                                            fill: Theme.m3-primary;
+                                            property <duration> t: animation-tick();
+                                            transform-rotation: root.spin ? mod(t / 24s, 1) * 360deg : 0deg;
+                                        }
+                                        SIcon {
+                                            g: s.icon;
+                                            fill: true;
+                                            size: 19px;
+                                            color: s.current ? Theme.m3-on-primary : Theme.m3-on-secondary-container;
+                                        }
+                                    }
+                                    Text {
+                                        x: Theme.material ? 8px + 34px + 14px : 6px + 22px + 10px;
+                                        width: parent.width - self.x - 16px;
+                                        height: parent.height;
+                                        vertical-alignment: center;
+                                        overflow: elide;
+                                        text: s.name;
+                                        color: Theme.material ? (s.current ? Theme.m3-on-secondary-container : Theme.m3-on-surface) : s.current ? Theme.on-accent : Theme.label;
+                                        font-size: Theme.material ? 15px : Theme.body;
+                                        font-weight: s.current ? 600 : 400;
+                                        accessible-role: AccessibleRole.none;
+                                    }
+                                    ita := TouchArea {
+                                        mouse-cursor: pointer;
+                                        clicked => {
+                                            keys.focus();
+                                            root.go(s.id);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    // Search results: pages first, then the settings in them
+                    if searching: Rectangle {
+                        VerticalLayout {
+                            spacing: 2px;
+                            for res in results: Rectangle {
+                                min-height: Theme.material ? 56px : 36px;
+                                border-radius: Theme.material ? min(28px, self.height / 2) : 8px;
+                                background: Theme.material ? Theme.m3-on-surface.with-alpha(rta.pressed ? 0.1 : rta.has-hover ? 0.08 : 0) : rta.has-hover ? Theme.fill : transparent;
+                                animate background { duration: SM.hover; }
+                                accessible-role: AccessibleRole.list-item;
+                                accessible-label: res.text;
+                                accessible-description: res.where;
+                                accessible-action-default => { SBus.act("search:" + res.page, res.section ? 1 : 0, 0, res.text); }
+                                HorizontalLayout {
+                                    padding-left: Theme.material ? 8px : 6px;
+                                    padding-right: Theme.material ? 16px : 6px;
+                                    padding-top: Theme.material ? 8px : 6px;
+                                    padding-bottom: Theme.material ? 8px : 6px;
+                                    spacing: Theme.material ? 16px : 10px;
+                                    VerticalLayout {
+                                        alignment: Theme.material ? center : start;
+                                        padding-top: Theme.material ? 0 : 2px;
+                                        Rectangle {
+                                            width: Theme.material ? 40px : 22px;
+                                            height: self.width;
+                                            border-radius: Theme.material ? 20px : 6px;
+                                            background: Theme.material ? Theme.m3-secondary-container : res.color;
+                                            SIcon {
+                                                g: Theme.material ? res.icon : { p: res.icon.p, m: "" };
+                                                fill: !Theme.material;
+                                                size: Theme.material ? 22px : 13px;
+                                                color: Theme.material ? Theme.m3-on-secondary-container : white;
+                                            }
+                                        }
+                                    }
+                                    VerticalLayout {
+                                        alignment: center;
+                                        spacing: Theme.material ? 0 : 1px;
+                                        Text {
+                                            text: res.text;
+                                            overflow: elide;
+                                            color: Theme.label;
+                                            font-size: Theme.material ? 16px : Theme.body;
+                                        }
+                                        if !res.section: Text {
+                                            text: res.where;
+                                            overflow: elide;
+                                            color: Theme.secondary;
+                                            font-size: Theme.material ? 14px : Theme.caption;
+                                        }
+                                    }
+                                }
+                                rta := TouchArea {
+                                    mouse-cursor: pointer;
+                                    clicked => { SBus.act("search:" + res.page, res.section ? 1 : 0, 0, res.text); }
+                                }
+                            }
+                        }
+                    }
+                    // No results
+                    if searching && results.length == 0: VerticalLayout {
+                        padding-top: Theme.material ? 32px : 24px;
+                        spacing: Theme.material ? 8px : 4px;
+                        if Theme.material: SIcon { g: SG.search; size: 32px; color: Theme.m3-on-surface-variant; }
+                        Text {
+                            horizontal-alignment: center;
+                            text: "No results";
+                            color: Theme.label;
+                            font-size: Theme.material ? 16px : Theme.body;
+                            font-weight: Theme.material ? 500 : 600;
+                        }
+                        Text {
+                            horizontal-alignment: center;
+                            wrap: word-wrap;
+                            text: "Try a shorter word, like \"dock\" or \"sound\".";
+                            color: Theme.secondary;
+                            font-size: Theme.material ? 14px : Theme.caption;
+                        }
+                    }
+                }
+            }
+            ScrollBar {
+                x: parent.width - 5px;
+                y: side-scroll.y;
+                content-y: side-scroll.content-y;
+                viewport-h: side-scroll.content-height;
+                visible-h: side-scroll.height;
+            }
+        }
+
+        // ── The pane: the toolbar and the page ──
+        pane := Rectangle {
+            x: side.width;
+            width: parent.width - side.width;
+            height: parent.height;
+            background: Theme.material ? Theme.m3-surface : Theme.dark ? #1e1e21 : #f5f5f7;
+            property <length> bar-h: Theme.material ? 64px : 52px;
+            // Material: the headline has scrolled under the top bar
+            property <bool> collapsed: Theme.material && page-scroll.content-y < -(headline.y + headline.height - 8px);
+
+            page-scroll := Flickable {
+                y: pane.bar-h;
+                height: parent.height - pane.bar-h;
+                content-height: page.preferred-height + 64px;
+                page := VerticalLayout {
+                    x: Theme.material ? max(32px, (pane.width - self.width) / 2) : 28px;
+                    y: Theme.material ? 4px : 8px;
+                    width: Theme.material ? min(880px, pane.width - 64px) : pane.width - 56px;
+                    alignment: start;
+                    init => { SBus.page-width = self.width; }
+                    changed width => { SBus.page-width = self.width; }
+                    // Material: a subpage names its section above the
+                    // headline (back up to it), then the large headline
+                    if Theme.material && is-sub: HorizontalLayout {
+                        padding-bottom: 4px;
+                        alignment: start;
+                        Text {
+                            text: crumb;
+                            color: crumb-ta.has-hover ? Theme.m3-on-surface : Theme.m3-primary;
+                            font-size: 14px;
+                            font-weight: 500;
+                            letter-spacing: 0.1px;
+                            accessible-role: AccessibleRole.button;
+                            accessible-label: crumb;
+                            accessible-action-default => { root.crumb-clicked(); }
+                            crumb-ta := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => { root.crumb-clicked(); }
+                            }
+                        }
+                    }
+                    headline := HorizontalLayout {
+                        visible: Theme.material;
+                        padding-bottom: Theme.material ? 24px : 0;
+                        Text {
+                            text: Theme.material ? page-title : "";
+                            wrap: word-wrap;
+                            color: Theme.m3-on-surface;
+                            font-size: 32px;
+                            font-weight: 500;
+                            accessible-role: AccessibleRole.text;
+                        }
+                    }
+                    for b in blocks: BlockView { b: b; menu-open: root.menu-open ? root.menu-id : ""; }
+                }
+            }
+            ScrollBar {
+                x: parent.width - 6px;
+                y: page-scroll.y;
+                content-y: page-scroll.content-y;
+                viewport-h: page-scroll.content-height;
+                visible-h: page-scroll.height;
+            }
+
+            // Toolbar: back and forward, and where you are
+            toolbar := Rectangle {
+                height: pane.bar-h;
+                y: 0;
+                background: Theme.material ? (page-scroll.content-y < -2px ? Theme.m3-surface-container : Theme.m3-surface) : transparent;
+                animate background { duration: SM.hover; }
+                // (moving the window: drag its top bar)
+                drag-area := TouchArea {
+                    property <length> px;
+                    property <length> py;
+                    pointer-event(e) => {
+                        if e.kind == PointerEventKind.down {
+                            self.px = self.mouse-x;
+                            self.py = self.mouse-y;
+                        }
+                    }
+                    moved => {
+                        if self.pressed { root.drag(self.mouse-x - self.px, self.mouse-y - self.py); }
+                    }
+                }
+                arrows := HorizontalLayout {
+                    x: 16px;
+                    y: (parent.height - self.preferred-height) / 2;
+                    spacing: Theme.material ? 4px : 2px;
+                    for d[i] in [-1, 1]: Rectangle {
+                        property <bool> usable: d < 0 ? can-back : can-forward;
+                        width: Theme.material ? 40px : 28px;
+                        height: self.width;
+                        opacity: usable ? 1 : (Theme.material ? 0.38 : 0.35);
+                        border-radius: Theme.material ? self.height / 2 : Theme.radius-control - 2px;
+                        background: Theme.material ? Theme.m3-on-surface-variant.with-alpha(ata.pressed ? 0.1 : ata.has-hover ? 0.08 : 0) : ata.pressed ? Theme.fill-pressed : ata.has-hover ? Theme.fill : transparent;
+                        accessible-role: AccessibleRole.button;
+                        accessible-label: d < 0 ? "Back" : "Forward";
+                        accessible-enabled: usable;
+                        accessible-action-default => { if d < 0 { root.back(); } else { root.forward(); } }
+                        SIcon {
+                            g: d < 0 ? SG.caret-left : SG.caret-right;
+                            size: Theme.material ? 22px : 16px;
+                            color: Theme.material ? Theme.m3-on-surface-variant : Theme.secondary;
+                        }
+                        ata := TouchArea {
+                            enabled: usable;
+                            clicked => { if d < 0 { root.back(); } else { root.forward(); } }
+                        }
+                    }
+                }
+                // Glass: Section › Subpage (the section goes back up to it)
+                if !Theme.material: HorizontalLayout {
+                    x: arrows.x + arrows.preferred-width + 12px;
+                    height: parent.height;
+                    spacing: 6px;
+                    Text {
+                        vertical-alignment: center;
+                        text: is-sub ? crumb : page-title;
+                        color: is-sub ? (cta.has-hover ? Theme.label : Theme.secondary) : Theme.label;
+                        font-size: Theme.title;
+                        font-weight: 600;
+                        accessible-role: AccessibleRole.text;
+                        cta := TouchArea {
+                            enabled: is-sub;
+                            mouse-cursor: pointer;
+                            clicked => { root.crumb-clicked(); }
+                        }
+                    }
+                    if is-sub: Rectangle {
+                        width: 0;
+                        accessible-role: AccessibleRole.button;
+                        accessible-label: crumb;
+                        accessible-action-default => { root.crumb-clicked(); }
+                    }
+                    if is-sub: SIcon { g: { p: SG.caret-right.p, m: "" }; bold: true; size: 12px; color: Theme.tertiary; }
+                    if is-sub: Text {
+                        vertical-alignment: center;
+                        text: page-title;
+                        color: Theme.label;
+                        font-size: Theme.title;
+                        font-weight: 600;
+                    }
+                }
+                // Material: the title, once the headline is gone
+                if Theme.material: Text {
+                    x: arrows.x + arrows.preferred-width + 16px;
+                    width: parent.width - self.x - 24px;
+                    height: parent.height;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    text: page-title;
+                    color: Theme.m3-on-surface;
+                    font-size: 22px;
+                    opacity: pane.collapsed ? 1 : 0;
+                    animate opacity { duration: SM.hover; }
+                    accessible-role: AccessibleRole.none;
+                }
+                // Glass: a hairline once the page scrolls under it
+                if !Theme.material: Rectangle {
+                    y: parent.height - 1px;
+                    height: 1px;
+                    background: Theme.separator;
+                    opacity: page-scroll.content-y < -2px ? 1 : 0;
+                    animate opacity { duration: SM.hover; }
+                }
+            }
+        }
+        // Glass: the line between the sidebar and the pane
+        if !Theme.material: Rectangle {
+            x: side.width;
+            width: 1px;
+            background: Theme.separator;
+        }
+
+        // ── The menu (ActionMenu.qml): a Choice's list, over everything ──
+        if menu-open: TouchArea {
+            clicked => { root.menu-dismiss(); }
+        }
+        if menu-open: menu := Rectangle {
+            property <length> item-h: Theme.material ? 44px : 32px;
+            property <length> full: min(Theme.material ? 360px : 320px, menu-items.length * item-h + 10px);
+            property <bool> up: root.height - (menu-y + menu-h + 4px) - 8px < full && menu-y - 12px > root.height - (menu-y + menu-h + 4px) - 8px;
+            width: max(Theme.material ? 240px : 220px, menu-w);
+            height: max(min(full, 2 * item-h + 10px), min(full, up ? menu-y - 12px : root.height - (menu-y + menu-h + 4px) - 8px));
+            x: max(8px, min(root.width - self.width - 8px, menu-x + menu-w - self.width));
+            y: up ? menu-y - self.height - 4px : menu-y + menu-h + 4px;
+            border-radius: Theme.material ? 16px : 12px;
+            background: Theme.material ? Theme.m3-surface-container : Theme.menu-bg;
+            border-width: Theme.material ? 0 : 1px;
+            border-color: Theme.separator;
+            drop-shadow-blur: 16px;
+            drop-shadow-offset-y: 4px;
+            drop-shadow-color: #00000033;
+            accessible-role: AccessibleRole.list;
+            Flickable {
+                x: 5px;
+                y: 5px;
+                width: parent.width - 10px;
+                height: parent.height - 10px;
+                content-height: menu-items.length * menu.item-h;
+                VerticalLayout {
+                    for it[i] in menu-items: Rectangle {
+                        height: menu.item-h;
+                        property <bool> lit: !it.off && mta.has-hover;
+                        border-radius: Theme.material ? (it.on ? 12px : 8px) : 8px;
+                        background: Theme.material ? (it.on ? Theme.m3-tertiary-container.mix(Theme.m3-on-tertiary-container, lit ? 0.92 : 1) : lit ? (it.style == 2 ? Theme.m3-error : Theme.m3-on-surface).with-alpha(0.08) : transparent)
+                            : lit ? (it.style == 2 ? Theme.danger : Theme.accent) : transparent;
+                        accessible-role: AccessibleRole.list-item;
+                        accessible-label: it.text;
+                        accessible-checked: it.on;
+                        accessible-action-default => { root.menu-pick(i); }
+                        property <color> ink: Theme.material ? (it.off ? Theme.m3-on-surface.with-alpha(0.38) : it.on ? Theme.m3-on-tertiary-container : it.style == 2 ? Theme.m3-error : Theme.m3-on-surface)
+                            : lit ? Theme.on-accent : it.off ? Theme.tertiary : it.style == 2 ? Theme.danger : Theme.label;
+                        if it.on || it.icon.p != "": SIcon {
+                            x: Theme.material ? 12px : 8px;
+                            g: it.on ? SG.check : it.icon;
+                            bold: it.on && !Theme.material;
+                            size: Theme.material ? 20px : 12px;
+                            color: parent.ink;
+                        }
+                        Text {
+                            x: Theme.material ? 44px : 28px;
+                            width: parent.width - self.x - 8px;
+                            height: parent.height;
+                            vertical-alignment: center;
+                            overflow: elide;
+                            text: it.text;
+                            color: parent.ink;
+                            font-size: Theme.material ? 14px : Theme.body;
+                            accessible-role: AccessibleRole.none;
+                        }
+                        mta := TouchArea {
+                            enabled: !it.off;
+                            mouse-cursor: pointer;
+                            clicked => { root.menu-pick(i); }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── The toast (Toast.qml): what just changed, with Undo ──
+        toast := Rectangle {
+            property <float> p: toast-shown ? 1 : 0;
+            animate p { duration: toast-shown ? 200ms : 140ms; easing: toast-shown ? ease-out : ease-in; }
+            visible: self.p > 0.01;
+            opacity: self.p;
+            width: Theme.material ? max(288px, min(560px, toast-row.preferred-width + 32px)) : min(520px, toast-row.preferred-width + 32px);
+            height: Theme.material ? 48px : 44px;
+            x: (parent.width - self.width) / 2;
+            y: parent.height - self.height - 24px + (Theme.material ? (1 - self.p) * 8px : 0);
+            border-radius: Theme.material ? 4px : 14px;
+            background: Theme.material ? Theme.m3-inverse-surface : Theme.dark ? #3a3a40 : #18181b;
+            border-width: Theme.dark && !Theme.material ? 1px : 0;
+            border-color: #ffffff29;
+            accessible-role: AccessibleRole.text;
+            accessible-label: toast-text;
+            toast-row := HorizontalLayout {
+                padding-left: 16px;
+                padding-right: toast-undo ? 8px : 16px;
+                spacing: 12px;
+                Text {
+                    horizontal-stretch: 1;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    text: toast-text;
+                    color: Theme.material ? Theme.m3-inverse-on-surface : Theme.dark ? #ededef : #fafafa;
+                    font-size: Theme.material ? 14px : Theme.body;
+                    letter-spacing: Theme.material ? 0.25px : 0;
+                }
+                if toast-undo: VerticalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: ul.preferred-width + (Theme.material ? 24px : 20px);
+                        height: Theme.material ? 40px : 28px;
+                        border-radius: Theme.material ? 20px : Theme.radius-control;
+                        background: Theme.material ? Theme.m3-inverse-primary.with-alpha(uta.pressed ? 0.1 : uta.has-hover ? 0.08 : 0) : #ffffff.with-alpha(uta.pressed ? 0.2 : uta.has-hover ? 0.12 : 0);
+                        accessible-role: AccessibleRole.button;
+                        accessible-label: "Undo";
+                        accessible-action-default => { root.undo(); }
+                        ul := Text {
+                            text: "Undo";
+                            color: Theme.material ? Theme.m3-inverse-primary : Theme.dark ? #ededef : #fafafa;
+                            font-size: Theme.material ? 14px : Theme.small;
+                            font-weight: Theme.material ? 500 : 600;
+                            accessible-role: AccessibleRole.none;
+                        }
+                        uta := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { root.undo(); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // (a thin edge, as a window's border, over everything)
+    Rectangle {
+        border-radius: root.radius;
+        border-width: 1px;
+        border-color: Theme.material ? Theme.m3-outline-variant.with-alpha(0.6) : Theme.dark ? #ffffff26 : #0000001f;
+        background: transparent;
+    }
+}

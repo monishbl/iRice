@@ -1,0 +1,246 @@
+// Settings: the views only the "accounts" page group's pages have (custom
+// blocks and row controls; src/surfaces/settings/pages/accounts/ fills
+// them). The block's or row's `sub` says which view; its data, num, image
+// and rows carry what it shows; it reports through SBus.act(id, int, float,
+// string).
+//   "field" (a row's control): a text field that follows the page's state
+//     (its text changes when the page clears or loads it; TextField.qml),
+//     with buttons after it (r.opts: act `i` 10 + index); typing acts `i` 0,
+//     Enter `i` 1 (and leaving it, when r.on)
+//   "source" (a row's control): a subscribed calendar's colour, its switch
+//     (`i` 0) and its remove button (`i` 1) (calendar.qml)
+//   "note" (a row): the AI note's few lines (ai.qml's TextArea), r.num its
+//     place for Material's tile (0 between, 1 first, 2 last, 3 alone)
+//   "removed" (a block): "Removed “…”" with Undo (calendar.qml)
+
+import { Theme } from "@tessera/theme.slint";
+import { SIc, SOpt, SetRow, SBlock, SBus, SG, SM, SIcon, SFocusRing, SSwitch, SSlider, SSegmented, SChoice, SButton, SField, SChip, SSwatch, SFilled } from "settings-kit.slint";
+
+// A text field whose text follows the row's (TextField.qml's look)
+component SyncField {
+    in property <SetRow> r;
+    property <string> want: r.text;
+    changed want => {
+        if input.text != want { input.text = want; }
+    }
+    preferred-width: r.width > 0 ? r.width : 220px;
+    height: Theme.material ? 40px : 28px;
+    if Theme.material: SFilled { active: input.has-focus; hovered: ta.has-hover; }
+    if !Theme.material: Rectangle {
+        border-radius: Theme.radius-control - 2px;
+        background: Theme.fill;
+        border-width: 1px;
+        border-color: input.has-focus ? Theme.accent : Theme.separator;
+    }
+    ta := TouchArea {
+        mouse-cursor: MouseCursor.text;
+        clicked => { input.focus(); }
+    }
+    Rectangle {
+        x: Theme.material ? 16px : 10px;
+        width: parent.width - 2 * self.x;
+        clip: true;
+        input := TextInput {
+            width: 100%;
+            height: 100%;
+            init => { self.text = root.r.text; }
+            vertical-alignment: center;
+            single-line: true;
+            input-type: root.r.secret ? InputType.password : InputType.text;
+            color: Theme.label;
+            selection-background-color: Theme.material ? Theme.m3-primary.with-alpha(0.3) : Theme.accent.with-alpha(0.4);
+            font-size: Theme.body;
+            accessible-label: root.r.label != "" ? root.r.label : root.r.placeholder;
+            edited => { SBus.act(root.r.id, 0, 0, self.text); }
+            accepted => { SBus.act(root.r.id, 1, 0, self.text); }
+            changed has-focus => {
+                if !self.has-focus && root.r.on { SBus.act(root.r.id, 1, 0, self.text); }
+            }
+        }
+        if input.text == "" && !input.has-focus: Text {
+            width: 100%;
+            height: 100%;
+            text: root.r.placeholder;
+            color: Theme.tertiary;
+            font-size: Theme.body;
+            vertical-alignment: center;
+            overflow: elide;
+            accessible-role: AccessibleRole.none;
+        }
+    }
+}
+
+// A small round icon button (IconButton.qml): the trash
+component IconBtn inherits Rectangle {
+    in property <SIc> icon;
+    in property <string> label;
+    callback clicked();
+    width: Theme.material ? 40px : 28px;
+    height: self.width;
+    border-radius: Theme.material ? self.height / 2 : Theme.radius-control - 2px;
+    background: Theme.material ? Theme.m3-on-surface-variant.with-alpha(ta.pressed ? 0.1 : ta.has-hover ? 0.08 : 0)
+        : ta.pressed ? Theme.fill-pressed : ta.has-hover ? Theme.fill : transparent;
+    animate background { duration: SM.hover; }
+    accessible-role: AccessibleRole.button;
+    accessible-label: label;
+    accessible-action-default => { clicked(); }
+    SIcon { g: icon; size: Theme.material ? 20px : 16px; color: Theme.material ? Theme.m3-on-surface-variant : Theme.secondary; }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// A custom block (`b.kind == "custom" && b.group == "accounts"`)
+export component AccountsBlock inherits VerticalLayout {
+    in property <SBlock> b;
+    // "Removed “…”" with Undo (a form row on the page, outside any group)
+    if b.sub == "removed": HorizontalLayout {
+        padding-left: Theme.material ? 20px : 14px;
+        padding-right: Theme.material ? 20px : 14px;
+        min-height: Theme.material ? 56px : 44px;
+        spacing: 12px;
+        Text {
+            horizontal-stretch: 1;
+            text: b.text;
+            vertical-alignment: center;
+            wrap: word-wrap;
+            color: Theme.label;
+            font-size: Theme.material ? 16px : Theme.body;
+        }
+        Text {
+            text: "Undo";
+            vertical-alignment: center;
+            color: Theme.accent-ink;
+            font-size: Theme.body;
+            font-weight: 600;
+            accessible-role: AccessibleRole.button;
+            accessible-label: "Undo";
+            accessible-action-default => { SBus.act(b.id, 0, 0, ""); }
+            TouchArea {
+                mouse-cursor: pointer;
+                clicked => { SBus.act(b.id, 0, 0, ""); }
+            }
+        }
+    }
+}
+
+// A custom row or row control (`r.group == "accounts"`)
+export component AccountsCtl inherits VerticalLayout {
+    in property <SetRow> r;
+    alignment: center;
+
+    // A field, and its buttons
+    if r.sub == "field": HorizontalLayout {
+        spacing: 8px;
+        alignment: end;
+        VerticalLayout {
+            alignment: center;
+            SyncField { r: root.r; width: root.r.width > 0 ? root.r.width : 220px; }
+        }
+        for o[i] in r.opts: VerticalLayout {
+            alignment: center;
+            SButton {
+                text: o.text;
+                icon: o.icon;
+                style: o.style;
+                busy: o.on;
+                enabled: root.r.enabled && !o.off;
+                label: root.r.label;
+                clicked => { SBus.act(root.r.id, 10 + i, 0, ""); }
+            }
+        }
+    }
+
+    // A subscribed calendar: its colour, its switch, remove
+    if r.sub == "source": HorizontalLayout {
+        spacing: 10px;
+        alignment: end;
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 12px;
+                height: 12px;
+                border-radius: 6px;
+                background: root.r.data.length > 0 ? root.r.data[0].color : Theme.tertiary;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            SSwitch {
+                on: root.r.data.length > 0 && root.r.data[0].on;
+                label: root.r.label;
+                toggled => { SBus.act(root.r.id, 0, 0, "toggle"); }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            IconBtn {
+                icon: SG.trash;
+                label: "Remove " + root.r.label;
+                clicked => { SBus.act(root.r.id, 1, 0, ""); }
+            }
+        }
+    }
+
+    // The AI note: a few lines in the field's fill and hairline (Glass) or
+    // its pill (Material), in the group's tile
+    if r.sub == "note": Rectangle {
+        height: 112px;
+        // (Material: the group's tile behind it, its corners by its place)
+        if Theme.material: Rectangle {
+            border-top-left-radius: root.r.num == 1 || root.r.num == 3 ? 24px : 4px;
+            border-top-right-radius: self.border-top-left-radius;
+            border-bottom-left-radius: root.r.num == 2 || root.r.num == 3 ? 24px : 4px;
+            border-bottom-right-radius: self.border-bottom-left-radius;
+            background: Theme.m3-surface-container-high;
+        }
+        box := Rectangle {
+            x: Theme.material ? 20px : 14px;
+            y: 0;
+            width: parent.width - 2 * self.x;
+            height: parent.height - (Theme.material ? 16px : 12px);
+            border-radius: Theme.material ? 20px : Theme.radius-control - 2px;
+            background: Theme.material ? (note.has-focus ? Theme.m3-surface-container-highest : Theme.m3-surface-container-highest) : Theme.fill;
+            border-width: Theme.material ? (note.has-focus ? 2px : 0) : 1px;
+            border-color: Theme.material ? Theme.m3-primary : note.has-focus ? Theme.accent : Theme.separator;
+            TouchArea {
+                mouse-cursor: MouseCursor.text;
+                clicked => { note.focus(); }
+            }
+            Flickable {
+                x: 10px;
+                y: 8px;
+                width: parent.width - 20px;
+                height: parent.height - 16px;
+                content-height: max(self.height, note.preferred-height);
+                note := TextInput {
+                    width: parent.width;
+                    init => { self.text = root.r.text; }
+                    single-line: false;
+                    wrap: word-wrap;
+                    color: Theme.label;
+                    selection-background-color: Theme.material ? Theme.m3-primary.with-alpha(0.3) : Theme.accent.with-alpha(0.4);
+                    font-size: Theme.body;
+                    accessible-label: "Your note to the assistant";
+                    edited => { SBus.act(root.r.id, 0, 0, self.text); }
+                    changed has-focus => {
+                        if !self.has-focus { SBus.act(root.r.id, 1, 0, self.text); }
+                    }
+                }
+                if note.text == "" && !note.has-focus: Text {
+                    width: parent.width;
+                    text: root.r.placeholder;
+                    wrap: word-wrap;
+                    color: Theme.tertiary;
+                    font-size: Theme.body;
+                    accessible-role: AccessibleRole.none;
+                }
+            }
+            property <string> want: root.r.text;
+            changed want => {
+                if note.text != want { note.text = want; }
+            }
+        }
+    }
+}

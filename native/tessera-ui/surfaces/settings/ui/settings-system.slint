@@ -1,0 +1,254 @@
+// Settings: the views only the "system" page group's pages have (custom blocks
+// and row controls; src/surfaces/settings/pages/system/*.rs fills them). The
+// block's or row's `sub` says which view; its data, num, image and rows
+// carry what it shows; it reports through SBus.act(id, int, float, string).
+//
+//   fp-sheet (a block): adding a finger (FingerprintSheet.qml with
+//     FingerprintArt.qml): b.title, b.text (red while b.dim), b.footer (the
+//     section caption), b.on (done), b.num (the next section, -1 none),
+//     b.data[0..11] the print's sections (text: path commands in a 200×248
+//     box; on: taken; off: the next; style 1: flashing red), b.data[11]
+//     ("meta": num the misses, style the takes: each shakes or bumps the
+//     print), b.rows its buttons
+//   pick-add (a row control): a finger's Dropdown and Add (data[0])
+//   energy (a row control): an app's share of the CPU time (num, 0..1),
+//     and Quit (data[0]) unless it's a bare process
+
+import { Theme } from "@tessera/theme.slint";
+import { SIc, SOpt, SetRow, SBlock, SBus, SG, SM, SIcon, SFocusRing, SSwitch, SSlider, SSegmented, SChoice, SButton, SField, SChip, SSwatch, SFilled } from "settings-kit.slint";
+
+// ── The add-a-finger sheet ──────────────────────────────────────────────
+component FpSheet inherits Rectangle {
+    in property <SBlock> b;
+    property <bool> done: b.on;
+    property <int> target: b.num;
+    property <bool> has-meta: b.data.length > 11;
+    property <float> misses: has-meta ? b.data[11].num : 0;
+    property <int> takes: has-meta ? b.data[11].style : 0;
+    // a miss shakes the print; a touch taken bumps it
+    property <int> shake-step: 5;
+    property <length> shake-x: shake-step == 0 ? -8px : shake-step == 1 ? 7px : shake-step == 2 ? -5px : shake-step == 3 ? 3px : 0px;
+    animate shake-x { duration: 50ms; }
+    changed misses => {
+        shake-step = 0;
+        shaker.running = true;
+    }
+    shaker := Timer {
+        interval: 55ms;
+        running: false;
+        triggered => {
+            root.shake-step += 1;
+            if root.shake-step >= 5 {
+                self.running = false;
+            }
+        }
+    }
+    property <bool> bumped;
+    changed takes => {
+        bumped = true;
+        bumper.running = true;
+    }
+    bumper := Timer {
+        interval: 80ms;
+        running: false;
+        triggered => {
+            root.bumped = false;
+            self.running = false;
+        }
+    }
+    property <float> bump: bumped ? 0.96 : 1;
+    animate bump { duration: bumped ? 80ms : 260ms; easing: bumped ? ease-out : ease-out-back; }
+
+    property <color> card-color: Theme.material ? Theme.m3-surface-container-high : Theme.dark ? #232327 : white;
+    property <color> faint: Theme.dark ? #ffffff29 : #00000021;
+
+    // (modal: what's behind is dimmed and takes no clicks)
+    border-radius: 16px;
+    background: Theme.dark ? #00000080 : #0000004d;
+    TouchArea {}
+    VerticalLayout {
+        padding: 24px;
+        alignment: center;
+        HorizontalLayout {
+            alignment: center;
+            card := Rectangle {
+                width: 420px;
+                border-radius: Theme.material ? 28px : 20px;
+                background: root.card-color;
+                border-width: Theme.material ? 0 : 1px;
+                border-color: Theme.separator;
+                accessible-role: AccessibleRole.groupbox;
+                accessible-label: b.title;
+                VerticalLayout {
+                    padding: 24px;
+                    spacing: 8px;
+                    Text {
+                        horizontal-alignment: center;
+                        text: b.title;
+                        color: Theme.label;
+                        font-size: Theme.material ? 24px : 20px;
+                        font-weight: Theme.material ? 400 : 600;
+                    }
+                    Text {
+                        height: 40px;
+                        horizontal-alignment: center;
+                        wrap: word-wrap;
+                        text: b.text;
+                        color: b.dim ? Theme.danger : Theme.secondary;
+                        font-size: 14px;
+                    }
+                    HorizontalLayout {
+                        alignment: center;
+                        Rectangle {
+                            width: 200px;
+                            height: 248px;
+                            accessible-role: AccessibleRole.image;
+                            accessible-label: done ? "All 11 sections recorded" : "Section " + (target + 1) + " of 11";
+                            art := Rectangle {
+                                x: root.shake-x;
+                                width: parent.width;
+                                height: parent.height;
+                                transform-scale-x: root.bump * 100%;
+                                transform-scale-y: root.bump * 100%;
+                                for o in b.data: Path {
+                                    visible: o.id != "meta";
+                                    x: 0;
+                                    y: 0;
+                                    width: 200px;
+                                    height: 248px;
+                                    viewbox-x: 0;
+                                    viewbox-y: 0;
+                                    viewbox-width: 200;
+                                    viewbox-height: 248;
+                                    commands: o.text;
+                                    stroke-width: 7px;
+                                    stroke-line-cap: round;
+                                    stroke: done ? Theme.success : o.on ? Theme.accent : o.off ? (o.style == 1 ? Theme.danger : Theme.accent.with-alpha(0.42)) : root.faint;
+                                    animate stroke { duration: o.style == 1 ? 60ms : 420ms; easing: ease-out; }
+                                }
+                            }
+                            // done: a check at the bottom right of the print
+                            Rectangle {
+                                property <float> s: done ? 1 : 0.4;
+                                animate s { duration: 260ms; easing: ease-out-back; }
+                                x: parent.width - 52px;
+                                y: parent.height - 58px;
+                                width: 44px;
+                                height: 44px;
+                                opacity: done ? 1 : 0;
+                                transform-scale-x: self.s * 100%;
+                                transform-scale-y: self.s * 100%;
+                                border-radius: 22px;
+                                background: Theme.success;
+                                border-width: 3px;
+                                border-color: root.card-color;
+                                SIcon { g: SG.check; bold: true; size: 22px; color: white; }
+                            }
+                        }
+                    }
+                    // the 11 sections, as dots: taken, the next one, still to come
+                    HorizontalLayout {
+                        alignment: center;
+                        spacing: 6px;
+                        padding-top: 4px;
+                        for i in 11: Rectangle {
+                            width: i == target ? 16px : 6px;
+                            height: 6px;
+                            border-radius: 3px;
+                            background: done ? Theme.success : (i < b.data.length && b.data[i].on) ? Theme.accent : i == target ? Theme.accent.with-alpha(0.5) : Theme.toggle-off;
+                            animate width, background { duration: SM.hover; }
+                        }
+                    }
+                    Text {
+                        horizontal-alignment: center;
+                        text: b.footer;
+                        color: Theme.tertiary;
+                        font-size: 12px;
+                    }
+                    Rectangle { height: 8px; }
+                    HorizontalLayout {
+                        alignment: end;
+                        spacing: 8px;
+                        for r in b.rows: SButton {
+                            text: r.text;
+                            style: r.style;
+                            label: b.title;
+                            clicked => { SBus.act(r.id, 0, 0, ""); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// A custom block (`b.kind == "custom" && b.group == "system"`)
+export component SystemBlock inherits VerticalLayout {
+    in property <SBlock> b;
+    if b.sub == "fp-sheet": FpSheet { b: root.b; }
+}
+
+// A custom row or row control (`r.group == "system"`)
+export component SystemCtl inherits VerticalLayout {
+    in property <SetRow> r;
+    alignment: center;
+    // A finger to add: its Dropdown, and Add
+    if r.sub == "pick-add": HorizontalLayout {
+        spacing: 8px;
+        alignment: end;
+        VerticalLayout {
+            alignment: center;
+            SChoice {
+                width: r.width > 0 ? r.width : self.preferred-width;
+                cid: r.id;
+                opts: r.opts;
+                current: r.index;
+                enabled: r.enabled;
+                label: r.label;
+            }
+        }
+        if r.data.length > 0: VerticalLayout {
+            alignment: center;
+            SButton {
+                text: r.data[0].text;
+                icon: r.data[0].icon;
+                style: 1;
+                enabled: !r.data[0].off;
+                label: r.label;
+                clicked => { SBus.act(r.data[0].id, 0, 0, ""); }
+            }
+        }
+    }
+    // An app's energy: its bar, and Quit
+    if r.sub == "energy": HorizontalLayout {
+        spacing: 12px;
+        alignment: end;
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 120px;
+                height: 6px;
+                border-radius: 3px;
+                background: Theme.fill;
+                accessible-role: AccessibleRole.progress-indicator;
+                accessible-label: r.detail;
+                Rectangle {
+                    x: 0;
+                    y: 0;
+                    width: max(6px, parent.width * r.num);
+                    height: parent.height;
+                    border-radius: 3px;
+                    background: Theme.secondary;
+                }
+            }
+        }
+        if r.data.length > 0: VerticalLayout {
+            alignment: center;
+            SButton {
+                text: r.data[0].text;
+                label: r.label;
+                clicked => { SBus.act(r.id, 0, 0, ""); }
+            }
+        }
+    }
+}

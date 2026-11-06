@@ -1,0 +1,1180 @@
+// Settings: the views only the "look" page group's pages have (custom blocks
+// and row controls; src/surfaces/settings/pages/look/*.rs fills them). The
+// block's or row's `sub` says which view; its data, num, image and rows
+// carry what it shows; it reports through SBus.act(id, int, float, string).
+//
+//   look-cards (block)       Appearance, Material: the two looks, large
+//   look-thumbs (control)    Appearance, Glass: the two looks, small
+//   menu-icons (control)     Appearance: the menu icon's choices
+//   emoji (control)          Appearance: Install font and the emoji style
+//   glass-material (control) Glass: the material, and Advanced…
+//   glass-advanced (block)   Glass: Advanced… (the QML's popover, here inline)
+//   check (control)          Glass: the plugin is active
+//   wallpaper-preview (block), wallpaper-grid (block), sets (row)  Wallpaper
+//   clock-faces (row), boot (row), intro (control)                 Lock
+
+import { Theme } from "@tessera/theme.slint";
+import { Busy } from "@tessera/widgets.slint";
+import { SIc, SOpt, SetRow, SBlock, SBus, SG, SM, SIcon, SFocusRing, SSwitch, SSlider, SSegmented, SChoice, SButton, SField, SChip, SSwatch, SFilled } from "settings-kit.slint";
+
+global LG {
+    out property <SIc> reset: { p: "\u{e038}", m: "\u{e166}" };
+}
+
+// ── A miniature desktop in one of the looks (LookPreview.qml) ───────────
+// pal: the looks' data, then the Material palette (pages/look/mod.rs ROLES,
+// from index 2; the cookie's and the sunny shape's outlines in the first
+// two's detail)
+component LookPreview {
+    in property <bool> mat;
+    in property <bool> selected;
+    in property <image> wall;
+    in property <[SOpt]> pal;
+    in property <string> time;
+    callback chosen();
+    property <length> u: self.width / 100;
+    // Material roles by name
+    property <color> primary-container: pal[2].color;
+    property <color> on-primary-container: pal[3].color;
+    property <color> surface-container: pal[4].color;
+    property <color> primary: pal[5].color;
+    property <color> secondary-container: pal[6].color;
+    property <color> surface-container-highest: pal[7].color;
+    property <color> surface-container-high: pal[8].color;
+    property <color> tertiary-container: pal[9].color;
+    property <color> tertiary: pal[10].color;
+    property <color> on-surface-variant: pal[11].color;
+    property <color> on-surface: pal[12].color;
+    accessible-role: AccessibleRole.radio-button;
+    accessible-label: mat ? "Material" : "Glass";
+    accessible-checked: selected;
+    accessible-action-default => { chosen(); }
+    forward-focus: fs;
+    fs := FocusScope {
+        key-pressed(e) => {
+            if !e.repeat && (e.text == " " || e.text == Key.Return) { root.chosen(); return accept; }
+            reject
+        }
+    }
+    // The chosen one: a ring outside the picture
+    Rectangle {
+        x: -5px;
+        y: -5px;
+        width: parent.width + 10px;
+        height: parent.height + 10px;
+        border-radius: (mat ? 16px : 12px) + 5px;
+        border-width: 3px;
+        border-color: Theme.material ? Theme.m3-primary : Theme.accent;
+        opacity: selected ? 1 : ta.has-hover ? 0.35 : 0;
+        animate opacity { duration: SM.hover; }
+    }
+    SFocusRing { shown: fs.has-focus; radius: (mat ? 16px : 12px) + 4px; }
+    frame := Rectangle {
+        x: ta.pressed ? parent.width * 0.01 : 0;
+        y: ta.pressed ? parent.height * 0.01 : 0;
+        width: parent.width * (ta.pressed ? 0.98 : 1);
+        height: parent.height * (ta.pressed ? 0.98 : 1);
+        animate x, y, width, height { duration: SM.press; easing: ease-out; }
+        border-radius: mat ? 16px : 12px;
+        background: black;
+        clip: true;
+        Image {
+            width: 100%;
+            height: 100%;
+            source: wall;
+            image-fit: cover;
+        }
+        // ── Glass ──
+        if !mat: Rectangle {
+            property <color> glass-fill: Theme.dark ? #1f1f246b : #ffffff6b;
+            property <color> rim: Theme.dark ? #ffffff47 : #ffffff99;
+            property <color> ink: Theme.dark ? white : #1c1c1e;
+            // the menu bar: the logo, the app's name and menus, then the status icons and clock
+            Rectangle {
+                y: 0;
+                height: 4.4 * u;
+                background: Theme.dark ? #0000002e : #0000000d;
+                for w[i] in [1.6, 5, 3.4, 3.4, 3]: Rectangle {
+                    x: 2 * u + (i == 0 ? 0 : i == 1 ? 3.2 : i == 2 ? 9.8 : i == 3 ? 14.8 : 19.8) * u;
+                    width: w * u;
+                    height: i == 0 ? 1.6 * u : 1.1 * u;
+                    border-radius: self.height / 2;
+                    background: ink;
+                    opacity: i == 1 ? 0.9 : 0.7;
+                }
+                for w[i] in [1.4, 1.4, 1.4, 7]: Rectangle {
+                    x: parent.width - 2 * u - 15.4 * u + (i == 0 ? 0 : i == 1 ? 2.8 : i == 2 ? 5.6 : 8.4) * u;
+                    width: w * u;
+                    height: 1.2 * u;
+                    border-radius: self.height / 2;
+                    background: ink;
+                    opacity: 0.8;
+                }
+            }
+            // a desktop widget: frosted, with the time
+            Rectangle {
+                x: 4 * u;
+                y: 9 * u;
+                width: 22 * u;
+                height: 22 * u;
+                border-radius: 5 * u;
+                background: glass-fill;
+                border-width: 1px;
+                border-color: rim;
+                Text {
+                    text: time;
+                    color: ink;
+                    font-family: "Inter";
+                    font-size: max(8px, 6.4 * u);
+                    font-weight: 600;
+                }
+            }
+            // Control Center, top right
+            Rectangle {
+                x: 63 * u;
+                y: 6.5 * u;
+                width: 33 * u;
+                height: 31 * u;
+                border-radius: 4.5 * u;
+                background: glass-fill;
+                border-width: 1px;
+                border-color: rim;
+                for k in 2: Rectangle {
+                    x: 2 * u;
+                    y: 2 * u + k * 8 * u;
+                    width: 14 * u;
+                    height: 6.4 * u;
+                    border-radius: 3.2 * u;
+                    background: Theme.dark ? #ffffff1f : #ffffff80;
+                    Rectangle {
+                        x: 1.2 * u;
+                        width: 4.2 * u;
+                        height: self.width;
+                        border-radius: self.width / 2;
+                        background: white;
+                        Rectangle {
+                            width: parent.width * 0.42;
+                            height: self.width;
+                            border-radius: self.width / 2;
+                            background: Theme.accent;
+                        }
+                    }
+                }
+                for k in 4: Rectangle {
+                    x: 2 * u + k * 7.8 * u;
+                    y: 2 * u + 16 * u;
+                    width: 6.2 * u;
+                    height: self.width;
+                    border-radius: self.width / 2;
+                    background: k == 1 ? white : Theme.dark ? #ffffff24 : #ffffff73;
+                }
+                Rectangle {
+                    x: 2 * u;
+                    y: 2 * u + 23.8 * u;
+                    width: 29 * u;
+                    height: 5 * u;
+                    border-radius: self.height / 2;
+                    background: Theme.dark ? #ffffff24 : #ffffff73;
+                    Rectangle {
+                        x: 0;
+                        width: parent.width * 0.6;
+                        border-radius: self.height / 2;
+                        background: white;
+                    }
+                }
+                // the media tile
+                Rectangle {
+                    x: 17.4 * u;
+                    y: 2 * u;
+                    width: 13.6 * u;
+                    height: 14.4 * u;
+                    border-radius: 3.2 * u;
+                    background: Theme.dark ? #ffffff1f : #ffffff80;
+                }
+            }
+            // the dock
+            Rectangle {
+                width: 6 * 7 * u + 5 * 1.2 * u + 3 * u;
+                height: 9.6 * u;
+                x: (parent.width - self.width) / 2;
+                y: parent.height - self.height - 2.4 * u;
+                border-radius: 3.2 * u;
+                background: glass-fill;
+                border-width: 1px;
+                border-color: rim;
+                for c[i] in [#0A84FF, #30D158, #FF9F0A, #FF375F, #BF5AF2, #8E8E93]: Rectangle {
+                    x: 1.5 * u + i * 8.2 * u;
+                    width: 7 * u;
+                    height: self.width;
+                    border-radius: self.width * 0.23;
+                    background: c;
+                }
+            }
+        }
+        // ── Material ──
+        if mat: Rectangle {
+            property <color> ink: Theme.dark ? white : on-surface;
+            // the top bar: the clock left, status icons right
+            Text {
+                x: 2.4 * u;
+                y: (4.4 * u - self.height) / 2;
+                text: time;
+                color: ink;
+                font-family: "Tessera Sans Flex";
+                font-size: max(6px, 2.6 * u);
+                font-weight: 500;
+            }
+            for w[i] in [1.6, 1.6, 2.8]: Rectangle {
+                x: parent.width - 2.4 * u - 8.4 * u + (i == 0 ? 0 : i == 1 ? 2.8 : 5.6) * u;
+                y: 1.4 * u;
+                width: w * u;
+                height: 1.6 * u;
+                border-radius: 0.5 * u;
+                background: ink;
+                opacity: 0.85;
+            }
+            // a clock widget in a cookie
+            Rectangle {
+                x: 4 * u;
+                y: 8 * u;
+                width: 24 * u;
+                height: self.width;
+                Path {
+                    width: 100%;
+                    height: 100%;
+                    viewbox-width: 100;
+                    viewbox-height: 100;
+                    commands: pal[2].detail;
+                    fill: primary-container;
+                }
+                Text {
+                    text: time;
+                    color: on-primary-container;
+                    font-family: "Tessera Sans Flex";
+                    font-size: max(8px, 6 * u);
+                    font-weight: 600;
+                }
+            }
+            // Quick Settings, top right
+            Rectangle {
+                x: 63 * u;
+                y: 6.5 * u;
+                width: 33 * u;
+                height: 33 * u;
+                border-radius: 4.8 * u;
+                background: surface-container;
+                // the tall slider: the track, a thin handle, the rest
+                Rectangle {
+                    x: 2 * u;
+                    y: 2 * u;
+                    width: 17 * u;
+                    height: 5.6 * u;
+                    border-top-left-radius: 2.8 * u;
+                    border-bottom-left-radius: 2.8 * u;
+                    border-top-right-radius: 0.6 * u;
+                    border-bottom-right-radius: 0.6 * u;
+                    background: primary;
+                }
+                Rectangle {
+                    x: 2 * u + 17.9 * u;
+                    y: 2 * u;
+                    width: 0.8 * u;
+                    height: 5.6 * u;
+                    border-radius: self.width / 2;
+                    background: primary;
+                }
+                Rectangle {
+                    x: 2 * u + 19.6 * u;
+                    y: 2 * u;
+                    width: 9.4 * u;
+                    height: 5.6 * u;
+                    border-top-right-radius: 2.8 * u;
+                    border-bottom-right-radius: 2.8 * u;
+                    border-top-left-radius: 0.6 * u;
+                    border-bottom-left-radius: 0.6 * u;
+                    background: secondary-container;
+                }
+                // big tiles: one on, one off
+                for k in 2: Rectangle {
+                    x: 2 * u + k * 15.1 * u;
+                    y: 9 * u;
+                    width: 13.9 * u;
+                    height: 6.6 * u;
+                    border-radius: self.height / 2;
+                    background: k == 0 ? primary-container : surface-container-highest;
+                    Rectangle {
+                        x: 1.2 * u;
+                        width: 4.2 * u;
+                        height: self.width;
+                        border-radius: self.width / 2;
+                        background: k == 0 ? primary : surface-container-high;
+                    }
+                }
+                // small tiles, one on
+                for k in 4: Rectangle {
+                    x: 2 * u + k * 7.55 * u;
+                    y: 17 * u;
+                    width: 6.35 * u;
+                    height: self.width;
+                    border-radius: k == 2 ? self.width / 2 : 1.8 * u;
+                    background: k == 2 ? tertiary-container : surface-container-highest;
+                }
+                // media: art in a shape, a line
+                Rectangle {
+                    x: 2 * u;
+                    y: 24.75 * u;
+                    width: 29 * u;
+                    height: 7.4 * u;
+                    border-radius: 2.4 * u;
+                    background: surface-container-high;
+                    Path {
+                        x: 1.2 * u;
+                        width: 5.4 * u;
+                        height: 5.4 * u;
+                        viewbox-width: 100;
+                        viewbox-height: 100;
+                        commands: pal[3].detail;
+                        fill: tertiary;
+                    }
+                    Rectangle {
+                        x: 8 * u;
+                        width: 18 * u;
+                        height: 0.8 * u;
+                        border-radius: self.height / 2;
+                        background: primary;
+                    }
+                }
+            }
+            // the taskbar pill
+            Rectangle {
+                width: 5 * 6 * u + 4 * 1.4 * u + 4 * u;
+                height: 9 * u;
+                x: (parent.width - self.width) / 2;
+                y: parent.height - self.height - 2.4 * u;
+                border-radius: self.height / 2;
+                background: surface-container;
+                for k in 5: Rectangle {
+                    x: 2 * u + k * 7.4 * u;
+                    width: 6 * u;
+                    height: 9 * u;
+                    Rectangle {
+                        width: parent.width;
+                        height: self.width;
+                        border-radius: self.width / 2;
+                        background: k == 0 ? primary-container : k == 1 ? tertiary-container : k == 2 ? secondary-container : k == 3 ? primary : tertiary;
+                    }
+                    if k < 2: Rectangle {
+                        y: parent.height - 0.9 * u;
+                        width: 2 * u;
+                        height: 0.5 * u;
+                        border-radius: self.height / 2;
+                        background: k == 0 ? primary : on-surface-variant;
+                    }
+                }
+            }
+        }
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            fs.focus();
+            fs.clear-focus();
+            root.chosen();
+        }
+    }
+}
+
+// A Material custom row's tile (Group.qml's): its corners by its place
+// (0 between, 1 first, 2 last, 3 alone)
+component Tile inherits Rectangle {
+    in property <float> place;
+    visible: Theme.material;
+    border-top-left-radius: place == 1 || place == 3 ? 24px : 4px;
+    border-top-right-radius: self.border-top-left-radius;
+    border-bottom-left-radius: place == 2 || place == 3 ? 24px : 4px;
+    border-bottom-right-radius: self.border-bottom-left-radius;
+    background: Theme.m3-surface-container-high;
+}
+
+// ── Lock clock faces (LockClock.qml, drawn with plain text: Slint can't
+// set the font's width and roundness axes) ───────────────────────────────
+component Face {
+    in property <string> face;
+    in property <SetRow> r;
+    property <length> size: face == "analog" ? 64px : face == "overlap" ? 54px : face == "dynamic" ? 50px : 58px;
+    property <int> weight: max(100, min(900, round(r.step)));
+    property <color> c1: Theme.m3-primary-fixed;
+    property <color> c2: Theme.m3-primary-fixed-dim;
+    property <color> c3: Theme.m3-tertiary;
+    width: 160px;
+    height: 150px;
+    if face == "dynamic": HorizontalLayout {
+        alignment: center;
+        spacing: round(size * 0.1 / 1px) * 1px;
+        Text {
+            text: r.low;
+            color: c1;
+            font-family: "Tessera Sans Flex";
+            font-size: round(size * 1.6 / 1px) * 1px;
+            font-weight: weight;
+            vertical-alignment: center;
+        }
+        VerticalLayout {
+            alignment: center;
+            Text {
+                text: r.value;
+                color: c2;
+                font-family: "Tessera Sans Flex";
+                font-size: round(size * 0.95 / 1px) * 1px;
+                font-weight: weight;
+                horizontal-alignment: center;
+            }
+            Text {
+                text: r.placeholder;
+                color: c2;
+                font-family: "Tessera Sans Flex";
+                font-size: max(14px, round(size * 0.3 / 1px) * 1px);
+                font-weight: max(100, min(900, round(r.step * 0.8)));
+                horizontal-alignment: center;
+            }
+        }
+    }
+    if face == "stacked": VerticalLayout {
+        alignment: center;
+        spacing: -round(size * 0.18 / 1px) * 1px;
+        Text {
+            text: r.low;
+            color: c1;
+            font-family: "Tessera Sans Flex";
+            font-size: size;
+            font-weight: weight;
+            horizontal-alignment: center;
+        }
+        Text {
+            text: r.value;
+            color: c2;
+            font-family: "Tessera Sans Flex";
+            font-size: size;
+            font-weight: weight;
+            horizontal-alignment: center;
+        }
+    }
+    if face == "wide": Text {
+        text: r.text + ":" + r.value;
+        color: c1;
+        font-family: "Tessera Sans Flex";
+        font-size: round(size * 0.8 / 1px) * 1px;
+        font-weight: weight;
+        letter-spacing: 2px;
+    }
+    if face == "overlap": Rectangle {
+        property <length> w: round(size * 0.95 / 1px) * 1px;
+        Text {
+            x: (parent.width - self.width) / 2 - w * 0.3;
+            y: (parent.height - self.height) / 2 - w * 0.3;
+            text: r.low;
+            color: c1;
+            font-family: "Tessera Sans Flex";
+            font-size: w;
+            font-weight: max(weight, 760);
+        }
+        Text {
+            x: (parent.width - self.width) / 2 + w * 0.3;
+            y: (parent.height - self.height) / 2 + w * 0.3;
+            text: r.value;
+            color: c3;
+            font-family: "Tessera Sans Flex";
+            font-size: w;
+            font-weight: max(weight, 760);
+        }
+    }
+    if face == "analog": Rectangle {
+        property <length> d: round(size * 1.5 / 1px) * 1px;
+        property <float> mins: r.to;
+        Rectangle {
+            width: d;
+            height: d;
+            border-radius: d / 2;
+            background: c3.with-alpha(0.2);
+        }
+        // the hours' hand thick, the minutes' long
+        Rectangle {
+            width: d * 0.085;
+            height: d * 0.27 + self.width / 2;
+            x: (parent.width - self.width) / 2;
+            y: parent.height / 2 - d * 0.27;
+            border-radius: self.width / 2;
+            background: c1;
+            transform-origin: { x: self.width / 2, y: d * 0.27 };
+            transform-rotation: mod(mins / 60, 12) * 30deg;
+        }
+        Rectangle {
+            width: d * 0.05;
+            height: d * 0.38 + self.width / 2;
+            x: (parent.width - self.width) / 2;
+            y: parent.height / 2 - d * 0.38;
+            border-radius: self.width / 2;
+            background: c2;
+            transform-origin: { x: self.width / 2, y: d * 0.38 };
+            transform-rotation: mod(mins, 60) * 6deg;
+        }
+        Rectangle {
+            width: d * 0.06;
+            height: self.width;
+            border-radius: self.width / 2;
+            background: c1.darker(0.4);
+        }
+    }
+    if face == "weather": VerticalLayout {
+        alignment: center;
+        spacing: round(size * 0.12 / 1px) * 1px;
+        Text {
+            text: r.text + ":" + r.value;
+            color: c1;
+            font-family: "Tessera Sans Flex";
+            font-size: round(size * 0.78 / 1px) * 1px;
+            font-weight: weight;
+            horizontal-alignment: center;
+        }
+        if r.detail != "": HorizontalLayout {
+            alignment: center;
+            spacing: round(size * 0.06 / 1px) * 1px;
+            SIcon { g: r.icon; fill: true; size: round(size * 0.42 / 1px) * 1px; color: c3; }
+            Text {
+                text: r.detail;
+                color: c2;
+                font-family: "Tessera Sans Flex";
+                font-size: round(size * 0.5 / 1px) * 1px;
+                font-weight: weight;
+                vertical-alignment: center;
+            }
+        }
+    }
+}
+
+// The clock faces' carousel (ClockFaces.qml): the chosen one centred, its
+// neighbours smaller and fainter; a click or ← → picks
+component ClockFaces inherits Rectangle {
+    in property <SetRow> r;
+    height: 212px;
+    clip: true;
+    accessible-role: AccessibleRole.list;
+    accessible-label: "Clock style";
+    forward-focus: fs;
+    fs := FocusScope {
+        key-pressed(e) => {
+            if e.text == Key.LeftArrow && r.index > 0 { SBus.act(r.id, r.index - 1, 0, ""); return accept; }
+            if e.text == Key.RightArrow && r.index < r.data.length - 1 { SBus.act(r.id, r.index + 1, 0, ""); return accept; }
+            reject
+        }
+    }
+    for f[i] in r.data: card := Rectangle {
+        property <float> off: abs(i - r.index);
+        width: 176px;
+        height: parent.height - 24px;
+        x: (parent.width - 176px) / 2 + (i - r.index) * 184px;
+        y: 12px;
+        animate x { duration: 320ms; easing: cubic-bezier(0.2, 0, 0, 1); }
+        opacity: max(0.55, 1 - off * 0.45);
+        accessible-role: AccessibleRole.list-item;
+        accessible-label: f.text;
+        accessible-item-selected: f.on;
+        accessible-action-default => { SBus.act(r.id, i, 0, ""); }
+        property <float> s: max(0.84, 1 - off * 0.16);
+        // the chosen one's ring
+        if f.on: Rectangle {
+            x: 2px;
+            y: 2px;
+            width: parent.width - 4px;
+            height: parent.height - 4px;
+            border-radius: 32px;
+            border-width: 3px;
+            border-color: Theme.m3-primary;
+        }
+        Rectangle {
+            x: 6px + (parent.width - 12px) * (1 - s) / 2;
+            y: 6px + (parent.height - 12px) * (1 - s) / 2;
+            width: (parent.width - 12px) * s;
+            height: (parent.height - 12px) * s;
+            border-radius: 28px;
+            clip: true;
+            background: Theme.m3-surface-container-highest;
+            Image {
+                width: 100%;
+                height: 100%;
+                source: r.image;
+                image-fit: cover;
+                opacity: 0.85;
+            }
+            Rectangle { background: #00000047; }
+            Face {
+                y: (parent.height - self.height) / 2 - 12px;
+                face: f.id;
+                r: r;
+            }
+            Text {
+                y: parent.height - self.height - 14px;
+                text: f.text;
+                color: white;
+                font-size: 13px;
+                font-weight: 500;
+            }
+        }
+        TouchArea {
+            mouse-cursor: pointer;
+            clicked => {
+                fs.focus();
+                SBus.act(r.id, i, 0, "");
+            }
+        }
+    }
+}
+
+// The boot animations (BootAnimations.qml): a still of each, as cards
+component BootCards inherits Rectangle {
+    in property <SetRow> r;
+    property <length> pad: Theme.material ? 20px : 14px;
+    property <int> cols: max(1, floor((self.width - 2 * pad + 12px) / 148px));
+    property <length> card-h: 85px + 8px + 18px;
+    height: ceil(r.data.length / cols) * (card-h + 12px) - 12px + 2 * pad;
+    for c[i] in r.data: Rectangle {
+        property <bool> usable: !c.off;
+        x: pad + mod(i, cols) * 148px;
+        y: pad + floor(i / cols) * (card-h + 12px);
+        width: 136px;
+        height: card-h;
+        opacity: usable || c.on ? 1 : 0.45;
+        accessible-role: AccessibleRole.radio-button;
+        accessible-label: c.text;
+        accessible-checked: c.on;
+        accessible-action-default => { SBus.act(r.id, i, 0, ""); }
+        // the chosen one: a ring outside the picture
+        if c.on: Rectangle {
+            x: Theme.material ? -5px : -4px;
+            y: self.x;
+            width: 136px - 2 * self.x;
+            height: 85px - 2 * self.y;
+            border-radius: (Theme.material ? 16px : Theme.radius-control) - self.x;
+            border-width: Theme.material ? 3px : 2px;
+            border-color: Theme.material ? Theme.m3-primary : Theme.accent;
+        }
+        Rectangle {
+            y: 0;
+            height: 85px;
+            border-radius: Theme.material ? 16px : Theme.radius-control;
+            background: #0A0A0B;
+            border-width: 1px;
+            border-color: Theme.separator;
+            clip: true;
+            if c.style == 0: Image {
+                x: 1px;
+                y: 1px;
+                width: parent.width - 2px;
+                height: parent.height - 2px;
+                source: c.image;
+                image-fit: cover;
+            }
+            // the system's: your distribution's mark
+            if c.style == 1: Image {
+                width: 36px;
+                height: 36px;
+                source: c.image;
+                image-fit: contain;
+            }
+            // none: Plymouth's text
+            if c.style == 2: Text {
+                x: 10px;
+                text: "Starting…\n[  OK  ] Network\n[  OK  ] Bluetooth";
+                color: #94949D;
+                font-family: Theme.mono;
+                font-size: 9px;
+            }
+            // being set: the password, then the rebuild
+            if c.num > 0: Rectangle {
+                background: #00000080;
+                Busy {}
+            }
+            Rectangle {
+                border-radius: parent.border-radius;
+                background: white.with-alpha(ta.has-hover && usable && !c.on ? 0.06 : 0);
+                animate background { duration: SM.hover; }
+            }
+        }
+        Text {
+            y: 85px + 8px;
+            width: parent.width;
+            horizontal-alignment: center;
+            overflow: elide;
+            text: c.text;
+            color: c.on ? Theme.label : Theme.secondary;
+            font-size: Theme.material ? 14px : Theme.small;
+            font-weight: c.on ? 500 : 400;
+        }
+        ta := TouchArea {
+            mouse-cursor: usable ? MouseCursor.pointer : MouseCursor.default;
+            clicked => { SBus.act(r.id, i, 0, ""); }
+        }
+    }
+}
+
+// The wallpaper sets (Wallpaper.sets): light and dark pairs, time-of-day folders
+component Sets inherits Rectangle {
+    in property <SetRow> r;
+    property <int> cols: max(1, floor((self.width - 8px + 12px) / 162px));
+    property <length> tile-h: 90px + 6px + 16px + 2px + 14px;
+    height: ceil(r.data.length / cols) * (tile-h + 12px) - 12px + 8px;
+    for s[i] in r.data: Rectangle {
+        x: 4px + mod(i, cols) * 162px;
+        y: 4px + floor(i / cols) * (tile-h + 12px);
+        width: 150px;
+        height: tile-h;
+        accessible-role: AccessibleRole.button;
+        accessible-label: s.text;
+        accessible-checked: s.on;
+        accessible-action-default => { SBus.act(r.id, i, 0, ""); }
+        Rectangle {
+            y: 0;
+            height: 90px;
+            border-radius: Theme.material ? 16px : 12px;
+            background: Theme.fill;
+            clip: true;
+            Image {
+                x: 0;
+                width: s.style == 1 ? parent.width / 2 : parent.width;
+                height: parent.height;
+                source: s.image;
+                image-fit: cover;
+            }
+            if s.style == 1: Image {
+                x: parent.width / 2;
+                width: parent.width / 2;
+                height: parent.height;
+                source: r.opts[i].image;
+                image-fit: cover;
+            }
+            Rectangle {
+                border-radius: parent.border-radius;
+                border-width: s.on ? 3px : 0;
+                border-color: Theme.accent;
+            }
+            TouchArea {
+                mouse-cursor: pointer;
+                clicked => { SBus.act(r.id, i, 0, ""); }
+            }
+        }
+        Text {
+            y: 96px;
+            width: 150px;
+            text: s.text;
+            overflow: elide;
+            color: Theme.label;
+            font-size: Theme.small;
+            font-weight: 500;
+        }
+        Text {
+            y: 96px + 18px;
+            text: s.detail;
+            color: Theme.secondary;
+            font-size: Theme.caption;
+        }
+    }
+}
+
+// One slider of Advanced…: its name and reading, the slider, what it does
+component AdvancedSlider inherits VerticalLayout {
+    in property <SOpt> o;
+    in property <string> aid;
+    // (ranges: pages/look/appearance.rs ADVANCED, by index)
+    property <float> from: o.style == 4 ? 1 : o.style == 5 ? 0.4 : 0;
+    property <float> to: o.style == 3 || o.style == 4 || o.style == 5 ? 2 : 1;
+    width: 268px;
+    spacing: 4px;
+    HorizontalLayout {
+        Text {
+            text: o.text;
+            color: Theme.label;
+            font-size: Theme.small;
+            font-weight: 500;
+        }
+        Rectangle { horizontal-stretch: 1; }
+        Text {
+            text: o.id;
+            color: Theme.secondary;
+            font-size: Theme.small;
+        }
+    }
+    SSlider {
+        value: o.num;
+        from: root.from;
+        to: root.to;
+        label: o.text;
+        moved(v) => { SBus.act(aid, o.style, v, ""); }
+    }
+    if o.detail != "": Text {
+        text: o.detail;
+        wrap: word-wrap;
+        color: Theme.tertiary;
+        font-size: Theme.caption;
+    }
+}
+
+// Advanced… (appearance-glass.qml's popover, here under the Glass group):
+// the custom material's amounts, the optics with their preview, Reset
+component Advanced inherits HorizontalLayout {
+    in property <SBlock> b;
+    alignment: end;
+    Rectangle {
+        width: 300px;
+        border-radius: Theme.radius-control + 16px;
+        background: Theme.menu-bg;
+        border-width: 1px;
+        border-color: Theme.separator;
+        drop-shadow-blur: 16px;
+        drop-shadow-offset-y: 4px;
+        drop-shadow-color: #00000033;
+        // (spaced by padding, not spacing: the sliders' loops leave empty
+        // places for the other half)
+        VerticalLayout {
+            padding: 16px;
+            spacing: 0;
+            Text {
+                text: "Custom material";
+                color: Theme.label;
+                font-size: Theme.body;
+                font-weight: 600;
+            }
+            for o[i] in b.data: VerticalLayout {
+                if i < 4: VerticalLayout {
+                    padding-top: 14px;
+                    AdvancedSlider { o: o; aid: b.id; }
+                }
+            }
+            HorizontalLayout {
+                padding-top: 18px;
+                Text {
+                    text: "Optics";
+                    color: Theme.label;
+                    font-size: Theme.body;
+                    font-weight: 600;
+                }
+            }
+            // The preview: stripes, and a lens of the glass over them (the
+            // QML runs the glass shader here; Slint can't: a frosted lens)
+            HorizontalLayout { padding-top: 14px; Rectangle {
+                width: 268px;
+                height: 96px;
+                background: Theme.dark ? #1C1C1E : #F2F2F5;
+                clip: true;
+                for k in 12: Rectangle {
+                    x: k * parent.width / 12;
+                    width: parent.width / 12;
+                    background: mod(k, 2) == 1 ? transparent : Theme.accent.with-alpha(0.85);
+                }
+                Text {
+                    text: "Aa";
+                    color: Theme.label;
+                    font-size: 40px;
+                    font-weight: 700;
+                }
+                Rectangle {
+                    x: 48px;
+                    y: 18px;
+                    width: parent.width - 96px;
+                    height: parent.height - 36px;
+                    border-radius: 30px;
+                    background: Theme.dark ? #14141a66 : #fafaff80;
+                    border-width: 1px;
+                    border-color: #ffffff80;
+                }
+            } }
+            for o[i] in b.data: VerticalLayout {
+                if i >= 4: VerticalLayout {
+                    padding-top: 14px;
+                    AdvancedSlider { o: o; aid: b.id; }
+                }
+            }
+            HorizontalLayout {
+                padding-top: 14px;
+                alignment: start;
+                SButton {
+                    text: "Reset to Glass";
+                    icon: LG.reset;
+                    clicked => { SBus.act(b.id, 200, 0, ""); }
+                }
+            }
+        }
+    }
+}
+
+// The wallpaper's pictures, three to a row (wallpaper.qml's Flow)
+component Grid inherits Rectangle {
+    in property <SBlock> b;
+    property <length> w: (SBus.page-width - 24px) / 3;
+    property <length> h: self.w * 9 / 16;
+    height: ceil(b.data.length / 3) * (h + 12px) - 12px;
+    for t[i] in b.data: Rectangle {
+        x: mod(i, 3) * (w + 12px);
+        y: floor(i / 3) * (h + 12px);
+        width: w;
+        height: h;
+        border-radius: Theme.material ? 16px : 10px;
+        background: Theme.fill;
+        clip: true;
+        accessible-role: AccessibleRole.button;
+        accessible-label: "Wallpaper";
+        accessible-checked: t.on;
+        accessible-action-default => { SBus.act(b.id, i, 0, ""); }
+        Image {
+            width: 100%;
+            height: 100%;
+            source: t.image;
+            image-fit: cover;
+        }
+        Rectangle {
+            border-radius: parent.border-radius;
+            border-width: t.on ? 3px : 0;
+            border-color: Theme.accent;
+        }
+        TouchArea {
+            mouse-cursor: pointer;
+            clicked => { SBus.act(b.id, i, 0, ""); }
+        }
+    }
+}
+
+// A custom block (`b.kind == "custom" && b.group == "look"`)
+export component LookBlock inherits VerticalLayout {
+    in property <SBlock> b;
+    // Appearance, Material: two large preview cards across the page, as
+    // Android's Wallpaper & style shows its choices
+    if b.sub == "look-cards": VerticalLayout {
+        spacing: 12px;
+        HorizontalLayout {
+            spacing: 24px;
+            padding-top: 6px;
+            for o[i] in [0, 1]: VerticalLayout {
+                spacing: 12px;
+                property <length> pw: (SBus.page-width - 24px) / 2 - 12px;
+                Rectangle {
+                    width: pw + 12px;
+                    height: pw * 10 / 16;
+                    LookPreview {
+                        x: 6px;
+                        width: parent.width - 12px;
+                        height: parent.height;
+                        mat: i == 1;
+                        selected: b.data[i].on;
+                        wall: b.image;
+                        pal: b.data;
+                        time: b.footer;
+                        chosen => { SBus.act(b.id, i, 0, ""); }
+                    }
+                }
+                HorizontalLayout {
+                    alignment: center;
+                    spacing: 6px;
+                    if b.data[i].on: SIcon { g: SG.check-circle; fill: true; size: 20px; color: Theme.m3-primary; }
+                    Text {
+                        text: b.data[i].text;
+                        vertical-alignment: center;
+                        color: b.data[i].on ? Theme.m3-primary : Theme.m3-on-surface;
+                        font-size: 16px;
+                        font-weight: b.data[i].on ? 600 : 500;
+                        TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { SBus.act(b.id, i, 0, ""); }
+                        }
+                    }
+                }
+            }
+        }
+        HorizontalLayout {
+            padding-left: 16px;
+            padding-right: 16px;
+            Text {
+                text: b.text;
+                wrap: word-wrap;
+                color: Theme.m3-on-surface-variant;
+                font-size: 14px;
+            }
+        }
+    }
+    if b.sub == "glass-advanced": Advanced { b: b; }
+    // The picture showing now
+    if b.sub == "wallpaper-preview": HorizontalLayout {
+        alignment: start;
+        Rectangle {
+            width: min(SBus.page-width, 420px);
+            height: self.width * 9 / 16;
+            border-radius: Theme.material ? 28px : 14px;
+            background: Theme.fill;
+            clip: true;
+            Image {
+                width: 100%;
+                height: 100%;
+                source: b.image;
+                image-fit: cover;
+            }
+        }
+    }
+    if b.sub == "wallpaper-grid": Grid { b: b; }
+}
+
+// A custom row or row control (`r.group == "look"`)
+export component LookCtl inherits VerticalLayout {
+    in property <SetRow> r;
+    // Appearance, Glass: small thumbnails of the looks
+    if r.sub == "look-thumbs": HorizontalLayout {
+        spacing: 14px;
+        for o[i] in [0, 1]: VerticalLayout {
+            padding-top: 6px;
+            padding-bottom: 2px;
+            spacing: 6px;
+            Rectangle {
+                width: 128px;
+                height: 80px;
+                LookPreview {
+                    width: 100%;
+                    height: 100%;
+                    mat: i == 1;
+                    selected: r.data[i].on;
+                    wall: r.image;
+                    pal: r.data;
+                    time: r.text;
+                    chosen => { SBus.act(r.id, i, 0, ""); }
+                }
+            }
+            Text {
+                horizontal-alignment: center;
+                text: r.data[i].text;
+                color: Theme.label;
+                font-size: Theme.caption;
+                font-weight: r.data[i].on ? 600 : 400;
+                TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { SBus.act(r.id, i, 0, ""); }
+                }
+            }
+        }
+    }
+    // The menu icon: eight to a row
+    if r.sub == "menu-icons": Rectangle {
+        width: 8 * 40px + 7 * 4px;
+        height: ceil(r.data.length / 8) * 36px - 4px;
+        for o[i] in r.data: Rectangle {
+            x: mod(i, 8) * 44px;
+            y: floor(i / 8) * 36px;
+            width: 40px;
+            height: 32px;
+            border-radius: Theme.radius-control;
+            background: o.on ? Theme.accent-tint : ita.has-hover ? Theme.fill-hover : Theme.fill;
+            border-width: o.on ? 2px : 0;
+            border-color: Theme.accent;
+            accessible-role: AccessibleRole.radio-button;
+            accessible-label: o.text;
+            accessible-checked: o.on;
+            accessible-action-default => { SBus.act(r.id, i, 0, ""); }
+            if o.image.width == 0: SIcon { g: o.icon; fill: true; size: 18px; color: Theme.label; }
+            if o.image.width > 0: Image {
+                width: 18px;
+                height: 18px;
+                source: o.image;
+                image-fit: contain;
+            }
+            ita := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { SBus.act(r.id, i, 0, ""); }
+            }
+        }
+    }
+    // Emoji: Install font while it's missing, and the style
+    if r.sub == "emoji": HorizontalLayout {
+        spacing: 8px;
+        if !r.on: VerticalLayout {
+            alignment: center;
+            SButton {
+                text: r.text;
+                label: r.label;
+                clicked => { SBus.act(r.id, 100, 0, ""); }
+            }
+        }
+        SSegmented {
+            width: 300px;
+            opts: r.opts;
+            current: r.index;
+            label: r.label;
+            selected(i) => { SBus.act(r.id, i, 0, ""); }
+        }
+    }
+    // The glass material, and Advanced…
+    if r.sub == "glass-material": HorizontalLayout {
+        spacing: 8px;
+        SSegmented {
+            width: r.width;
+            opts: r.opts;
+            current: r.index;
+            label: r.label;
+            selected(i) => { SBus.act(r.id, i, 0, ""); }
+        }
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: al.preferred-width + 20px;
+                height: 28px;
+                border-radius: 14px;
+                background: ata.has-hover || r.on ? Theme.fill-hover : Theme.fill;
+                accessible-role: AccessibleRole.button;
+                accessible-label: "Advanced…";
+                accessible-action-default => { SBus.act(r.id, 100, 0, ""); }
+                al := Text {
+                    text: "Advanced…";
+                    color: Theme.label;
+                    font-size: Theme.small;
+                    font-weight: 500;
+                }
+                ata := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { SBus.act(r.id, 100, 0, ""); }
+                }
+            }
+        }
+    }
+    if r.sub == "check": SIcon { g: SG.check-circle; fill: true; size: 18px; color: Theme.success; }
+    // Login intro: Play Intro and its switch
+    if r.sub == "intro": HorizontalLayout {
+        spacing: 12px;
+        VerticalLayout {
+            alignment: center;
+            SButton {
+                text: "Play Intro";
+                enabled: !r.busy;
+                label: r.label;
+                clicked => { SBus.act(r.id, 0, 0, ""); }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            SSwitch {
+                on: r.on;
+                label: r.label;
+                toggled => { SBus.act(r.id, 1, 0, ""); }
+            }
+        }
+    }
+    // Rows of their own (a Material tile behind each, as the group's)
+    if r.sub == "sets": Rectangle {
+        height: s1.height;
+        Tile { place: r.num; }
+        s1 := Sets { r: r; }
+    }
+    if r.sub == "clock-faces": Rectangle {
+        height: s2.height;
+        Tile { place: r.num; }
+        s2 := ClockFaces { r: r; }
+    }
+    if r.sub == "boot": Rectangle {
+        height: s3.height;
+        Tile { place: r.num; }
+        s3 := BootCards { r: r; }
+    }
+}

@@ -70,6 +70,9 @@ Singleton {
     // What the desktop drawn in Rust asks of this shell (its "desktop"
     // call): done by modules/desktop/DesktopFeed.qml
     signal desktopCall(string what, var args)
+    // What Settings drawn in Rust asks of this shell (its "settings" call:
+    // close, page, pick, act): done by modules/settings/RustBridge.qml
+    signal settingsCall(string what, var args)
     // What the smaller surfaces drawn in Rust ask of their QML twins (the
     // overlay's widgets, the welcome screen's choices, a hot corner's
     // action): answered by Overlay.qml, Welcome.qml and HotCorners.qml
@@ -353,6 +356,9 @@ Singleton {
             break;
         case "search.command":
             Search.rustCommand(String(a[0] ?? ""));
+            break;
+        case "settings":
+            root.settingsCall(String(a[0] ?? ""), a.slice(1));
             break;
         case "screen.captured": // (screentools, quicklook: modules/screentools/RustBridge.qml)
         case "screen.cancel":

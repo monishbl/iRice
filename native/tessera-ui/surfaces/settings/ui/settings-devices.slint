@@ -1,0 +1,881 @@
+// Settings: the views only the "devices" page group's pages have
+// (src/surfaces/settings/pages/devices/*.rs fills them): Displays'
+// "Keep these settings?" card, its arrangement and its display picker; the
+// Wi-Fi and Bluetooth lists (controlcenter/ListRow.qml's rows), the
+// speed test card (network/SpeedTestCard.qml), Wi-Fi's share card
+// (WifiShareCard.qml) and the phone's pairing code; Sound's level control,
+// a check mark for the output in use, and the Wi-Fi signal's bars. The
+// block's or row's `sub` says which view; it reports through
+// SBus.act(id, int, float, string).
+
+import { Theme } from "@tessera/theme.slint";
+import { Busy } from "@tessera/widgets.slint";
+import { SIc, SOpt, SetRow, SBlock, SBus, SG, SM, SIcon, SFocusRing, SSwitch, SSlider, SSegmented, SChoice, SButton, SField, SChip, SSwatch, SFilled } from "settings-kit.slint";
+
+// Glyphs drawn here (phosphor.js / material-symbols.js codes)
+global DG {
+    out property <SIc> lock: { p: "\u{e308}", m: "\u{e899}" };
+    out property <SIc> qr: { p: "\u{e3e6}", m: "\u{ef6b}" };
+    out property <SIc> gauge: { p: "\u{e628}", m: "\u{e9e4}" };
+    out property <SIc> down: { p: "\u{e03e}", m: "\u{e5db}" };
+    out property <SIc> up: { p: "\u{e08e}", m: "\u{e5d8}" };
+    out property <SIc> timer: { p: "\u{e492}", m: "\u{e425}" };
+    out property <SIc> eye: { p: "\u{e220}", m: "\u{e8f4}" };
+    out property <SIc> eye-off: { p: "\u{e224}", m: "\u{e8f5}" };
+    out property <SIc> copy: { p: "\u{e1ca}", m: "\u{e14d}" };
+}
+
+// Material: a custom row's tile, its corners by where it sits in its group
+// (place: 0 between, 1 first, 2 last, 3 alone)
+component Tile inherits Rectangle {
+    in property <float> place;
+    property <bool> first: place == 1 || place == 3;
+    property <bool> last: place == 2 || place == 3;
+    visible: Theme.material;
+    border-top-left-radius: first ? 24px : 4px;
+    border-top-right-radius: first ? 24px : 4px;
+    border-bottom-left-radius: last ? 24px : 4px;
+    border-bottom-right-radius: last ? 24px : 4px;
+    background: Theme.m3-surface-container-high;
+}
+
+// A small ghost icon button (IconButton.qml)
+component GhostIcon inherits Rectangle {
+    in property <SIc> g;
+    in property <string> label;
+    callback clicked();
+    width: 28px;
+    height: 28px;
+    border-radius: Theme.material ? self.height / 2 : Theme.radius-control - 2px;
+    background: Theme.material ? Theme.m3-on-surface-variant.with-alpha(gta.pressed ? 0.1 : gta.has-hover ? 0.08 : 0) : gta.pressed ? Theme.fill-pressed : gta.has-hover ? Theme.fill : transparent;
+    accessible-role: AccessibleRole.button;
+    accessible-label: label;
+    accessible-action-default => { clicked(); }
+    SIcon { g: root.g; size: 16px; color: Theme.secondary; }
+    gta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// One row of a Wi-Fi or Bluetooth list (ListRow.qml). style bits: 1 a lock
+// after it (secured), 2 busy, 4 its action (share: a QR code)
+component ListItem inherits Rectangle {
+    in property <SOpt> o;
+    in property <bool> first;
+    in property <bool> last;
+    callback clicked();
+    callback action();
+    callback menu(length, length, length, length);
+    property <bool> lit: o.on;
+    property <bool> secured: mod(o.style, 2) == 1;
+    property <bool> busy: mod(floor(o.style / 2), 2) == 1;
+    property <bool> has-action: mod(floor(o.style / 4), 2) == 1;
+    property <bool> has-picture: o.image.width > 0;
+    property <color> ink: Theme.material && lit ? Theme.m3-on-primary-container : Theme.label;
+    height: Theme.material ? (o.detail != "" ? 56px : 48px) : 40px;
+    border-radius: Theme.radius-control;
+    background: Theme.material ? transparent : ta.pressed ? Theme.fill-pressed : ta.has-hover ? Theme.fill : transparent;
+    accessible-role: AccessibleRole.list-item;
+    accessible-label: o.text;
+    accessible-description: o.detail;
+    accessible-item-selected: lit;
+    accessible-action-default => { clicked(); }
+    if Theme.material: Rectangle {
+        property <length> inner: lit || ta.pressed ? 16px : ta.has-hover ? 12px : 4px;
+        animate inner { duration: 250ms; easing: spring(0.6); }
+        border-top-left-radius: first ? 20px : inner;
+        border-top-right-radius: first ? 20px : inner;
+        border-bottom-left-radius: last ? 20px : inner;
+        border-bottom-right-radius: last ? 20px : inner;
+        background: (lit ? Theme.m3-primary-container : Theme.m3-surface-container-high).mix(parent.ink, ta.pressed ? 0.9 : ta.has-hover ? 0.92 : 1);
+        animate background { duration: SM.hover; }
+    }
+    // The badge: the icon in a circle (or the device's picture)
+    badge := Rectangle {
+        x: Theme.material ? 10px : 6px;
+        y: (parent.height - self.height) / 2;
+        width: Theme.material ? 36px : 28px;
+        height: self.width;
+        border-radius: self.width / 2;
+        background: has-picture ? transparent : lit ? Theme.accent : Theme.toggle-off;
+        if has-picture: Image {
+            width: 100%;
+            height: 100%;
+            source: o.image;
+            image-fit: contain;
+        }
+        if has-picture && lit: Rectangle {
+            x: parent.width - 8px;
+            y: parent.height - 8px;
+            width: 10px;
+            height: 10px;
+            border-radius: 5px;
+            background: Theme.accent;
+            border-width: 2px;
+            border-color: Theme.glass-solid;
+        }
+        if !has-picture: SIcon {
+            g: o.icon;
+            fill: lit;
+            size: Theme.material ? 18px : 15px;
+            color: lit ? Theme.on-accent : Theme.label;
+        }
+    }
+    VerticalLayout {
+        x: badge.x + badge.width + (Theme.material ? 14px : 10px);
+        width: parent.width - self.x - (has-action ? 40px : 0) - (Theme.material ? 40px : 32px);
+        alignment: center;
+        Text {
+            text: o.text;
+            overflow: elide;
+            color: ink;
+            font-size: Theme.material ? 14px : Theme.body;
+            font-weight: lit ? (Theme.material ? 500 : 600) : 400;
+            accessible-role: AccessibleRole.none;
+        }
+        if o.detail != "": Text {
+            text: o.detail;
+            overflow: elide;
+            color: Theme.material && lit ? Theme.m3-on-primary-container.with-alpha(0.8) : Theme.secondary;
+            font-size: Theme.material ? 12px : Theme.caption;
+            accessible-role: AccessibleRole.none;
+        }
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+        pointer-event(e) => {
+            if e.button == PointerEventButton.right && e.kind == PointerEventKind.up {
+                root.menu(root.absolute-position.x + self.mouse-x - 110px, root.absolute-position.y + self.mouse-y, 220px, 0px);
+            }
+        }
+    }
+    // Its action (share this network) and what it shows at the end
+    if has-action: GhostIcon {
+        x: parent.width - (Theme.material ? 16px : 10px) - 14px - 8px - self.width;
+        y: (parent.height - self.height) / 2;
+        g: DG.qr;
+        label: "Share this network";
+        clicked => { root.action(); }
+    }
+    if busy && Theme.material: Rectangle {
+        x: parent.width - 14px - 22px;
+        y: (parent.height - 22px) / 2;
+        width: 22px;
+        height: 22px;
+        Busy { x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; transform-scale: 0.55; }
+    }
+    if busy && !Theme.material: SIcon {
+        x: parent.width - 10px - 14px;
+        y: (parent.height - self.height) / 2;
+        g: { p: "\u{eb44}", m: "" };
+        size: 14px;
+        color: Theme.secondary;
+        property <duration> t: animation-tick();
+        transform-rotation: mod(t / 800ms, 1) * 360deg;
+    }
+    if !busy && secured: SIcon {
+        x: parent.width - (Theme.material ? 16px : 10px) - self.width;
+        y: (parent.height - self.height) / 2;
+        g: DG.lock;
+        size: Theme.material ? 18px : 14px;
+        color: Theme.material && lit ? Theme.m3-on-primary-container : Theme.secondary;
+    }
+}
+
+// A Wi-Fi or Bluetooth list: its rows, or a line saying why there are none
+component DevList inherits VerticalLayout {
+    in property <SetRow> r;
+    padding: 8px;
+    spacing: 2px;
+    if r.data.length == 0: Text {
+        horizontal-alignment: center;
+        wrap: word-wrap;
+        text: r.placeholder;
+        color: Theme.secondary;
+        font-size: Theme.small;
+    }
+    for o[i] in r.data: ListItem {
+        o: o;
+        first: i == 0;
+        last: i == r.data.length - 1;
+        clicked => { SBus.act(r.id, i, 0, "click"); }
+        action => { SBus.act(r.id, i, 0, "action"); }
+        menu(x, y, w, h) => { if o.id != "" { SBus.menu(o.id, x, y, w, h); } }
+    }
+}
+
+// The speed test (SpeedTestCard.qml): r.label what it's doing, r.text its
+// button, r.on running, r.value the live reading, r.num the progress,
+// r.data the three readings (text, icon, detail: the value, on: measuring
+// now), r.busy whether they show, r.detail jitter and load, r.placeholder
+// the verdict, r.low the server, r.high an error
+component SpeedCard inherits VerticalLayout {
+    in property <SetRow> r;
+    padding-left: Theme.material ? 20px : 14px;
+    padding-right: Theme.material ? 20px : 14px;
+    padding-top: Theme.material ? 16px : 14px;
+    padding-bottom: Theme.material ? 16px : 14px;
+    spacing: 10px;
+    HorizontalLayout {
+        height: 28px;
+        spacing: 8px;
+        SIcon { g: DG.gauge; size: 16px; color: Theme.secondary; }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            Text {
+                text: "Speed test";
+                overflow: elide;
+                color: Theme.label;
+                font-size: Theme.body;
+                font-weight: 600;
+            }
+            if r.label != "": Text {
+                text: r.label;
+                overflow: elide;
+                color: Theme.secondary;
+                font-size: Theme.caption;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            act := Rectangle {
+                property <color> m-base: r.on ? Theme.m3-secondary-container : Theme.m3-primary;
+                property <color> m-ink: r.on ? Theme.m3-on-secondary-container : Theme.m3-on-primary;
+                width: at.preferred-width + (Theme.material ? 32px : 24px);
+                height: Theme.material ? 32px : 28px;
+                border-radius: Theme.material ? (ata.pressed ? 8px : self.height / 2) : 14px;
+                animate border-radius { duration: 250ms; easing: spring(0.6); }
+                background: Theme.material ? self.m-base.mix(self.m-ink, ata.pressed ? 0.9 : ata.has-hover ? 0.92 : 1)
+                    : r.on ? (ata.pressed ? Theme.fill-pressed : ata.has-hover ? Theme.fill-hover : Theme.fill)
+                    : (ata.pressed ? Theme.accent.darker(0.2) : ata.has-hover ? Theme.accent.darker(0.1) : Theme.accent);
+                animate background { duration: SM.hover; }
+                accessible-role: AccessibleRole.button;
+                accessible-label: r.text;
+                accessible-action-default => { SBus.act(r.id, 0, 0, "test"); }
+                at := Text {
+                    text: r.text;
+                    color: Theme.material ? parent.m-ink : r.on ? Theme.label : Theme.on-accent;
+                    font-size: Theme.small;
+                    font-weight: Theme.material ? 500 : 600;
+                    accessible-role: AccessibleRole.none;
+                }
+                ata := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { SBus.act(r.id, 0, 0, "test"); }
+                }
+            }
+        }
+    }
+    if r.on: VerticalLayout {
+        spacing: 6px;
+        Text {
+            text: r.value;
+            color: Theme.label;
+            font-size: Theme.display;
+            font-weight: 600;
+        }
+        Rectangle {
+            height: Theme.material ? 6px : 4px;
+            border-radius: self.height / 2;
+            background: Theme.material ? Theme.m3-secondary-container : Theme.fill;
+            Rectangle {
+                x: 0;
+                width: parent.width * max(0.02, min(1, r.num));
+                animate width { duration: 250ms; easing: ease-out; }
+                border-radius: parent.border-radius;
+                background: Theme.material ? Theme.m3-primary : Theme.accent;
+            }
+        }
+    }
+    if r.busy: HorizontalLayout {
+        for s in r.data: VerticalLayout {
+            horizontal-stretch: 1;
+            spacing: 2px;
+            HorizontalLayout {
+                spacing: 4px;
+                alignment: start;
+                SIcon { g: s.icon; bold: true; size: 11px; color: s.on ? Theme.accent : Theme.tertiary; }
+                Text { text: s.text; color: Theme.secondary; font-size: Theme.caption; }
+            }
+            Text {
+                text: s.detail;
+                overflow: elide;
+                color: s.detail == "—" ? Theme.tertiary : Theme.label;
+                font-size: Theme.title;
+                font-weight: 600;
+            }
+        }
+    }
+    if r.detail != "": Text {
+        text: r.detail;
+        wrap: word-wrap;
+        color: Theme.secondary;
+        font-size: Theme.small;
+    }
+    if r.placeholder != "": Text {
+        text: r.placeholder;
+        wrap: word-wrap;
+        color: Theme.label;
+        font-size: Theme.small;
+    }
+    if r.low != "": Text {
+        text: r.low;
+        overflow: elide;
+        color: Theme.tertiary;
+        font-size: Theme.caption;
+    }
+    if r.high != "": Text {
+        text: r.high;
+        wrap: word-wrap;
+        color: Theme.danger;
+        font-size: Theme.small;
+    }
+}
+
+// Sharing a Wi-Fi network (WifiShareCard.qml): r.label the network, r.text
+// the stage (loading, ready, error), r.image the code, r.high an error,
+// r.value the password as shown, r.enabled there is one, r.on shown,
+// r.busy installing qrencode, r.from 1 when the error is qrencode's
+component ShareCard inherits VerticalLayout {
+    in property <SetRow> r;
+    padding: 8px;
+    spacing: 12px;
+    HorizontalLayout {
+        height: 28px;
+        spacing: 6px;
+        GhostIcon {
+            g: SG.caret-left;
+            label: "Back to networks";
+            clicked => { SBus.act(r.id, 0, 0, "back"); }
+        }
+        Text {
+            horizontal-stretch: 1;
+            vertical-alignment: center;
+            overflow: elide;
+            text: "Share “" + r.label + "”";
+            color: Theme.label;
+            font-size: Theme.body;
+            font-weight: 600;
+        }
+    }
+    Rectangle {
+        height: 196px;
+        if r.text == "ready": Rectangle {
+            width: 188px;
+            height: 188px;
+            border-radius: Theme.radius-module;
+            background: white;
+            Image {
+                x: 10px;
+                y: 10px;
+                width: parent.width - 20px;
+                height: parent.height - 20px;
+                source: r.image;
+                image-fit: contain;
+                image-rendering: pixelated;
+                accessible-role: AccessibleRole.image;
+                accessible-label: "QR code for the Wi-Fi network " + r.label;
+            }
+        }
+        if r.text == "loading": Busy {}
+        if r.text == "error": VerticalLayout {
+            padding: 12px;
+            spacing: 10px;
+            alignment: center;
+            Text {
+                text: r.high;
+                wrap: word-wrap;
+                horizontal-alignment: center;
+                color: Theme.danger;
+                font-size: Theme.small;
+            }
+            if r.from == 1: HorizontalLayout {
+                alignment: center;
+                SButton {
+                    text: r.busy ? "Installing…" : "Install qrencode";
+                    busy: r.busy;
+                    enabled: r.enabled;
+                    clicked => { SBus.act(r.id, 0, 0, "install"); }
+                }
+            }
+        }
+    }
+    if r.text == "ready": Text {
+        text: "Point a phone's camera at the code to join.";
+        wrap: word-wrap;
+        horizontal-alignment: center;
+        color: Theme.secondary;
+        font-size: Theme.small;
+    }
+    if r.text == "ready" && r.to == 1: HorizontalLayout {
+        height: 32px;
+        padding-left: 6px;
+        spacing: 10px;
+        Text {
+            vertical-alignment: center;
+            text: "Password";
+            color: Theme.secondary;
+            font-size: Theme.small;
+        }
+        Text {
+            horizontal-stretch: 1;
+            vertical-alignment: center;
+            overflow: elide;
+            text: r.value;
+            color: Theme.label;
+            font-family: r.on ? Theme.mono : Theme.font;
+            font-size: Theme.body;
+        }
+        VerticalLayout {
+            alignment: center;
+            GhostIcon {
+                g: r.on ? DG.eye-off : DG.eye;
+                label: r.on ? "Hide password" : "Show password";
+                clicked => { SBus.act(r.id, 0, 0, "reveal"); }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            GhostIcon {
+                g: r.step == 1 ? SG.check : DG.copy;
+                label: r.step == 1 ? "Copied" : "Copy password";
+                clicked => { SBus.act(r.id, 0, 0, "copy"); }
+            }
+        }
+    }
+}
+
+// The arrangement (displays.qml's canvas): b.rows the displays (id their
+// name, label their number, detail their name for people, on chosen, value
+// "builtIn", from/to their x/y and step/num their logical size), b.data the
+// four numbers of the box around them, b.on whether they can be dragged
+component Arrangement inherits Rectangle {
+    in property <SBlock> b;
+    property <length> pad: 20px;
+    property <float> bx: b.data.length > 3 ? b.data[0].num : 0;
+    property <float> by: b.data.length > 3 ? b.data[1].num : 0;
+    property <float> bw: b.data.length > 3 ? max(1, b.data[2].num) : 1;
+    property <float> bh: b.data.length > 3 ? max(1, b.data[3].num) : 1;
+    // (room to drag a display past the others)
+    property <float> k: min((self.width - 2 * pad) / 1px / (bw * 1.6), (self.height - 2 * pad) / 1px / (bh * 1.4));
+    property <length> off-x: (self.width - bw * k * 1px) / 2;
+    property <length> off-y: (self.height - bh * k * 1px) / 2;
+    height: 220px;
+    for m[i] in b.rows: tile := Rectangle {
+        property <length> home-x: root.off-x + (m.from - root.bx) * root.k * 1px;
+        property <length> home-y: root.off-y + (m.to - root.by) * root.k * 1px;
+        property <length> dx;
+        property <length> dy;
+        property <bool> dragging;
+        x: self.home-x + self.dx;
+        y: self.home-y + self.dy;
+        width: m.step * root.k * 1px;
+        height: m.num * root.k * 1px;
+        border-radius: Theme.material ? 12px : 6px;
+        background: Theme.material ? (m.on ? Theme.m3-primary-container : Theme.m3-surface-container-highest) : Theme.dark ? #ffffff.with-alpha(m.on ? 0.16 : 0.08) : #000000.with-alpha(m.on ? 0.1 : 0.05);
+        border-width: Theme.material ? (m.on ? 2px : 0) : m.on ? 2px : 1px;
+        border-color: m.on ? Theme.accent : Theme.separator;
+        accessible-role: AccessibleRole.button;
+        accessible-label: "Display " + m.label + ", " + m.detail;
+        accessible-action-default => { SBus.act(root.b.id, i, 0, "select|" + m.id); }
+        // (the menu bar's strip, on the built-in one)
+        if m.value == "builtIn": Rectangle {
+            x: 0;
+            y: 0;
+            height: max(3px, parent.height * 0.06);
+            border-radius: 6px;
+            background: Theme.separator;
+        }
+        VerticalLayout {
+            x: 6px;
+            width: parent.width - 12px;
+            alignment: center;
+            Text {
+                horizontal-alignment: center;
+                text: m.label;
+                color: Theme.label;
+                font-size: max(13px, min(28px, tile.height * 0.3));
+                font-weight: 600;
+            }
+            if tile.height > 60px: Text {
+                horizontal-alignment: center;
+                overflow: elide;
+                text: m.detail;
+                color: Theme.secondary;
+                font-size: Theme.caption;
+            }
+        }
+        TouchArea {
+            mouse-cursor: root.b.on ? (self.pressed ? MouseCursor.grabbing : MouseCursor.grab) : MouseCursor.default;
+            pointer-event(e) => {
+                if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
+                    SBus.act(root.b.id, i, 0, "select|" + m.id);
+                }
+                if e.kind == PointerEventKind.up && e.button == PointerEventButton.left {
+                    if tile.dragging {
+                        // where it was dropped, in the displays' own pixels
+                        SBus.act(root.b.id, i, 0, "drop|" + m.id + "|" + ((tile.x - root.off-x) / 1px / root.k + root.bx) + "|" + ((tile.y - root.off-y) / 1px / root.k + root.by));
+                    }
+                    tile.dragging = false;
+                    tile.dx = 0;
+                    tile.dy = 0;
+                }
+            }
+            moved => {
+                if self.pressed && root.b.on {
+                    let ddx = self.mouse-x - self.pressed-x;
+                    let ddy = self.mouse-y - self.pressed-y;
+                    if tile.dragging || abs(ddx) > 4px || abs(ddy) > 4px {
+                        tile.dragging = true;
+                        tile.dx += ddx;
+                        tile.dy += ddy;
+                    }
+                }
+            }
+        }
+    }
+}
+
+// A custom block (`b.kind == "custom" && b.group == "devices"`)
+export component DevicesBlock inherits VerticalLayout {
+    in property <SBlock> b;
+    // Displays: "Keep these display settings?" (b.title, b.text the time
+    // left; act 0 go back, 1 keep)
+    if b.sub == "confirm": Rectangle {
+        border-radius: Theme.material ? 24px : 12px;
+        background: Theme.material ? Theme.m3-primary-container : Theme.dark ? #ffffff0d : white;
+        border-width: Theme.material ? 0 : 1px;
+        border-color: Theme.accent;
+        HorizontalLayout {
+            padding-left: Theme.material ? 20px : 14px;
+            padding-right: Theme.material ? 20px : 14px;
+            padding-top: Theme.material ? 16px : 12px;
+            padding-bottom: Theme.material ? 16px : 12px;
+            spacing: 12px;
+            VerticalLayout {
+                horizontal-stretch: 1;
+                alignment: center;
+                spacing: 2px;
+                Text {
+                    text: b.title;
+                    color: Theme.material ? Theme.m3-on-primary-container : Theme.label;
+                    font-size: Theme.material ? 16px : Theme.body;
+                    font-weight: 600;
+                }
+                Text {
+                    text: b.text;
+                    wrap: word-wrap;
+                    color: Theme.material ? Theme.m3-on-primary-container : Theme.secondary;
+                    font-size: Theme.material ? 14px : Theme.caption;
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                HorizontalLayout {
+                    spacing: 8px;
+                    SButton { text: "Go back"; clicked => { SBus.act(b.id, 0, 0, ""); } }
+                    SButton { text: "Keep settings"; style: 1; clicked => { SBus.act(b.id, 1, 0, ""); } }
+                }
+            }
+        }
+    }
+    // Displays: the arrangement, in a group with Identify under it (b.title
+    // the row's label, b.text its detail, b.footer the group's footer;
+    // act "identify")
+    if b.sub == "arrange": VerticalLayout {
+        spacing: Theme.material ? 8px : 6px;
+        Rectangle {
+            border-radius: 12px;
+            background: Theme.material ? transparent : Theme.dark ? #ffffff0d : white;
+            border-width: Theme.material ? 0 : 1px;
+            border-color: Theme.separator;
+            VerticalLayout {
+                spacing: Theme.material ? 2px : 0;
+                Rectangle {
+                    Tile { place: 1; }
+                    Arrangement { b: b; }
+                }
+                Rectangle {
+                    min-height: Theme.material ? 56px : 44px;
+                    Tile { place: 2; }
+                    if !Theme.material: Rectangle {
+                        x: 14px;
+                        y: 0;
+                        width: parent.width - 28px;
+                        height: 1px;
+                        background: Theme.separator;
+                    }
+                    HorizontalLayout {
+                        padding-left: Theme.material ? 20px : 14px;
+                        padding-right: Theme.material ? 20px : 14px;
+                        spacing: Theme.material ? 16px : 12px;
+                        VerticalLayout {
+                            horizontal-stretch: 1;
+                            alignment: center;
+                            spacing: 2px;
+                            padding-top: Theme.material ? 12px : 10px;
+                            padding-bottom: Theme.material ? 12px : 10px;
+                            Text {
+                                text: b.title;
+                                wrap: word-wrap;
+                                color: Theme.label;
+                                font-size: Theme.material ? 16px : Theme.body;
+                            }
+                            Text {
+                                text: b.text;
+                                wrap: word-wrap;
+                                color: Theme.secondary;
+                                font-size: Theme.material ? 14px : Theme.caption;
+                            }
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            SButton {
+                                text: "Identify Displays";
+                                label: b.title;
+                                clicked => { SBus.act(b.id, 0, 0, "identify"); }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if b.footer != "": HorizontalLayout {
+            padding-left: Theme.material ? 16px : 4px;
+            padding-right: Theme.material ? 16px : 4px;
+            Text {
+                text: b.footer;
+                wrap: word-wrap;
+                color: Theme.material ? Theme.m3-on-surface-variant : Theme.tertiary;
+                font-size: Theme.material ? 12px : Theme.caption;
+                letter-spacing: Theme.material ? 0.4px : 0;
+            }
+        }
+    }
+    // Displays: which one (b.data the names, b.num the chosen one)
+    if b.sub == "picker": HorizontalLayout {
+        alignment: center;
+        SSegmented {
+            width: min(SBus.page-width, 120px * b.data.length);
+            opts: b.data;
+            current: b.num;
+            label: "Display";
+            selected(i) => { SBus.act(b.id, i, 0, ""); }
+        }
+    }
+}
+
+// A custom row or row control (`r.group == "devices"`)
+export component DevicesCtl inherits VerticalLayout {
+    in property <SetRow> r;
+    // Whole rows (r.step: Material's tile place)
+    if r.sub == "list": Rectangle {
+        Tile { place: r.step; }
+        DevList { r: r; }
+    }
+    if r.sub == "speed": Rectangle {
+        Tile { place: r.step; }
+        SpeedCard { r: r; }
+    }
+    if r.sub == "share": Rectangle {
+        Tile { place: r.step; }
+        ShareCard { r: r; }
+    }
+    // A Wi-Fi network's password, under its row (WifiList's `asking`): r.text
+    // what's typed, r.style 1 when it's long enough, r.high why Join didn't
+    // go ahead. act: the text as it's typed (f 1), "join" (f 2), "other",
+    // "cancel" (Esc)
+    if r.sub == "join": Rectangle {
+        Tile { place: 0; }
+        VerticalLayout {
+            padding-left: 52px;
+            padding-right: 14px;
+            padding-top: 4px;
+            padding-bottom: 8px;
+            spacing: 4px;
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
+                Rectangle {
+                    width: 180px;
+                    height: Theme.material ? 40px : 30px;
+                    if Theme.material: SFilled { active: pw.has-focus; }
+                    if !Theme.material: Rectangle {
+                        border-radius: Theme.radius-control - 2px;
+                        background: Theme.fill;
+                        border-width: 1px;
+                        border-color: pw.has-focus ? Theme.accent : Theme.separator;
+                    }
+                    Rectangle {
+                        x: Theme.material ? 16px : 10px;
+                        width: parent.width - 2 * self.x;
+                        clip: true;
+                        pw := TextInput {
+                            width: 100%;
+                            height: 100%;
+                            text: r.text;
+                            vertical-alignment: center;
+                            single-line: true;
+                            input-type: InputType.password;
+                            color: Theme.label;
+                            font-size: Theme.body;
+                            accessible-label: "Password";
+                            init => { self.focus(); }
+                            edited => { SBus.act(r.id, 0, 1, self.text); }
+                            accepted => { SBus.act(r.id, 0, 2, "join"); }
+                            key-pressed(e) => {
+                                if e.text == Key.Escape { SBus.act(r.id, 0, 0, "cancel"); return accept; }
+                                reject
+                            }
+                        }
+                        if pw.text == "": Text {
+                            width: 100%;
+                            height: 100%;
+                            vertical-alignment: center;
+                            text: "Password";
+                            color: Theme.tertiary;
+                            font-size: Theme.body;
+                            accessible-role: AccessibleRole.none;
+                        }
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    SButton {
+                        text: "Join";
+                        style: r.style;
+                        clicked => { SBus.act(r.id, 0, 2, "join"); }
+                    }
+                }
+            }
+            if r.high != "": Text {
+                text: r.high;
+                color: Theme.danger;
+                font-size: Theme.small;
+            }
+            HorizontalLayout {
+                alignment: start;
+                Text {
+                    text: "Other options…";
+                    color: ota.has-hover ? Theme.accent-ink : Theme.secondary;
+                    font-size: Theme.small;
+                    accessible-role: AccessibleRole.button;
+                    accessible-label: self.text;
+                    accessible-action-default => { SBus.act(r.id, 0, 0, "other"); }
+                    ota := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { SBus.act(r.id, 0, 0, "other"); }
+                    }
+                }
+            }
+        }
+    }
+    // The phone's pairing code, on white (cameras read dark on light)
+    if r.sub == "qr": Rectangle {
+        height: 196px;
+        Tile { place: r.step; }
+        Rectangle {
+            width: 176px;
+            height: 176px;
+            border-radius: Theme.radius-module;
+            background: white;
+            Image {
+                x: 10px;
+                y: 10px;
+                width: parent.width - 20px;
+                height: parent.height - 20px;
+                source: r.image;
+                image-fit: contain;
+                image-rendering: pixelated;
+                accessible-role: AccessibleRole.image;
+                accessible-label: "QR code to pair your phone";
+            }
+        }
+    }
+    // Controls on the right
+    // Sound: mute and the level (r.data[0].icon its glyph, r.on muted, r.num the volume)
+    if r.sub == "level": HorizontalLayout {
+        spacing: 10px;
+        VerticalLayout {
+            alignment: center;
+            GhostIcon {
+                g: r.data.length > 0 ? r.data[0].icon : SG.x;
+                label: r.on ? "Unmute" : "Mute";
+                clicked => { SBus.act(r.id, 0, 0, "mute"); }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            SSlider {
+                width: 200px;
+                value: r.num;
+                enabled: r.enabled;
+                label: r.label;
+                moved(v) => { SBus.act(r.id, 0, v, "vol"); }
+            }
+        }
+    }
+    // A button beside a switch (Wi-Fi's Scan again, Bluetooth's Look again
+    // or its fix): r.text the button ("" none; r.data[0].icon its icon,
+    // r.style, r.busy), r.from 1 shows the switch (r.on, r.enabled).
+    // act "button" / "toggle"
+    if r.sub == "btn-switch": HorizontalLayout {
+        spacing: 8px;
+        if r.text != "": VerticalLayout {
+            alignment: center;
+            SButton {
+                text: r.text;
+                icon: r.data.length > 0 ? r.data[0].icon : { p: "", m: "" };
+                style: r.style;
+                busy: r.busy;
+                label: r.label;
+                clicked => { SBus.act(r.id, 0, 0, "button"); }
+            }
+        }
+        if r.from == 1: VerticalLayout {
+            alignment: center;
+            SSwitch {
+                on: r.on;
+                enabled: r.enabled;
+                label: r.label;
+                toggled => { SBus.act(r.id, 0, 0, "toggle"); }
+            }
+        }
+    }
+    // The output or input in use
+    if r.sub == "check": SIcon {
+        g: SG.check;
+        size: Theme.material ? 24px : 16px;
+        color: Theme.accent;
+    }
+    // Wi-Fi's signal: four bars by quality (r.num 0..1) and the reading (r.value)
+    if r.sub == "signal": HorizontalLayout {
+        spacing: 8px;
+        HorizontalLayout {
+            spacing: 2px;
+            alignment: center;
+            for i in 4: VerticalLayout {
+                alignment: center;
+                Rectangle {
+                    width: 4px;
+                    height: 14px;
+                    Rectangle {
+                        y: parent.height - self.height;
+                        height: 5px + i * 3px;
+                        border-radius: 1px;
+                        background: r.num > i / 4 ? Theme.label : Theme.fill;
+                    }
+                }
+            }
+        }
+        Text {
+            vertical-alignment: center;
+            text: r.value;
+            color: Theme.secondary;
+            font-size: Theme.body;
+        }
+    }
+}
