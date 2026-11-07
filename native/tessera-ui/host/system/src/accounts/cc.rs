@@ -450,7 +450,7 @@ impl ControlCenter {
         let cast = g("cast");
         let account = g("account");
         let profiles: Value = if self.page == "sound" {
-            let ap = g("audioprofiles");
+            let ap = g("AudioProfiles");
             map_alts(&ap)
         } else {
             json!([])
@@ -1244,7 +1244,7 @@ impl Service for ControlCenter {
             "cc.block" => {
                 // (Sound is drawn there; its card-switching outputs are this shell's)
                 if s(0) == "sound" && s(1).starts_with("prof:") {
-                    let ap = g("audioprofiles");
+                    let ap = g("AudioProfiles");
                     let i = s(1)[5..].parse::<usize>().unwrap_or(usize::MAX);
                     if let Some(alt) = ap["alternatives"].as_array().and_then(|x| x.get(i)) {
                         h.ask("audioprofiles.pick", json!([alt]));

@@ -58,7 +58,12 @@ Singleton {
     function panelOf(surface) {
         return panelNames[surface] ?? surface;
     }
+    // The menu bar's status menus: one surface draws them all, told which
+    // with its open command (`panel`, and `anchorX`: where its item is)
+    readonly property list<string> statusPanels: ["bluetoothMenu", "soundMenu", "privacyMenu", "batteryMenu", "resourcesMenu", "weatherMenu", "nowPlaying"]
     function surfaceOf(panel) {
+        if (statusPanels.includes(panel))
+            return "statusmenus";
         return Object.keys(panelNames).find(k => panelNames[k] === panel) ?? panel;
     }
     // Control Center's calls, for its RustBridge (cc.act, cc.block…)
@@ -79,9 +84,10 @@ Singleton {
     // action): answered by Overlay.qml, Welcome.qml and HotCorners.qml
     signal surfaceCall(string name, var args)
     // What the share sheet and cards, the App Store, the shelf, the Wi-Fi
-    // menu, live captions and the quick note drawn there ask of this shell
-    // (their "share", "appstore", "shelf", "network", "captions" and "notes"
-    // calls): done by each one's feed (modules/<name>/*Feed.qml)
+    // menu, the status menus, live captions and the quick note drawn there ask
+    // of this shell (their "share", "appstore", "shelf", "network",
+    // "statusmenus", "captions" and "notes" calls): done by each one's feed
+    // (modules/<name>/*Feed.qml; the status menus' is modules/menubar's)
     signal feedCall(string surface, string what, var args)
     // The window-management surfaces' calls (Spaces, Stage Manager…): done by
     // modules/overview/RustWindows.qml
@@ -188,7 +194,7 @@ Singleton {
             // it closed itself (Esc, a click outside, a pick)
             if (forwarded === e.surface)
                 forwarded = "";
-            if (Panels.open === panelOf(e.surface))
+            if (Panels.open !== "" && (Panels.open === panelOf(e.surface) || surfaceOf(Panels.open) === e.surface))
                 Panels.close();
         } else if (e.kind === "call") {
             call(e.call, e.args ?? []);
@@ -202,6 +208,7 @@ Singleton {
     // ── Panels drawn in Rust: their opening and closing ─────────────────
     property string forwarded: "" // the panel tessera-ui was told to open
     property string forwardedScreen: ""
+    property string forwardedPanel: "" // (a surface that draws several: statusmenus)
     function send(o) {
         if (proc.running)
             proc.write(JSON.stringify(o) + "\n");
@@ -211,10 +218,12 @@ Singleton {
         const scr = want !== "" ? (Panels.screen?.name ?? "") : "";
         if (forwarded !== "" && forwarded !== want)
             send({ cmd: "close", surface: forwarded });
-        if (want !== "" && (want !== forwarded || scr !== forwardedScreen))
-            send({ cmd: "open", surface: want, screen: scr });
+        const panel = want !== "" ? Panels.open : "";
+        if (want !== "" && (want !== forwarded || scr !== forwardedScreen || panel !== forwardedPanel))
+            send({ cmd: "open", surface: want, screen: scr, panel: panel, anchorX: Panels.anchorX });
         forwarded = want;
         forwardedScreen = scr;
+        forwardedPanel = panel;
     }
     Connections {
         target: Panels
@@ -400,6 +409,7 @@ Singleton {
         case "appstore":
         case "shelf":
         case "network":
+        case "statusmenus":
         case "captions":
         case "notes":
             root.feedCall(name, String(a[0] ?? ""), a.slice(1));

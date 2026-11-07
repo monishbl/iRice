@@ -105,6 +105,7 @@ tessera-share = { path = "surfaces/share" }
 tessera-appstore = { path = "surfaces/appstore" }
 tessera-shelf = { path = "surfaces/shelf" }
 tessera-network = { path = "surfaces/network" }
+tessera-statusmenus = { path = "surfaces/statusmenus" }
 tessera-captions = { path = "surfaces/captions" }
 tessera-notes = { path = "surfaces/notes" }
 # (not a shell surface: main.rs hands --greeter to it; it isn't in KNOWN)

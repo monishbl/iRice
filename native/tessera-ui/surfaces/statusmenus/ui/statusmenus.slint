@@ -1,0 +1,908 @@
+// The menu bar's status menus (src/surfaces/statusmenus): Bluetooth, Sound,
+// privacy, battery, resources and weather (shell/modules/menubar/
+// StatusMenus.qml) and Now Playing (NowPlaying.qml), each a popover under
+// its menu bar item (shell/glass/Popover.qml: Glass's tint over the plugin's
+// glass, Material's surfaceContainer panel). One window draws whichever is
+// open (`panel`). Bluetooth's and Sound's pages are the Control Center's own
+// (PageView and Block, as the QML menus are its BluetoothPage and SoundPage).
+
+import { Theme } from "@tessera/theme.slint";
+import { SymIcon } from "@tessera/symbols.slint";
+import { PageView, Block, QsSlider, CcBlock, CcGlyphs, CcMenuItem } from "../../controlcenter/ui/controlcenter.slint";
+
+// Someone using the camera, microphone, location or screen
+export struct SmUse {
+    app: string,
+    what: string,
+    icon: string, // a Phosphor glyph
+    tint: color,
+}
+
+// A label and its value (battery health)
+export struct SmPair {
+    label: string,
+    value: string,
+    warn: bool, // "Service recommended"
+}
+
+// A resource's bar
+export struct SmBar {
+    label: string,
+    detail: string,
+    value: float,
+}
+
+// An hour of the forecast
+export struct SmHour {
+    time: string,
+    icon: string,
+    temp: string,
+}
+
+// The player Now Playing shows
+export struct SmPlayer {
+    title: string,
+    byline: string,
+    identity: string,
+    art: image,
+    has-art: bool,
+    playing: bool,
+    prev: bool,
+    next: bool,
+    toggle: bool,
+    timed: bool, // it says how long the track is: the seek bar
+    progress: float,
+    pos: string,
+    rem: string,
+}
+
+// Phosphor glyphs (SymIcon draws the Material Symbol in Material)
+export struct SmGlyphs {
+    notes: string,
+    prev: string,
+    next: string,
+    play: string,
+    pause: string,
+}
+
+// A text button in either look (Stop sharing): Material's filled error pill,
+// Glass's red capsule
+component DangerButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> busy;
+    callback clicked();
+    property <bool> m3: Theme.material;
+    width: l.preferred-width + (m3 ? 32px : 28px);
+    height: m3 ? 40px : 28px;
+    border-radius: self.height / 2;
+    background: m3 ? Theme.m3-error.mix(Theme.m3-on-error, t.pressed ? 0.9 : t.has-hover ? 0.92 : 1) : t.pressed ? Theme.danger.darker(0.15) : Theme.danger;
+    animate background { duration: 150ms; }
+    opacity: busy ? 0.6 : 1;
+    accessible-role: button;
+    accessible-label: text;
+    accessible-action-default => { if !busy { clicked(); } }
+    l := Text {
+        text: root.text;
+        color: m3 ? Theme.m3-on-error : #ffffff;
+        font-size: m3 ? 14px : Theme.small;
+        font-weight: m3 ? 500 : 600;
+        accessible-role: none;
+    }
+    t := TouchArea {
+        enabled: !busy;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// A section's heading inside a menu (Battery health, Energy mode)
+component Section inherits Text {
+    color: Theme.secondary;
+    font-size: Theme.material ? 12px : Theme.caption;
+    font-weight: Theme.material ? 500 : 600;
+}
+
+// Material's flat level bar (WavyProgress paused): the level, a gap, the
+// track and its stop dot
+component LevelBar {
+    in property <float> value;
+    in property <color> color;
+    property <float> v: max(0, min(1, value));
+    property <length> end: self.width * v;
+    height: 10px;
+    if end > 0: Rectangle {
+        x: 0;
+        y: (parent.height - 4px) / 2;
+        width: end;
+        height: 4px;
+        border-radius: 2px;
+        background: color;
+    }
+    Rectangle {
+        x: min(parent.width, end + 4px + (end > 0 ? 2px : 0));
+        y: (parent.height - 4px) / 2;
+        width: max(0, parent.width - self.x);
+        height: 4px;
+        border-radius: 2px;
+        background: Theme.m3-secondary-container;
+    }
+    Rectangle {
+        x: parent.width - 4px;
+        y: (parent.height - 4px) / 2;
+        width: 4px;
+        height: 4px;
+        border-radius: 2px;
+        background: color;
+    }
+}
+
+// A transport button: Glass's bare glyph, Material's tonal icon button
+component Transport inherits Rectangle {
+    in property <string> icon;
+    in property <length> size;
+    in property <bool> enabled: true;
+    in property <string> label;
+    callback clicked();
+    property <bool> m3: Theme.material;
+    width: m3 ? 40px : size + 16px;
+    height: m3 ? 40px : size + 16px;
+    border-radius: m3 ? (t.pressed ? 8px : self.height / 2) : 0;
+    background: m3 ? (t.pressed ? Theme.m3-on-surface-variant.with-alpha(0.1) : t.has-hover ? Theme.m3-on-surface-variant.with-alpha(0.08) : transparent) : transparent;
+    opacity: enabled ? 1 : (m3 ? 0.38 : 0.35);
+    accessible-role: button;
+    accessible-label: label;
+    accessible-enabled: enabled;
+    accessible-action-default => { if enabled { clicked(); } }
+    SymIcon {
+        text: icon;
+        fill: true;
+        font-size: m3 ? 20px : size;
+        color: m3 ? Theme.m3-on-surface-variant : Theme.label;
+    }
+    t := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// Material's play button (PlayButton.qml): round while paused, a rounded
+// square while playing, swelling a little while pressed
+component PlayButton inherits Rectangle {
+    in property <bool> playing;
+    in property <bool> enabled: true;
+    in property <SmGlyphs> sg;
+    callback clicked();
+    width: 56px;
+    height: 56px;
+    border-radius: playing ? 16px : 28px;
+    animate border-radius { duration: 300ms; easing: spring(0.5); }
+    background: Theme.m3-primary.mix(Theme.m3-on-primary, t.pressed ? 0.9 : t.has-hover ? 0.92 : 1);
+    transform-scale: t.pressed ? 1.06 : 1;
+    animate transform-scale { duration: 222ms; easing: spring(0.4); }
+    opacity: enabled ? 1 : 0.38;
+    accessible-role: button;
+    accessible-label: playing ? "Pause" : "Play";
+    accessible-action-default => { if enabled { clicked(); } }
+    SymIcon {
+        text: playing ? sg.pause : sg.play;
+        fill: true;
+        font-size: 24px;
+        color: Theme.m3-on-primary;
+    }
+    t := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// Glass's seek bar (Slider.qml): a thin track, the accent, a white knob
+component GlassSeek {
+    in property <float> value;
+    callback moved(float);
+    height: 22px;
+    property <float> v: max(0, min(1, value));
+    Rectangle {
+        y: (parent.height - 4px) / 2;
+        height: 4px;
+        border-radius: 2px;
+        background: Theme.toggle-off;
+        Rectangle {
+            x: 0;
+            width: parent.width * v;
+            height: parent.height;
+            border-radius: 2px;
+            background: Theme.accent;
+        }
+    }
+    Rectangle {
+        x: v * (root.width - self.width);
+        y: (parent.height - self.height) / 2;
+        width: 18px;
+        height: 18px;
+        border-radius: 9px;
+        background: #ffffff;
+        border-width: 1px;
+        border-color: #00000026;
+    }
+    TouchArea {
+        mouse-cursor: pointer;
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.up && e.button == PointerEventButton.left { moved(max(0, min(1, self.mouse-x / self.width))); }
+        }
+    }
+}
+
+// ── The window ──────────────────────────────────────────────────────────────
+export component StatusMenus inherits Window {
+    in property <bool> shown;
+    in property <string> panel; // which menu (Panels' name)
+    in property <length> anchor-x; // Panels.anchorX: the item's left edge
+    in property <length> cw: 300px; // the content's width (width_)
+    in property <length> off: 20px; // how far left of the item it starts (targetX)
+    in property <CcGlyphs> g;
+    in property <SmGlyphs> sg;
+    in property <color> accent-glyph;
+
+    // Bluetooth: the Control Center's page
+    in property <string> page-title;
+    in property <bool> page-switch;
+    in property <bool> page-switch-on;
+    in property <string> page-switch-label;
+    in property <bool> page-refresh;
+    in property <[CcBlock]> page-blocks;
+    // Sound: its slider, then the Control Center's Sound page without its header
+    in property <CcBlock> volume-block;
+    in property <[CcBlock]> sound-blocks;
+    // Privacy
+    in property <[SmUse]> in-use;
+    in property <length> nothing-h;
+    in property <bool> sharing;
+    in property <bool> stopping;
+    in property <string> stop-failed;
+    in property <length> stop-failed-h;
+    // Battery
+    in property <bool> bat-present;
+    in property <string> bat-pct;
+    in property <float> bat-level;
+    in property <bool> bat-low;
+    in property <string> bat-status;
+    in property <length> bat-status-h;
+    in property <string> bat-watts;
+    in property <[SmPair]> health;
+    in property <bool> ppd;
+    in property <string> power-short;
+    in property <length> power-short-h;
+    in property <CcBlock> modes;
+    // Resources
+    in property <[SmBar]> bars;
+    // Weather
+    in property <string> wx-note;
+    in property <string> wx-place;
+    in property <string> wx-icon;
+    in property <string> wx-temp;
+    in property <string> wx-cond;
+    in property <string> wx-feels;
+    in property <[SmHour]> hours;
+    // Now Playing
+    in property <SmPlayer> np;
+    in property <[string]> others;
+    // A device's menu (Bluetooth)
+    in property <bool> menu-open;
+    in property <[CcMenuItem]> menu-items;
+    in property <length> menu-x;
+    in property <length> menu-y;
+
+    out property <float> openness: shown ? 1 : 0;
+    out property <length> panel-x: pnl.x;
+    out property <length> panel-y: pnl.y;
+    out property <length> panel-w: pnl.width;
+    out property <length> panel-h: pnl.height;
+    out property <float> panel-opacity: pnl.opacity;
+    out property <length> panel-radius: pnl.border-radius;
+    out property <length> menu-w: 220px;
+    out property <length> menu-h: mlist.preferred-height + 2 * mpad;
+
+    callback key(string, bool) -> bool;
+    callback hovered(bool);
+    callback dismissed();
+    callback closed(); // the close animation ended
+    callback page-toggled();
+    callback page-refreshed();
+    callback page-block(int, string, string);
+    callback page-menu(int, length, length);
+    callback sound-block(int, string, string);
+    callback sound-slide(int, float);
+    callback volume(float);
+    callback mode(int);
+    callback stop-sharing();
+    callback np-do(string);
+    callback np-seek(float);
+    callback np-pick(int);
+    callback menu-pick(int);
+    callback menu-close();
+
+    background: transparent;
+    no-frame: true;
+    title: "Menu";
+    default-font-family: Theme.font;
+
+    property <bool> m3: Theme.material;
+    property <length> pad: 16px;
+    property <length> mpad: m3 ? 4px : 5px;
+
+    animate openness {
+        duration: shown ? 420ms : 154ms;
+        easing: shown ? spring(0.3) : cubic-bezier(0.4, 0, 1, 1);
+    }
+    changed openness => {
+        if !shown && openness <= 0.001 { closed(); }
+    }
+
+    public function focus-keys() {
+        keys.focus();
+    }
+
+    // A click outside closes it
+    TouchArea {
+        enabled: shown;
+        clicked => { dismissed(); }
+    }
+
+    keys := FocusScope {
+        key-pressed(e) => {
+            if root.key(e.text, e.modifiers.shift) { return accept; }
+            reject
+        }
+
+        pnl := Rectangle {
+            // (Popover.qml: under its item, kept on screen, room for the shadow)
+            x: max(24px, min(anchor-x - off, root.width - cw - 2 * pad - 24px));
+            y: 34px + (1 - openness) * -8px;
+            width: cw + 2 * pad;
+            height: content.preferred-height + 2 * pad;
+            opacity: min(1, openness);
+            border-radius: Theme.radius-control + pad;
+            background: m3 ? Theme.m3-surface-container.with-alpha(Theme.panel-alpha) : Theme.panel;
+            border-width: m3 ? 0 : 0.5px;
+            border-color: Theme.separator;
+            drop-shadow-blur: m3 ? 16px : 0;
+            drop-shadow-offset-y: m3 ? 4px : 0;
+            drop-shadow-color: m3 ? Theme.m3-shadow.with-alpha(Theme.dark ? 0.3 : 0.12) : transparent;
+            accessible-role: groupbox;
+            accessible-label: panel == "bluetoothMenu" ? "Bluetooth" : panel == "soundMenu" ? "Sound" : panel == "privacyMenu" ? "In use"
+                : panel == "batteryMenu" ? "Battery" : panel == "resourcesMenu" ? "Resources" : panel == "weatherMenu" ? "Weather" : "Now Playing";
+
+            hover := TouchArea {
+                changed has-hover => { root.hovered(self.has-hover); }
+
+                content := VerticalLayout {
+                    x: pad;
+                    y: pad;
+                    width: cw;
+
+                    // ── Bluetooth (BluetoothPage { showBack: false }) ──
+                    if panel == "bluetoothMenu": PageView {
+                        title: page-title;
+                        back: false;
+                        has-switch: page-switch;
+                        switch-on: page-switch-on;
+                        switch-label: page-switch-label;
+                        refresh: page-refresh;
+                        blocks: page-blocks;
+                        g: g;
+                        accent-glyph: accent-glyph;
+                        cap: 360px;
+                        toggled => { page-toggled(); }
+                        refreshed => { page-refreshed(); }
+                        block(i, what, text) => { page-block(i, what, text); }
+                        block-menu(i, x, y) => { page-menu(i, x, y); }
+                    }
+
+                    // ── Sound: the slider, then SoundPage without its title ──
+                    if panel == "soundMenu": VerticalLayout {
+                        spacing: 12px;
+                        VerticalLayout {
+                            spacing: 8px;
+                            Text {
+                                text: "Sound";
+                                color: Theme.label;
+                                font-size: Theme.body;
+                                font-weight: 600;
+                            }
+                            Block {
+                                b: volume-block;
+                                g: g;
+                                accent-glyph: accent-glyph;
+                                slide(v) => { volume(v); }
+                            }
+                        }
+                        PageView {
+                            show-header: false;
+                            back: false;
+                            blocks: sound-blocks;
+                            g: g;
+                            accent-glyph: accent-glyph;
+                            cap: 4000px;
+                            block(i, what, text) => { sound-block(i, what, text); }
+                            block-slide(i, v) => { sound-slide(i, v); }
+                        }
+                    }
+
+                    // ── Privacy: who uses the microphone, camera, location or screen ──
+                    if panel == "privacyMenu": VerticalLayout {
+                        spacing: 10px;
+                        Text {
+                            text: "In use";
+                            color: Theme.label;
+                            font-size: Theme.title;
+                            font-weight: 600;
+                        }
+                        if in-use.length == 0: Text {
+                            min-height: nothing-h;
+                            wrap: word-wrap;
+                            text: "Nothing is using your microphone, camera, location or screen.";
+                            color: Theme.secondary;
+                            font-size: Theme.small;
+                        }
+                        for u in in-use: HorizontalLayout {
+                            spacing: 10px;
+                            alignment: start;
+                            Rectangle {
+                                width: 28px;
+                                height: 28px;
+                                y: (parent.height - self.height) / 2;
+                                border-radius: 14px;
+                                background: m3 ? Theme.m3-secondary-container : u.tint.with-alpha(0.18);
+                                SymIcon {
+                                    text: u.icon;
+                                    fill: true;
+                                    font-size: 15px;
+                                    color: m3 ? Theme.m3-on-secondary-container : u.tint;
+                                }
+                            }
+                            VerticalLayout {
+                                alignment: center;
+                                Text {
+                                    text: u.app;
+                                    color: Theme.label;
+                                    font-size: Theme.body;
+                                    font-weight: 500;
+                                }
+                                Text {
+                                    text: u.what;
+                                    color: Theme.secondary;
+                                    font-size: Theme.small;
+                                }
+                            }
+                        }
+                        // Stop sharing (every shared screen at once)
+                        if sharing: HorizontalLayout {
+                            alignment: start;
+                            DangerButton {
+                                text: stopping ? "Stopping…" : "Stop sharing";
+                                busy: stopping;
+                                clicked => { stop-sharing(); }
+                            }
+                        }
+                        if stop-failed != "": Text {
+                            min-height: stop-failed-h;
+                            wrap: word-wrap;
+                            text: stop-failed;
+                            color: Theme.danger;
+                            font-size: Theme.small;
+                        }
+                    }
+
+                    // ── Battery: level, time, power, health, energy mode ──
+                    if panel == "batteryMenu": VerticalLayout {
+                        spacing: 10px;
+                        Rectangle {
+                            height: 26px;
+                            Text {
+                                x: 0;
+                                height: parent.height;
+                                vertical-alignment: center;
+                                text: "Battery";
+                                color: Theme.label;
+                                font-size: Theme.title;
+                                font-weight: 600;
+                            }
+                            if bat-present: Text {
+                                x: parent.width - self.width;
+                                width: self.preferred-width;
+                                height: parent.height;
+                                vertical-alignment: center;
+                                text: bat-pct;
+                                color: m3 ? Theme.m3-primary : Theme.label;
+                                font-size: m3 ? Theme.large : Theme.title;
+                                font-weight: m3 ? 400 : 600;
+                            }
+                        }
+                        // Material: the level as a bar, error when low
+                        if m3 && bat-present: LevelBar {
+                            value: bat-level;
+                            color: bat-low ? Theme.m3-error : Theme.m3-primary;
+                        }
+                        Text {
+                            min-height: bat-status-h;
+                            wrap: word-wrap;
+                            text: bat-status;
+                            color: Theme.secondary;
+                            font-size: Theme.small;
+                        }
+                        if bat-watts != "": Text {
+                            text: bat-watts;
+                            color: Theme.tertiary;
+                            font-size: Theme.small;
+                        }
+                        // Battery health: capacity, cycles, condition
+                        if health.length > 0: VerticalLayout {
+                            padding-top: 4px;
+                            Section { text: "Battery health"; }
+                        }
+                        for r in health: Rectangle {
+                            height: 20px;
+                            Text {
+                                x: 0;
+                                height: parent.height;
+                                vertical-alignment: center;
+                                text: r.label;
+                                color: Theme.label;
+                                font-size: Theme.small;
+                            }
+                            Text {
+                                x: parent.width - self.width;
+                                width: self.preferred-width;
+                                height: parent.height;
+                                vertical-alignment: center;
+                                text: r.value;
+                                color: r.warn ? (m3 ? Theme.m3-error : Theme.warning) : Theme.secondary;
+                                font-size: Theme.small;
+                            }
+                        }
+                        VerticalLayout {
+                            padding-top: 4px;
+                            Section { text: "Energy mode"; }
+                        }
+                        // (without power-profiles-daemon: who manages power instead)
+                        if !ppd: Text {
+                            min-height: power-short-h;
+                            wrap: word-wrap;
+                            text: power-short;
+                            color: Theme.secondary;
+                            font-size: Theme.small;
+                        }
+                        if ppd: Block {
+                            b: modes;
+                            g: g;
+                            accent-glyph: accent-glyph;
+                            do(what, text) => {
+                                if what == "seg" { mode(text.to-float()); }
+                            }
+                        }
+                    }
+
+                    // ── Resources: CPU, memory and swap as bars ──
+                    if panel == "resourcesMenu": VerticalLayout {
+                        spacing: 12px;
+                        for r in bars: VerticalLayout {
+                            spacing: 5px;
+                            Rectangle {
+                                height: 16px;
+                                Text {
+                                    x: 0;
+                                    height: parent.height;
+                                    vertical-alignment: center;
+                                    text: r.label;
+                                    color: Theme.label;
+                                    font-size: Theme.small;
+                                    font-weight: m3 ? 500 : 600;
+                                }
+                                Text {
+                                    x: parent.width - self.width;
+                                    width: self.preferred-width;
+                                    height: parent.height;
+                                    vertical-alignment: center;
+                                    text: r.detail;
+                                    color: Theme.secondary;
+                                    font-size: Theme.small;
+                                }
+                            }
+                            // (Material: an 8 px track in secondaryContainer)
+                            Rectangle {
+                                height: m3 ? 8px : 6px;
+                                border-radius: self.height / 2;
+                                background: m3 ? Theme.m3-secondary-container : Theme.toggle-off;
+                                Rectangle {
+                                    x: 0;
+                                    width: parent.width * min(1, max(0, r.value));
+                                    animate width { duration: Theme.popover; }
+                                    height: parent.height;
+                                    border-radius: self.height / 2;
+                                    background: r.value > 0.9 ? Theme.danger : Theme.accent;
+                                }
+                            }
+                        }
+                    }
+
+                    // ── Weather: now, then the next hours ──
+                    if panel == "weatherMenu": VerticalLayout {
+                        spacing: 8px;
+                        Text {
+                            text: wx-place;
+                            color: Theme.label;
+                            font-size: Theme.title;
+                            font-weight: 600;
+                        }
+                        if wx-note != "": Text {
+                            wrap: word-wrap;
+                            text: wx-note;
+                            color: Theme.secondary;
+                            font-size: Theme.small;
+                        }
+                        if wx-note == "": HorizontalLayout {
+                            spacing: 10px;
+                            alignment: start;
+                            SymIcon {
+                                text: wx-icon;
+                                fill: true;
+                                font-size: 34px;
+                                color: Theme.label;
+                            }
+                            Text {
+                                vertical-alignment: center;
+                                text: wx-temp;
+                                color: m3 ? Theme.m3-primary : Theme.label;
+                                font-size: m3 ? 45px : 40px;
+                            }
+                            VerticalLayout {
+                                alignment: center;
+                                Text {
+                                    text: wx-cond;
+                                    color: Theme.label;
+                                    font-size: Theme.small;
+                                    font-weight: 500;
+                                }
+                                Text {
+                                    text: wx-feels;
+                                    color: Theme.secondary;
+                                    font-size: Theme.small;
+                                }
+                            }
+                        }
+                        if wx-note == "" && hours.length > 0: HorizontalLayout {
+                            padding-top: 6px;
+                            for h in hours: VerticalLayout {
+                                spacing: 3px;
+                                horizontal-stretch: 1;
+                                Text {
+                                    horizontal-alignment: center;
+                                    text: h.time;
+                                    color: Theme.secondary;
+                                    font-size: Theme.caption;
+                                }
+                                SymIcon {
+                                    height: 16px;
+                                    text: h.icon;
+                                    fill: true;
+                                    font-size: 16px;
+                                    color: Theme.label;
+                                }
+                                Text {
+                                    horizontal-alignment: center;
+                                    text: h.temp;
+                                    color: Theme.label;
+                                    font-size: Theme.small;
+                                }
+                            }
+                        }
+                    }
+
+                    // ── Now Playing: art and track, seek bar, transport, other players ──
+                    if panel == "nowPlaying": VerticalLayout {
+                        spacing: 12px;
+                        HorizontalLayout {
+                            spacing: 12px;
+                            // (Material: rounder while it plays, as the QML's cookie and square)
+                            Rectangle {
+                                width: 72px;
+                                height: 72px;
+                                border-radius: m3 ? (np.playing ? 36px : 16px) : 12px;
+                                animate border-radius { duration: 300ms; easing: spring(0.5); }
+                                background: m3 ? Theme.m3-surface-container-highest : Theme.fill;
+                                clip: true;
+                                if np.has-art: Image {
+                                    width: 100%;
+                                    height: 100%;
+                                    source: np.art;
+                                    image-fit: cover;
+                                }
+                                if !np.has-art: SymIcon {
+                                    text: sg.notes;
+                                    fill: true;
+                                    font-size: 28px;
+                                    color: m3 ? Theme.m3-on-surface-variant : Theme.tertiary;
+                                }
+                            }
+                            VerticalLayout {
+                                alignment: center;
+                                spacing: 2px;
+                                Text {
+                                    text: np.title;
+                                    overflow: elide;
+                                    color: Theme.label;
+                                    font-size: Theme.title;
+                                    font-weight: 600;
+                                }
+                                if np.byline != "": Text {
+                                    text: np.byline;
+                                    overflow: elide;
+                                    color: Theme.secondary;
+                                    font-size: Theme.small;
+                                }
+                                if np.identity != "": Text {
+                                    text: np.identity;
+                                    overflow: elide;
+                                    color: Theme.tertiary;
+                                    font-size: Theme.caption;
+                                }
+                            }
+                        }
+                        // Seek bar
+                        if np.timed: VerticalLayout {
+                            spacing: 4px;
+                            if !m3: GlassSeek {
+                                value: np.progress;
+                                moved(v) => { np-seek(v); }
+                            }
+                            if m3: QsSlider {
+                                height: 32px;
+                                track: 16px;
+                                value: np.progress;
+                                moved(v) => { np-seek(v); }
+                            }
+                            Rectangle {
+                                height: 14px;
+                                Text {
+                                    x: 0;
+                                    text: np.pos;
+                                    color: Theme.tertiary;
+                                    font-size: Theme.caption;
+                                }
+                                Text {
+                                    x: parent.width - self.width;
+                                    width: self.preferred-width;
+                                    text: "-" + np.rem;
+                                    color: Theme.tertiary;
+                                    font-size: Theme.caption;
+                                }
+                            }
+                        }
+                        HorizontalLayout {
+                            alignment: center;
+                            spacing: m3 ? 12px : 2px;
+                            Transport {
+                                y: (parent.height - self.height) / 2;
+                                icon: sg.prev;
+                                size: 22px;
+                                label: "Previous";
+                                enabled: np.prev;
+                                clicked => { np-do("previous"); }
+                            }
+                            if !m3: Transport {
+                                y: (parent.height - self.height) / 2;
+                                icon: np.playing ? sg.pause : sg.play;
+                                size: 30px;
+                                label: np.playing ? "Pause" : "Play";
+                                enabled: np.toggle;
+                                clicked => { np-do("toggle"); }
+                            }
+                            if m3: PlayButton {
+                                playing: np.playing;
+                                enabled: np.toggle;
+                                sg: sg;
+                                clicked => { np-do("toggle"); }
+                            }
+                            Transport {
+                                y: (parent.height - self.height) / 2;
+                                icon: sg.next;
+                                size: 22px;
+                                label: "Next";
+                                enabled: np.next;
+                                clicked => { np-do("next"); }
+                            }
+                        }
+                        // Other players
+                        if others.length > 0: VerticalLayout {
+                            spacing: 2px;
+                            for o[i] in others: Rectangle {
+                                height: 30px;
+                                border-radius: 8px;
+                                background: ot.has-hover ? (m3 ? Theme.m3-on-surface.with-alpha(0.08) : Theme.fill) : transparent;
+                                accessible-role: button;
+                                accessible-label: o;
+                                accessible-action-default => { np-pick(i); }
+                                Text {
+                                    x: 8px;
+                                    width: parent.width - 16px;
+                                    height: parent.height;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                    text: o;
+                                    color: Theme.secondary;
+                                    font-size: Theme.small;
+                                    accessible-role: none;
+                                }
+                                ot := TouchArea {
+                                    mouse-cursor: pointer;
+                                    clicked => { np-pick(i); }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // A device's menu (PointerMenu): a click elsewhere puts it away
+    TouchArea {
+        visible: menu-open;
+        clicked => { menu-close(); }
+    }
+    Rectangle {
+        visible: menu-open;
+        x: menu-x;
+        y: menu-y;
+        width: menu-w;
+        height: menu-h;
+        border-radius: m3 ? 16px : Theme.menu-radius + 2px;
+        background: Theme.menu-bg;
+        border-width: m3 ? 0 : 0.5px;
+        border-color: Theme.separator;
+        drop-shadow-blur: 16px;
+        drop-shadow-offset-y: 4px;
+        drop-shadow-color: #00000040;
+        accessible-role: AccessibleRole.list;
+        accessible-label: "Device menu";
+        TouchArea { }
+        mlist := VerticalLayout {
+            x: mpad;
+            y: mpad;
+            width: menu-w - 2 * mpad;
+            for it[j] in menu-items: Rectangle {
+                height: it.sep ? (m3 ? 9px : 11px) : (m3 ? 40px : 26px);
+                if it.sep: Rectangle {
+                    width: parent.width - 18px;
+                    height: 1px;
+                    background: Theme.separator;
+                }
+                if !it.sep: Rectangle {
+                    accessible-role: list-item;
+                    accessible-label: it.text;
+                    accessible-action-default => { menu-pick(j); }
+                    border-radius: m3 ? 8px : Theme.radius-item + 2px;
+                    background: mt.has-hover ? (m3 ? Theme.m3-on-surface.with-alpha(0.08) : it.danger ? Theme.danger : Theme.highlight) : transparent;
+                    animate background { duration: 100ms; }
+                    Text {
+                        x: m3 ? 12px : 10px;
+                        width: parent.width - 2 * self.x;
+                        height: parent.height;
+                        text: it.text;
+                        overflow: elide;
+                        vertical-alignment: center;
+                        color: m3 ? (it.danger ? Theme.m3-error : Theme.m3-on-surface) : mt.has-hover ? Theme.on-highlight : it.danger ? Theme.danger : Theme.menu-fg;
+                        font-size: m3 ? 14px : Theme.body;
+                        font-weight: m3 ? 500 : 400;
+                        accessible-role: none;
+                    }
+                    mt := TouchArea {
+                        clicked => { menu-pick(j); }
+                    }
+                }
+            }
+        }
+    }
+}

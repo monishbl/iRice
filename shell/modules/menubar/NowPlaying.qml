@@ -18,6 +18,7 @@ Variants {
         required property var modelData
         panel: "nowPlaying"
         screen: modelData
+        elsewhere: RustUi.drawing("statusmenus") // (tessera-ui draws it: StatusMenusFeed)
 
         Popover {
             id: pop

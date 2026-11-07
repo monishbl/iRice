@@ -647,7 +647,7 @@ component GlassModule {
 // (secondaryContainer) split by a thin handle with a gap each side; the icon
 // in the done part while it fits, else past the handle; standing (1×2) it
 // rises from the bottom
-component QsSlider {
+export component QsSlider {
     in property <CcIc> icon;
     in property <float> value;
     in property <bool> has-more;
@@ -1182,7 +1182,7 @@ component QsMedia {
 }
 
 // ── A page's block (ListRow.qml and friends), both looks ────────────────────
-component Block inherits VerticalLayout {
+export component Block inherits VerticalLayout {
     in property <CcBlock> b;
     in property <bool> focused; // the keyboard is on it
     in property <CcGlyphs> g;
@@ -1830,7 +1830,7 @@ component PageHeader {
 }
 
 // The page: its header, then its blocks scrolling once taller than `cap`
-component PageView {
+export component PageView {
     in property <string> title;
     in property <bool> back;
     in property <bool> has-switch;
@@ -1842,14 +1842,18 @@ component PageView {
     in property <color> accent-glyph;
     in property <length> cap: 360px;
     in property <int> kbd: -1;
+    // (false: no header at all, DetailPage's with no title, back or switch:
+    // the menu bar's Sound menu, tessera-statusmenus)
+    in property <bool> show-header: true;
     callback go-back();
     callback toggled();
     callback refreshed();
     callback block(int, string, string);
     callback block-menu(int, length, length);
     callback block-slide(int, float);
-    preferred-height: hdr.preferred-height + 10px + list.height;
+    preferred-height: (show-header ? hdr.preferred-height + 10px : 0) + list.height;
     hdr := PageHeader {
+        visible: show-header;
         y: 0;
         width: root.width;
         height: self.preferred-height;
@@ -1865,7 +1869,7 @@ component PageView {
         refreshed => { refreshed(); }
     }
     list := Flickable {
-        y: hdr.height + 10px;
+        y: show-header ? hdr.height + 10px : 0;
         width: root.width;
         height: min(col.preferred-height, cap);
         content-height: col.preferred-height;

@@ -1,0 +1,22 @@
+[package]
+name = "tessera-statusmenus"
+description = "tessera-ui: the menu bar's status menus (Bluetooth, Sound, privacy, battery, resources, weather, Now Playing)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+doctest = false # (comments' code blocks are prose, not examples)
+
+[dependencies]
+tessera-core.workspace = true
+# (the Sound and Bluetooth pages are the Control Center's: its blocks, page
+# view, pictures and icons; ui/statusmenus.slint imports its Slint)
+tessera-controlcenter = { path = "../controlcenter" }
+slint.workspace = true
+smithay-client-toolkit.workspace = true
+serde_json.workspace = true
+
+[build-dependencies]
+slint-build.workspace = true

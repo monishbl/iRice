@@ -10,6 +10,8 @@ import qs.services
 // Menus behind the menu bar's status items: Wi-Fi, Bluetooth, Sound, battery,
 // resources and weather. Each is a glass popover under its item (Material: a
 // surfaceContainer panel, its section headers in labelMedium).
+// (rust.surfaces: network draws the Wi-Fi menu; statusmenus the others and
+// NowPlaying.qml's, their state from StatusMenusFeed)
 Scope {
     component StatusMenu: Variants {
         id: menu
@@ -44,6 +46,7 @@ Scope {
 
     // (rust.surfaces: network: tessera-ui draws this one, its state from NetworkFeed)
     NetworkFeed {}
+    StatusMenusFeed {}
     StatusMenu {
         panel: "wifiMenu"
         width_: 300
@@ -60,11 +63,13 @@ Scope {
     StatusMenu {
         panel: "bluetoothMenu"
         width_: 300
+        elsewhere: RustUi.drawing("statusmenus")
         body: Component { BluetoothPage { showBack: false } }
     }
     StatusMenu {
         panel: "soundMenu"
         width_: 300
+        elsewhere: RustUi.drawing("statusmenus")
         body: Component {
             Column {
                 spacing: 12
@@ -88,6 +93,7 @@ Scope {
     StatusMenu {
         panel: "privacyMenu"
         width_: 260
+        elsewhere: RustUi.drawing("statusmenus")
         body: Component {
             Column {
                 spacing: 10
@@ -183,6 +189,7 @@ Scope {
     StatusMenu {
         panel: "batteryMenu"
         width_: 280
+        elsewhere: RustUi.drawing("statusmenus")
         body: Component {
             Column {
                 id: bat
@@ -302,6 +309,7 @@ Scope {
     StatusMenu {
         panel: "resourcesMenu"
         width_: 280
+        elsewhere: RustUi.drawing("statusmenus")
         body: Component {
             Column {
                 spacing: 12
@@ -345,6 +353,7 @@ Scope {
     StatusMenu {
         panel: "weatherMenu"
         width_: 300
+        elsewhere: RustUi.drawing("statusmenus")
         body: Component {
             Column {
                 spacing: 8

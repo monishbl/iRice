@@ -5199,6 +5199,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "tessera-statusmenus"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "slint",
+ "slint-build",
+ "smithay-client-toolkit",
+ "tessera-controlcenter",
+ "tessera-core",
+]
+
+[[package]]
 name = "tessera-switcher"
 version = "0.1.0"
 dependencies = [
@@ -5295,6 +5307,7 @@ dependencies = [
  "tessera-sidebar",
  "tessera-spotlight",
  "tessera-stagemanager",
+ "tessera-statusmenus",
  "tessera-switcher",
  "tessera-tabs",
  "tessera-tiling",

@@ -305,7 +305,8 @@ fn glyphs(material: bool) -> ui::CcGlyphs {
     }
 }
 
-fn picture(path: &str) -> Option<slint::Image> {
+/// A picture file as an image (the device drawings, ~/.face, album art), or None
+pub fn picture(path: &str) -> Option<slint::Image> {
     picture_px(path).map(slint::Image::from_rgba8)
 }
 

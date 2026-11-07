@@ -16,6 +16,7 @@ pub mod power_policy;
 pub mod pulse_events;
 pub mod resources;
 pub mod speed_test;
+pub mod statusmenus_feed;
 pub mod wifi_join;
 pub mod wifi_share;
 
@@ -27,6 +28,7 @@ pub fn services() -> Vec<Box<dyn Service>> {
         Box::new(wifi_share::WifiShare::default()),
         Box::new(speed_test::SpeedTest::default()),
         Box::new(network_feed::NetworkFeed::default()),
+        Box::new(statusmenus_feed::StatusMenusFeed::default()),
         Box::new(audio::Audio::default()),
         Box::new(audio_profiles::AudioProfiles::default()),
         Box::new(audio_streams::AudioStreams::default()),

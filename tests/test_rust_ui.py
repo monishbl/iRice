@@ -354,24 +354,41 @@ class Agreement(unittest.TestCase):
         self.assertIn('"glass" => Some(Box::new(crate::theme::shell_glass_from(&v)))', (CRATE / "core/src/services/bridge.rs").read_text())
 
     def test_sharing_surfaces_feed_their_part_and_step_aside(self):
-        # share, appstore, shelf, network (the Wi-Fi menu), captions, notes:
-        # each QML twin steps aside, its feed tells the part the shell's state
-        # and answers what it asks (RustUi's feedCall), and RustUi routes
-        # the call; the quick note and the Wi-Fi menu are panels by other names
+        # share, appstore, shelf, network (the Wi-Fi menu), statusmenus (the
+        # menu bar's other status menus), captions, notes: each QML twin steps
+        # aside, its feed tells the part the shell's state and answers what it
+        # asks (RustUi's feedCall), and RustUi routes the call; the quick note
+        # and the Wi-Fi menu are panels by other names, the status menus
+        # several panels of one surface
         rust_ui = (ROOT / "shell/services/RustUi.qml").read_text()
         self.assertIn('notes: "quickNote"', rust_ui)
         self.assertIn('network: "wifiMenu"', rust_ui)
+        panels = re.search(r"statusPanels: \[([^\]]*)\]", rust_ui)
+        self.assertIsNotNone(panels, "RustUi.qml has no statusPanels")
+        status = re.findall(r'"([A-Za-z]+)"', panels.group(1))
+        self.assertEqual(sorted(status), sorted(["bluetoothMenu", "soundMenu", "privacyMenu", "batteryMenu", "resourcesMenu", "weatherMenu", "nowPlaying"]))
+        # (the host routes the same panels to the same surface, and both carry which one opens)
+        host_panels = (CRATE / "host/shell/src/panels.rs").read_text()
+        m = re.search(r"STATUS_PANELS: &\[&str\] = &\[([^\]]*)\]", host_panels)
+        self.assertIsNotNone(m, "panels.rs has no STATUS_PANELS")
+        self.assertEqual(sorted(re.findall(r'"([A-Za-z]+)"', m.group(1))), sorted(status))
+        self.assertIn("panel: panel, anchorX: Panels.anchorX", rust_ui)
+        self.assertIn('json!({"panel": panel, "anchorX": self.m.anchor_x})', host_panels)
+        model_rs = (surface("statusmenus") / "src/model.rs").read_text()
+        for p in status:
+            self.assertIn(f'("{p}", ', model_rs)
         self.assertIn("signal feedCall(", rust_ui)
         twins = {
             "share": ["share/ShareSheet.qml", "share/IncomingCard.qml", "share/LinkShareCard.qml"],
             "appstore": ["appstore/AppStoreWindow.qml"],
             "shelf": ["shelf/ShelfWindow.qml", "shelf/ShelfDropZone.qml"],
             "network": ["menubar/StatusMenus.qml"],
+            "statusmenus": ["menubar/StatusMenus.qml", "menubar/NowPlaying.qml"],
             "captions": ["captions/CaptionsWindow.qml"],
             "notes": ["notes/QuickNote.qml"],
         }
         feeds = {"share": "share/ShareFeed.qml", "appstore": "appstore/AppStoreFeed.qml", "shelf": "shelf/ShelfFeed.qml",
-                 "network": "network/NetworkFeed.qml", "captions": "captions/CaptionsFeed.qml", "notes": "notes/NotesFeed.qml"}
+                 "network": "network/NetworkFeed.qml", "statusmenus": "menubar/StatusMenusFeed.qml", "captions": "captions/CaptionsFeed.qml", "notes": "notes/NotesFeed.qml"}
         for name, files in twins.items():
             self.assertIn(f'case "{name}":', rust_ui)
             for f in files:

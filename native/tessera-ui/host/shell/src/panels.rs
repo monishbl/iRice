@@ -16,6 +16,10 @@ use tessera_core::host::{Host, Service};
 /// Panels whose name isn't the surface's (RustUi.panelNames; surface names are lowercase)
 const PANEL_NAMES: &[(&str, &str)] = &[("controlcenter", "controlCenter"), ("screentools", "screenTools"), ("missioncontrol", "missionControl"), ("osk", "keyboard"), ("notes", "quickNote"), ("network", "wifiMenu"), ("widgetoptions", "widgetOptions")];
 
+/// The menu bar's status menus: one surface draws them all, told which with
+/// its `open` command (RustUi.statusPanels; tessera-statusmenus)
+pub const STATUS_PANELS: &[&str] = &["bluetoothMenu", "soundMenu", "privacyMenu", "batteryMenu", "resourcesMenu", "weatherMenu", "nowPlaying"];
+
 pub fn panel_of(surface: &str) -> String {
     PANEL_NAMES.iter().find(|(s, _)| *s == surface).map_or(surface, |(_, p)| *p).to_string()
 }
@@ -25,6 +29,9 @@ pub fn surface_of(panel: &str) -> String {
     // server draws the banners and the center)
     if panel == "notificationCenter" {
         return "notifications".into();
+    }
+    if STATUS_PANELS.contains(&panel) {
+        return "statusmenus".into();
     }
     PANEL_NAMES.iter().find(|(_, p)| *p == panel).map_or(panel, |(s, _)| *s).to_string()
 }
@@ -158,6 +165,8 @@ pub struct Panels {
     /// the panel the surface was told to open, and its screen (RustUi.forwarded)
     forwarded: String,
     forwarded_screen: String,
+    /// the panel itself (a surface that draws several: statusmenus)
+    forwarded_panel: String,
     sent_tab: i64,
     sent_action: Option<(String, String)>,
     sent_about: bool,
@@ -241,7 +250,7 @@ impl Panels {
                 if self.forwarded == surface {
                     self.forwarded.clear();
                 }
-                if self.m.open == panel_of(&surface) || (surface == "notifications" && self.m.open == "notificationCenter") {
+                if !self.m.open.is_empty() && (self.m.open == panel_of(&surface) || surface_of(&self.m.open) == surface) {
                     self.m.close(now);
                 }
             }
@@ -359,11 +368,14 @@ impl Panels {
         if !self.forwarded.is_empty() && self.forwarded != want {
             h.command("close", &self.forwarded.clone(), None, json!({}));
         }
-        if !want.is_empty() && (want != self.forwarded || scr != self.forwarded_screen) {
-            h.command("open", &want, Some(&scr), json!({}));
+        let panel = if want.is_empty() { String::new() } else { self.m.open.clone() };
+        if !want.is_empty() && (want != self.forwarded || scr != self.forwarded_screen || panel != self.forwarded_panel) {
+            // (which panel and where its item is: the status menus' surface draws several)
+            h.command("open", &want, Some(&scr), json!({"panel": panel, "anchorX": self.m.anchor_x}));
         }
         self.forwarded = want;
         self.forwarded_screen = scr;
+        self.forwarded_panel = panel;
     }
 
     /// After a change: everything that follows Panels' properties
@@ -717,6 +729,8 @@ mod tests {
         assert_eq!(surface_of("quickNote"), "notes");
         assert_eq!(panel_of("emoji"), "emoji");
         assert_eq!(surface_of("notificationCenter"), "notifications");
+        assert_eq!(surface_of("batteryMenu"), "statusmenus");
+        assert_eq!(surface_of("nowPlaying"), "statusmenus");
     }
 
     #[test]

@@ -19,8 +19,9 @@
 #
 #   --arena N        the sandbox arena (2–9, default 6; 1 is your own and refused)
 #   --only a,b       just these surfaces (default: all below)
-#   --with-network   also the Wi-Fi menu: it lists the networks around you, so
-#                    it's off by default (the pictures stay on this computer)
+#   --with-network   also the Wi-Fi and Bluetooth menus: they list the networks
+#                    and devices around you, so they're off by default (the
+#                    pictures stay on this computer)
 #
 # Takes about 30–60 minutes (builds and tests run at the lowest priority,
 # memory-capped, through ~/.local/share/tessera-port/slot.sh when present).
@@ -38,7 +39,7 @@ while (($#)); do
         --with-network) NETWORK=1 ;;
         --standalone) STANDALONE=1 ;;
         --out) OUT=$2; shift ;;
-        -h|--help) sed -n 2,26p "$0"; exit 0 ;;
+        -h|--help) sed -n 2,27p "$0"; exit 0 ;;
         *) echo "unknown option $1 (--help)"; exit 2 ;;
     esac
     shift
@@ -70,7 +71,12 @@ STATES=$(cat <<EOF
 menubar|idle|:|1.5
 menubar|system-menu|ipc panels open systemMenu $SCREEN|1.5
 menubar|window-menu|ipc panels open windowMenu $SCREEN|1.5
-menubar|battery-menu|ipc panels open batteryMenu $SCREEN|1.5
+statusmenus|battery-menu|ipc panels open batteryMenu $SCREEN|1.5
+statusmenus|sound-menu|ipc panels open soundMenu $SCREEN|1.5
+statusmenus|resources-menu|ipc panels open resourcesMenu $SCREEN|1.5
+statusmenus|weather-menu|ipc panels open weatherMenu $SCREEN|1.5
+statusmenus|privacy-menu|ipc panels open privacyMenu $SCREEN|1.5
+statusmenus|bluetooth-menu|ipc panels open bluetoothMenu $SCREEN|1.5
 dock|idle|:|1
 osd|volume|ipc osd preview volume|1
 osd|brightness|ipc osd preview brightness|1
@@ -119,6 +125,8 @@ displayoverlay|confirm|ipc cues confirm|1.5|s
 welcome|open|ipc welcome open|2.5
 EOF
 )
+# (the menu bar's status menus are tessera-statusmenus' (statusmenus); Now
+# Playing (nowPlaying) has no state: the sandbox runs no media player)
 # (a 5th field: w = needs test windows open; s = standalone only, wave 4b's
 # surfaces with no QML command to show them: shot in the standalone pass only,
 # listed as "new (no QML)")
@@ -126,8 +134,8 @@ EOF
 # stagemanager, tabs, background (it's in every shot); the greeter has its own
 # script: native/tessera-ui/tools/greeter-shots.sh)
 
-want() { # surface → wanted?
-    [[ $1 == network && $NETWORK == 0 ]] && return 1
+want() { # surface [state] → wanted?
+    [[ ( $1 == network || ${2:-} == bluetooth-menu ) && $NETWORK == 0 ]] && return 1
     [[ -z $ONLY ]] || [[ ",$ONLY," == *",$1,"* ]]
 }
 surfaces_in_use() {
@@ -179,7 +187,7 @@ PIDF=/tmp/tessera-verify-$ARENA.windows   # (the test windows' pids: closed by p
 capture() { # look pass(qml|rust)
     local look=$1 pass=$2
     printf '%s\n' "$STATES" | while IFS='|' read -r s name cmd wait flag; do
-        want "$s" || continue
+        want "$s" "$name" || continue
         [[ $flag == *s* && ( $pass == qml || $STANDALONE == 0 ) ]] && continue
         quiet
         if [[ $flag == *w* && ! -s $PIDF ]]; then   # (windows for Overview & co., from here on)
