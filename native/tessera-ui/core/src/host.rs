@@ -256,7 +256,15 @@ impl crate::shell::Part for HostPart {
         NAME
     }
     fn start(&mut self, st: &mut State) {
-        self.each(st, |s, h| s.start(h));
+        // (a slow start holds up the first frame: say which, and how long)
+        self.each(st, |s, h| {
+            let t = std::time::Instant::now();
+            s.start(h);
+            let ms = t.elapsed().as_millis();
+            if ms >= 200 {
+                eprintln!("tessera-ui: slow start: host {} {ms} ms", s.name());
+            }
+        });
     }
     fn config_changed(&mut self, st: &mut State, _look: bool) {
         self.each(st, |s, h| s.config_changed(h));

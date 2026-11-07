@@ -240,7 +240,16 @@ fn main() {
     let shell = shell::Shell::new(tx.clone(), glass, surfaces);
     let mut state = State::new(&globals, qh, egl, lh.clone(), tx.clone(), shell, parts, started);
     watch_config(tx.clone());
-    state.each_part(|p, st| p.start(st));
+    state.each_part(|p, st| {
+        // (a slow start holds up the first frame: say which, and how long)
+        let t = std::time::Instant::now();
+        p.start(st);
+        let ms = t.elapsed().as_millis();
+        if ms >= 200 {
+            eprintln!("tessera-ui: slow start: {} {ms} ms", p.name());
+        }
+    });
+    eprintln!("tessera-ui: started every part {} ms after main", started.elapsed().as_millis());
     // (parts that show nothing until something happens, as the OSD: no first
     // frame to wait for, they draw from now; the shell steps aside at once)
     if state.surfaces.is_empty() {

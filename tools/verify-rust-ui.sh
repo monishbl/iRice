@@ -221,7 +221,9 @@ capture() { # look pass(qml|rust)
 }
 # Standalone: the shell's processes in the arena (pid, memory, CPU, age)
 probe() { # look label
-    inbox "echo \"ui=\$(pgrep -f 'tessera-ui(.real)? --standalone' | head -1) qs=\$(pgrep -x tessera-shell | head -1)\$(pgrep -x qs | head -1)\$(pgrep -x quickshell | head -1) sock=\$(test -S \$XDG_RUNTIME_DIR/tessera/ipc.sock && echo yes || echo no)\"; for p in \$(pgrep -f 'tessera-ui(.real)? --standalone'; pgrep -x tessera-shell; pgrep -x qs; pgrep -x quickshell); do ps -o pid=,rss=,pcpu=,etimes=,args= -p \$p; done" </dev/null 2>/dev/null | sed "s/^/$2 /" >> "$OUT/logs/$1-standalone-probe.txt"
+    # (only this arena's: its runtime folder in the process's environment. The
+    # container shares PIDs with the desktop, whose own shell may be tessera-ui)
+    inbox "mine() { for p in \"\$@\"; do grep -qzx \"XDG_RUNTIME_DIR=\$XDG_RUNTIME_DIR\" /proc/\$p/environ 2>/dev/null && echo \$p; done; }; ui=\$(mine \$(pgrep -f 'tessera-ui(.real)? --standalone') | head -1); qs=\$(mine \$(pgrep -x tessera-shell; pgrep -x qs; pgrep -x quickshell) | head -1); echo \"ui=\$ui qs=\$qs sock=\$(test -S \$XDG_RUNTIME_DIR/tessera/ipc.sock && echo yes || echo no)\"; for p in \$(mine \$(pgrep -f 'tessera-ui(.real)? --standalone'; pgrep -x tessera-shell; pgrep -x qs; pgrep -x quickshell)); do ps -o pid=,rss=,pcpu=,etimes=,args= -p \$p; done" </dev/null 2>/dev/null | sed "s/^/$2 /" >> "$OUT/logs/$1-standalone-probe.txt"
 }
 for look in ${LOOKS//,/ }; do
     ((BUILD_FAILED)) && break

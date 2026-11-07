@@ -115,6 +115,47 @@ export QT_LOGGING_RULES="${QT_LOGGING_RULES:+$QT_LOGGING_RULES;}qt.svg.draw.warn
 # zombie for its whole life)
 setsid -f "$(dirname -- "${BASH_SOURCE[0]}")/start-idle.sh" "$QS" </dev/null >/dev/null 2>&1
 
+# Standalone (rust.standalone, on unless set to false; TESSERA_STANDALONE=1
+# forces it, =0 forbids it): no Quickshell. tessera-ui draws every surface and
+# does what the QML shell did (native/tessera-ui/host). This process becomes it,
+# as it becomes the shell below. Without the tessera-ui binary: the QML shell.
+# A safety net: each standalone start is counted in $STARTS, and tessera-ui
+# removes the count once it has stayed up 30 s; three starts in a row that
+# didn't (it keeps crashing) and this start is the QML shell instead, until
+# tessera-ui next stays up (a new build, or `rm` the file).
+STARTS="${XDG_STATE_HOME:-$HOME/.local/state}/tessera/standalone-starts"
+standalone_ui() {
+    [[ "${TESSERA_STANDALONE:-}" == 0 ]] && return 1
+    if [[ "${TESSERA_STANDALONE:-}" != 1 ]]; then
+        local c="${XDG_CONFIG_HOME:-$HOME/.config}/tessera/config.json"
+        [[ -f "$c" ]] || c="${XDG_CONFIG_HOME:-$HOME/.config}/irice/config.json"
+        # (no settings file, or no rust.standalone in it: on)
+        [[ -f "$c" ]] && ! python3 -I -c 'import json, sys; sys.exit(1 if json.load(open(sys.argv[1])).get("rust", {}).get("standalone") is False else 0)' "$c" 2>/dev/null && return 1
+        (( $(cat "$STARTS" 2>/dev/null || echo 0) >= 3 )) && { echo "launch-shell: tessera-ui didn't stay up 3 times: the QML shell this time ($STARTS)" >&2; return 1; }
+    fi
+    local b
+    for b in "${TESSERA_UI:-}" "${XDG_DATA_HOME:-$HOME/.local/share}/tessera/bin/tessera-ui" "$HOME/.local/share/tessera/bin/tessera-ui" "${XDG_DATA_HOME:-$HOME/.local/share}/irice/bin/tessera-ui" "$HOME/.local/share/irice/bin/tessera-ui"; do
+        [[ -n "$b" && -x "$b" ]] && { echo "$b"; return 0; }
+    done
+    return 1
+}
+if ui="$(standalone_ui)"; then
+    # (decided before the Material look's QML root is assembled: tessera-ui
+    # doesn't need it, and the seconds it took left a gap with no shell)
+    look=$(python3 -I -c 'import json, sys; print(json.load(open(sys.argv[1])).get("appearance", {}).get("look", "glass"))' \
+        "${XDG_CONFIG_HOME:-$HOME/.config}/tessera/config.json" 2>/dev/null || echo glass)
+    export TESSERA_SHELL=1 TESSERA_LOOK="$look" IRICE_SHELL=1
+    [[ "${TESSERA_TTY:-}" == 1 ]] && export IRICE_TTY=1
+    export TESSERA_STANDALONE=1
+    mkdir -p "$(dirname "$STARTS")"
+    echo $(( $(cat "$STARTS" 2>/dev/null || echo 0) + 1 )) > "$STARTS"
+    # (its messages, and a crash's, in tessera-ui.log; the run before's in .1)
+    log="$(dirname "$STARTS")/tessera-ui.log"
+    [[ -f "$log" ]] && mv -f "$log" "$log.1"
+    export RUST_BACKTRACE=1
+    exec "$ui" --standalone </dev/null >>"$log" 2>&1
+fi
+
 # The look (Settings → Appearance → Look). Glass is this shell folder.
 # Material (experimental) is the material/ folder beside it, run as a root of
 # links over this one (material-root.py): only its own files differ. Whatever
@@ -172,40 +213,6 @@ done
 # iRice became Tessera, which may run until the next login)
 export TESSERA_SHELL=1 TESSERA_LOOK="$look" IRICE_SHELL=1
 [[ "${TESSERA_TTY:-}" == 1 ]] && export IRICE_TTY=1
-# Standalone (rust.standalone, on unless set to false; TESSERA_STANDALONE=1
-# forces it, =0 forbids it): no Quickshell. tessera-ui draws every surface and
-# does what the QML shell did (native/tessera-ui/host). This process becomes it,
-# as it becomes the shell below. Without the tessera-ui binary: the QML shell.
-# A safety net: each standalone start is counted in $STARTS, and tessera-ui
-# removes the count once it has stayed up 30 s; three starts in a row that
-# didn't (it keeps crashing) and this start is the QML shell instead, until
-# tessera-ui next stays up (a new build, or `rm` the file).
-STARTS="${XDG_STATE_HOME:-$HOME/.local/state}/tessera/standalone-starts"
-standalone_ui() {
-    [[ "${TESSERA_STANDALONE:-}" == 0 ]] && return 1
-    if [[ "${TESSERA_STANDALONE:-}" != 1 ]]; then
-        local c="${XDG_CONFIG_HOME:-$HOME/.config}/tessera/config.json"
-        [[ -f "$c" ]] || c="${XDG_CONFIG_HOME:-$HOME/.config}/irice/config.json"
-        # (no settings file, or no rust.standalone in it: on)
-        [[ -f "$c" ]] && ! python3 -I -c 'import json, sys; sys.exit(1 if json.load(open(sys.argv[1])).get("rust", {}).get("standalone") is False else 0)' "$c" 2>/dev/null && return 1
-        (( $(cat "$STARTS" 2>/dev/null || echo 0) >= 3 )) && { echo "launch-shell: tessera-ui didn't stay up 3 times: the QML shell this time ($STARTS)" >&2; return 1; }
-    fi
-    local b
-    for b in "${TESSERA_UI:-}" "${XDG_DATA_HOME:-$HOME/.local/share}/tessera/bin/tessera-ui" "$HOME/.local/share/tessera/bin/tessera-ui" "${XDG_DATA_HOME:-$HOME/.local/share}/irice/bin/tessera-ui" "$HOME/.local/share/irice/bin/tessera-ui"; do
-        [[ -n "$b" && -x "$b" ]] && { echo "$b"; return 0; }
-    done
-    return 1
-}
-if ui="$(standalone_ui)"; then
-    export TESSERA_STANDALONE=1
-    mkdir -p "$(dirname "$STARTS")"
-    echo $(( $(cat "$STARTS" 2>/dev/null || echo 0) + 1 )) > "$STARTS"
-    # (its messages, and a crash's, in tessera-ui.log; the run before's in .1)
-    log="$(dirname "$STARTS")/tessera-ui.log"
-    [[ -f "$log" ]] && mv -f "$log" "$log.1"
-    export RUST_BACKTRACE=1
-    exec "$ui" --standalone </dev/null >>"$log" 2>&1
-fi
 # The Material look is experimental: if it doesn't come up (its lock screen
 # isn't answering within 20 s, or it quits first, as Quickshell does when its
 # files don't load), back to Glass, so a broken Material never leaves you

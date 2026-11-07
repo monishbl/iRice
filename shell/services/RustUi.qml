@@ -254,6 +254,7 @@ Singleton {
         }
     }
 
+    property bool resourcesUser: false // (resources.use from the Rust island, counted once)
     // What a panel drawn in Rust asks of this shell (its files, its windows)
     function call(name, a) {
         switch (name) {
@@ -323,6 +324,14 @@ Singleton {
         case "panels.show": // (the panels a Rust surface opens: Control Center's power menu, Search's "Just ask")
             if (["session", "sidebar"].includes(a[0]))
                 Panels.show(a[0], Quickshell.screens.find(s => s.name === a[1]) ?? undefined);
+            break;
+        case "resources.use":
+            // (the Rust bar's expanded island shows CPU and memory: sampled
+            // while it's open, as IslandStatus.qml counts itself)
+            if (a?.[0]?.kind === "desktop" && !!a[0].on !== root.resourcesUser) {
+                root.resourcesUser = !!a[0].on;
+                Resources.desktopUsers += root.resourcesUser ? 1 : -1;
+            }
             break;
         case "audio.hush":
             Audio.hush();
