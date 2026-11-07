@@ -214,6 +214,15 @@ fn main() {
     let mut parts: Vec<Box<dyn shell::Part>> = surfaces.on.iter().filter_map(|n| surfaces::make(n)).collect();
     if standalone {
         tessera_core::host::set_standalone(tx.clone());
+        // (launch-shell.sh counts standalone starts and falls back to the QML
+        // shell after three that didn't last: up 30 s, this one counts as good)
+        std::thread::spawn(|| {
+            std::thread::sleep(std::time::Duration::from_secs(30));
+            let state = std::env::var_os("XDG_STATE_HOME")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|| std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".local/state"));
+            let _ = std::fs::remove_file(state.join("tessera/standalone-starts"));
+        });
         // (first: its services are up before any surface asks them)
         parts.insert(0, Box::new(tessera_core::host::HostPart::new(host_services())));
     }

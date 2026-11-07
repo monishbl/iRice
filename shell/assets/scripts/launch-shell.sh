@@ -172,16 +172,23 @@ done
 # iRice became Tessera, which may run until the next login)
 export TESSERA_SHELL=1 TESSERA_LOOK="$look" IRICE_SHELL=1
 [[ "${TESSERA_TTY:-}" == 1 ]] && export IRICE_TTY=1
-# Standalone (Settings → rust.standalone, off by default; TESSERA_STANDALONE=1
+# Standalone (rust.standalone, on unless set to false; TESSERA_STANDALONE=1
 # forces it, =0 forbids it): no Quickshell. tessera-ui draws every surface and
 # does what the QML shell did (native/tessera-ui/host). This process becomes it,
 # as it becomes the shell below. Without the tessera-ui binary: the QML shell.
+# A safety net: each standalone start is counted in $STARTS, and tessera-ui
+# removes the count once it has stayed up 30 s; three starts in a row that
+# didn't (it keeps crashing) and this start is the QML shell instead, until
+# tessera-ui next stays up (a new build, or `rm` the file).
+STARTS="${XDG_STATE_HOME:-$HOME/.local/state}/tessera/standalone-starts"
 standalone_ui() {
     [[ "${TESSERA_STANDALONE:-}" == 0 ]] && return 1
     if [[ "${TESSERA_STANDALONE:-}" != 1 ]]; then
         local c="${XDG_CONFIG_HOME:-$HOME/.config}/tessera/config.json"
         [[ -f "$c" ]] || c="${XDG_CONFIG_HOME:-$HOME/.config}/irice/config.json"
-        python3 -I -c 'import json, sys; sys.exit(0 if json.load(open(sys.argv[1])).get("rust", {}).get("standalone") is True else 1)' "$c" 2>/dev/null || return 1
+        # (no settings file, or no rust.standalone in it: on)
+        [[ -f "$c" ]] && ! python3 -I -c 'import json, sys; sys.exit(1 if json.load(open(sys.argv[1])).get("rust", {}).get("standalone") is False else 0)' "$c" 2>/dev/null && return 1
+        (( $(cat "$STARTS" 2>/dev/null || echo 0) >= 3 )) && { echo "launch-shell: tessera-ui didn't stay up 3 times: the QML shell this time ($STARTS)" >&2; return 1; }
     fi
     local b
     for b in "${TESSERA_UI:-}" "${XDG_DATA_HOME:-$HOME/.local/share}/tessera/bin/tessera-ui" "$HOME/.local/share/tessera/bin/tessera-ui" "${XDG_DATA_HOME:-$HOME/.local/share}/irice/bin/tessera-ui" "$HOME/.local/share/irice/bin/tessera-ui"; do
@@ -191,6 +198,8 @@ standalone_ui() {
 }
 if ui="$(standalone_ui)"; then
     export TESSERA_STANDALONE=1
+    mkdir -p "$(dirname "$STARTS")"
+    echo $(( $(cat "$STARTS" 2>/dev/null || echo 0) + 1 )) > "$STARTS"
     exec "$ui" --standalone </dev/null
 fi
 # The Material look is experimental: if it doesn't come up (its lock screen

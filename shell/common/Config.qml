@@ -641,8 +641,9 @@ Singleton {
                 property string uiSource: "auto"
                 // Without this shell (Quickshell): tessera-ui is the whole shell and does what
                 // the QML services did (native/tessera-ui/host). launch-shell.sh, keep-shell.sh
-                // and shell-ipc.sh read it; off, nothing changes. Takes effect at the next start
-                property bool standalone: false
+                // and shell-ipc.sh read it (on unless false: the default since 7 Nov 2026);
+                // off, the QML shell. Takes effect at the next start
+                property bool standalone: true
             }
         }
     }
