@@ -92,7 +92,12 @@ sandbox (pointer/keyboard, both looks).
   accounts and keys left out) and runs both shells. Copy it to your scratch
   dir and add your scenarios; run `--only qml` / `--only rust`.
 - Pointer: `IRICE_ARENA=N ./dev.sh pointer -o IRICE-TEST move X Y | glide X Y MS | click | down | up | scroll`
-  (glides produce hover enter/leave; jumps may not). Keys: `./dev.sh run wtype …`.
+  (glides produce hover enter/leave; jumps may not). Each vptr process starts
+  at the screen centre, so put a whole path in ONE call
+  (`P move X Y sleep 400 move X2 Y2 click`), not one call per step.
+  Keys: `./dev.sh run wtype -d 30 …` (the default speed can drop keys).
+  Run at most 2 tester arenas at once (each nested Hyprland costs a core;
+  with builds the host load passed 40 and pointer steps took minutes).
   The arena's mod key is ALT.
 - Timing: `python3 tools/anim-timing.py rec.mp4` (start, end, frames, longest
   gap); `python3 tools/region-changes.py rec.mp4 x y w h` (did this area
