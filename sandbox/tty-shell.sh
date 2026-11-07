@@ -51,13 +51,34 @@ is_tty_shell() {
     { tr '\0' '\n' <"/proc/$1/environ"; } 2>/dev/null | grep -qx -e "TESSERA_TTY=1" -e "IRICE_TTY=1"
 }
 
+# Standalone (rust.standalone): tessera-ui is the shell. Only one started
+# with --standalone counts: the one the QML shell starts as its helper ends with it
+standalone_pids() {
+    local p
+    for p in $(pgrep -x tessera-ui); do
+        tr '\0' ' ' <"/proc/$p/cmdline" 2>/dev/null | grep -q -e '--standalone' && echo "$p"
+    done
+    return 0
+}
+is_standalone() { tr '\0' ' ' <"/proc/$1/cmdline" 2>/dev/null | grep -q -e '--standalone' && [[ "$(cat "/proc/$1/comm" 2>/dev/null)" == tessera-ui ]]; }
+
 # This session's shells, oldest first
 shell_pids() {
     local p
-    for p in $(pgrep -x tessera-shell; pgrep -x irice-shell; pgrep -x qs; pgrep -x quickshell); do
+    for p in $(pgrep -x tessera-shell; pgrep -x irice-shell; pgrep -x qs; pgrep -x quickshell; standalone_pids); do
         is_tty_shell "$p" && [[ "$(sig_of "$p")" == "$SIG" ]] && echo "$p"
     done | sort -n
     return 0
+}
+
+# Does the shell answer? (tessera-ui over its own socket, through its main
+# loop, so a frozen one doesn't; the QML one over Quickshell's IPC)
+answers() {
+    if is_standalone "$1"; then
+        [[ "$(timeout 4 "/proc/$1/exe" ipc call shell ready 2>/dev/null)" == yes ]]
+    else
+        timeout 4 "$QS" ipc --pid "$1" show >/dev/null 2>&1
+    fi
 }
 
 # Is the compositor with this signature gone for good? Only when its socket
@@ -74,7 +95,7 @@ gone() {
 # Test-session shells whose compositor has gone (left over from earlier sessions)
 reap() {
     local p s
-    for p in $(pgrep -x tessera-shell; pgrep -x irice-shell; pgrep -x qs; pgrep -x quickshell); do
+    for p in $(pgrep -x tessera-shell; pgrep -x irice-shell; pgrep -x qs; pgrep -x quickshell; standalone_pids); do
         is_tty_shell "$p" || continue
         s="$(sig_of "$p")"
         [[ -z "$s" || "$s" == "$SIG" ]] && continue
@@ -153,7 +174,7 @@ case "${1:-start}" in
             if (( ${#pids[@]} > 1 )); then
                 kill "${pids[@]:1}" 2>/dev/null # keep the oldest
             fi
-            if timeout 4 "$QS" ipc --pid "${pids[0]}" show >/dev/null 2>&1; then
+            if answers "${pids[0]}"; then
                 misses=0
             elif (( ++misses >= 2 )); then
                 notify-send -a Tessera "Restarting the shell" "It stopped responding." 2>/dev/null
