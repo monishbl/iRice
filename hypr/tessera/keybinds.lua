@@ -23,7 +23,7 @@ end
 --   tessera-ui ipc call shortcut <name>
 -- instead of hl.dsp.global("tessera:<name>") (host/shell/src/shortcuts.rs
 -- answers those names). It is decided as launch-shell.sh decides it: the
--- setting rust.standalone in config.json (TESSERA_STANDALONE=1 forces it, =0
+-- setting rust.standalone in config.json, on unless false (TESSERA_STANDALONE=1 forces it, =0
 -- forbids it), and only when the tessera-ui binary is there (without it the
 -- QML shell starts, and its global shortcuts are the ones to bind). Read when
 -- this file loads, so a changed setting takes effect on the next reload.
@@ -35,10 +35,15 @@ local function uiBinary()
     if env ~= "1" then
         -- (Tessera's config, else iRice's while it has not been moved yet)
         local c = json.read(userDir .. "/config.json") or json.read(cfg .. "/irice/config.json")
-        if type(c) ~= "table" or type(c.rust) ~= "table" or c.rust.standalone ~= true then return nil end
+        -- (on unless set to false: the default since 7 Nov 2026, as in launch-shell.sh)
+        if type(c) == "table" and type(c.rust) == "table" and c.rust.standalone == false then return nil end
     end
     local home = os.getenv("HOME") or ""
-    for _, b in ipairs({ os.getenv("TESSERA_UI") or "", dataHome .. "/tessera/bin/tessera-ui", home .. "/.local/share/tessera/bin/tessera-ui",
+    -- (the data folder beside the settings' one: a tty session's home is its
+    -- own, and this compositor may not have XDG_DATA_HOME pointing there)
+    local base = userDir:match("^(.*)/%.config/[^/]+$")
+    local beside = base and (base .. "/.local/share/tessera/bin/tessera-ui") or ""
+    for _, b in ipairs({ os.getenv("TESSERA_UI") or "", beside, dataHome .. "/tessera/bin/tessera-ui", home .. "/.local/share/tessera/bin/tessera-ui",
         dataHome .. "/irice/bin/tessera-ui", home .. "/.local/share/irice/bin/tessera-ui" }) do
         if b ~= "" then
             local f = io.open(b, "r")

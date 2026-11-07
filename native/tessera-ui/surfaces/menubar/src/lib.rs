@@ -147,6 +147,9 @@ struct MenuEntry {
 
 #[derive(Default)]
 pub struct Menubar {
+    /// the resources sampler asked for while an island is expanded (its last
+    /// line shows CPU and memory: IslandStatus.qml's Resources.desktopUsers)
+    island_res: bool,
     bars: Vec<BarEntry>,
     menu: Option<MenuEntry>,
     /// the shell's open panel, as last heard (a QML popover under an item)
@@ -500,6 +503,7 @@ impl Menubar {
         };
         let playing = players.chosen().is_some_and(|p| p.playing);
         let mut bars = std::mem::take(&mut self.bars);
+        let mut any_expanded = false;
         for b in &mut bars {
             let theme = b.ui.global::<ui::Theme>();
             let label = theme.get_label();
@@ -525,6 +529,7 @@ impl Menubar {
             let panel_here = !shell.str("open").is_empty() && (shell.str("screen") == b.output || shell.str("screen").is_empty());
             let menu_here = open_menu.as_ref().is_some_and(|(o, _)| *o == b.output);
             let view = island::view(&self.island, b.hover_open, pinned, over_fs, &fs_mode, b.fs_open);
+            any_expanded |= view.mode == Mode::Expanded;
             let revealed = !cfg.auto_hide || b.hovered || panel_here || menu_here || (cfg.island && event.is_some());
             let chrome = !over_fs || (cfg.auto_hide && (b.hovered || panel_here || menu_here));
             ui.set_revealed(revealed);
@@ -725,6 +730,10 @@ impl Menubar {
             }
         }
         self.bars = bars;
+        if any_expanded != self.island_res {
+            self.island_res = any_expanded;
+            tessera_core::shell::ask("resources.use", serde_json::json!([{"kind": "desktop", "on": any_expanded}]));
+        }
     }
 
     /// Re-arm the clock: on the minute, or every second when it shows

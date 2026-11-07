@@ -82,6 +82,9 @@ enum Tick {
 
 #[derive(Default)]
 pub struct Island {
+    /// resources sampled for the busy alerts (Island.qml's Binding on
+    /// Resources.islandActive), as last asked
+    res_asked: Option<bool>,
     alerts: Vec<Alert>,
     next_uid: i64,
     newest: i64,
@@ -125,6 +128,15 @@ impl Island {
 
     fn enabled(&self, h: &Host) -> bool {
         cfg_bool(h.cfg(), "island.enabled", true)
+    }
+
+    /// CPU, memory and temperature sampled (slowly) while their alerts are on
+    fn ask_resources(&mut self, h: &mut Host) {
+        let on = self.enabled(h) && (self.wants(h, "resources") || self.wants(h, "temperature"));
+        if self.res_asked != Some(on) {
+            self.res_asked = Some(on);
+            h.ask("resources.use", json!([{"kind": "island", "on": on}]));
+        }
     }
 
     /// Island.wants: an alert kind switched on (Settings → Notifications & Island)
@@ -697,6 +709,7 @@ impl Service for Island {
         h.st.shell.want("status");
         h.st.shell.want("hypr");
         self.publish(h);
+        self.ask_resources(h);
         // (the battery now comes as data: Service::data below, no 3 s look)
     }
     fn data(&mut self, h: &mut Host, what: std::any::TypeId) {
@@ -708,6 +721,7 @@ impl Service for Island {
         self.publish(h);
         self.live_sent.clear();
         self.push_live(h);
+        self.ask_resources(h);
     }
     fn message(&mut self, h: &mut Host, msg: Box<dyn Any + Send>) {
         match msg.downcast::<Tick>() {

@@ -119,6 +119,16 @@ impl Resources {
         let (u, t) = mem_gb(&std::fs::read_to_string("/proc/meminfo").unwrap_or_default());
         self.mem_used_gb = u;
         self.mem_total_gb = t;
+        // The island's busy alerts (Island.qml's Connections on Resources)
+        if self.island {
+            let r = crate::bus::get(NAME);
+            let (cpu, mem) = (r["cpu"].as_f64().unwrap_or(0.0), r["memory"].as_f64().unwrap_or(0.0));
+            h.ask("island.resources", json!([cpu, mem, u, t]));
+            let temp = r["temperature"].as_f64().unwrap_or(0.0);
+            if temp > 0.0 {
+                h.ask("island.temperature", json!([temp]));
+            }
+        }
         if self.gpu_kind == "nvidia" {
             // a process per sample: only while a graph shows
             if self.fast() && !self.nvidia_busy {

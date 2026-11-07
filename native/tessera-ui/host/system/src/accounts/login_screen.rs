@@ -129,7 +129,16 @@ impl Service for LoginScreen {
         let clock24 = if cfg["appearance"]["clock24"] == true { "1" } else { "0" };
         let shell_dir = crate::util::root().join("shell").to_string_lossy().into_owned();
         let sh = "QS=qs; for d in \"${XDG_DATA_HOME:-}/tessera\" \"$HOME/.local/share/tessera\" \"${XDG_DATA_HOME:-}/irice\" \"$HOME/.local/share/irice\"; do if [ -x \"$d/quickshell/bin/qs\" ]; then QS=\"$d/quickshell/bin/qs\"; export QML_IMPORT_PATH=\"$d/quickshell/lib/qt6/qml${QML_IMPORT_PATH:+:$QML_IMPORT_PATH}\"; break; fi; done; TESSERA_GREETER_MOCK=1 TESSERA_GREETER_STYLE=\"$1\" TESSERA_GREETER_WALLPAPER=\"$2\" TESSERA_GREETER_CLOCK24=\"$4\" exec \"$QS\" -p \"$3/greeter.qml\"";
-        let cmd = vec!["sh".to_string(), "-c".into(), sh.into(), "sh".into(), style, wall, shell_dir, clock24.into()];
+        let qml = vec!["sh".to_string(), "-c".into(), sh.into(), "sh".into(), style.clone(), wall, shell_dir, clock24.into()];
+        // This binary's own login screen (tessera-ui --greeter), as a preview
+        // (TESSERA_GREETER_MOCK: the password "tessera" "logs in", Escape quits);
+        // the QML one only if it can't start
+        let look = if h.st.shell.look.material { "material" } else { "glass" };
+        let me = std::env::current_exe().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+        let rust = (!me.is_empty()).then(|| {
+            vec!["env".to_string(), "TESSERA_GREETER_MOCK=1".into(), format!("TESSERA_GREETER_CLOCK24={clock24}"), me, "--greeter".into(), "--style".into(), style, "--look".into(), look.into()]
+        });
+        let cmd = rust.unwrap_or(qml);
         std::thread::spawn(move || {
             let _ = run_full(&cmd, None);
         });

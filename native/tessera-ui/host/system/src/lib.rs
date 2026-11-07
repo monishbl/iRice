@@ -94,7 +94,9 @@ impl Mirror {
             h.ask("resources.use", json!([{"kind": "menubar", "on": on}]));
         }
         let r = bus::get("Resources");
-        h.set_state("resources", if on { json!({"cpu": r["cpu"].as_f64().unwrap_or(0.0), "memory": r["memory"].as_f64().unwrap_or(0.0)}) } else { json!({"cpu": 0, "memory": 0}) });
+        // (whatever was sampled, for whoever asked: the bar, or the expanded
+        // island's last line, which asks resources.use "island" itself)
+        h.set_state("resources", json!({"cpu": r["cpu"].as_f64().unwrap_or(0.0), "memory": r["memory"].as_f64().unwrap_or(0.0)}));
         // Power.has("cooldown"): Cool-down holds a request (the island's "running hot" wording)
         let cooling = p["requests"].as_array().is_some_and(|r| r.iter().any(|q| q["owner"] == "cooldown"));
         h.set_state("power.cooldown", json!(cooling));
