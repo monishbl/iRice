@@ -47,12 +47,33 @@ if [[ $STYLE == look && $LOOK == material && -f "$SHARE/material/shell.qml" && -
     ROOT=$(python3 -I "$SHARE/shell/assets/scripts/material-root.py" "$SHARE/shell" "$SHARE/material" "$T/material-shell" 2>/dev/null) || ROOT="$SHARE/shell"
 fi
 
-run() { # style, root
+genv() { # style
     local env=(TESSERA_GREETER_STYLE="$1" TESSERA_GREETER_WALLPAPER="$SHARE/wallpaper.jpg" TESSERA_GREETER_CLOCK24="${CLOCK24:-0}")
     [[ -n $T ]] && env+=(XDG_CONFIG_HOME="$T/config" XDG_CACHE_HOME="$T/cache")
+    printf '%s\0' "${env[@]}"
+}
+run() { # style, root: the QML login screen
+    local env
+    mapfile -d '' env < <(genv "$1")
     env "${env[@]}" "$QS" -p "$2/greeter.qml"
 }
+# The login screen in Rust (tessera-ui --greeter), when install.sh copied
+# tessera-ui here (TESSERA_GREETER_UI: another one, for tests)
+UI="${TESSERA_GREETER_UI:-$SHARE/bin/tessera-ui}"
+run_rust() { # style
+    local env
+    mapfile -d '' env < <(genv "$1")
+    env "${env[@]}" "$UI" --greeter --style "$1" --look "$LOOK"
+}
 start=$SECONDS
+if [[ -x $UI ]]; then
+    run_rust "$STYLE"
+    code=$?
+    # (one that quits with an error at once gives way to the QML one)
+    [[ $code == 0 || $((SECONDS - start)) -ge 10 ]] && exit "$code"
+    echo "greeter-start: the Rust login screen quit ($code); the QML one instead" >&2
+    start=$SECONDS
+fi
 run "$STYLE" "$ROOT"
 code=$?
 if [[ $code != 0 && $STYLE != text && $((SECONDS - start)) -lt 10 ]]; then

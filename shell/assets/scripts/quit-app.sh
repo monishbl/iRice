@@ -17,7 +17,7 @@ protected() { # pid
     local comm cmd
     comm=$(cat "/proc/$1/comm" 2>/dev/null) || return 0
     case "$comm" in
-        Hyprland|hyprland|start-hyprland|quickshell|qs|systemd|dbus-daemon|dbus-broker|Xwayland|pipewire*|wireplumber|login|sddm*|ly*|gdm*|greetd|distrobox*|podman|conmon) return 0 ;;
+        Hyprland|hyprland|start-hyprland|quickshell|qs|tessera-ui|tessera-ui.rea*|tessera-shell|irice-shell|systemd|dbus-daemon|dbus-broker|Xwayland|pipewire*|wireplumber|login|sddm*|ly*|gdm*|greetd|distrobox*|podman|conmon) return 0 ;;
     esac
     cmd=$(tr '\0' ' ' <"/proc/$1/cmdline" 2>/dev/null)
     [[ "$cmd" == *Hyprland* || "$cmd" == *start-hyprland* || "$cmd" == *"qs -p"* || "$cmd" == *watch.sh* ||

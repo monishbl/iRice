@@ -158,9 +158,11 @@ FILES = [
 ANANICY_RULE = "/etc/ananicy.d/tessera.rules"
 ANANICY_TEXT = b"""# Tessera's shell: interactive, so panels and animations stay smooth while
 # apps are busy (Tessera's root helper; Settings > Battery & Power turns it off).
-# irice-shell: its name while Tessera was called iRice, until it restarts
+# irice-shell: its name while Tessera was called iRice, until it restarts;
+# tessera-ui: the shell itself since it runs standalone (rust.standalone)
 { "name": "tessera-shell", "type": "LowLatency_RT" }
 { "name": "irice-shell", "type": "LowLatency_RT" }
+{ "name": "tessera-ui", "type": "LowLatency_RT" }
 """
 OLD_ANANICY_RULE = "/etc/ananicy.d/irice.rules"  # (iRice's, replaced by this one)
 PRIORITY_OFF = "/etc/tessera/priority-off"

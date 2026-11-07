@@ -1192,6 +1192,10 @@ login() {
         if [[ -f "$ROOT/material/shell.qml" ]]; then run sudo cp -r "$ROOT/material" /usr/share/tessera/material; fi
         run sudo cp "$ROOT/hypr/greeter.lua" /usr/share/tessera/greeter.lua
         run sudo install -m 755 "$ROOT/hypr/greeter-session.sh" /usr/share/tessera/greeter-session.sh
+        # The login screen in Rust (tessera-ui --greeter), when tessera-ui is
+        # installed; greeter-start.sh falls back to the QML one without it
+        local ui="${XDG_DATA_HOME:-$HOME/.local/share}/tessera/bin/tessera-ui"
+        if [[ -x "$ui" ]]; then run sudo install -D -m 755 "$ui" /usr/share/tessera/bin/tessera-ui; fi
         # Its look, from your settings (the shell keeps it up to date after:
         # services/LoginScreen.qml, through tessera-root login-look)
         local look

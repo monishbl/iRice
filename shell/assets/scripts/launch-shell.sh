@@ -200,7 +200,11 @@ if ui="$(standalone_ui)"; then
     export TESSERA_STANDALONE=1
     mkdir -p "$(dirname "$STARTS")"
     echo $(( $(cat "$STARTS" 2>/dev/null || echo 0) + 1 )) > "$STARTS"
-    exec "$ui" --standalone </dev/null
+    # (its messages, and a crash's, in tessera-ui.log; the run before's in .1)
+    log="$(dirname "$STARTS")/tessera-ui.log"
+    [[ -f "$log" ]] && mv -f "$log" "$log.1"
+    export RUST_BACKTRACE=1
+    exec "$ui" --standalone </dev/null >>"$log" 2>&1
 fi
 # The Material look is experimental: if it doesn't come up (its lock screen
 # isn't answering within 20 s, or it quits first, as Quickshell does when its

@@ -145,7 +145,18 @@ def qs_binary():
 
 
 def read_log(shell_dir):
-    out = run([qs_binary(), "log", "-p", shell_dir], timeout=10)
+    # Standalone (tessera-ui is the shell): its own log, as launch-shell.sh
+    # keeps it; else Quickshell's
+    state = os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state")
+    own = os.path.join(state, "tessera", "tessera-ui.log")
+    if os.environ.get("TESSERA_STANDALONE") == "1" and os.path.isfile(own):
+        try:
+            with open(own, encoding="utf-8", errors="replace") as f:
+                out = f.read()
+        except OSError:
+            out = ""
+    else:
+        out = run([qs_binary(), "log", "-p", shell_dir], timeout=10)
     return "\n".join(out.splitlines()[-LOG_LINES:])
 
 

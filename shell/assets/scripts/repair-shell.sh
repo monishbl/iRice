@@ -45,9 +45,20 @@ is_tessera() {
     env_of "$1" | grep -qx -e "TESSERA_TTY=1" -e "IRICE_TTY=1"
 }
 
+# Standalone (rust.standalone, the default): tessera-ui is the shell. Only one
+# started with --standalone: the one the QML shell starts as its helper ends with it
+standalone_pids() {
+    local p
+    for p in $(pgrep -x tessera-ui); do
+        [[ "$(cmd_of "$p")" == *" --standalone"* ]] && echo "$p"
+    done
+    return 0
+}
+is_standalone() { [[ "$(cat "/proc/$1/comm" 2>/dev/null)" == tessera-ui && "$(cmd_of "$1")" == *" --standalone"* ]]; }
+
 shells() {
     local p
-    for p in $(pgrep -x tessera-shell; pgrep -x irice-shell; pgrep -x qs; pgrep -x quickshell); do
+    for p in $(pgrep -x tessera-shell; pgrep -x irice-shell; pgrep -x qs; pgrep -x quickshell; standalone_pids); do
         is_tessera "$p" && echo "$p"
     done | sort -n
 }
@@ -86,6 +97,14 @@ template="${mine[0]:-}"
 if [[ -n "$template" ]]; then
     mapfile -d '' tenv <"/proc/$template/environ"
     mapfile -d '' tcmd <"/proc/$template/cmdline"
+    # (tessera-ui's own command isn't the launcher's: started the usual way,
+    # the launcher picks standalone again from the settings)
+    if is_standalone "$template"; then
+        tcmd=()
+        fresh=()
+        for e in "${tenv[@]}"; do [[ $e == TESSERA_STANDALONE=* ]] || fresh+=("$e"); done
+        tenv=("${fresh[@]}")
+    fi
 else
     tenv=()
     tcmd=()

@@ -46,7 +46,8 @@ is_tessera() {
 # This session's Tessera shells
 shells() {
     local p
-    for p in $(pgrep -x tessera-shell; pgrep -x irice-shell; pgrep -x qs; pgrep -x quickshell); do
+    # (tessera-ui --standalone too: the shell itself since rust.standalone became the default)
+    for p in $(pgrep -x tessera-shell; pgrep -x irice-shell; pgrep -x qs; pgrep -x quickshell; for u in $(pgrep -x tessera-ui); do tr '\0' ' ' <"/proc/$u/cmdline" 2>/dev/null | grep -q -e ' --standalone' && echo "$u"; done); do
         is_tessera "$p" && [[ "$(var_of "$p" HYPRLAND_INSTANCE_SIGNATURE)" == "$SIG" ]] && echo "$p"
     done | sort -n
 }
@@ -72,6 +73,16 @@ if [[ -n "$template" ]]; then
     QS="$(readlink -f "/proc/$template/exe")"
     mapfile -d '' tenv <"/proc/$template/environ"
     mapfile -d '' tcmd <"/proc/$template/cmdline"
+    # (the shell is tessera-ui --standalone: Quickshell, for a QML screen, is
+    # the one on the PATH; the shell starts again the usual way, and the
+    # launcher picks standalone again from the settings)
+    if [[ "$(cat "/proc/$template/comm" 2>/dev/null)" == tessera-ui ]]; then
+        QS="$(command -v qs || echo qs)"
+        tcmd=()
+        fresh=()
+        for e in "${tenv[@]}"; do [[ $e == TESSERA_STANDALONE=* ]] || fresh+=("$e"); done
+        tenv=("${fresh[@]}")
+    fi
 else
     tenv=()
     tcmd=()
@@ -154,11 +165,27 @@ else
     exec 9>&- 6>&-
 fi
 
+# Asking a shell: tessera-ui over its own socket, the QML one over Quickshell's IPC
+shell_ask() { # pid target function
+    if [[ "$(cat "/proc/$1/comm" 2>/dev/null)" == tessera-ui ]]; then
+        timeout 3 "/proc/$1/exe" ipc call "$2" "$3" 2>/dev/null
+    else
+        timeout 3 "$QS" ipc --pid "$1" call "$2" "$3" 2>/dev/null
+    fi
+}
+shell_answers() {
+    if [[ "$(cat "/proc/$1/comm" 2>/dev/null)" == tessera-ui ]]; then
+        timeout 3 "/proc/$1/exe" ipc show >/dev/null 2>&1
+    else
+        timeout 3 "$QS" ipc --pid "$1" show >/dev/null 2>&1
+    fi
+}
+
 # Done once the new shell answers
 up=0
 for _ in $(seq 60); do
     p="$(shells | head -1)"
-    if [[ -n "$p" ]] && timeout 3 "$QS" ipc --pid "$p" show >/dev/null 2>&1; then
+    if [[ -n "$p" ]] && shell_answers "$p"; then
         up=1
         break
     fi
@@ -168,7 +195,7 @@ done
 # Closing earlier left a black screen until it did.
 if [[ $up == 1 ]]; then
     for _ in $(seq 40); do
-        [[ "$(timeout 3 "$QS" ipc --pid "$p" call shell ready 2>/dev/null)" == yes ]] && break
+        [[ "$(shell_ask "$p" shell ready)" == yes ]] && break
         sleep 0.5
     done
 fi
