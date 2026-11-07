@@ -119,6 +119,9 @@ pub enum Role {
     Layer(LayerSurface),
     Lock(SessionLockSurface),
     Window(XdgWindow),
+    /// a popup (xdg_popup) on a window or a layer surface: menus that may
+    /// leave their window, as the QML's popups do (prepare_popup)
+    Popup(smithay_client_toolkit::shell::xdg::popup::Popup),
 }
 
 impl std::ops::Deref for Role {
@@ -128,6 +131,7 @@ impl std::ops::Deref for Role {
             Role::Layer(l) => l,
             Role::Lock(_) => panic!("tessera-ui: a session-lock surface has no layer surface"),
             Role::Window(_) => panic!("tessera-ui: a window has no layer surface"),
+            Role::Popup(_) => panic!("tessera-ui: a popup has no layer surface"),
         }
     }
 }
@@ -143,6 +147,13 @@ impl Role {
     pub fn window(&self) -> Option<&XdgWindow> {
         match self {
             Role::Window(w) => Some(w),
+            _ => None,
+        }
+    }
+    /// The popup, for a surface `prepare_popup` made
+    pub fn popup(&self) -> Option<&smithay_client_toolkit::shell::xdg::popup::Popup> {
+        match self {
+            Role::Popup(p) => Some(p),
             _ => None,
         }
     }
@@ -257,6 +268,10 @@ impl Surface {
                 win.xdg_toplevel().destroy();
                 win.xdg_surface().destroy();
             }
+            Role::Popup(p) => {
+                p.xdg_popup().destroy();
+                p.xdg_surface().destroy();
+            }
             // (the lock part ends its lock itself)
             Role::Lock(_) => {}
         }
@@ -275,6 +290,8 @@ impl Surface {
             Role::Window(win) => win.commit(),
             // (a lock surface is sized by the compositor: only shown again)
             Role::Lock(_) => self.wl.commit(),
+            // (a popup is placed by the compositor: a dismissed one is made anew)
+            Role::Popup(_) => self.wl.commit(),
         }
     }
 }
@@ -364,6 +381,8 @@ thread_local! {
     // a surface asked for another pointer shape; the serial of the pointer's last enter
     static CURSOR_DIRTY: Cell<bool> = const { Cell::new(false) };
     static POINTER_SERIAL: Cell<u32> = const { Cell::new(0) };
+    // the last button press or key press (a popup's grab names the input that opened it)
+    static INPUT_SERIAL: Cell<u32> = const { Cell::new(0) };
 }
 
 // ── The Slint platform ──────────────────────────────────────────────────────
@@ -413,6 +432,21 @@ impl slint::platform::Platform for Platform {
 }
 
 // ── State: everything the Wayland handlers touch ────────────────────────────
+
+/// Where a popup goes (prepare_popup)
+pub struct PopupSpec<'a> {
+    pub namespace: &'a str,
+    /// the rectangle it opens next to, in the parent's logical px: x, y, w, h
+    pub anchor: (i32, i32, i32, i32),
+    /// its size, logical px
+    pub size: (u32, u32),
+    /// moved this much from where it would go (logical px)
+    pub offset: (i32, i32),
+    /// above the anchor rather than below it
+    pub above: bool,
+    /// takes the keyboard; a click elsewhere dismisses it (menus)
+    pub grab: bool,
+}
 
 pub struct Spec<'a> {
     pub layer: Layer,
@@ -574,6 +608,50 @@ impl State {
         let fractional = self.fractional.as_ref().map(|f| f.get_fractional_scale(&wl, &self.qh, wl.clone()));
         win.commit();
         self.adopt(wl, Role::Window(win), viewport, fractional, spec.namespace, String::new(), spec.size)
+    }
+
+    /// A popup ready to become the window of the next Slint component made:
+    /// placed by the compositor next to `spec.anchor` (a rectangle in the
+    /// parent's logical px), below it, flipped above or slid sideways to stay
+    /// on screen; it may leave its parent's bounds (Settings' menus, as the
+    /// QML's popups). With `grab`, it takes the keyboard and the compositor
+    /// dismisses it on a click elsewhere: `Part::surface_closed` then, as for a
+    /// window the compositor closed. None if the parent can't have popups.
+    pub fn prepare_popup(&mut self, parent: &Rc<Surface>, spec: PopupSpec) -> Option<Rc<Surface>> {
+        use smithay_client_toolkit::reexports::protocols::xdg::shell::client::xdg_positioner::{Anchor as PAnchor, ConstraintAdjustment, Gravity};
+        use smithay_client_toolkit::shell::xdg::{popup::Popup, XdgPositioner, XdgSurface as _};
+        let xdg = self.xdg_shell.as_ref()?;
+        let positioner = XdgPositioner::new(xdg).ok()?;
+        let (w, h) = (spec.size.0.max(1) as i32, spec.size.1.max(1) as i32);
+        positioner.set_size(w, h);
+        let (ax, ay, aw, ah) = spec.anchor;
+        positioner.set_anchor_rect(ax, ay, aw.max(1), ah.max(1));
+        positioner.set_anchor(if spec.above { PAnchor::TopLeft } else { PAnchor::BottomLeft });
+        positioner.set_gravity(if spec.above { Gravity::TopRight } else { Gravity::BottomRight });
+        positioner.set_offset(spec.offset.0, spec.offset.1);
+        positioner.set_constraint_adjustment(ConstraintAdjustment::FlipY | ConstraintAdjustment::SlideX | ConstraintAdjustment::SlideY);
+        let wl = self.compositor.create_surface(&self.qh);
+        let popup = match &parent.layer {
+            Role::Window(win) => Popup::from_surface(Some(win.xdg_surface()), &positioner, &self.qh, wl.clone(), xdg).ok()?,
+            Role::Popup(pp) => Popup::from_surface(Some(pp.xdg_surface()), &positioner, &self.qh, wl.clone(), xdg).ok()?,
+            Role::Layer(l) => {
+                let p = Popup::from_surface(None, &positioner, &self.qh, wl.clone(), xdg).ok()?;
+                l.get_popup(p.xdg_popup());
+                p
+            }
+            Role::Lock(_) => return None,
+        };
+        if spec.grab {
+            if let Some(seat) = self.seat.seats().next() {
+                popup.xdg_popup().grab(&seat, INPUT_SERIAL.get());
+            }
+        }
+        let viewport = self.viewporter.as_ref().map(|v| v.get_viewport(&wl, &self.qh, ()));
+        let fractional = self.fractional.as_ref().map(|f| f.get_fractional_scale(&wl, &self.qh, wl.clone()));
+        wl.commit();
+        let s = self.adopt(wl, Role::Popup(popup), viewport, fractional, spec.namespace, parent.output.clone(), spec.size);
+        s.scale.set(parent.scale.get());
+        Some(s)
     }
 
     /// A surface with its role: its EGL window and renderer, made the next component's window
@@ -822,6 +900,28 @@ impl WindowHandler for State {
     }
 }
 
+// A popup: its size when the compositor places it; dismissed (a click
+// elsewhere, its parent gone) reaches its part as a closed surface
+impl smithay_client_toolkit::shell::xdg::popup::PopupHandler for State {
+    fn configure(&mut self, _: &Connection, _: &QueueHandle<Self>, popup: &smithay_client_toolkit::shell::xdg::popup::Popup, c: smithay_client_toolkit::shell::xdg::popup::PopupConfigure) {
+        let Some(s) = self.surfaces.iter().find(|s| s.layer.popup().is_some_and(|p| p.xdg_popup() == popup.xdg_popup())).cloned() else { return };
+        if c.width > 0 && c.height > 0 {
+            s.logical.set((c.width as u32, c.height as u32));
+        }
+        if s.hidden.get() {
+            return;
+        }
+        s.configured.set(true);
+        s.frame_pending.set(false);
+        s.apply_geometry();
+    }
+    fn done(&mut self, _: &Connection, _: &QueueHandle<Self>, popup: &smithay_client_toolkit::shell::xdg::popup::Popup) {
+        if let Some(s) = self.surfaces.iter().find(|s| s.layer.popup().is_some_and(|p| p.xdg_popup() == popup.xdg_popup())).cloned() {
+            self.each_part(|p, st| p.surface_closed(st, &s));
+        }
+    }
+}
+
 impl SeatHandler for State {
     fn seat_state(&mut self) -> &mut SeatState {
         &mut self.seat
@@ -941,7 +1041,8 @@ impl KeyboardHandler for State {
         }
         self.keyboard_on = None;
     }
-    fn press_key(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlKeyboard, _: u32, e: KeyEvent) {
+    fn press_key(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlKeyboard, serial: u32, e: KeyEvent) {
+        INPUT_SERIAL.set(serial);
         self.key(e, KeyKind::Press);
     }
     fn repeat_key(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlKeyboard, _: u32, e: KeyEvent) {
@@ -1004,6 +1105,7 @@ impl PointerHandler for State {
                     }
                     if let PointerEventKind::Press { serial, .. } = e.kind {
                         self.dnd.pressed(serial, &s);
+                        INPUT_SERIAL.set(serial);
                     }
                     if matches!(e.kind, PointerEventKind::Press { .. }) {
                         s.window.dispatch_event(WindowEvent::PointerPressed { position, button });
@@ -1118,6 +1220,7 @@ delegate_output!(State);
 delegate_layer!(State);
 delegate_xdg_shell!(State);
 delegate_xdg_window!(State);
+smithay_client_toolkit::delegate_xdg_popup!(State);
 delegate_seat!(State);
 delegate_keyboard!(State);
 delegate_pointer!(State);
