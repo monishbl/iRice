@@ -18,6 +18,24 @@ That missed behaviour. This round is about behaviour: every hover, click,
 right-click, drag, scroll, key, timer, animation (duration, easing, what moves)
 and live update the QML does, the Rust must do the same way.
 
+## How the work is split (from 7 Nov, the user's choice)
+
+- **Fixers (Opus)**: read the QML, write the parity file (behaviours AND a
+  test plan: the exact steps a tester runs — pointer moves/glides/clicks
+  with coordinates, keys, what to record, what must be seen, and the QML
+  timing to match), fix the Rust, build. **Fixers don't run sandboxes.**
+  Mark `written` then `built`. Work in batches (5–10 QML files); when a batch
+  is built and committed on your branch, stop and report (files, commit,
+  binary path). The lead starts a tester on it and resumes you with the
+  next batch and the tester's failures.
+- **Testers (Sonnet)**: take a built batch, run each parity file's test
+  plan in their arena with the user's settings against the fixer's binary
+  (`tools/live-scenarios.sh --bin <worktree>/native/tessera-ui/target/release/tessera-ui --arena N`,
+  extended per plan; both looks), and for each behaviour write PASS or FAIL
+  with what was seen (and recording timings) under "## Test results" in the
+  parity file. Testers never edit code. Mark `verified` only when every
+  behaviour in the file passed; otherwise leave it `built`.
+
 ## What "done" means for a QML file (your checklist item)
 
 1. **Read the QML file fully** (and the Material twin: Material*.qml next to
@@ -35,7 +53,7 @@ and live update the QML does, the Rust must do the same way.
    thing that looks the same at a glance and say exactly what differs in the
    parity file. A plain text line where the QML has icons, figures and hover
    popovers is NOT acceptable.
-4. **Verify in a sandbox by doing it**, both looks (Glass and Material), with
+4. **(Testers) verify in a sandbox by doing it**, both looks (Glass and Material), with
    the user's settings (see below): move the pointer, hover, click, type,
    drag, open and close windows; record and time animations against the QML
    doing the same (tools/live-scenarios.sh shows how: copy and extend it for

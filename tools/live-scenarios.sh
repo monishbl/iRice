@@ -4,12 +4,15 @@
 # once with the QML shell and once with tessera-ui --standalone. Pointer
 # hovers and clicks (the virtual pointer), windows opened and closed, short
 # recordings of animations; pictures and videos side by side in OUT.
-#   tools/live-scenarios.sh [--arena N] [--config FILE] [--only qml|rust] [--out DIR]
+#   tools/live-scenarios.sh [--arena N] [--config FILE] [--only qml|rust] [--out DIR] [--bin TESSERA_UI] [--look glass|material]
 # Never your screen: everything happens on the arena's headless IRICE-TEST.
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ARENA=7 USERCFG="$HOME/iRice/.sandbox/home/.config/tessera/config.json" ONLY="" OUT="$HOME/tessera-verify/live-$(date +%Y%m%d-%H%M)"
-while (($#)); do case "$1" in --arena) ARENA=$2; shift;; --config) USERCFG=$2; shift;; --only) ONLY=$2; shift;; --out) OUT=$2; shift;; esac; shift; done
+BIN="" LOOK=""
+while (($#)); do case "$1" in --arena) ARENA=$2; shift;; --config) USERCFG=$2; shift;; --only) ONLY=$2; shift;; --out) OUT=$2; shift;; --bin) BIN=$2; shift;; --look) LOOK=$2; shift;; esac; shift; done
+# (the tessera-ui to test: another worktree's build, say; default this checkout's)
+BIN="${BIN:-$ROOT/native/tessera-ui/target/release/tessera-ui}"
 export IRICE_ARENA=$ARENA
 . "$ROOT/site/film/tessera/capture/lib.sh"
 CFG="$HOMEDIR/.config/tessera/config.json"
@@ -23,10 +26,12 @@ rec() { # name seconds command…: a recording of the whole screen while the com
     inbox "wf-recorder -o IRICE-TEST -r 60 -f /tmp/rec-$n.mp4 >/dev/null 2>&1 & r=\$!; sleep 0.6; $*; sleep $s; kill -INT \$r; wait \$r 2>/dev/null; cp /tmp/rec-$n.mp4 '$OUT/$n.mp4'" </dev/null >/dev/null 2>&1
 }
 use_config() { # standalone 0|1
-    python3 -I - "$USERCFG" "$CFG" "$1" <<'PY'
+    python3 -I - "$USERCFG" "$CFG" "$1" "$LOOK" <<'PY'
 import json, sys
-src, dst, sa = sys.argv[1:]
+src, dst, sa, look = sys.argv[1:]
 c = json.load(open(src))
+if look:
+    c.setdefault("appearance", {})["look"] = look
 c.setdefault("rust", {})["standalone"] = sa == "1"
 c["rust"]["surfaces"] = []
 for k in ("ai", "google", "cloud", "phone"):   # (accounts and keys stay out of the arena)
@@ -38,7 +43,7 @@ run_pass() { # qml|rust
     local pass=$1
     log "[$pass] setting up"
     use_config "$([[ $pass == rust ]] && echo 1 || echo 0)"
-    install -D -m 755 "$ROOT/native/tessera-ui/target/release/tessera-ui" "$HOMEDIR/.local/share/tessera/bin/tessera-ui"
+    install -D -m 755 "$BIN" "$HOMEDIR/.local/share/tessera/bin/tessera-ui"
     dev reload </dev/null >/dev/null 2>&1; sleep 14
     inbox 'ipc lock unlock; ipc panels close' </dev/null >/dev/null 2>&1; sleep 2
     P move 1500 600; sleep 1
@@ -74,7 +79,7 @@ run_pass() { # qml|rust
     dev run bash -c 'cat /tmp/irice-rt*/tessera-ui*.log 2>/dev/null | tail -50' > "$OUT/$pass-ui.log" 2>&1
 }
 log "arena $ARENA, your settings from $USERCFG"
-setup material "$WALLS/wall-tiles.jpg" 1
+setup "${LOOK:-material}" "$WALLS/wall-tiles.jpg" 1
 [[ $ONLY != rust ]] && run_pass qml
 [[ $ONLY != qml ]] && run_pass rust
 log "done: $OUT"
