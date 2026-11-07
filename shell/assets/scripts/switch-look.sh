@@ -98,12 +98,14 @@ if [[ ${TESSERA_SANDBOX:-${IRICE_SANDBOX:-0}} == 1 && ${TESSERA_TTY:-${IRICE_TTY
 else
     TESSERA_REPAIR_QUIET=1 "$SHELL_DIR/assets/scripts/repair-shell.sh" 8>&-
 fi
-# Up once it answers (then a moment to draw its first frames)
+# Up once it has drawn ("shell ready": both shells answer it, tessera-ui
+# through its own socket, once its desktop is drawn; "show" was Quickshell's
+# only, so with tessera-ui as the shell the screen waited its full 20 s)
 for _ in $(seq 100); do
-    QS="$QS" "$SHELL_DIR/assets/scripts/shell-ipc.sh" show >/dev/null 2>&1 && break
+    [[ "$(QS="$QS" "$SHELL_DIR/assets/scripts/shell-ipc.sh" call shell ready 2>/dev/null)" == yes ]] && break
     sleep 0.2
 done
-sleep 1.2
+sleep 0.4
 echo done >"$T/status"
 # The screen fades out and quits; then the copy goes
 for _ in $(seq 40); do
