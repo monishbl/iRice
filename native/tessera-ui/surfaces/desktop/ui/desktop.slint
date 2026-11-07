@@ -1672,7 +1672,7 @@ export component Gallery inherits Window {
         keys.focus();
     }
     property <length> m: 24px;
-    property <length> preview-scale: 0.56;
+    property <float> preview-scale: 0.56;
     property <float> progress: shown ? 1 : 0;
     animate progress { duration: shown ? 520ms : 192ms; easing: shown ? spring(0.4) : cubic-bezier(0.4, 0.0, 1.0, 1.0); }
     changed progress => {
@@ -1768,6 +1768,8 @@ export component Gallery inherits Window {
                 height: parent.height - 32px;
 
                 VerticalLayout {
+                    x: 0px;
+                    y: 0px;
                     width: parent.width - donebtn.width - 16px;
                     height: 80px;
                     alignment: start;
@@ -1787,6 +1789,7 @@ export component Gallery inherits Window {
                 }
                 donebtn := Rectangle {
                     x: parent.width - self.width;
+                    y: 0px;
                     width: dl.preferred-width + (Theme.material ? 48px : 32px);
                     height: Theme.material ? 40px : 32px;
                     border-radius: Theme.material && dt.pressed ? 8px : self.height / 2;
@@ -1831,6 +1834,8 @@ export component Gallery inherits Window {
                             accessible-label: "Add " + root.kind-label + ", " + s.name;
                             accessible-action-default => { root.add(si); }
                             Rectangle {
+                                x: 0px;
+                                y: 0px;
                                 width: s.w;
                                 height: s.h;
                                 transform-scale: preview-scale;

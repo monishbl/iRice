@@ -942,7 +942,7 @@ impl ControlCenter {
                 spawn_cmd(strs(&["sh", "-c", "gnome-calculator || qalculate-gtk || kcalc || galculator"]));
             }
             "timer" => {
-                ask(h, "panels.ncTab", json!([2]));
+                ask(h, "panels.set", json!(["ncTab", 2]));
                 ask(h, "panels.show", json!(["notificationCenter"]));
             }
             "tileWindows" => {

@@ -145,7 +145,7 @@ impl Hub {
             "manage" => h.ask("panels.openSettings", json!(["notifications"])),
             "tab" => {
                 self.notif.tab = e["tab"].as_i64().unwrap_or(0);
-                h.ask("panels.ncTab", json!([self.notif.tab]));
+                h.ask("panels.set", json!(["ncTab", self.notif.tab]));
             }
             "calendar" => {
                 self.notif.nc_cal = Some((s("from"), s("to"), s("day")));

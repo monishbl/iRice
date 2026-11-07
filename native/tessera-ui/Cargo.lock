@@ -5087,6 +5087,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "tessera-screenfx"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "slint",
+ "slint-build",
+ "smithay-client-toolkit",
+ "tessera-core",
+]
+
+[[package]]
 name = "tessera-screentools"
 version = "0.1.0"
 dependencies = [
@@ -5275,6 +5286,7 @@ dependencies = [
  "tessera-overview",
  "tessera-polkit",
  "tessera-resources",
+ "tessera-screenfx",
  "tessera-screentools",
  "tessera-session",
  "tessera-settings",

@@ -1784,7 +1784,8 @@ component Bedside inherits Rectangle {
                     VerticalLayout {
                         alignment: center;
                         spacing: 2px;
-                        WxIcon { size: round(side * 0.16 / 1px) * 1px; ink: Theme.m3-on-tertiary-container; }
+                        // (centred: a layout puts a fixed-width item at its start)
+                        HorizontalLayout { alignment: center; WxIcon { size: round(side * 0.16 / 1px) * 1px; ink: Theme.m3-on-tertiary-container; } }
                         Text { horizontal-alignment: center; text: LockData.temp; color: Theme.m3-on-tertiary-container; font-size: round(side * 0.2 / 1px) * 1px; font-weight: 600; }
                     }
                 }

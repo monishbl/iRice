@@ -214,6 +214,11 @@ impl Surface {
         self.rendered.set(self.rendered.get().wrapping_add(1));
         self.frame_pending.set(true);
         self.mapped.set(true);
+        // (a window's first frame can come out unpainted, garbage or nothing;
+        // one that never animates would keep it: so the first is drawn twice)
+        if self.rendered.get() == 1 {
+            self.needs_redraw.set(true);
+        }
         // (no "redraw while animations run" here: Slint's animation clock is
         // global, so every window would redraw while any one animates; an
         // animated property marks only its own window dirty)

@@ -24,12 +24,14 @@ component Band inherits Rectangle {
     in property <color> c2;
     in property <color> c3;
     in property <color> c4;
+    in property <length> pw; // the parent's size (a component can't see its parent)
+    in property <length> ph;
     property <angle> ang: edge == 0 ? 90deg : edge == 1 ? 180deg : edge == 2 ? 270deg : 0deg;
     property <float> n: max(b - a, 0);
-    x: edge == 0 ? a * parent.width : edge == 2 ? (1 - b) * parent.width : 0px;
-    y: edge == 1 ? a * parent.height : edge == 3 ? (1 - b) * parent.height : 0px;
-    width: (edge == 0 || edge == 2) ? n * parent.width : parent.width;
-    height: (edge == 1 || edge == 3) ? n * parent.height : parent.height;
+    x: edge == 0 ? a * pw : edge == 2 ? (1 - b) * pw : 0px;
+    y: edge == 1 ? a * ph : edge == 3 ? (1 - b) * ph : 0px;
+    width: (edge == 0 || edge == 2) ? n * pw : pw;
+    height: (edge == 1 || edge == 3) ? n * ph : ph;
     background: @linear-gradient(ang, c0 0%, c1 25%, c2 50%, c3 75%, c4 100%);
 }
 
@@ -83,6 +85,8 @@ export component Connect inherits Window {
         // the wipe: a soft front (smoothstep twice: 0, 7%, 50%, 93%, 100%), dark beyond it
         if mode == 1: Band {
             edge: root.edge;
+            pw: parent.width;
+            ph: parent.height;
             a: wa;
             b: wb;
             c0: #00000000;
@@ -93,6 +97,8 @@ export component Connect inherits Window {
         }
         if mode == 1: Band {
             edge: root.edge;
+            pw: parent.width;
+            ph: parent.height;
             a: wb;
             b: 4;
             c0: #000000;
@@ -133,6 +139,8 @@ export component Connect inherits Window {
         // the ring of light at the wipe's front (warp)
         if mode == 1 && rim > 0: Band {
             edge: root.edge;
+            pw: parent.width;
+            ph: parent.height;
             a: wb - 0.05;
             b: wb + 0.05;
             c0: light.with-alpha(0);
@@ -144,6 +152,8 @@ export component Connect inherits Window {
         // beside it: a faint wide glow at the shared edge (exp(-d/0.14))
         if mode == 3: Band {
             edge: root.edge;
+            pw: parent.width;
+            ph: parent.height;
             a: 0;
             b: 0.56;
             c0: light.with-alpha(1.0 * amp);
@@ -179,6 +189,8 @@ export component Connect inherits Window {
         // beside it: a lens ring running to (or from) the edge, and a glow at the edge
         if mode == 5: Band {
             edge: root.edge;
+            pw: parent.width;
+            ph: parent.height;
             a: ring-at - 0.06;
             b: ring-at + 0.06;
             c0: light.with-alpha(0);
@@ -189,6 +201,8 @@ export component Connect inherits Window {
         }
         if mode == 5: Band {
             edge: root.edge;
+            pw: parent.width;
+            ph: parent.height;
             a: 0;
             b: 0.12;
             c0: light.with-alpha(0.35 * amp);

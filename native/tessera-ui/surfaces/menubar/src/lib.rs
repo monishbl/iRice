@@ -218,6 +218,12 @@ impl Menubar {
         if class.is_empty() {
             return "Desktop".to_string();
         }
+        // tessera-ui's own windows (Apps.qml's activeName names the shell's)
+        match class {
+            "tessera-settings" => return "System Settings".to_string(),
+            "tessera-appstore" => return "Software".to_string(),
+            _ => {}
+        }
         self.names
             .entry(class.to_string())
             .or_insert_with(|| {

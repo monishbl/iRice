@@ -5,6 +5,7 @@
 # (docs/rust-ui-surfaces.md, "The workspace").
 [workspace]
 members = ["core", "surfaces/*", "host/*"]
+exclude = ["host/tools"]
 resolver = "2"
 
 [workspace.package]

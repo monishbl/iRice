@@ -63,7 +63,8 @@ run_cargo() {
 
 # ── The states: surface | name | what to do in the sandbox | seconds to wait ──
 # (panels open through the shell as a shortcut would; every state is closed
-# again before the next: Esc, panels close, lock unlock)
+# again before the next: Esc, panels close, lock unlock; welcome goes last,
+# as nothing closes it)
 SCREEN=IRICE-TEST
 STATES=$(cat <<EOF
 menubar|idle|:|1.5
@@ -110,12 +111,12 @@ overview|open|ipc panels open overview $SCREEN|2.5|w
 missioncontrol|open|ipc panels open missionControl $SCREEN|2.5|w
 switcher|open|ipc panels open switcher $SCREEN|1.5|w
 launchpad|open|ipc panels open launchpad $SCREEN|2.5|w
-welcome|open|ipc welcome open|2.5
 findpointer|ring|ipc findpointer find|0.6|s
-spaceswitch|cue|ipc cues space $SCREEN glow|0.8|s
+spaceswitch|cue|ipc cues space $SCREEN glow|0.3|s
 displayconnect|extend|ipc displays preview extend right|1.2|s
 displayoverlay|identify|ipc cues identify|1.5|s
 displayoverlay|confirm|ipc cues confirm|1.5|s
+welcome|open|ipc welcome open|2.5
 EOF
 )
 # (a 5th field: w = needs test windows open; s = standalone only, wave 4b's
@@ -227,6 +228,10 @@ for look in ${LOOKS//,/ }; do
     ((STANDALONE)) && probe "$look" qml-settled
     capture "$look" qml
     log "[$look] reloading the shell with Rust on (nothing of the QML pass carries over)"
+    # (tessera-ui keeps the notification list across restarts, the QML only
+    # across its own reloads: a list from the last look's Rust pass would show
+    # twice what this look's QML pass did)
+    rm -f "$HOMEDIR/.local/state/tessera/notifications.json" "$HOMEDIR/.local/state/irice/notifications.json"
     # (Rust first, then the reload: the QML twins never start, so none of them
     # holds a bus name a Rust surface needs, e.g. org.freedesktop.Notifications)
     if ((STANDALONE)); then

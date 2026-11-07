@@ -472,7 +472,7 @@ impl Sharing {
             "close" => {
                 // (Panels.appStoreOpen = false)
                 self.store.panel_open = false;
-                h.ask("panels.appStoreOpen", json!([false]));
+                h.ask("panels.closeAppStore", json!([]));
             }
             "install" => {
                 let app = arg(0);
