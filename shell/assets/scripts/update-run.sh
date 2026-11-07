@@ -52,13 +52,32 @@ shells() {
     done | sort -n
 }
 
+# The update screen: Rust's (tessera-ui --update-screen) when a tessera-ui
+# is installed that has it (launch-shell.sh's lookup; an older one fails
+# --probe), else Quickshell's (qs -p) from $1. Either way "-p $T/ui" is in
+# its command line, which the checks for the screen here look for (is_tessera,
+# the wait at the end), and "/tessera-update.", which every shell stopper skips.
+screen() {
+    local b
+    for b in "${TESSERA_UI:-}" "${XDG_DATA_HOME:-$HOME/.local/share}/tessera/bin/tessera-ui" "$HOME/.local/share/tessera/bin/tessera-ui" "${XDG_DATA_HOME:-$HOME/.local/share}/irice/bin/tessera-ui" "$HOME/.local/share/irice/bin/tessera-ui"; do
+        [[ -n "$b" && -x "$b" ]] || continue
+        if "$b" --update-screen --probe >/dev/null 2>&1 </dev/null; then
+            SCREEN=("$b" --update-screen -p "$T/ui")
+            return
+        fi
+        break
+    done
+    SCREEN=("$1" -p "$T/ui")
+}
+
 # One update at a time on this repository (another session may be updating
 # it): nothing is touched unless this is the only one
 exec 8>"$REPO/.git/tessera-update.lock"
 if ! flock -n 8; then
     status run 0 "Preparing"
     QS0="$(command -v qs || echo qs)"
-    env -u TESSERA_TTY -u IRICE_TTY setsid -f "$QS0" -p "$T/ui" >"$T/ui.log" 2>&1 </dev/null
+    screen "$QS0"
+    env -u TESSERA_TTY -u IRICE_TTY setsid -f "${SCREEN[@]}" >"$T/ui.log" 2>&1 </dev/null
     sleep 1.2
     status error 100 "Another update is running" "Tessera is already being updated (in another session or window). Wait for it to finish, then check again."
     echo "another update holds the repository lock"
@@ -96,7 +115,8 @@ fi
 status run 0 "Preparing"
 # (without TESSERA_TTY, or IRICE_TTY for a watchdog from before iRice became
 # Tessera: in the tty session it would pass for the shell)
-env -u TESSERA_TTY -u IRICE_TTY setsid -f "$QS" -p "$T/ui" >"$T/ui.log" 2>&1 </dev/null
+screen "$QS"
+env -u TESSERA_TTY -u IRICE_TTY setsid -f "${SCREEN[@]}" >"$T/ui.log" 2>&1 </dev/null
 sleep 1.2 # (it fades in over the desktop before the shell goes)
 
 # Hold the shell lock, then stop the shell

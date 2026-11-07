@@ -1,0 +1,127 @@
+// The look-switch cover (shell/assets/lookswitch/shell.qml): your blurred
+// wallpaper on every display, the Tessera mark on Material's shapes (drawn
+// by Rust: the shape morphs, Slint turns it), and the look's name.
+
+export global Lc {
+    // the look it switches to: Material, else Glass
+    in property <bool> material: true;
+    in property <bool> dark: true;
+    in property <bool> opened;
+    in property <bool> leaving;
+    // the mark's shape, morphing (lib.rs's raster of materialshape.frag)
+    in property <image> shape;
+}
+
+export component LookCover inherits Window {
+    background: transparent;
+    in property <bool> has-backdrop;
+    in property <image> backdrop;
+    property <color> ink: Lc.dark ? #ffffff : #1C1C1E;
+    // (QML: Behavior on shown, 320 ms OutCubic in, 450 ms InCubic out)
+    // (cubic-bezier: Qt's OutCubic and InCubic)
+    property <float> shown: 0;
+    states [
+        gone when Lc.leaving: {
+            shown: 0;
+            in {
+                animate shown {
+                    duration: 450ms;
+                    easing: cubic-bezier(0.32, 0, 0.67, 0);
+                }
+            }
+        }
+        up when Lc.opened: {
+            shown: 1;
+            in {
+                animate shown {
+                    duration: 320ms;
+                    easing: cubic-bezier(0.33, 1, 0.68, 1);
+                }
+            }
+        }
+    ]
+    property <string> family: Lc.material ? "Tessera Sans Flex" : "Inter";
+
+    Rectangle {
+        x: 0;
+        y: 0;
+        width: parent.width;
+        height: parent.height;
+        opacity: root.shown;
+
+        Rectangle {
+            x: 0;
+            y: 0;
+            width: parent.width;
+            height: parent.height;
+            background: Lc.dark ? #101012 : #F2F2F5;
+        }
+
+        if root.has-backdrop: Image {
+            x: 0;
+            y: 0;
+            width: parent.width;
+            height: parent.height;
+            source: root.backdrop;
+            image-fit: cover;
+        }
+        Rectangle {
+            x: 0;
+            y: 0;
+            width: parent.width;
+            height: parent.height;
+            background: Lc.dark ? rgba(15.3, 15.3, 20.4, 0.55) : rgba(247.35, 247.35, 252.45, 0.5);
+        }
+
+        mark := Rectangle {
+            width: 168px;
+            height: 168px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2 - 24px;
+            Image {
+                x: 0;
+                y: 0;
+                width: parent.width;
+                height: parent.height;
+                source: Lc.shape;
+                image-fit: fill;
+                // (QML: RotationAnimator, a turn every 3.6 s, the look's way round)
+                transform-rotation: (Lc.material ? 1 : -1) * Math.mod(animation-tick() / 3600ms, 1) * 360deg;
+            }
+            Text {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                text: "\u{e604}"; // (Phosphor's filled circle-wavy: the Tessera badge)
+                color: root.ink;
+                font-family: "Phosphor-Fill";
+                font-size: 64px;
+            }
+        }
+
+        VerticalLayout {
+            x: 0;
+            y: mark.y + mark.height + 40px;
+            width: parent.width;
+            height: self.preferred-height;
+            spacing: 8px;
+            alignment: start;
+            Text {
+                horizontal-alignment: center;
+                text: Lc.material ? "Material" : "Glass";
+                color: root.ink;
+                font-family: root.family;
+                font-size: 40px;
+                // (the QML asks DemiBold, but Qt draws Google Sans Flex, a
+                // variable font, at its default 400: as it shows, not as it asks)
+                font-weight: Lc.material ? 400 : 600;
+            }
+            Text {
+                horizontal-alignment: center;
+                text: Lc.material ? "Material · experimental" : "Glass";
+                color: root.ink.with-alpha(0.65);
+                font-family: root.family;
+                font-size: 16px;
+            }
+        }
+    }
+}

@@ -69,7 +69,17 @@ except (OSError, ValueError):
 backdrops = {os.path.basename(p)[len("backdrop-"):-len(".png")]: p for p in glob.glob(os.path.join(cache, "backdrop-*.png"))}
 json.dump({"to": to, "dark": mode != "light", "backdrops": backdrops}, open(out, "w"))
 PY
-env -u TESSERA_TTY -u TESSERA_SHELL setsid -f "$QS" -p "$T/ui" >"$T/ui.log" 2>&1 </dev/null 8>&-
+# Rust's (tessera-ui --look-cover) when a tessera-ui is installed that has it
+# (launch-shell.sh's lookup; an older one fails --probe), else Quickshell's.
+# Either way "-p $T/ui" is in its command line (the wait at the end looks
+# for it) and "/tessera-look." (sandbox/lib.sh's shell stopper skips it).
+cover=("$QS" -p "$T/ui")
+for b in "${TESSERA_UI:-}" "${XDG_DATA_HOME:-$HOME/.local/share}/tessera/bin/tessera-ui" "$HOME/.local/share/tessera/bin/tessera-ui" "${XDG_DATA_HOME:-$HOME/.local/share}/irice/bin/tessera-ui" "$HOME/.local/share/irice/bin/tessera-ui"; do
+    [[ -n "$b" && -x "$b" ]] || continue
+    "$b" --look-cover --probe >/dev/null 2>&1 </dev/null 8>&- && cover=("$b" --look-cover -p "$T/ui")
+    break
+done
+env -u TESSERA_TTY -u TESSERA_SHELL setsid -f "${cover[@]}" >"$T/ui.log" 2>&1 </dev/null 8>&-
 sleep 0.5 # (covered)
 
 # Leaving Material: the window styling it set live goes back to the config's

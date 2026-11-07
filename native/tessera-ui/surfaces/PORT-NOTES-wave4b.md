@@ -194,6 +194,10 @@ NowPlaying / Menus / StatusMenus / BarMenu / HoverTip / IslandAlertStack,
 stage strip, app library, decorations, captions, tabs, snap preview, quick
 look, share cards, shelf window and drop zone, screen tools, lock and login
 intro, session / About, polkit, welcome, settings incl. its fingerprint sheet,
-greeter). Not ported on purpose: assets/lookswitch/shell.qml and
-assets/updater/shell.qml are separate Quickshell configs (own `qs -p` process
-that must outlive the shell while it restarts), and dev/GlassLab.qml is a dev tool.
+greeter). assets/lookswitch/shell.qml and assets/updater/shell.qml, separate
+Quickshell configs (own `qs -p` process that must outlive the shell while it
+restarts), are ported since as their own processes too: `tessera-ui
+--look-cover -p DIR` (surfaces/lookcover) and `tessera-ui --update-screen -p
+DIR` (surfaces/updatescreen), which switch-look.sh and update-run.sh start
+when an installed tessera-ui has them (else qs). Not ported on purpose:
+dev/GlassLab.qml, a dev tool.

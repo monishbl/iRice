@@ -4958,6 +4958,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "tessera-lookcover"
+version = "0.1.0"
+dependencies = [
+ "calloop 0.14.5",
+ "serde_json",
+ "slint",
+ "slint-build",
+ "smithay-client-toolkit",
+ "tessera-core",
+]
+
+[[package]]
 name = "tessera-menubar"
 version = "0.1.0"
 dependencies = [
@@ -5287,6 +5299,7 @@ dependencies = [
  "tessera-hotcorners",
  "tessera-launchpad",
  "tessera-lock",
+ "tessera-lookcover",
  "tessera-menubar",
  "tessera-missioncontrol",
  "tessera-network",
@@ -5312,9 +5325,22 @@ dependencies = [
  "tessera-tabs",
  "tessera-tiling",
  "tessera-today",
+ "tessera-updatescreen",
  "tessera-wallpaper",
  "tessera-welcome",
  "wayland-protocols-misc",
+]
+
+[[package]]
+name = "tessera-updatescreen"
+version = "0.1.0"
+dependencies = [
+ "calloop 0.14.5",
+ "serde_json",
+ "slint",
+ "slint-build",
+ "smithay-client-toolkit",
+ "tessera-core",
 ]
 
 [[package]]

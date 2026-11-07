@@ -14,6 +14,9 @@
 //!   tessera-ui --seed PICTURE    print the Material seed a wallpaper gives (as matugen)
 //!   tessera-ui --version
 //!   tessera-ui --greeter [--style …] [--demo [STATE]]   the login screen (surfaces/greeter)
+//!   tessera-ui --update-screen [-p] DIR   the update screen update-run.sh shows (surfaces/updatescreen)
+//!   tessera-ui --look-cover [-p] DIR      the cover switch-look.sh shows (surfaces/lookcover)
+//!                                (either with --probe: exit 0, nothing drawn: "this one has it")
 //!   tessera-ui … --demo          the lock, session and polkit surfaces without their real
 //!                                roles (no session lock, no PAM, no polkit agent: their top comments)
 //! SIGUSR1 prints frame statistics.
@@ -124,6 +127,14 @@ fn main() {
     // else reads the arguments (surfaces/greeter)
     if tessera_greeter::wanted(&args) {
         return tessera_greeter::run(&args, started);
+    }
+    // The update screen and the look-switch cover: full-screen covers in
+    // processes of their own, which outlive the shell they replace
+    if tessera_updatescreen::wanted(&args) {
+        return tessera_updatescreen::run(&args, started);
+    }
+    if tessera_lookcover::wanted(&args) {
+        return tessera_lookcover::run(&args, started);
     }
     // `tessera-ui ipc call <target> <function> [args…]`: the standalone
     // shell's `qs ipc call` (keybinds, scripts); prints the answer

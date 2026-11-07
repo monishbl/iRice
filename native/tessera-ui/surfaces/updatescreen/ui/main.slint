@@ -1,0 +1,214 @@
+// The update screen (shell/assets/updater/shell.qml): "Tessera is updating",
+// a progress bar and the step; "Tessera is up to date"; or what went wrong,
+// that nothing was lost, and Close. One per display, all the same.
+// (Its own colours, as the QML's: it's drawn the same in both looks.)
+
+export global Up {
+    // run | restart | done | error (update-run.sh's status file)
+    in property <string> phase: "run";
+    in property <float> percent: 0;
+    in property <string> step: "Preparing";
+    in property <string> detail;
+    in property <string> backup;
+    // shown: on (fades in) once the window is up; leaving: fades out
+    in property <bool> opened;
+    in property <bool> leaving;
+    // the menu icon: a Phosphor glyph, or a picture (the distro's logo)
+    in property <string> glyph;
+    in property <bool> has-image;
+    in property <image> image;
+    callback close();
+}
+
+export component UpdateScreen inherits Window {
+    background: transparent;
+    property <bool> error: Up.phase == "error";
+    // (QML: Behavior on shown, 300 ms OutCubic in, 400 ms InCubic out)
+    // (cubic-bezier: Qt's OutCubic and InCubic)
+    property <float> shown: 0;
+    states [
+        gone when Up.leaving: {
+            shown: 0;
+            in {
+                animate shown {
+                    duration: 400ms;
+                    easing: cubic-bezier(0.32, 0, 0.67, 0);
+                }
+            }
+        }
+        up when Up.opened: {
+            shown: 1;
+            in {
+                animate shown {
+                    duration: 300ms;
+                    easing: cubic-bezier(0.33, 1, 0.68, 1);
+                }
+            }
+        }
+    ]
+    property <float> pct: Up.percent;
+    animate pct {
+        duration: 400ms;
+        easing: cubic-bezier(0.33, 1, 0.68, 1);
+    }
+    property <length> col-w: min(360px, self.width - 64px);
+    public function focus-keys() {
+        keys.focus();
+    }
+
+    Rectangle {
+        x: 0;
+        y: 0;
+        width: parent.width;
+        height: parent.height;
+        background: #0A0A0B;
+        opacity: root.shown;
+
+        // Return and Escape close the error screen (it has the keyboard then)
+        keys := FocusScope {
+            x: 0;
+            y: 0;
+            width: 0;
+            height: 0;
+            key-pressed(e) => {
+                if root.error && (e.text == Key.Return || e.text == Key.Escape) {
+                    Up.close();
+                    return accept;
+                }
+                reject
+            }
+        }
+
+        col := VerticalLayout {
+            x: (parent.width - self.width) / 2;
+            // (centred, and moves up a little as it appears)
+            y: (parent.height - self.height) / 2 + (1 - root.shown) * 8px;
+            width: root.col-w;
+            height: self.preferred-height;
+            spacing: 0;
+            alignment: start;
+
+            // Your menu icon
+            Rectangle {
+                height: 56px;
+                Text {
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    visible: !Up.has-image;
+                    text: Up.glyph;
+                    color: #EDEDEF;
+                    font-family: "Phosphor-Fill";
+                    font-size: 52px;
+                }
+
+                if Up.has-image: Image {
+                    x: (parent.width - 52px) / 2;
+                    y: (parent.height - 52px) / 2;
+                    width: 52px;
+                    height: 52px;
+                    source: Up.image;
+                    image-fit: contain;
+                }
+            }
+
+            Rectangle {
+                height: 28px;
+            }
+
+            Text {
+                horizontal-alignment: center;
+                text: root.error ? Up.step : Up.phase == "done" ? "Tessera is up to date" : Up.phase == "restart" ? "Tessera is restarting" : "Tessera is updating";
+                color: #EDEDEF;
+                font-family: "Inter";
+                font-size: 14px;
+                font-weight: 500;
+            }
+
+            Rectangle {
+                height: 14px;
+            }
+
+            // Progress
+            if !root.error: Rectangle {
+                height: 4px;
+                bar := Rectangle {
+                    x: (parent.width - self.width) / 2;
+                    y: 0;
+                    width: min(200px, parent.width);
+                    height: 4px;
+                    border-radius: 2px;
+                    background: #2C2C31;
+                    Rectangle {
+                        x: 0;
+                        y: 0;
+                        width: max(self.height, parent.width * root.pct / 100);
+                        height: parent.height;
+                        border-radius: 2px;
+                        background: #EDEDEF;
+                    }
+                }
+            }
+            if !root.error: Rectangle {
+                height: 12px;
+            }
+            if !root.error: Text {
+                horizontal-alignment: center;
+                text: Up.phase == "done" ? "Your settings and shortcuts are as you left them." : Up.step + "…";
+                color: #A1A1AA;
+                font-family: "Inter";
+                font-size: 12px;
+            }
+
+            // Something went wrong: what, that nothing was lost, and Close
+            if root.error: Text {
+                horizontal-alignment: center;
+                wrap: word-wrap;
+                text: Up.detail;
+                color: #A1A1AA;
+                font-family: "Inter";
+                font-size: 13px;
+            }
+            if root.error: Rectangle {
+                height: 8px;
+            }
+            if root.error: Text {
+                horizontal-alignment: center;
+                wrap: word-wrap;
+                text: "Nothing was lost." + (Up.backup != "" ? " Your settings and shortcuts were backed up to " + Up.backup + "." : "");
+                color: #A1A1AA;
+                font-family: "Inter";
+                font-size: 13px;
+            }
+            if root.error: Rectangle {
+                height: 24px;
+            }
+            if root.error: Rectangle {
+                height: 36px;
+                close := Rectangle {
+                    x: (parent.width - self.width) / 2;
+                    y: 0;
+                    width: close-text.preferred-width + 40px;
+                    height: 36px;
+                    border-radius: 10px;
+                    background: ta.pressed ? #C7C7CC : ta.has-hover ? #DADADF : #EDEDEF;
+                    transform-scale: ta.pressed ? 0.97 : 1;
+                    animate transform-scale { duration: 100ms; }
+                    close-text := Text {
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                        text: "Close";
+                        color: #18181B;
+                        font-family: "Inter";
+                        font-size: 14px;
+                        font-weight: 500;
+                    }
+                    ta := TouchArea {
+                        clicked => {
+                            Up.close();
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
