@@ -78,8 +78,8 @@ statusmenus|weather-menu|ipc panels open weatherMenu $SCREEN|1.5
 statusmenus|privacy-menu|ipc panels open privacyMenu $SCREEN|1.5
 statusmenus|bluetooth-menu|ipc panels open bluetoothMenu $SCREEN|1.5
 dock|idle|:|1
-osd|volume|ipc osd preview volume|1
-osd|brightness|ipc osd preview brightness|1
+osd|volume|ipc osd preview volume|0.5
+osd|brightness|ipc osd preview brightness|0.5
 emoji|open|ipc emoji open|2.5
 clipboard|open|ipc panels open clipboard $SCREEN|2
 spotlight|open|ipc panels open spotlight $SCREEN|2
@@ -306,6 +306,7 @@ if ((TESTS)); then
     log "crate tests (one crate at a time, low priority)"
     : > "$OUT/logs/cargo-tests.log"
     for d in "$ROOT/native/tessera-ui/core" "$ROOT"/native/tessera-ui/host/*/ "$ROOT"/native/tessera-ui/surfaces/*/ "$ROOT/native/tessera-ui"; do
+        [[ -f "$d/Cargo.toml" ]] || continue   # (host/tools: scripts, no crate)
         crate=$(sed -n 's/^name *= *"\(.*\)"/\1/p' "$d/Cargo.toml" | head -1)
         [[ -n $crate ]] || continue
         res=$(cd "$ROOT/native/tessera-ui" && run_cargo cargo test -p "$crate" 2>&1 | tee -a "$OUT/logs/cargo-tests.log" | grep -E "^test result|error(\[|:)" | awk '/test result/{p+=$4; f+=$6} /error/{e=1} END {printf "%d %d %d", p, f, e}')

@@ -326,7 +326,16 @@ impl DisplayConnect {
         }
         for run in runs {
             let key = format!("{}{}", run.id, if run.pending { "p" } else { "" });
-            if let Some(w) = self.wins.iter_mut().find(|w| w.output == run.screen) {
+            if let Some(i) = self.wins.iter().position(|w| w.output == run.screen) {
+                // (a neighbour that becomes the arrived screen, as the preview
+                // does on one screen: it needs the wallpaper it went without)
+                if run.role == 0 && !self.wins[i].asked_picture {
+                    let mut w = self.wins.remove(i);
+                    w.pictured = false;
+                    self.picture(st, &mut w);
+                    self.wins.insert(i, w);
+                }
+                let w = &mut self.wins[i];
                 w.run = run;
                 // (only a different run, or one just placed, plays: the list is rebuilt
                 // whenever any screen's run starts or ends, which must not replay this one)

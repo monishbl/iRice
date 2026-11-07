@@ -1422,7 +1422,10 @@ export component Block inherits VerticalLayout {
         }
     }
       if m3: QsSlider {
+        // (its width given: without it the slider shrank to its handle)
+        x: 0;
         y: 0;
+        width: parent.width;
         height: 48px;
         track: 40px;
         icon: b.icon;

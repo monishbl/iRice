@@ -381,6 +381,10 @@ export component StatusMenus inherits Window {
                     x: pad;
                     y: pad;
                     width: cw;
+                    // (its own height: left to fill the panel, 2 × pad taller,
+                    // the layout spread the extra between its rows)
+                    height: self.preferred-height;
+                    alignment: start;
 
                     // ── Bluetooth (BluetoothPage { showBack: false }) ──
                     if panel == "bluetoothMenu": PageView {
