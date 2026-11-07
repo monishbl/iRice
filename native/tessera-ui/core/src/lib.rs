@@ -22,6 +22,7 @@ pub mod idle; // (ext-idle-notify-v1 readings, wayland.rs State::idle_set)
 pub mod icons;
 pub mod picture;
 pub mod rank;
+pub mod rows; // (lists changed in place, not handed a new model: rows.rs)
 pub mod runloop;
 pub mod seed;
 pub mod services;
