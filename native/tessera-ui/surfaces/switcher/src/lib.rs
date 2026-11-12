@@ -626,7 +626,12 @@ impl Part for Switcher {
                 if self.win.is_none() && self.phase == Phase::Idle {
                     let wins = st.shell.get::<Windows>().cloned().unwrap_or_default();
                     if let Some(out) = wins.focused_monitor().map(|m| m.name.clone()).or_else(|| st.outputs_now().first().map(|o| o.1.clone())) {
-                        self.window(st, &out);
+                        // (made, then hidden at once: unmapped until Alt+Tab)
+                        if self.window(st, &out) {
+                            if let Some(w) = &self.win {
+                                w.surface.hide();
+                            }
+                        }
                     }
                 }
             }

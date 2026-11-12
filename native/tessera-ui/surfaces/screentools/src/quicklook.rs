@@ -906,9 +906,15 @@ impl Part for QuickLook {
                 }
             }
             Q::Prepare => {
-                if self.win.is_none() {
+                // (made ahead, then hidden at once: left shown, its full-screen
+                // layer took every click on that screen)
+                if self.win.is_none() && !self.open {
                     if let Some(o) = st.outputs_now().first().map(|o| o.1.clone()) {
-                        self.window(st, &o);
+                        if self.window(st, &o) {
+                            if let Some(w) = &self.win {
+                                w.surface.hide();
+                            }
+                        }
                     }
                 }
             }
