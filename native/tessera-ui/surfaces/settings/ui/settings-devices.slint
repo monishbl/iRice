@@ -819,7 +819,7 @@ export component DevicesCtl inherits VerticalLayout {
                         border-radius: Theme.radius-control - 2px;
                         background: Theme.fill;
                         border-width: 1px;
-                        border-color: pw.has-focus ? Theme.accent : Theme.separator;
+                        border-color: pw.has-focus ? Theme.accent : transparent;
                     }
                     Rectangle {
                         x: Theme.material ? 16px : 10px;
@@ -833,7 +833,7 @@ export component DevicesCtl inherits VerticalLayout {
                             single-line: true;
                             input-type: InputType.password;
                             color: Theme.label;
-                            font-size: Theme.body;
+                            font-size: 13px;
                             accessible-label: "Password";
                             init => { self.focus(); }
                             edited => { SBus.act(r.id, 0, 1, self.text); }
@@ -849,7 +849,7 @@ export component DevicesCtl inherits VerticalLayout {
                             vertical-alignment: center;
                             text: "Password";
                             color: Theme.tertiary;
-                            font-size: Theme.body;
+                            font-size: 13px;
                             accessible-role: AccessibleRole.none;
                         }
                     }

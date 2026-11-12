@@ -120,6 +120,8 @@ export global SBus {
     in-out property <length> reveal-y;
     in-out property <length> reveal-h;
     in-out property <int> reveal-seq;
+    // (for a few seconds after: the page scrolls back to it as it grows)
+    in-out property <bool> reveal-hold;
     // the window's width for the page (custom views size from it)
     in-out property <length> page-width: 600px;
     // the shown page's height (the kept pages sit on top of each other;
@@ -547,7 +549,7 @@ export component SSegmented {
                 overflow: elide;
                 horizontal-alignment: center;
                 vertical-alignment: center;
-                font-size: Theme.material ? Theme.body : Theme.small;
+                font-size: Theme.material ? 13px : Theme.small;
                 font-weight: Theme.material ? 500 : 600;
                 color: Theme.material ? (!usable ? Theme.m3-on-surface.with-alpha(0.38) : chosen ? Theme.m3-on-primary : Theme.m3-on-surface-variant)
                     : !usable ? Theme.tertiary : chosen ? Theme.label : Theme.secondary;
@@ -594,7 +596,8 @@ export component SChoice {
     min-width: dropdown ? max(140px, lt.preferred-width + 40px) : max(Theme.material ? 140px : 96px, lt.preferred-width + (Theme.material ? 52px : 40px));
     preferred-width: self.min-width;
     height: Theme.material ? 40px : 28px;
-    opacity: enabled ? 1 : Theme.material ? 0.38 : 0.45;
+    // (Dropdown.qml doesn't fade when it can't be used: AI's "No models added")
+    opacity: enabled || dropdown ? 1 : Theme.material ? 0.38 : 0.45;
     accessible-role: AccessibleRole.combobox;
     accessible-label: label;
     accessible-value: said;
@@ -633,12 +636,13 @@ export component SChoice {
         text: said;
         overflow: elide;
         vertical-alignment: center;
-        color: current >= 0 ? Theme.label : Theme.secondary;
-        font-size: Theme.material ? 14px : Theme.body;
+        color: current >= 0 || dropdown ? Theme.label : Theme.secondary;
+        // (Dropdown.qml: body in both looks; Choice.qml: 14 px in Material)
+        font-size: Theme.material && !dropdown ? 14px : 13px;
         accessible-role: AccessibleRole.none;
     }
     SIcon {
-        x: parent.width - self.width - 8px;
+        x: parent.width - self.width - (Theme.material && dropdown ? 12px : 8px);
         g: Theme.material ? SG.caret-down : SG.caret-up-down;
         bold: !Theme.material;
         size: Theme.material ? (dropdown ? 14px : 20px) : 11px;
@@ -771,7 +775,7 @@ export component SButton {
             text: root.text;
             color: ink;
             vertical-alignment: center;
-            font-size: link ? Theme.body : Theme.material ? 14px : Theme.small;
+            font-size: link ? 13px : Theme.material ? 14px : Theme.small;
             font-weight: link ? 600 : Theme.material ? 500 : style == 1 ? 600 : 500;
             opacity: link && ta.pressed ? 0.6 : 1;
             letter-spacing: Theme.material ? 0.1px : 0;
@@ -810,7 +814,9 @@ export component SField {
         border-radius: Theme.radius-control - 2px;
         background: Theme.fill;
         border-width: 1px;
-        border-color: input.has-focus ? Theme.accent : Theme.separator;
+        // (Slint draws the border over the fill, Qt beside it: the
+        // separator over the fill read as a bright rim the QML hasn't)
+        border-color: input.has-focus ? Theme.accent : transparent;
     }
     ta := TouchArea {
         mouse-cursor: MouseCursor.text;
@@ -830,7 +836,7 @@ export component SField {
             input-type: root.secret ? InputType.password : InputType.text;
             color: Theme.label;
             selection-background-color: Theme.material ? Theme.m3-primary.with-alpha(0.3) : Theme.accent.with-alpha(0.4);
-            font-size: Theme.body;
+            font-size: 13px;
             accessible-label: root.label != "" ? root.label : root.placeholder;
             edited => { root.edited(self.text); }
             accepted => { root.committed(self.text); }
@@ -843,7 +849,7 @@ export component SField {
             height: 100%;
             text: root.placeholder;
             color: Theme.tertiary;
-            font-size: Theme.body;
+            font-size: 13px;
             vertical-alignment: center;
             overflow: elide;
             accessible-role: AccessibleRole.none;

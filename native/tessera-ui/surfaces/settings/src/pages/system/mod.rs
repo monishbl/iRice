@@ -17,6 +17,8 @@ use super::super::model::{Ctx, Page};
 pub fn build(page: &str, cx: &mut Ctx, p: &mut Page) -> bool {
     match page {
         "security" => security::security(cx, p),
+        // (a part of Privacy & Security, opened on its own: biometrics.qml)
+        "biometrics" => security::biometrics(cx, p),
         "power" => power::power(cx, p),
         "power/cooldown" => power::cooldown(cx, p),
         "accessibility" => access::accessibility(cx, p),

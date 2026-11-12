@@ -831,8 +831,12 @@ component Sets inherits Rectangle {
             font-weight: 500;
         }
         Text {
-            y: 96px + 18px;
+            // (pinned left: a Text sized to itself is centred in its parent)
+            x: 0;
+            y: 96px + 20px;
+            width: 150px;
             text: s.detail;
+            overflow: elide;
             color: Theme.secondary;
             font-size: Theme.caption;
         }
@@ -1034,7 +1038,12 @@ export component LookBlock inherits VerticalLayout {
                 HorizontalLayout {
                     alignment: center;
                     spacing: 6px;
-                    if b.data[i].on: SIcon { g: SG.check-circle; fill: true; size: 20px; color: Theme.m3-primary; }
+                    // (the QML's check: a Symbols glyph as text, a line 32 px tall)
+                    min-height: b.data[i].on ? 32px : 0;
+                    if b.data[i].on: VerticalLayout {
+                        alignment: center;
+                        SIcon { g: SG.check-circle; fill: true; size: 20px; color: Theme.m3-primary; }
+                    }
                     Text {
                         text: b.data[i].text;
                         vertical-alignment: center;
@@ -1052,11 +1061,28 @@ export component LookBlock inherits VerticalLayout {
         HorizontalLayout {
             padding-left: 16px;
             padding-right: 16px;
-            Text {
-                text: b.text;
-                wrap: word-wrap;
-                color: Theme.m3-on-surface-variant;
-                font-size: 14px;
+            // (as tall as it wraps at the page's width: measured by a hidden copy)
+            Rectangle {
+                min-height: lm.preferred-height;
+                Text {
+                    x: 0;
+                    y: 0;
+                    width: parent.width;
+                    height: parent.height;
+                    text: b.text;
+                    wrap: word-wrap;
+                    vertical-alignment: top;
+                    color: Theme.m3-on-surface-variant;
+                    font-size: 14px;
+                }
+                lm := Text {
+                    visible: false;
+                    width: SBus.page-width - 32px;
+                    text: b.text;
+                    wrap: word-wrap;
+                    font-size: 14px;
+                    accessible-role: none;
+                }
             }
         }
     }

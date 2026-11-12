@@ -780,6 +780,14 @@ fn bt_menu(d: &bluez::Device, pairing: bool, trusted: bool) -> Vec<(MenuItem, &'
     items
 }
 
+/// A device drawing (shell/assets/devices/*.svg), loaded once
+fn svg_picture(path: &str) -> Option<slint::Image> {
+    thread_local! {
+        static SVGS: std::cell::RefCell<std::collections::HashMap<String, Option<slint::Image>>> = std::cell::RefCell::new(std::collections::HashMap::new());
+    }
+    SVGS.with(|m| m.borrow_mut().entry(path.to_string()).or_insert_with(|| slint::Image::load_from_path(std::path::Path::new(path)).ok()).clone())
+}
+
 fn bt_list(cx: &mut Ctx, bt: &Bluetooth, which: &str, extras: &Value, empty: String) -> Row {
     let devs: Vec<bluez::Device> = device_list(bt, which).into_iter().cloned().collect();
     let devs = frozen(cx, &format!("bt.{which}"), devs, |d| d.address.clone(), false);
@@ -814,7 +822,13 @@ fn bt_list(cx: &mut Ctx, bt: &Bluetooth, which: &str, extras: &Value, empty: Str
             .on(d.connected)
             .style(if x["busy"].as_bool().unwrap_or(false) { 2 } else { 0 })
             .id(mid);
-        if !picture.is_empty() {
+        if picture.ends_with(".svg") {
+            // (the device drawings are SVGs: the picture decoder reads only
+            // photos, so they never came and every device showed its glyph)
+            if let Some(img) = svg_picture(&picture) {
+                o = o.image(img);
+            }
+        } else if !picture.is_empty() {
             if let Some(img) = cx.picture(&picture, size, size) {
                 o = o.image(img);
             }

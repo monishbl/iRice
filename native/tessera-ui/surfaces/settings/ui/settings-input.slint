@@ -46,7 +46,7 @@ component InField {
         border-radius: Theme.radius-control - 2px;
         background: Theme.fill;
         border-width: 1px;
-        border-color: input.has-focus ? Theme.accent : Theme.separator;
+        border-color: input.has-focus ? Theme.accent : transparent; // (Slint draws it over the fill: a rim the QML hasn't)
     }
     ta := TouchArea {
         mouse-cursor: MouseCursor.text;
@@ -64,7 +64,7 @@ component InField {
             single-line: true;
             color: Theme.label;
             selection-background-color: Theme.material ? Theme.m3-primary.with-alpha(0.3) : Theme.accent.with-alpha(0.4);
-            font-size: Theme.body;
+            font-size: 13px;
             accessible-label: root.label != "" ? root.label : root.placeholder;
             edited => { root.edited(self.text); }
             accepted => { root.committed(self.text); }
@@ -74,7 +74,7 @@ component InField {
             height: 100%;
             text: root.placeholder;
             color: Theme.tertiary;
-            font-size: Theme.body;
+            font-size: 13px;
             vertical-alignment: center;
             overflow: elide;
             accessible-role: AccessibleRole.none;
@@ -87,6 +87,8 @@ component Dots inherits Rectangle {
     in property <string> menu-id;
     in property <bool> lit;
     in property <string> label;
+    // (its ink at rest: shortcuts' tertiary; mouse-gestures.qml's secondary)
+    in property <color> rest: Theme.tertiary;
     width: 28px;
     height: 28px;
     border-radius: Theme.material ? (ta.pressed ? 8px : self.height / 2) : Theme.radius-control - 2px;
@@ -101,7 +103,7 @@ component Dots inherits Rectangle {
     }
     // (lit while its menu is open, shortcuts.qml 146)
     property <bool> shown: SBus.menu-shown == menu-id && menu-id != "";
-    SIcon { g: SG.dots; size: 16px; color: lit || shown || ta.has-hover ? Theme.label : Theme.tertiary; }
+    SIcon { g: SG.dots; size: 16px; color: lit || shown || ta.has-hover ? Theme.label : root.rest; }
     ta := TouchArea {
         mouse-cursor: pointer;
         clicked => { root.open(); }
@@ -264,7 +266,7 @@ component GestureRow inherits Tile {
         }
         if r.id != "": VerticalLayout {
             alignment: center;
-            Dots { menu-id: r.id; label: "Options for this gesture"; }
+            Dots { menu-id: r.id; label: "Options for this gesture"; rest: Theme.secondary; }
         }
     }
 }

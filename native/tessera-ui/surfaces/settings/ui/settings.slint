@@ -27,9 +27,11 @@ component Control {
     property <length> w: r.width > 0 ? r.width : 220px;
     // a custom control that sizes itself (a slider, a check, buttons), not a whole-row one
     property <bool> inline: (r.group == "devices" && (r.sub == "level" || r.sub == "btn-switch" || r.sub == "check" || r.sub == "signal"))
-        || (r.group == "notify" && (r.sub == "sound" || r.sub == "days" || r.sub == "stepper" || r.sub == "size" || r.sub == "entry"))
+        || (r.group == "notify" && (r.sub == "sound" || r.sub == "days" || r.sub == "stepper" || r.sub == "size" || r.sub == "entry" || r.sub == "icons"))
         || (r.group == "accounts" && (r.sub == "field" || r.sub == "source"))
-        || (r.group == "system" && (r.sub == "pick-add" || r.sub == "energy"));
+        || (r.group == "system" && (r.sub == "pick-add" || r.sub == "energy"))
+        // (About's row controls all size themselves: Health's status spilled past the card)
+        || r.group == "about";
     // (in a layout, so the row reserves what the control takes: a long
     // label no longer pushes it past the row's edge)
     min-width: body.min-width;
@@ -197,7 +199,7 @@ component Control {
         if r.control == "value": Text {
             text: r.value;
             color: Theme.secondary;
-            font-size: Theme.material ? 14px : Theme.body;
+            font-size: 13px; // (the pages' value Texts: Theme.font.body, 13 in both looks)
             vertical-alignment: center;
             horizontal-alignment: right;
         }
@@ -210,6 +212,7 @@ component Control {
         if r.control == "custom" && inline && r.group == "notify": NotifyCtl { r: r; }
         if r.control == "custom" && inline && r.group == "accounts": AccountsCtl { r: r; }
         if r.control == "custom" && inline && r.group == "system": SystemCtl { r: r; }
+        if r.control == "custom" && inline && r.group == "about": AboutCtl { r: r; }
     }
     // (outside the layout: the whole-row ones size themselves from the row,
     // and inside it they would size the row from themselves, a loop)
@@ -218,7 +221,6 @@ component Control {
     if r.control == "custom" && r.group == "input": InputCtl { r: r; }
     if r.control == "custom" && !inline && r.group == "accounts": AccountsCtl { r: r; }
     if r.control == "custom" && !inline && r.group == "system": SystemCtl { r: r; }
-    if r.control == "custom" && r.group == "about": AboutCtl { r: r; }
 }
 
 // Where a search result landed: it says where it is (the page scrolls
@@ -228,13 +230,22 @@ component Flash inherits Rectangle {
     in property <bool> on;
     property <float> shown: on ? 1 : 0;
     animate shown { duration: on ? 150ms : 400ms; easing: on ? ease-out : ease-in; }
-    changed on => {
-        if on {
-            SBus.reveal-y = self.absolute-position.y;
-            SBus.reveal-h = self.height;
-            SBus.reveal-seq += 1;
-        }
+    function tell() {
+        SBus.reveal-y = self.absolute-position.y;
+        SBus.reveal-h = self.height;
+        SBus.reveal-seq += 1;
+        my-seq = SBus.reveal-seq;
     }
+    property <int> my-seq: -1;
+    property <bool> mine; // (the one shown last)
+    changed on => { if on { mine = true; tell(); } }
+    // (made already on: a row made anew with the page says so too)
+    init => { if on { mine = true; tell(); } }
+    // (the page still settling after, rows coming in above it as their
+    // data arrives (Wi-Fi's networks): scrolled there again for a few
+    // seconds, as Settings.qml's revealSettle; Bluetooth was left short)
+    property <length> page-h: SBus.page-h;
+    changed page-h => { if mine && my-seq == SBus.reveal-seq && (on || SBus.reveal-hold) { tell(); } }
     // (it fills what it's in; the ring reaches 4 px past its sides)
     background: transparent;
     Rectangle {
@@ -244,6 +255,44 @@ component Flash inherits Rectangle {
         background: Theme.material ? Theme.m3-primary.with-alpha(0.16 * root.shown) : transparent;
         border-width: 2px;
         border-color: (Theme.material ? Theme.m3-primary : Theme.accent).with-alpha(root.shown);
+    }
+}
+
+// A wrapped text in a block (a footer, a note, a part's heading) that
+// asks for the height it takes at the page's width: a wrapped Text in a
+// layout was measured as one line, so the page came out short (the last
+// rows past its end, a search hit scrolled short of its place)
+component WrapText {
+    in property <string> text;
+    in property <color> color;
+    in property <length> font-size;
+    in property <int> font-weight: 400;
+    in property <length> letter-spacing;
+    in property <length> avail; // the width it wraps at
+    min-height: mt.preferred-height;
+    preferred-height: mt.preferred-height;
+    Text {
+        x: 0;
+        y: 0;
+        width: parent.width;
+        height: parent.height;
+        text: root.text;
+        wrap: word-wrap;
+        vertical-alignment: top;
+        color: root.color;
+        font-size: root.font-size;
+        font-weight: root.font-weight;
+        letter-spacing: root.letter-spacing;
+    }
+    mt := Text {
+        visible: false;
+        width: root.avail;
+        text: root.text;
+        wrap: word-wrap;
+        font-size: root.font-size;
+        font-weight: root.font-weight;
+        letter-spacing: root.letter-spacing;
+        accessible-role: none;
     }
 }
 
@@ -302,9 +351,9 @@ component RowView {
                 padding-right: pad;
                 padding-top: Theme.material ? 14px : 10px;
                 padding-bottom: Theme.material ? 14px : 10px;
-                Text {
+                WrapText {
+                    avail: root.width - 2 * pad;
                     text: r.label;
-                    wrap: word-wrap;
                     color: r.tone == 2 ? Theme.danger : r.tone == 0 ? Theme.label : Theme.secondary;
                     font-size: Theme.material ? 14px : Theme.small;
                 }
@@ -478,9 +527,9 @@ component GroupView inherits VerticalLayout {
     if b.footer != "": HorizontalLayout {
         padding-left: Theme.material ? 16px : 4px;
         padding-right: Theme.material ? 16px : 4px;
-        Text {
+        WrapText {
+            avail: SBus.page-width - (Theme.material ? 32px : 8px);
             text: b.footer;
-            wrap: word-wrap;
             color: Theme.material ? Theme.m3-on-surface-variant : Theme.tertiary;
             font-size: Theme.material ? 12px : Theme.caption;
             letter-spacing: Theme.material ? 0.4px : 0;
@@ -550,13 +599,12 @@ component BlockView inherits VerticalLayout {
         HorizontalLayout {
             padding-top: Theme.material ? 16px : 12px;
             padding-left: Theme.material ? 0 : 4px;
-            Text {
+            WrapText {
+                avail: SBus.page-width - (Theme.material ? 0 : 4px);
                 text: b.title;
-                wrap: word-wrap;
                 color: Theme.label;
                 font-size: Theme.material ? 22px : Theme.title;
                 font-weight: Theme.material ? 400 : 600;
-                accessible-role: AccessibleRole.text;
             }
         }
         Flash { on: b.flash; }
@@ -565,9 +613,9 @@ component BlockView inherits VerticalLayout {
     if b.kind == "text": HorizontalLayout {
         padding-left: Theme.material ? 16px : 4px;
         padding-right: Theme.material ? 16px : 4px;
-        Text {
+        WrapText {
+            avail: SBus.page-width - (Theme.material ? 32px : 8px);
             text: b.text;
-            wrap: word-wrap;
             color: Theme.material ? Theme.m3-on-surface-variant : Theme.secondary;
             font-size: Theme.material ? 14px : Theme.caption;
         }
@@ -792,7 +840,7 @@ export component SettingsWindow inherits Window {
                     background: Theme.material ? (search-input.has-focus ? Theme.m3-surface-container-highest : fold-hover.has-hover ? Theme.m3-surface-container-high.mix(Theme.m3-on-surface, 0.92) : Theme.m3-surface-container-high) : Theme.fill;
                     animate background { duration: SM.hover; }
                     border-width: Theme.material ? 0 : 1px;
-                    border-color: search-input.has-focus ? Theme.accent : Theme.separator;
+                    border-color: search-input.has-focus ? Theme.accent : transparent;
                     if Theme.material: SIcon {
                         x: 16px;
                         g: SG.search;
@@ -1147,7 +1195,8 @@ export component SettingsWindow inherits Window {
             property <bool> collapsed: Theme.material && page-scroll.content-y < -(headline.y + headline.height - 8px);
 
             page-scroll := Flickable {
-                flicked => { page-bar.poke(); }
+                // (scrolled by a person: a reveal no longer holds the page there)
+                flicked => { page-bar.poke(); SBus.reveal-hold = false; }
                 y: pane.bar-h;
                 height: parent.height - pane.bar-h;
                 content-height: page.preferred-height + 64px;
@@ -1266,8 +1315,10 @@ export component SettingsWindow inherits Window {
                 // Glass: Section › Subpage (the section goes back up to it)
                 if !Theme.material: HorizontalLayout {
                     x: arrows.x + arrows.preferred-width + 12px;
+                    width: min(self.preferred-width, parent.width - self.x - 16px);
                     height: parent.height;
                     spacing: 6px;
+                    alignment: start;
                     Text {
                         vertical-alignment: center;
                         text: is-sub ? crumb : page-title;
@@ -1280,12 +1331,14 @@ export component SettingsWindow inherits Window {
                             mouse-cursor: pointer;
                             clicked => { root.crumb-clicked(); }
                         }
-                    }
-                    if is-sub: Rectangle {
-                        width: 0;
-                        accessible-role: AccessibleRole.button;
-                        accessible-label: crumb;
-                        accessible-action-default => { root.crumb-clicked(); }
+                        // (in the crumb, not the layout: a third item took a
+                        // second spacing before the caret)
+                        if is-sub: Rectangle {
+                            width: 0;
+                            accessible-role: AccessibleRole.button;
+                            accessible-label: crumb;
+                            accessible-action-default => { root.crumb-clicked(); }
+                        }
                     }
                     if is-sub: SIcon { g: { p: SG.caret-right.p, m: "" }; bold: true; size: 12px; color: Theme.tertiary; }
                     if is-sub: Text {

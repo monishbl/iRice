@@ -97,7 +97,7 @@ component SizeField {
         border-radius: Theme.radius-control - 2px;
         background: Theme.fill;
         border-width: 1px;
-        border-color: input.has-focus ? Theme.accent : Theme.separator;
+        border-color: input.has-focus ? Theme.accent : transparent; // (Slint draws it over the fill: a rim the QML hasn't)
     }
     Rectangle {
         x: Theme.material ? 16px : 10px;
@@ -110,7 +110,7 @@ component SizeField {
             vertical-alignment: center;
             single-line: true;
             color: Theme.label;
-            font-size: Theme.body;
+            font-size: 13px;
             selection-background-color: Theme.material ? Theme.m3-primary.with-alpha(0.3) : Theme.accent.with-alpha(0.4);
             accessible-label: root.placeholder;
             accepted => { root.committed(); }
@@ -124,7 +124,7 @@ component SizeField {
             vertical-alignment: center;
             text: root.placeholder;
             color: Theme.tertiary;
-            font-size: Theme.body;
+            font-size: 13px;
             accessible-role: AccessibleRole.none;
         }
     }
@@ -143,7 +143,7 @@ component EntryField {
         border-radius: Theme.radius-control - 2px;
         background: Theme.fill;
         border-width: 1px;
-        border-color: input.has-focus ? Theme.accent : Theme.separator;
+        border-color: input.has-focus ? Theme.accent : transparent; // (Slint draws it over the fill: a rim the QML hasn't)
     }
     Rectangle {
         x: Theme.material ? 16px : 10px;
@@ -155,7 +155,7 @@ component EntryField {
             vertical-alignment: center;
             single-line: true;
             color: Theme.label;
-            font-size: Theme.body;
+            font-size: 13px;
             selection-background-color: Theme.material ? Theme.m3-primary.with-alpha(0.3) : Theme.accent.with-alpha(0.4);
             accessible-label: root.label;
             accepted => {
@@ -171,7 +171,7 @@ component EntryField {
             vertical-alignment: center;
             text: root.placeholder;
             color: Theme.tertiary;
-            font-size: Theme.body;
+            font-size: 13px;
             accessible-role: AccessibleRole.none;
         }
     }
@@ -222,8 +222,10 @@ component ItemRow {
                 horizontal-stretch: 1;
                 alignment: center;
                 spacing: 2px;
-                padding-top: Theme.material ? 12px : 8px;
-                padding-bottom: Theme.material ? 12px : 8px;
+                // (Focus's modes are plain Rows, 10 px above and below; the
+                // window rules' app rows 8)
+                padding-top: Theme.material ? 12px : r.text == "chevron" ? 8px : 10px;
+                padding-bottom: Theme.material ? 12px : r.text == "chevron" ? 8px : 10px;
                 padding-right: 12px;
                 Text {
                     text: r.label;
@@ -299,13 +301,18 @@ export component NotifyCtl inherits VerticalLayout {
     if r.sub == "icons": VerticalLayout {
         spacing: 2px;
         HorizontalLayout {
-            spacing: 2px;
+            // (no spacing: the other line's buttons are empty places; each
+            // place is a button and the 2 px before it)
+            spacing: 0;
             alignment: end;
             for o[i] in r.opts: Rectangle {
-                width: i < 6 ? (Theme.material ? 40px : 28px) : 0;
-                height: Theme.material ? 40px : 28px;
+                // (focus.qml's IconButtons: 28 px in both looks)
+                width: i < 6 ? 30px : 0;
+                height: 28px;
                 visible: i < 6;
                 if i < 6: Ghost {
+                    x: 2px;
+                    width: parent.width - 2px;
                     icon: o.icon;
                     fill: o.on;
                     ink: o.on ? Theme.accent : Theme.secondary;
@@ -315,13 +322,18 @@ export component NotifyCtl inherits VerticalLayout {
             }
         }
         HorizontalLayout {
-            spacing: 2px;
+            // (no spacing: the other line's buttons are empty places; each
+            // place is a button and the 2 px before it)
+            spacing: 0;
             alignment: end;
             for o[i] in r.opts: Rectangle {
-                width: i >= 6 ? (Theme.material ? 40px : 28px) : 0;
-                height: Theme.material ? 40px : 28px;
+                // (focus.qml's IconButtons: 28 px in both looks)
+                width: i >= 6 ? 30px : 0;
+                height: 28px;
                 visible: i >= 6;
                 if i >= 6: Ghost {
+                    x: 2px;
+                    width: parent.width - 2px;
                     icon: o.icon;
                     fill: o.on;
                     ink: o.on ? Theme.accent : Theme.secondary;
@@ -396,7 +408,7 @@ component SearchBox {
         border-radius: Theme.radius-control - 2px;
         background: Theme.fill;
         border-width: 1px;
-        border-color: input.has-focus ? Theme.accent : Theme.separator;
+        border-color: input.has-focus ? Theme.accent : transparent; // (Slint draws it over the fill: a rim the QML hasn't)
     }
     Rectangle {
         x: Theme.material ? 16px : 10px;
@@ -408,7 +420,7 @@ component SearchBox {
             vertical-alignment: center;
             single-line: true;
             color: Theme.label;
-            font-size: Theme.body;
+            font-size: 13px;
             selection-background-color: Theme.material ? Theme.m3-primary.with-alpha(0.3) : Theme.accent.with-alpha(0.4);
             accessible-label: root.placeholder;
             init => { self.focus(); }
@@ -421,7 +433,7 @@ component SearchBox {
             vertical-alignment: center;
             text: root.placeholder;
             color: Theme.tertiary;
-            font-size: Theme.body;
+            font-size: 13px;
             accessible-role: AccessibleRole.none;
         }
     }
@@ -464,13 +476,15 @@ export component NotifyBlock inherits VerticalLayout {
     if b.sub == "empty": HorizontalLayout {
         alignment: center;
         padding-top: 32px;
-        padding-bottom: 32px;
+        // (Material: the QML's symbol and button stand taller than they draw)
+        padding-bottom: Theme.material ? 48px : 32px;
         VerticalLayout {
             width: min(360px, SBus.page-width);
             spacing: 8px;
             SIcon {
                 g: b.data.length > 0 ? b.data[0].icon : SG.info;
                 size: 40px;
+                height: Theme.material ? 57px : 40px;
                 color: Theme.tertiary;
             }
             Rectangle { height: 4px; }
@@ -479,14 +493,15 @@ export component NotifyBlock inherits VerticalLayout {
                 text: "No window rules";
                 color: Theme.label;
                 font-size: Theme.title;
-                font-weight: 600;
+                // (Material: the QML asks DemiBold of its flex font and draws it regular)
+                font-weight: Theme.material ? 400 : 600;
             }
             Text {
                 horizontal-alignment: center;
                 wrap: word-wrap;
                 text: "Choose an app to set how its windows open: floating, on a space, opaque, maximized or at a set size.";
                 color: Theme.secondary;
-                font-size: Theme.body;
+                font-size: 13px; // (Theme.font.body: 13 in both looks)
             }
             Rectangle { height: 24px; }
             HorizontalLayout {

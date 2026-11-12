@@ -33,7 +33,8 @@ component AField {
         border-radius: Theme.radius-control - 2px;
         background: Theme.fill;
         border-width: 1px;
-        border-color: input.has-focus ? Theme.accent : Theme.separator;
+        // (Slint draws the border over the fill: unfocused, none, as the QML reads)
+        border-color: input.has-focus ? Theme.accent : transparent;
     }
     ta := TouchArea {
         mouse-cursor: MouseCursor.text;
@@ -51,7 +52,7 @@ component AField {
             single-line: true;
             color: Theme.label;
             selection-background-color: Theme.material ? Theme.m3-primary.with-alpha(0.3) : Theme.accent.with-alpha(0.4);
-            font-size: Theme.body;
+            font-size: 13px; // (Theme.font.body: 13 in both looks)
             accessible-label: root.label != "" ? root.label : root.placeholder;
             edited => { root.edited(self.text); }
             accepted => { root.accepted(self.text); }
@@ -65,7 +66,7 @@ component AField {
             height: 100%;
             text: root.placeholder;
             color: Theme.tertiary;
-            font-size: Theme.body;
+            font-size: 13px; // (Theme.font.body: 13 in both looks)
             vertical-alignment: center;
             overflow: elide;
             accessible-role: AccessibleRole.none;
@@ -131,25 +132,26 @@ component TextBox inherits VerticalLayout {
     Text {
         text: label;
         color: Theme.label;
-        font-size: Theme.body;
+        font-size: 13px; // (Theme.font.body: 13 in both looks)
     }
     Rectangle {
         height: 88px;
         border-radius: Theme.material ? 20px : Theme.radius-control;
         background: Theme.material ? (area.has-focus ? Theme.m3-surface-container-highest : box-ta.has-hover ? Theme.m3-surface-container-highest.mix(Theme.m3-on-surface, 0.92) : Theme.m3-surface-container-highest) : Theme.fill;
         border-width: Theme.material ? (area.has-focus ? 2px : 0) : 1px;
-        border-color: Theme.material ? Theme.m3-primary : area.has-focus ? Theme.accent : Theme.separator;
+        border-color: Theme.material ? Theme.m3-primary : area.has-focus ? Theme.accent : transparent;
         clip: true;
         box-ta := TouchArea {
             mouse-cursor: MouseCursor.text;
             clicked => { area.focus(); }
         }
         // (longer than the box: it scrolls, following the caret)
+        // (QQC.TextArea in an 8 px margin: its own padding 10 at the sides, 6 above)
         scroll := Flickable {
-            x: 12px;
-            y: 10px;
-            width: parent.width - 24px;
-            height: parent.height - 20px;
+            x: 18px;
+            y: 14px;
+            width: parent.width - 36px;
+            height: parent.height - 22px;
             content-height: max(self.height, area.preferred-height);
         area := TextInput {
             width: scroll.width;
@@ -165,17 +167,17 @@ component TextBox inherits VerticalLayout {
             wrap: word-wrap;
             color: Theme.label;
             selection-background-color: Theme.material ? Theme.m3-primary.with-alpha(0.3) : Theme.accent.with-alpha(0.4);
-            font-size: Theme.body;
+            font-size: 13px; // (Theme.font.body: 13 in both looks)
             accessible-label: root.label;
             edited => { root.edited(self.text); }
         }
         }
         if area.text == "": Text {
-            x: 12px;
-            y: 10px;
+            x: 18px;
+            y: 14px;
             text: root.hint;
             color: Theme.tertiary;
-            font-size: Theme.body;
+            font-size: 13px; // (Theme.font.body: 13 in both looks)
             accessible-role: AccessibleRole.none;
         }
     }

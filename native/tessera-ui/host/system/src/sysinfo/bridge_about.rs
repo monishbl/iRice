@@ -198,8 +198,8 @@ impl About {
         let drives = obj("clouddrives");
         let km = obj("keymap");
         let bs = obj("bootsnapshots");
-        let clock24 = false;
-        let _ = clock24;
+        // (TimeFormat.hm: the 24-hour setting, as the QML's "Checked at")
+        let clock24 = h.cfg()["appearance"]["clock24"].as_bool().unwrap_or(false);
         json!({
             "su": {
                 "running": SoftwareUpdate::running(up, tu), "checking": su.checking(tu, up), "checked": su.checked, "anything": su.anything(tu, up),
@@ -230,7 +230,7 @@ impl About {
             "needsInstalling": st(h, "needs")["installing"].as_bool().unwrap_or(false),
             "health": {
                 "checks": checks, "groups": HEALTH_GROUPS, "checking": b(&health["checking"]), "fixing": health["fixing"].clone(), "error": s(&health["error"]),
-                "checkedAt": if checked_at > 0.0 { helpers::fmt_hm((checked_at / 1000.0) as i64, false) } else { String::new() },
+                "checkedAt": if checked_at > 0.0 { helpers::fmt_hm((checked_at / 1000.0) as i64, clock24) } else { String::new() },
             },
             "conflicts": found,
             "bug": {

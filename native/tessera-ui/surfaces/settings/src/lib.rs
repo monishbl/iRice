@@ -168,6 +168,9 @@ pub struct Settings {
     toast_timer: slint::Timer,
     reveal_timer: slint::Timer,
     flash_timer: slint::Timer,
+    /// (a part or row just shown: the page scrolls back to it while it
+    /// settles, rows arriving above it, for a few seconds)
+    hold_timer: slint::Timer,
     /// the pages made in this window, kept (model.rs Pages)
     pages: Pages,
     /// the sidebar's pages and the search's results: changed in place (a
@@ -529,6 +532,7 @@ impl Settings {
                 w.ui.invoke_clear_search();
             }
         }
+        let reopened = !self.open;
         self.open = true;
         self.cfg.reload(st.shell.cfg.clone());
         if self.index.is_empty() || self.index_material != Some(st.shell.look.material) {
@@ -539,6 +543,12 @@ impl Settings {
         } else {
             self.target = target.to_string();
             self.rebuild(st);
+        }
+        if reopened {
+            // (a window opened anew has no history yet, as the QML's: the
+            // page it was on last isn't a step back)
+            self.back.clear();
+            self.forward.clear();
         }
         self.sync_chrome(st);
     }
@@ -587,6 +597,11 @@ impl Settings {
         self.page = page.clone();
         self.target = target;
         if changed {
+            // (another page: a reveal on the last one holds nothing now)
+            self.hold_timer.stop();
+            if let Some(w) = &self.win {
+                w.ui.global::<ui::SBus>().set_reveal_hold(false);
+            }
             shell::ask("settings", json!(["page", page]));
             // (another page: More options close, and the Wi-Fi list's password
             // row, join form and share card go, as WifiList.qml's when hidden)
@@ -1025,6 +1040,15 @@ impl Part for Settings {
                 self.target.clear();
                 let s = Self::sender(st);
                 self.flash_timer.start(slint::TimerMode::SingleShot, Duration::from_millis(1050), move || s(M::Unflash));
+                if let Some(w) = &self.win {
+                    w.ui.global::<ui::SBus>().set_reveal_hold(true);
+                    let weak = w.ui.as_weak();
+                    self.hold_timer.start(slint::TimerMode::SingleShot, Duration::from_millis(8000), move || {
+                        if let Some(u) = weak.upgrade() {
+                            u.global::<ui::SBus>().set_reveal_hold(false);
+                        }
+                    });
+                }
             }
             M::DataChanged => {
                 if self.open {

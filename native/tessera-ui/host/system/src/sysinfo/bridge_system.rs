@@ -20,7 +20,7 @@
 //!   state "sharing".ports {error, failedWith, busy} (host-sharing)
 //!   bus "Power" {hasBattery, why, mode, modeName, guardError, ownHypridle,
 //!        userHypridle, energyMinutes, energyApps:[{key,seconds}]}
-//!   state "backends" {ppd, powerShort, powerReason, hasPerformanceProfile}
+//!   state "backends" {ppd, powerShort, powerReason} (Performance: Power's hasPerformance)
 //!   state "priority" {available, on, busy, error} (host-shell probes)
 //!   state "cooldown" {active, why} (host-shell appearance)
 //!   state "captions" {hasBinary, hasModel, ready, error, languages} (desktop)
@@ -237,7 +237,7 @@ impl SystemBridge {
             "power": {
                 "ppd": get(&be, "ppd", &json!(false)), "powerShort": s(&be["powerShort"]), "powerReason": s(&be["powerReason"]),
                 "hasBattery": b(&pw["hasBattery"]), "why": get(&pw, "why", &json!("")), "mode": get(&pw, "mode", &json!("balanced")),
-                "modeName": get(&pw, "modeName", &json!("")), "hasPerformance": b(&be["hasPerformanceProfile"]),
+                "modeName": get(&pw, "modeName", &json!("")), "hasPerformance": b(&pw["hasPerformance"]) || b(&be["hasPerformanceProfile"]),
                 "guardError": get(&pw, "guardError", &json!("")), "ownHypridle": b(&pw["ownHypridle"]), "userHypridle": b(&pw["userHypridle"]),
                 "energyMinutes": get(&pw, "energyMinutes", &json!(0)), "energyApps": apps,
                 "keepAwake": b(&sys["keepAwake"]), "keepAwakeStatus": s(&sys["keepAwakeStatus"]),

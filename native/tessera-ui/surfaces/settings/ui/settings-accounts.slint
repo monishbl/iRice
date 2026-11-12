@@ -30,7 +30,7 @@ component SyncField {
         border-radius: Theme.radius-control - 2px;
         background: Theme.fill;
         border-width: 1px;
-        border-color: input.has-focus ? Theme.accent : Theme.separator;
+        border-color: input.has-focus ? Theme.accent : transparent; // (Slint draws it over the fill: a rim the QML hasn't)
     }
     ta := TouchArea {
         mouse-cursor: MouseCursor.text;
@@ -49,7 +49,7 @@ component SyncField {
             input-type: root.r.secret ? InputType.password : InputType.text;
             color: Theme.label;
             selection-background-color: Theme.material ? Theme.m3-primary.with-alpha(0.3) : Theme.accent.with-alpha(0.4);
-            font-size: Theme.body;
+            font-size: 13px;
             accessible-label: root.r.label != "" ? root.r.label : root.r.placeholder;
             edited => { SBus.act(root.r.id, 0, 0, self.text); }
             accepted => { SBus.act(root.r.id, 1, 0, self.text); }
@@ -62,7 +62,7 @@ component SyncField {
             height: 100%;
             text: root.r.placeholder;
             color: Theme.tertiary;
-            font-size: Theme.body;
+            font-size: 13px;
             vertical-alignment: center;
             overflow: elide;
             accessible-role: AccessibleRole.none;
@@ -218,7 +218,7 @@ export component AccountsCtl inherits VerticalLayout {
             border-radius: Theme.material ? 20px : Theme.radius-control - 2px;
             background: Theme.material ? (note.has-focus ? Theme.m3-surface-container-highest : Theme.m3-surface-container-highest) : Theme.fill;
             border-width: Theme.material ? (note.has-focus ? 2px : 0) : 1px;
-            border-color: Theme.material ? Theme.m3-primary : note.has-focus ? Theme.accent : Theme.separator;
+            border-color: Theme.material ? Theme.m3-primary : note.has-focus ? Theme.accent : transparent;
             TouchArea {
                 mouse-cursor: MouseCursor.text;
                 clicked => { note.focus(); }
@@ -236,7 +236,7 @@ export component AccountsCtl inherits VerticalLayout {
                     wrap: word-wrap;
                     color: Theme.label;
                     selection-background-color: Theme.material ? Theme.m3-primary.with-alpha(0.3) : Theme.accent.with-alpha(0.4);
-                    font-size: Theme.body;
+                    font-size: 13px;
                     accessible-label: "Your note to the assistant";
                     edited => { SBus.act(root.r.id, 0, 0, self.text); }
                     changed has-focus => {
@@ -248,7 +248,7 @@ export component AccountsCtl inherits VerticalLayout {
                     text: root.r.placeholder;
                     wrap: word-wrap;
                     color: Theme.tertiary;
-                    font-size: Theme.body;
+                    font-size: 13px;
                     accessible-role: AccessibleRole.none;
                 }
             }

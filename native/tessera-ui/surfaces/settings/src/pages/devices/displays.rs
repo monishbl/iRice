@@ -258,7 +258,9 @@ pub fn displays(cx: &mut Ctx, p: &mut Page) {
                 ask(cx, "displaysSet", json!([n, {"mode": mode}]));
             }
         });
-        rows.push(Row::new("Resolution").visible(shown).choice(&res.iter().map(|r| r.1.clone()).collect::<Vec<_>>(), at, pick));
+        // (a size not in the list shows as it is, as Dropdown's currentLabel:
+        // a nested or virtual output lists no modes)
+        rows.push(Row::new("Resolution").visible(shown).choice(&res.iter().map(|r| r.1.clone()).collect::<Vec<_>>(), at, pick).placeholder(cur_res.clone()));
         // Refresh rate
         let rs = rates(&m);
         let cur_rate = rate(&m);
@@ -270,7 +272,7 @@ pub fn displays(cx: &mut Ctx, p: &mut Page) {
                 ask(cx, "displaysSet", json!([n, {"mode": mode}]));
             }
         });
-        rows.push(Row::new("Refresh rate").visible(shown && !rs.is_empty()).detail(if lowered { "Cool-down has lowered it for now" } else { "" }).choice(&rs.iter().map(|r| r.1.clone()).collect::<Vec<_>>(), at, pick));
+        rows.push(Row::new("Refresh rate").visible(shown && !rs.is_empty()).detail(if lowered { "Cool-down has lowered it for now" } else { "" }).choice(&rs.iter().map(|r| r.1.clone()).collect::<Vec<_>>(), at, pick).placeholder(cur_rate.clone()));
         // Scale
         let sc = scales(&m);
         let cur_scale = m["scale"].as_f64().unwrap_or(1.0);
