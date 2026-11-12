@@ -81,8 +81,10 @@ export component SessionDialog inherits Window {
         transform-origin: { x: self.width / 2, y: self.height / 2 };
         border-radius: 28px;
         // Glass: the plugin's glass under Theme.panel; Material: its container
-        background: Theme.material ? Theme.m3-surface-container-high : Theme.panel;
-        border-width: Theme.material ? 0px : 1px;
+        // (with the plugin, only its glass, its tint and rim: the glass/Dialog.qml
+        // draws nothing over it; Theme.panel and a hairline made it darker, edged twice)
+        background: Theme.material ? Theme.m3-surface-container-high : Theme.plugin ? transparent : Theme.panel;
+        border-width: Theme.material || Theme.plugin ? 0px : 1px;
         border-color: #ffffff1a;
         // (clicks on the dialog don't reach the scrim)
         TouchArea { }

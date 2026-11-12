@@ -751,7 +751,8 @@ export component ScreenToolbar inherits Window {
             x: (root.width - self.width) / 2;
             y: bar.y - 8px - self.height;
             border-radius: Theme.radius-popover;
-            background: Theme.material ? Theme.m3-surface-container : Theme.panel;
+            // (Glass on the plugin: only its glass, as ScreenToolbar's options)
+            background: Theme.material ? Theme.m3-surface-container : Theme.plugin ? transparent : Theme.panel;
             drop-shadow-blur: Theme.material ? 16px : 0;
             drop-shadow-offset-y: Theme.material ? 4px : 0;
             drop-shadow-color: Theme.material ? Theme.m3-shadow.with-alpha(Theme.dark ? 0.4 : 0.16) : transparent;
@@ -862,7 +863,8 @@ export component ScreenToolbar inherits Window {
             // Glass: the plugin's glass under a tint; Material: a vibrant
             // floating toolbar, a pill in primaryContainer
             border-radius: Theme.material ? self.height / 2 : 22px;
-            background: Theme.material ? Theme.m3-primary-container : Theme.panel;
+            // (Glass on the plugin: only its glass, ScreenToolbar draws no tint over it)
+            background: Theme.material ? Theme.m3-primary-container : Theme.plugin ? transparent : Theme.panel;
             drop-shadow-blur: Theme.material ? 10px : 0;
             drop-shadow-offset-y: Theme.material ? 3px : 0;
             drop-shadow-color: Theme.material ? Theme.m3-shadow.with-alpha(Theme.dark ? 0.45 : 0.18) : transparent;
@@ -871,6 +873,10 @@ export component ScreenToolbar inherits Window {
             TouchArea { }
             row := HorizontalLayout {
                 alignment: center;
+                // (the 56 px buttons centred in the 64 px bar: a fixed-height
+                // child of a row sits at its top)
+                padding-top: 4px;
+                padding-bottom: 4px;
                 spacing: 4px;
                 for t[i] in tools: Rectangle {
                     width: t.kind == 1 ? 17px : t.kind == 2 ? opt-measure.preferred-width + 40px : 104px;
@@ -902,7 +908,8 @@ export component ScreenToolbar inherits Window {
                             alignment: center;
                             spacing: 4px;
                             StIcon {
-                                height: 22px;
+                                // (Material: the symbol's line, 1.2x the size, as Icon.qml's Text)
+                                height: Theme.material ? 26px : 22px;
                                 icon: t.icon;
                                 size: 22px;
                                 fill: Theme.material && (t.picked || t.red);

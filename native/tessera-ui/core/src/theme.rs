@@ -659,7 +659,9 @@ pub fn tokens(look: &Look, plugin: bool) -> Tokens {
         let roles = look_roles(look);
         let r = |k: &str| hex(roles.iter().find(|(n, _)| n == k).map(|(_, v)| v.as_str()).unwrap_or("#ff00ff"));
         t.set_font("Tessera Sans Flex".into());
-        t.set_body(14.0);
+        // (Theme.font.body is 13 in both looks; the places the QML sets 14
+        // for Material, the menu bar's, say 14px themselves)
+        t.set_body(13.0);
         t.set_bar_tint(Color::from_argb_u8(0, 0, 0, 0));
         t.set_fg(r("onSurface"));
         // (MenuBar.qml's pillColor: the island's own surface, surfaceContainerHigh)

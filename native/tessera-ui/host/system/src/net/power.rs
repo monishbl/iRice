@@ -120,6 +120,9 @@ fn spawn_ppd(send: impl Fn(Box<dyn Any + Send>) + Send + 'static) {
     });
 }
 
+/// (no battery reading yet)
+const NO_STATE: u32 = u32::MAX;
+
 pub struct Power {
     cfg: Value,
     requests: BTreeMap<String, Request>,
@@ -169,7 +172,7 @@ impl Default for Power {
             battery: Battery::default(),
             prev_low: false,
             prev_on_battery: false,
-            prev_state: 0,
+            prev_state: NO_STATE,
             prev_percent: -1.0,
             saver_dismissed: false,
             warned: 0,
@@ -423,11 +426,15 @@ impl Power {
                 }
             }
         }
-        // A note when it's full (the charger can come out)
-        if self.has_battery() && self.battery.state == 4 && self.prev_state != 4 {
-            crate::util::run_async(&["notify-send", "-a", "Battery", "-i", "battery-full-charged", "Fully charged", "You can unplug your computer."]);
+        // A note when it's full (the charger can come out): when the state
+        // changes to full (Power.qml's onStateChanged), not on the first
+        // reading, which posted it at every start while full
+        if self.has_battery() {
+            if self.battery.state == 4 && self.prev_state != 4 && self.prev_state != NO_STATE {
+                crate::util::run_async(&["notify-send", "-a", "Battery", "-i", "battery-full-charged", "Fully charged", "You can unplug your computer."]);
+            }
+            self.prev_state = self.battery.state;
         }
-        self.prev_state = self.battery.state;
         self.lid_watch(h);
         // the energy mode, as it is now
         let mode = self.mode();

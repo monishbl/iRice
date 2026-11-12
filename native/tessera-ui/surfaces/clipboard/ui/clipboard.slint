@@ -114,8 +114,10 @@ export component ClipboardPanel inherits Window {
         transform-scale: 0.96 + 0.04 * min(1, openness);
         transform-origin: { x: self.width / 2, y: self.height / 2 };
         border-radius: 28px;
-        background: Theme.material ? Theme.m3-surface-container : Theme.panel;
-        border-width: Theme.material ? 0 : 0.5px;
+        // (with the plugin, only its glass, its tint and rim: the glass/Dialog.qml
+        // draws nothing over it; Theme.panel and a hairline made it darker, edged twice)
+        background: Theme.material ? Theme.m3-surface-container : Theme.plugin ? transparent : Theme.panel;
+        border-width: Theme.material || Theme.plugin ? 0 : 0.5px;
         border-color: Theme.separator;
         drop-shadow-blur: Theme.material ? 32px : 0;
         drop-shadow-offset-y: Theme.material ? 8px : 0;

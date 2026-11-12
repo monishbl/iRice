@@ -631,8 +631,10 @@ export component WifiMenu inherits Window {
             height: content.preferred-height + 2 * pad;
             opacity: min(1, openness);
             border-radius: Theme.radius-control + pad;
-            background: m3 ? Theme.m3-surface-container.with-alpha(Theme.panel-alpha) : Theme.panel;
-            border-width: m3 ? 0 : 0.5px;
+            // (Glass: Popover.qml draws only the plugin's glass, its tint and rim
+            // the glass's own; this tint and hairline made it darker, edged twice)
+            background: m3 ? Theme.m3-surface-container.with-alpha(Theme.panel-alpha) : Theme.plugin ? transparent : Theme.panel;
+            border-width: m3 || Theme.plugin ? 0 : 0.5px;
             border-color: Theme.separator;
             drop-shadow-blur: m3 ? 16px : 0;
             drop-shadow-offset-y: m3 ? 4px : 0;
@@ -1004,16 +1006,31 @@ export component WifiMenu inherits Window {
                                     }
                                 }
                             }
-                            // (ScrollIndicator: a thin bar while it scrolls)
-                            if fl.interactive: Rectangle {
-                                x: parent.width - 4px;
-                                width: 3px;
-                                border-radius: 1.5px;
-                                property <float> frac: fl.height / max(1px, fl.content-height);
-                                height: max(24px, fl.height * frac);
-                                y: (fl.height - self.height) * (-fl.content-y / max(1px, fl.content-height - fl.height));
-                                background: Theme.tertiary;
-                                opacity: 0.6;
+                            // (ScrollIndicator: a thin bar while it scrolls,
+                            // hidden 0.9 s after it stops)
+                            if fl.interactive: sb := Rectangle {
+                                x: parent.width - 12px;
+                                width: 12px;
+                                property <length> at: fl.content-y;
+                                property <bool> moving;
+                                property <bool> moved;
+                                changed at => { moving = true; moved = true; }
+                                Timer {
+                                    interval: 900ms;
+                                    running: moving;
+                                    triggered => { if moved { moved = false; } else { moving = false; } }
+                                }
+                                Rectangle {
+                                    x: (parent.width - self.width) / 2;
+                                    width: 6px;
+                                    border-radius: self.width / 2;
+                                    property <float> frac: fl.height / max(1px, fl.content-height);
+                                    height: max(28px, fl.height * frac);
+                                    y: (fl.height - self.height) * (-fl.content-y / max(1px, fl.content-height - fl.height));
+                                    background: Theme.dark ? #ffffff52 : #00000052;
+                                    opacity: sb.moving ? 1 : 0;
+                                    animate opacity { duration: sb.moving ? 150ms : 400ms; easing: ease-out; }
+                                }
                             }
                         }
 

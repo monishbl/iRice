@@ -117,6 +117,55 @@ pub fn bt_click(d: &Device) -> &'static str {
     }
 }
 
+fn is_word(c: Option<char>) -> bool {
+    c.is_some_and(|c| c.is_alphanumeric() || c == '_')
+}
+
+/// `\b<needle>` (and `\b` after it when `end`)
+fn word(hay: &str, needle: &str, end: bool) -> bool {
+    hay.match_indices(needle).any(|(i, _)| !is_word(hay[..i].chars().last()) && (!end || !is_word(hay[i + needle.len()..].chars().next())))
+}
+
+/// Devices.pictureFor: the drawing (shell/assets/devices/<kind>.svg) for a
+/// device's Bluetooth kind and name (earbuds and over-ear headphones report
+/// the same kind, so the name tells them apart)
+pub fn picture_kind(icon: &str, name: &str) -> &'static str {
+    let i = icon.to_lowercase();
+    let n = name.to_lowercase();
+    let has = |s: &str| n.contains(s);
+    let qc = n.match_indices("qc").any(|(k, _)| !is_word(n[..k].chars().last()) && { let r = &n[k + 2..]; r.strip_prefix(' ').unwrap_or(r).chars().next().is_some_and(|c| c.is_ascii_digit()) });
+    let ear = n.match_indices("ear").any(|(k, _)| !is_word(n[..k].chars().last()) && { let r = &n[k + 3..]; r.strip_prefix(' ').unwrap_or(r).starts_with('(') });
+    if has("soundbar") || has("sound bar") {
+        "soundbar"
+    } else if has("buds") || has("pods") || has("earbud") || has("earphone") || word(&n, "tws", true) || word(&n, "wf-", false) || ear || has("liberty") || word(&n, "freeclip", false) {
+        "earbuds"
+    } else if has("headphone") || word(&n, "wh-", false) || word(&n, "max", true) || qc {
+        "headphones"
+    } else if i.contains("headset") || i.contains("headphone") {
+        "headphones"
+    } else if i.contains("audio") || i.contains("speaker") || has("speaker") {
+        "speaker"
+    } else if i.contains("mouse") || has("mouse") || word(&n, "mx anywhere", false) || word(&n, "mx master", false) {
+        "mouse"
+    } else if i.contains("keyboard") || has("keyboard") {
+        "keyboard"
+    } else if i.contains("gaming") || i.contains("joystick") || has("controller") || has("gamepad") || has("dualsense") || has("dualshock") || has("xbox") {
+        "controller"
+    } else if i.contains("watch") || has("watch") {
+        "watch"
+    } else if i.contains("phone") {
+        "phone"
+    } else if i.contains("computer") {
+        "laptop"
+    } else {
+        "bluetooth"
+    }
+}
+
+fn device_picture(icon: &str, name: &str) -> String {
+    tessera_core::util::asset(&format!("shell/assets/devices/{}.svg", picture_kind(icon, name))).map(|p| p.to_string_lossy().into_owned()).unwrap_or_default()
+}
+
 /// The Bluetooth page (BluetoothPage.qml with showBack: false): the notice
 /// when BlueZ can't be used (`backends`: the shell's Backends state), why
 /// it's empty, the devices (`busy`: pairing; `pictures`: address → file)
@@ -160,7 +209,8 @@ pub fn bt_page(bt: &Bluetooth, backends: &Value, busy: &HashSet<String>, picture
                     kind: BlockKind::Row,
                     id: format!("d:{}", d.address),
                     icon: bt_icon(&d.icon).into(),
-                    picture: pictures[&d.address].as_str().unwrap_or("").trim_start_matches("file://").to_string(),
+                    // (the shell's when it said one, else Devices.pictureOf's drawing)
+                    picture: pictures[&d.address].as_str().filter(|p| !p.is_empty()).map_or_else(|| device_picture(&d.icon, &d.name), |p| p.trim_start_matches("file://").to_string()),
                     title: if d.name.is_empty() { d.address.clone() } else { d.name.clone() },
                     status,
                     highlighted: d.connected,

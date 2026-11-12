@@ -51,7 +51,6 @@ struct Win {
     ui: ui::Keyboard,
     a11y: Option<crate::a11y::A11y>,
     size: (u32, u32),
-    screen: (f32, f32),
     glass_sent: String,
     settled: bool,
 }
@@ -124,7 +123,7 @@ impl Osk {
         ui.on_pressed(move |r, c| to(Box::new(Msg::Press(r, c))));
         ui.show().expect("show keyboard");
         let a11y = crate::a11y::A11y::new(&surface, st.tx.clone());
-        self.win = Some(Win { output, surface, ui, a11y, size, screen, glass_sent: String::new(), settled: false });
+        self.win = Some(Win { output, surface, ui, a11y, size, glass_sent: String::new(), settled: false });
         self.refresh();
         if self.typist.is_none() {
             self.typist = Some(vkbd::Typist::spawn());
@@ -208,11 +207,11 @@ impl Part for Osk {
         if !st.shell.plugin || st.shell.look.material || !w.surface.mapped.get() {
             return;
         }
-        // (the window sits at the bottom centre, 8 px up, its shadow's room round it)
-        let (sw, sh) = w.screen;
+        // (the plugin places a shape from its layer's own corner: the panel
+        // inside the window's shadow room. Screen coordinates put it below
+        // the screen, and the keyboard had no glass at all)
         let (ww, wh) = (w.size.0 as f32, w.size.1 as f32);
-        let (x, y) = ((sw - ww) / 2.0 + M, sh - wh - (8.0 - M) + M);
-        let shape = theme::glass_shape(&st.shell.look, x.round(), y.round(), ww - 2.0 * M, wh - 2.0 * M, 26.0, 1.0, 1.0);
+        let shape = theme::glass_shape(&st.shell.look, M, M, ww - 2.0 * M, wh - 2.0 * M, 26.0, 1.0, 1.0);
         let key = tessera_core::theme::glass_key(&shape);
         if key != w.glass_sent {
             st.shell.glass.set(&w.output, NS, std::slice::from_ref(&shape));

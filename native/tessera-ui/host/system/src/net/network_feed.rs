@@ -55,10 +55,14 @@ pub fn parse_list(text: &str) -> Vec<Ap> {
         // (one row per network: its strongest access point; the connected one wins)
         match out.iter_mut().find(|a| a.name == ap.name) {
             Some(a) => {
+                // (its strength the strongest access point's, as Quickshell's
+                // network: the connected one may be a weaker one of the same name)
+                let best = a.signal.max(ap.signal);
                 if ap.connected || (!a.connected && ap.signal > a.signal) {
                     let c = a.connected || ap.connected;
                     *a = Ap { connected: c, ..ap };
                 }
+                a.signal = best;
             }
             None => out.push(ap),
         }

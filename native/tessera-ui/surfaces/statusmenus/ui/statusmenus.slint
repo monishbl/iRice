@@ -146,8 +146,10 @@ component Transport inherits Rectangle {
     in property <string> label;
     callback clicked();
     property <bool> m3: Theme.material;
-    width: m3 ? 40px : size + 16px;
-    height: m3 ? 40px : size + 16px;
+    // (Glass: the icon's own size, as NowPlaying.qml's Icons 18 px apart;
+    // the click reaches 8 px round it)
+    width: m3 ? 40px : size;
+    height: m3 ? 40px : size;
     border-radius: m3 ? (t.pressed ? 8px : self.height / 2) : 0;
     background: m3 ? (t.pressed ? Theme.m3-on-surface-variant.with-alpha(0.1) : t.has-hover ? Theme.m3-on-surface-variant.with-alpha(0.08) : transparent) : transparent;
     opacity: enabled ? 1 : (m3 ? 0.38 : 0.35);
@@ -162,6 +164,10 @@ component Transport inherits Rectangle {
         color: m3 ? Theme.m3-on-surface-variant : Theme.label;
     }
     t := TouchArea {
+        x: m3 ? 0 : -8px;
+        y: m3 ? 0 : -8px;
+        width: root.width - 2 * self.x;
+        height: root.height - 2 * self.y;
         enabled: root.enabled;
         mouse-cursor: pointer;
         clicked => { root.clicked(); }
@@ -378,7 +384,7 @@ export component StatusMenus inherits Window {
             // glass's own; the panel tint over it made these darker than the
             // QML's. Without the plugin the tint stands in for the glass)
             background: m3 ? Theme.m3-surface-container.with-alpha(Theme.panel-alpha) : Theme.plugin ? transparent : Theme.panel;
-            border-width: m3 ? 0 : 0.5px;
+            border-width: m3 || Theme.plugin ? 0 : 0.5px;
             border-color: Theme.separator;
             drop-shadow-blur: m3 ? 16px : 0;
             drop-shadow-offset-y: m3 ? 4px : 0;
@@ -418,8 +424,10 @@ export component StatusMenus inherits Window {
                     }
 
                     // ── Sound: the slider, then SoundPage without its title ──
+                    // (12 px under the slider as the QML's Column: the slider
+                    // block keeps 6 px of its own below it, as in a page)
                     if panel == "soundMenu": VerticalLayout {
-                        spacing: 12px;
+                        spacing: 6px;
                         VerticalLayout {
                             spacing: 8px;
                             Text {
@@ -736,8 +744,13 @@ export component StatusMenus inherits Window {
                                     image-fit: fill;
                                     opacity: parent.cookie-o;
                                 }
+                                // (Material: ShapedArt's square sits inside its 72 px box)
                                 Rectangle {
-                                border-radius: m3 ? 16px : 12px;
+                                x: m3 ? 3px : 0;
+                                y: m3 ? 3px : 0;
+                                width: parent.width - 2 * self.x;
+                                height: parent.height - 2 * self.y;
+                                border-radius: m3 ? 14px : 12px;
                                 background: np.has-art && m3 ? transparent : m3 ? Theme.m3-surface-container-highest : Theme.fill;
                                 clip: true;
                                 opacity: 1 - parent.cookie-o;
@@ -765,7 +778,9 @@ export component StatusMenus inherits Window {
                                     font-size: Theme.title;
                                     font-weight: 600;
                                 }
-                                if np.byline != "": Text {
+                                // (the byline's line always there, empty or not, as
+                                // in the QML: the title sits above the centre)
+                                Text {
                                     text: np.byline;
                                     overflow: elide;
                                     color: Theme.secondary;
@@ -811,7 +826,7 @@ export component StatusMenus inherits Window {
                         }
                         HorizontalLayout {
                             alignment: center;
-                            spacing: m3 ? 12px : 2px;
+                            spacing: m3 ? 12px : 18px;
                             Transport {
                                 y: (parent.height - self.height) / 2;
                                 icon: sg.prev;

@@ -382,7 +382,8 @@ export component Center inherits Window {
         // (bare: nothing; the pieces are glass of their own)
         // (Glass, no plugin: Glass.qml's frosted fallback, as the chips)
         background: bare ? transparent : Theme.material ? Theme.m3-surface-container.with-alpha(Theme.blur ? Theme.panel-alpha : 1) : glass-plugin ? transparent : Frost.tint;
-        border-width: !Theme.material && !bare ? 0.5px : 0;
+        // (on the plugin's glass its rim is the edge: Popover draws no other)
+        border-width: !Theme.material && !bare && !glass-plugin ? 0.5px : 0;
         border-color: Theme.separator;
         drop-shadow-blur: Theme.material && !bare ? 32px : 0;
         drop-shadow-offset-y: 8px;

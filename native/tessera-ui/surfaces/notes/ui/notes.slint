@@ -90,8 +90,10 @@ export component QuickNote inherits Window {
         transform-scale: 0.96 + 0.04 * min(1, openness);
         transform-origin: { x: self.width / 2, y: self.height / 2 };
         border-radius: 28px;
-        background: Theme.material ? Theme.m3-surface-container.with-alpha(Theme.panel-alpha) : Theme.panel;
-        border-width: Theme.material ? 0 : 0.5px;
+        // (with the plugin, only its glass, its tint and rim: the glass/Dialog.qml
+        // draws nothing over it; Theme.panel and a hairline made it darker, edged twice)
+        background: Theme.material ? Theme.m3-surface-container.with-alpha(Theme.panel-alpha) : Theme.plugin ? transparent : Theme.panel;
+        border-width: Theme.material || Theme.plugin ? 0 : 0.5px;
         border-color: Theme.separator;
         drop-shadow-blur: Theme.material ? 32px : 0;
         drop-shadow-offset-y: Theme.material ? 8px : 0;
@@ -162,6 +164,7 @@ export component QuickNote inherits Window {
                     height: max(flick.height, self.preferred-height);
                     single-line: false;
                     wrap: word-wrap;
+                    vertical-alignment: top;
                     read-only: saving;
                     color: Theme.label;
                     selection-background-color: Theme.accent.with-alpha(0.35);
@@ -191,8 +194,12 @@ export component QuickNote inherits Window {
                         reject
                     }
                 }
+                // (pinned to the top: a Text with only a width is centred)
                 if editor.text == "": Text {
+                    x: 0;
+                    y: 0;
                     width: flick.width;
+                    height: self.preferred-height;
                     text: "Write anything. The first line becomes the title.";
                     color: Theme.tertiary;
                     font-size: Theme.body;

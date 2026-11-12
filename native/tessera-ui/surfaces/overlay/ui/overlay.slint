@@ -120,7 +120,9 @@ component Frame inherits Rectangle {
         border-color: Theme.separator;
         drop-shadow-blur: 16px;
         drop-shadow-offset-y: 4px;
-        drop-shadow-color: Theme.dark ? #00000040 : #0000001a;
+        // (none on the plugin's glass: Slint's shadow is a whole box under the
+        // see-through glass and darkened it; Glass.qml's is outside only)
+        drop-shadow-color: OvG.on-glass ? transparent : Theme.dark ? #00000040 : #0000001a;
         // (clicks on the panel stay here)
         TouchArea { }
     }
@@ -573,7 +575,7 @@ export component OverlayUi inherits Window {
             border-color: Theme.separator;
             drop-shadow-blur: 20px;
             drop-shadow-offset-y: 6px;
-            drop-shadow-color: Theme.dark ? #00000040 : #0000001a;
+            drop-shadow-color: !Theme.material && on-glass ? transparent : Theme.dark ? #00000040 : #0000001a;
             TouchArea { }
         }
         row := HorizontalLayout {

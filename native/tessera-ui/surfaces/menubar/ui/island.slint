@@ -164,7 +164,11 @@ component StatFigure inherits Rectangle {
         text: shape;
         font-size: Theme.small;
     }
+    // (the figure's own height, as IslandStatus' Row in the QML: not the
+    // 22 px line, whose lower edge took hovers just under the island)
     TouchArea {
+        y: 3px;
+        height: parent.height - 6px;
         changed has-hover => {
             root.hover(key, self.has-hover, root.absolute-position.x + root.width / 2, root.absolute-position.y + root.height);
         }
@@ -1083,17 +1087,24 @@ component AlertView inherits Rectangle {
                     horizontal-alignment: center;
                 }
             }
-            if a.action2 != "": Pill {
-                text: a.action2;
-                outlined: true;
-                filled: false;
-                ink: root.ink;
-                clicked => { root.act(a.uid, "2"); }
+            // (centred on the row: a fixed-height child of the row sat at its top)
+            if a.action2 != "": VerticalLayout {
+                alignment: center;
+                Pill {
+                    text: a.action2;
+                    outlined: true;
+                    filled: false;
+                    ink: root.ink;
+                    clicked => { root.act(a.uid, "2"); }
+                }
             }
-            if a.action != "": Pill {
-                text: a.action;
-                ink: root.ink;
-                clicked => { root.act(a.uid, "1"); }
+            if a.action != "": VerticalLayout {
+                alignment: center;
+                Pill {
+                    text: a.action;
+                    ink: root.ink;
+                    clicked => { root.act(a.uid, "1"); }
+                }
             }
         }
         }
@@ -1967,7 +1978,8 @@ export component Island inherits Rectangle {
             animate background { duration: Theme.popover; }
             drop-shadow-blur: expanded || mode == 3 ? 12px : 0;
             drop-shadow-offset-y: 2px;
-            drop-shadow-color: Theme.m3-shadow.with-alpha(Theme.dark ? 0.4 : 0.16);
+            // (with no blur Slint still draws it, hard: a dark line under the pill)
+            drop-shadow-color: expanded || mode == 3 ? Theme.m3-shadow.with-alpha(Theme.dark ? 0.4 : 0.16) : transparent;
         }
         // Glass: black at the top melting into the glass below (the plugin's)
         if !Theme.material: Rectangle {
@@ -2010,6 +2022,14 @@ export component Island inherits Rectangle {
             border-width: 1px;
             border-color: #ffffff24;
             opacity: shape.fade;
+        }
+        // a soft highlight along the glassy lower edge (IslandView)
+        if !Theme.material && expanded: Rectangle {
+            x: radius * 0.6;
+            y: parent.height - 2px;
+            width: max(0px, parent.width - radius * 1.2);
+            height: 1px;
+            background: @linear-gradient(90deg, #ffffff00 0%, #ffffff59 50%, #ffffff00 100%);
         }
 
         over := TouchArea {
@@ -2457,7 +2477,8 @@ export component Island inherits Rectangle {
                         }
                     }
                     // all at once: the others, stacked (IslandActivity)
-                    if !event-inside && all-mode && !recent-over: VerticalLayout {
+                    // (only with rows: an empty one still took a spacing, pushing the status line down)
+                    if !event-inside && all-mode && !recent-over && act-rows.length > 0: VerticalLayout {
                         spacing: 10px;
                         for r[i] in act-rows: ActivityRow {
                             r: r;
@@ -2556,7 +2577,8 @@ export component Island inherits Rectangle {
             border-color: #ffffff24;
             drop-shadow-blur: Theme.material ? 12px : 0;
             drop-shadow-offset-y: 2px;
-            drop-shadow-color: Theme.m3-shadow.with-alpha(Theme.dark ? 0.4 : 0.16);
+            // (with no blur Slint still draws it, hard: none for Glass)
+            drop-shadow-color: Theme.material ? Theme.m3-shadow.with-alpha(Theme.dark ? 0.4 : 0.16) : transparent;
             bt := TouchArea {
                 changed has-hover => { root.holding(self.has-hover); }
                 bl := VerticalLayout {

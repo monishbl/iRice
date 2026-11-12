@@ -81,7 +81,9 @@ export component Keyboard inherits Window {
         border-color: Theme.separator;
         drop-shadow-blur: 20px;
         drop-shadow-offset-y: 6px;
-        drop-shadow-color: Theme.material ? (Theme.panel-alpha < 1 ? transparent : Theme.dark ? #0000003d : #0000001a) : (Theme.dark ? #00000031 : #00000015);
+        // (none on the plugin's glass: Slint's shadow is a whole box under the
+        // see-through glass and darkened it; Glass.qml's is outside only)
+        drop-shadow-color: Theme.material ? (Theme.panel-alpha < 1 ? transparent : Theme.dark ? #0000003d : #0000001a) : on-glass ? transparent : (Theme.dark ? #00000031 : #00000015);
     }
     VerticalLayout {
         alignment: center;
