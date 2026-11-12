@@ -145,8 +145,12 @@ impl Toolbar {
 
     /// Made ahead (a moment after start), so the first ⇧⌘5 draws at once
     pub fn make_ahead(&mut self, st: &mut State, output: &str) {
-        if self.win.is_none() {
-            self.window(st, output);
+        // (made, then hidden at once: unmapped until it's asked for; left
+        // shown it covered the screen, dim and taking every click)
+        if self.win.is_none() && !self.open && self.window(st, output) {
+            if let Some(w) = &self.win {
+                w.surface.hide();
+            }
         }
     }
 
