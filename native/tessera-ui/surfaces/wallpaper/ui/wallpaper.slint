@@ -194,8 +194,10 @@ export component WallpaperPicker inherits Window {
             // (Glass.qml's shadow: Material's solid surface, glass a little lighter)
             drop-shadow-blur: 24px;
             drop-shadow-offset-y: 6px;
-            // (none in Material while see-through: Hyprland would blur it into a rim)
-            drop-shadow-color: Theme.material ? (Theme.panel-alpha < 1 ? transparent : Theme.dark ? #0000003d : #0000001a) : (Theme.dark ? #00000031 : #00000015);
+            // (none in Material while see-through: Hyprland would blur it into a
+            // rim; none on the plugin's glass, which draws its own: under a
+            // clear body it showed through as a dark panel with a ring)
+            drop-shadow-color: on-glass ? transparent : Theme.material ?(Theme.panel-alpha < 1 ? transparent : Theme.dark ? #0000003d : #0000001a) : (Theme.dark ? #00000031 : #00000015);
 
             title := Text {
                 x: 14px;

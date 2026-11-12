@@ -1065,6 +1065,18 @@ impl Part for Dock {
                 a.update(false, f);
             }
         }
+        if st.shell.plugin && st.shell.look.material {
+            // Material draws no glass, but the plugin keeps a namespace's
+            // shapes until told otherwise, whoever sent them (the QML shell
+            // before this one, an earlier run): told once per surface, or a
+            // stale glass rectangle stays behind the Material dock
+            for w in &mut self.wins {
+                if w.surface.mapped.get() && w.glass_sent != "material" {
+                    st.shell.glass.set(&w.output, NS, &[]);
+                    w.glass_sent = "material".into();
+                }
+            }
+        }
         if !st.shell.plugin || st.shell.look.material {
             return;
         }

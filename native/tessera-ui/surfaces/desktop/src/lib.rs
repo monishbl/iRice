@@ -227,6 +227,9 @@ pub struct Desktop {
     // data read here
     images: HashMap<String, slint::Image>,
     pending: HashSet<String>,
+    // a file kind's icon as last drawn (by its theme name and size): shown
+    // while a new drawing of it (another file, another theme) is on its way
+    last_icon: HashMap<String, slint::Image>,
     zones: HashMap<String, view::ZoneTime>,
     quotes: HashMap<String, view::Quote>,
     stocks_failed: bool,
@@ -588,7 +591,14 @@ impl Desktop {
         let px = (48.0 * self.scale()).ceil() as u32;
         let style = Style { mode: 0, tiled: false, dark: st.shell.look.dark, contrast: 60, tint: [0; 3], tile: None, tile_from: "auto".into(), accent: [0; 3] };
         let key = format!("icon:{}@{px}", path.display());
-        self.image(st, key, move || appicon::render(&path, px, &style, None)).unwrap_or_default()
+        let kind = format!("{}@{px}", files::icon_name(e));
+        match self.image(st, key, move || appicon::render(&path, px, &style, None)) {
+            Some(i) => {
+                self.last_icon.insert(kind, i.clone());
+                i
+            }
+            None => self.last_icon.get(&kind).cloned().unwrap_or_default(),
+        }
     }
 
     fn icon_rows(&mut self, st: &State) -> Vec<ui::DeskIcon> {
@@ -1759,7 +1769,11 @@ impl Part for Desktop {
 
     fn data(&mut self, st: &mut State, what: TypeId) {
         if what == TypeId::of::<Icons>() {
-            self.images.retain(|k, _| !k.starts_with("icon:") && !k.starts_with("app:"));
+            // (the drawn icons stay: their keys are their files, so an icon the
+            // new index finds elsewhere is simply drawn anew. Dropping them all
+            // left the desktop's files as bare labels until every one was
+            // drawn again, which takes seconds when the index is rebuilt while
+            // a panel opens and keeps the renderers busy)
             self.update(st);
         }
     }
@@ -1875,7 +1889,18 @@ impl Part for Desktop {
             M::Image(k, px) => {
                 self.pending.remove(&k);
                 if let Some(px) = px {
+                    // (a file's icon arriving after the desktop's first frames
+                    // often didn't draw: the stacks kept bare labels until
+                    // something else redrew them. Their cells made afresh,
+                    // and the frame drawn whole, they show)
+                    let file_icon = k.starts_with("icon:") || k.starts_with("thumb:");
                     self.images.insert(k, slint::Image::from_rgba8(px));
+                    if file_icon {
+                        if let Some(w) = &self.win {
+                            w.icons.set(Vec::new());
+                            w.surface.redraw_all();
+                        }
+                    }
                     self.update(st);
                 }
             }

@@ -14,3 +14,11 @@ Changes Tessera made to the fonts in this folder (made by tools/gen-material.sh)
       doesn't require the rename; it keeps "Google Sans" from naming a
       product, as Google's TRADEMARKS.md (in LICENSE-google-sans-flex) asks.
       Upstream: https://github.com/googlefonts/googlesans-flex
+
+  clock/TesseraClock-*.ttf  Google Sans Flex (as above, SIL Open Font
+      License 1.1), made by tools/gen-clock-fonts.sh for the Rust shell's lock
+      clock (Slint can't set a font's axes): fixed at one width (wdth 25, 50,
+      75, 100, 125 or 151) and roundness (ROND 0 or 100) at opsz 144, the
+      weight axis kept, cut down to Latin-1 with the tabular figures as the
+      digits, and named "Tessera Clock <width>[ Round]". The outlines are
+      Google Sans Flex's own at those settings.

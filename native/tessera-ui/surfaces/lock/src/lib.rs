@@ -110,6 +110,26 @@ pub fn sandboxed() -> bool {
     tessera_core::env::sandboxed()
 }
 
+/// The Material clock's widths and roundness (LockData.flex): Google Sans
+/// Flex fixed at each (tools/gen-clock-fonts.sh), registered once
+pub fn clock_fonts() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        use slint::fontique_011::fontique;
+        let mut collection = slint::fontique_011::shared_collection();
+        for w in [25, 50, 75, 100, 125, 151] {
+            for round in ["", "-Round"] {
+                let rel = format!("material/assets/fonts/clock/TesseraClock-{w}{round}.ttf");
+                let Some(data) = tessera_core::services::apps::shell_file(&rel).and_then(|p| std::fs::read(p).ok()) else {
+                    eprintln!("tessera-ui: font {rel} not found");
+                    continue;
+                };
+                collection.register_fonts(fontique::Blob::new(std::sync::Arc::new(data)), None);
+            }
+        }
+    });
+}
+
 /// Weather icon names -> the glyph each look draws (Phosphor; Material
 /// Symbols), as Today draws them (its crate's `glyph`)
 pub fn weather_glyph(name: &str, material: bool) -> &'static str {
@@ -572,6 +592,7 @@ impl Lock {
             }),
             None => return,
         };
+        clock_fonts();
         let ui = ui::LockScreen::new().expect("LockScreen");
         st.shell.apply_theme(&ui.global::<ui::Theme>());
         ui.global::<ui::Symbols>().on_of(|g| crate::icons::symbol(&g).into());
@@ -679,6 +700,8 @@ impl Lock {
             d.set_clock_face(s(&c, "clockFace", "dynamic").into());
             d.set_compact(s(&c, "clockSize", "large") == "small");
             d.set_clock_weight(c["clockWeight"].as_i64().unwrap_or(640).clamp(100, 1000) as i32);
+            d.set_clock_width(c["clockWidth"].as_i64().unwrap_or(112).clamp(25, 151) as i32);
+            d.set_clock_round(b(&c, "clockRound", true));
             d.set_h24(h24);
             d.set_wake_on_mouse(b(&c, "standbyWakeOnMouse", true));
             d.set_name(name.clone().into());

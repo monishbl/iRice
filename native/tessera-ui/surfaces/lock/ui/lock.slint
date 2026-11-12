@@ -57,6 +57,14 @@ export global LockData {
     in property <string> clock-face: "dynamic";
     in property <bool> compact;
     in property <int> clock-weight: 640;
+    // Google Sans Flex's width and roundness (wdth 25..151, ROND): Slint can't
+    // set a font's axes, so the clock draws in the nearest fixed instance
+    // (tools/gen-clock-fonts.sh: widths 25, 50, 75, 100, 125, 151, round or not)
+    in property <int> clock-width: 112;
+    in property <bool> clock-round: true;
+    pure public function flex(wd: float, rounded: bool) -> string {
+        "Tessera Clock " + (wd < 37.5 ? "25" : wd < 62.5 ? "50" : wd < 87.5 ? "75" : wd < 112.5 ? "100" : wd < 138 ? "125" : "151") + (rounded ? " Round" : "")
+    }
     in property <bool> h24;
     in property <bool> wake-on-mouse: true;
     in property <bool> reduce-motion;
@@ -172,6 +180,7 @@ component Ink inherits Rectangle {
     in property <length> px: 100px;
     in property <int> wght: 640;
     in property <color> tone: white;
+    in property <string> family: "Tessera Sans Flex";
     width: t.preferred-width;
     height: px * 0.716;
     t := Text {
@@ -179,7 +188,7 @@ component Ink inherits Rectangle {
         y: -root.px * 0.25;
         text: root.text;
         color: root.tone;
-        font-family: "Tessera Sans Flex";
+        font-family: root.family;
         font-size: root.px;
         font-weight: root.wght;
         accessible-role: none;
@@ -197,6 +206,7 @@ component StackClock inherits Rectangle {
     in property <color> ink2: white;
     in property <bool> align-left;
     in property <bool> ticks;
+    in property <string> family: "Tessera Sans Flex";
     property <length> digits: size * 0.716;
     property <length> gap: size * 0.085;
     width: max(h.width, m.width);
@@ -226,6 +236,7 @@ component StackClock inherits Rectangle {
         px: size;
         wght: round(root.wght / 40) * 40;
         tone: ink;
+        family: root.family;
     }
     m := Ink {
         x: align-left ? 0px : (root.width - self.width) / 2;
@@ -235,6 +246,7 @@ component StackClock inherits Rectangle {
         // (in steps of 40, as the QML's axes(): a handful of instances, not one a frame)
         wght: max(1, min(1000, round((root.wght - dip * 240) / 40) * 40));
         tone: ink2;
+        family: root.family;
     }
 }
 
@@ -1238,6 +1250,7 @@ component MClock inherits Rectangle {
         transform-origin: { x: 0px, y: 0px };
         stack := StackClock {
             visible: face == "stacked" || (face != "dynamic" && face != "wide" && face != "overlap" && face != "analog" && face != "weather");
+            family: LockData.flex(LockData.clock-width, LockData.clock-round);
             hours: LockData.hh2;
             minutes: LockData.mm;
             size: root.size;
@@ -1250,23 +1263,23 @@ component MClock inherits Rectangle {
         // dynamic: the hours tall, the minutes beside their top, AM/PM under
         Rectangle {
             visible: face == "dynamic";
-            dyn-h := Ink { x: 0; y: 0; text: LockData.hh2; px: round(root.size * 1.6 / 1px) * 1px; wght: root.wght; tone: root.ink; }
-            dyn-m := Ink { x: dyn-h.width + root.size * 0.1; y: 0; text: LockData.mm; px: round(root.size * 0.95 / 1px) * 1px; wght: root.wght; tone: root.ink2; }
+            dyn-h := Ink { x: 0; y: 0; text: LockData.hh2; px: round(root.size * 1.6 / 1px) * 1px; wght: root.wght; tone: root.ink; family: LockData.flex(min(LockData.clock-width, 50), LockData.clock-round); }
+            dyn-m := Ink { x: dyn-h.width + root.size * 0.1; y: 0; text: LockData.mm; px: round(root.size * 0.95 / 1px) * 1px; wght: root.wght; tone: root.ink2; family: dyn-h.family; }
             dyn-half := Text {
                 x: dyn-m.x + round((dyn-m.width - self.preferred-width) / 2 / 1px) * 1px;
                 y: dyn-h.height - round(self.preferred-height * 0.8 / 1px) * 1px;
                 text: LockData.half;
                 color: root.ink2;
-                font-family: "Tessera Sans Flex";
+                font-family: LockData.flex(60, LockData.clock-round);
                 font-size: max(14px, round(root.size * 0.3 / 1px) * 1px);
                 font-weight: round(root.wght * 0.8 / 40) * 40;
             }
         }
-        wide := Ink { visible: face == "wide"; x: 0; y: 0; text: LockData.hh + ":" + LockData.mm; px: round(root.size * 0.8 / 1px) * 1px; wght: root.wght; tone: root.ink; }
+        wide := Ink { visible: face == "wide"; x: 0; y: 0; text: LockData.hh + ":" + LockData.mm; px: round(root.size * 0.8 / 1px) * 1px; wght: root.wght; tone: root.ink; family: LockData.flex(max(LockData.clock-width, 140), LockData.clock-round); }
         Rectangle {
             visible: face == "overlap";
-            ov-h := Ink { x: 0; y: 0; text: LockData.hh2; px: round(root.size * 0.95 / 1px) * 1px; wght: max(root.wght, 760); tone: root.ink; }
-            ov-m := Ink { x: round(ov-h.width * 0.4 / 1px) * 1px; y: round(ov-h.height * 0.58 / 1px) * 1px; text: LockData.mm; px: ov-h.px; wght: max(root.wght, 760); tone: root.ink3; }
+            ov-h := Ink { x: 0; y: 0; text: LockData.hh2; px: round(root.size * 0.95 / 1px) * 1px; wght: max(root.wght, 760); tone: root.ink; family: LockData.flex(min(LockData.clock-width, 100), LockData.clock-round); }
+            ov-m := Ink { x: round(ov-h.width * 0.4 / 1px) * 1px; y: round(ov-h.height * 0.58 / 1px) * 1px; text: LockData.mm; px: ov-h.px; wght: max(root.wght, 760); tone: root.ink3; family: ov-h.family; }
         }
         if face == "analog": Dial {
             width: root.size * 1.5;
@@ -1277,14 +1290,14 @@ component MClock inherits Rectangle {
         }
         Rectangle {
             visible: face == "weather";
-            wx-t := Ink { x: (lw - self.width) / 2; y: 0; text: LockData.hh + ":" + LockData.mm; px: round(root.size * 0.78 / 1px) * 1px; wght: root.wght; tone: root.ink; }
+            wx-t := Ink { x: (lw - self.width) / 2; y: 0; text: LockData.hh + ":" + LockData.mm; px: round(root.size * 0.78 / 1px) * 1px; wght: root.wght; tone: root.ink; family: LockData.flex(LockData.clock-width, LockData.clock-round); }
             wx-row := HorizontalLayout {
                 visible: LockData.weather-ready;
                 x: (lw - self.preferred-width) / 2;
                 y: wx-t.height + round(root.size * 0.12 / 1px) * 1px;
                 spacing: round(root.size * 0.06 / 1px) * 1px;
                 WxIcon { size: round(root.size * 0.42 / 1px) * 1px; ink: root.ink3; }
-                Ink { text: LockData.temp; px: round(root.size * 0.5 / 1px) * 1px; wght: root.wght; tone: root.ink2; }
+                Ink { text: LockData.temp; px: round(root.size * 0.5 / 1px) * 1px; wght: root.wght; tone: root.ink2; family: wx-t.family; }
             }
         }
     }
@@ -1302,6 +1315,7 @@ component MClock inherits Rectangle {
             px: small-size;
             wght: face == "overlap" ? max(root.wght, 760) : root.wght;
             tone: root.ink;
+            family: LockData.flex(LockData.clock-width, LockData.clock-round);
         }
         // (LockClock.qml's smallDial: the same dial, hands and all, smaller)
         if face == "analog": Dial {
@@ -1724,7 +1738,11 @@ component MaterialLock inherits Rectangle {
         property <length> rest-w: 8px + 40px + 12px + min(name-t.preferred-width, 240px) + (fingered ? 12px + 40px + 8px : 24px);
         property <length> pill-w: round((rest-w + (360px - rest-w) * open-t) / 1px) * 1px;
         property <length> error-h: LockData.error != "" ? err.preferred-height + 20px + 12px : 0px;
-        property <length> unlock-h: error-h + 56px + 12px + 20px;
+        // (the reader's or camera's line under the pill takes its room only
+        // with a reader or face unlock on, or something to say: a Column
+        // leaves out what isn't visible, LockMaterial.qml)
+        property <bool> hint-row: (LockData.finger-text != "" && LockData.finger-state != "waiting") || LockData.face-text != "" || LockData.finger-on || LockData.face-on;
+        property <length> unlock-h: error-h + 56px + (hint-row ? 12px + 20px : 0px);
         unlock := Rectangle {
             x: (W - 460px) / 2;
             y: H - unlock-h - round(H * 0.06 / 1px) * 1px + part;
@@ -2071,6 +2089,7 @@ component Bedside inherits Rectangle {
                         minutes: LockData.mm;
                         size: m-clock-size;
                         wght: LockData.sb-weight;
+                        family: LockData.flex(100, true);
                         ink: m-ink;
                         ink2: m-ink2;
                         opacity: LockData.sb-opacity * clock-fade;
@@ -2350,6 +2369,7 @@ export component LockScreen inherits Window {
             minutes: LockData.mm;
             size: parent.lsize;
             wght: round((LockData.clock-weight + (LockData.sb-weight - LockData.clock-weight) * sb) / 40) * 40;
+            family: LockData.flex(LockData.clock-width + (100 - LockData.clock-width) * sb, true);
             ink: LockData.m-clock-ink.mix(LockData.sb-night ? #FF3B30 : LockData.sb-m-ink, 1 - sb);
             ink2: LockData.m-clock-ink2.mix(LockData.sb-night ? #FF3B30 : LockData.sb-m-ink2, 1 - sb);
             transform-scale: 1 + (parent.ratio - 1) * sb;
