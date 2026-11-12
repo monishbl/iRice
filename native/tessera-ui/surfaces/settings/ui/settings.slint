@@ -341,6 +341,12 @@ component RowView {
                     Rectangle {
                         min-height: ml.preferred-height;
                         Text {
+                            // (pinned to its box: a Text left to size itself takes
+                            // its one-line width and is centred in its parent)
+                            x: 0;
+                            y: 0;
+                            width: parent.width;
+                            height: parent.height;
                             text: r.label;
                             wrap: word-wrap;
                             vertical-alignment: top;
@@ -359,6 +365,12 @@ component RowView {
                     if r.detail != "": Rectangle {
                         min-height: md.preferred-height;
                         Text {
+                            // (pinned to its box: a Text left to size itself takes
+                            // its one-line width and is centred in its parent)
+                            x: 0;
+                            y: 0;
+                            width: parent.width;
+                            height: parent.height;
                             text: r.detail;
                             wrap: word-wrap;
                             vertical-alignment: top;
