@@ -124,6 +124,7 @@ run_file() { # name look pass
     fresh
     while IFS= read -r line || [[ -n $line ]]; do
         line="${line%%$'\r'}"
+        line="${line//\$TESSERA_BIN/\$HOME/.local/share/tessera/bin/tessera-ui}"
         [[ -z ${line// } || $line == \#* ]] && continue
         read -r verb rest <<<"$line"
         if [[ $verb == look ]]; then section=$rest; continue; fi
