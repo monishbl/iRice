@@ -273,6 +273,8 @@ pub fn find_plugin(ask: impl Fn(&str) -> Option<String>) -> Option<&'static str>
 #[derive(Clone)]
 pub struct Glass {
     tx: mpsc::Sender<(String, String)>,
+    /// (monitor, namespace) pairs that have shapes on screen now
+    live: std::cell::RefCell<std::collections::BTreeSet<(String, String)>>,
 }
 
 /// The queue key that asks the sender thread to ping the plugin again
@@ -324,7 +326,16 @@ impl Glass {
                 }
             }
         });
-        Self { tx }
+        Self { tx, live: Default::default() }
+    }
+    /// Every shape this process put on screen taken off (the look turned
+    /// Material, or the plugin went: a part then stops sending, and what it
+    /// sent last would stay, as glass behind the Material dock)
+    pub fn clear_all(&self) {
+        let live = std::mem::take(&mut *self.live.borrow_mut());
+        for (monitor, ns) in live {
+            let _ = self.tx.send((format!("{monitor}\n{ns}"), format!("{} set {monitor} {ns} 0", glass_cmd())));
+        }
     }
     /// Ask the plugin again (after a config reload, where plugins load; now and
     /// then while it is missing): `Msg::GlassPlugin` follows when it changed, and
@@ -343,6 +354,14 @@ impl Glass {
         // (a shape with no size still gets the plugin's shadow: a dot on
         // screen, as under the closed island)
         let shapes: Vec<&[f32; 19]> = shapes.iter().filter(|s| s[2] >= 1.0 && s[3] >= 1.0).collect();
+        {
+            let mut live = self.live.borrow_mut();
+            if shapes.is_empty() {
+                live.remove(&(monitor.to_string(), ns.to_string()));
+            } else {
+                live.insert((monitor.to_string(), ns.to_string()));
+            }
+        }
         let mut cmd = format!("{} set {monitor} {ns} {}", glass_cmd(), shapes.len());
         for s in shapes {
             for v in s {

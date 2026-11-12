@@ -75,3 +75,12 @@ settings-trackpad | ipc panels settings trackpad; sleep 2
 settings-update | ipc panels settings update; sleep 2
 settings-wallpaper | ipc panels settings wallpaper; sleep 2
 settings-windowrules | ipc panels settings windowrules; sleep 2
+# Bar menus and island popovers: from the pointer (1920×1080, scale 1)
+menu-system | ptr move 300 400 glide 20 12 250 sleep 300 click
+menu-app | ptr move 300 400 glide 72 12 250 sleep 300 click
+menu-battery | ptr move 1500 400 glide 1645 12 250 sleep 300 click
+menu-bluetooth | ptr move 1500 400 glide 1694 12 250 sleep 300 click
+menu-wifi | ptr move 1500 400 glide 1727 12 250 sleep 300 click
+menu-clock | ptr move 1500 400 glide 1845 12 250 sleep 300 click
+hover-island | ptr move 960 400 glide 960 14 300 sleep 900
+hover-island-stats | ptr move 960 400 glide 960 14 300 sleep 900 glide 1010 60 300 sleep 900

@@ -152,8 +152,30 @@ pub struct NetworkFeed {
 }
 
 impl NetworkFeed {
+    /// NetworkManager answers (its run folder, or else nmcli itself: in a
+    /// container /run/NetworkManager can be hidden while NetworkManager is
+    /// reachable over the system bus, as the QML's Networking sees it).
+    /// nmcli's answer is kept 30 s (this is asked on every refresh)
     fn nm_running() -> bool {
-        std::path::Path::new("/run/NetworkManager").exists() && has_tool("nmcli")
+        if !has_tool("nmcli") {
+            return false;
+        }
+        if std::path::Path::new("/run/NetworkManager").exists() {
+            return true;
+        }
+        use std::sync::Mutex;
+        static ASKED: Mutex<Option<(std::time::Instant, bool)>> = Mutex::new(None);
+        let mut a = ASKED.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some((t, ok)) = *a {
+            if t.elapsed() < Duration::from_secs(30) {
+                return ok;
+            }
+        }
+        let ok = crate::util::capture(&["nmcli", "-t", "-f", "RUNNING", "general"], Duration::from_secs(2))
+            .map(|x| x.1.trim() == "running")
+            .unwrap_or(false);
+        *a = Some((std::time::Instant::now(), ok));
+        ok
     }
 
     fn list(&mut self, h: &mut Host) {

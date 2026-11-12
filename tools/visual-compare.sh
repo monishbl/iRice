@@ -24,7 +24,7 @@
 #              capturing them again (the Rust side only: half the sandboxes)
 #
 # The screens are tools/visual-scenes.txt (name | commands run in the
-# sandbox; "-" for none). Open OUT/index.html when it's done.
+# sandbox; "-" for none; "ptr …" one virtual-pointer path: move/glide/click). Open OUT/index.html when it's done.
 # Never your screen: the arenas' hidden IRICE-TEST only.
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -127,7 +127,13 @@ PY
             [[ $name == $ONLY ]] || continue
             cmds=$(echo "$cmds" | sed 's/^ *//')
             log "[$look] $name"
-            [[ $cmds != "-" && -n $cmds ]] && inbox "$cmds" </dev/null >/dev/null 2>&1
+            if [[ $cmds == ptr\ * ]]; then
+                # (the pointer: bar menus and island popovers open from clicks and hovers)
+                # shellcheck disable=SC2086
+                dev pointer -o IRICE-TEST ${cmds#ptr } </dev/null >/dev/null 2>&1
+            elif [[ $cmds != "-" && -n $cmds ]]; then
+                inbox "$cmds" </dev/null >/dev/null 2>&1
+            fi
             sleep 2.5
             dev shot "$OUT/$SIDE/$look-$name.png" </dev/null >/dev/null 2>&1
             if [[ ! -s "$OUT/$SIDE/$look-$name.png" ]]; then

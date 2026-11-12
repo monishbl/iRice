@@ -309,6 +309,10 @@ impl State {
         self.shell.cfg = theme::read_json();
         let look = theme::read();
         let changed = look != self.shell.look;
+        // (Material draws no glass: what Glass left on screen goes first)
+        if changed && look.material && !self.shell.look.material {
+            self.shell.glass.clear_all();
+        }
         self.shell.look = look;
         self.each_part(|p, st| p.config_changed(st, changed));
         // (a new look: every window drawn whole once, not only what its

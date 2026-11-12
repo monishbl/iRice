@@ -2152,7 +2152,7 @@ component GlassFooterButton inherits Rectangle {
     height: 40px;
     border-radius: 20px;
     background: accent ? (t.has-hover ? Theme.accent.darker(0.08) : Theme.accent)
-        : t.pressed ? Theme.fill-pressed : t.has-hover ? Theme.fill-hover : chip ? Theme.panel.mix(#ffffff, 0.93) : Theme.platter;
+        : t.pressed ? Theme.fill-pressed : t.has-hover ? Theme.fill-hover : chip ? (Theme.dark ? #ffffff12 : #ffffff47) : Theme.platter;
     border-width: chip && !accent && !Theme.plugin ? 1px : 0;
     border-color: #ffffff.with-alpha(Theme.dark ? 0.06 : 0.3);
     transform-scale: t.pressed ? 0.95 : 1;
@@ -2516,7 +2516,7 @@ export component ControlCenter inherits Window {
                             width: 40px;
                             height: 40px;
                             border-radius: 20px;
-                            background: bare ? Theme.panel.mix(#ffffff, 0.93) : Theme.platter;
+                            background: bare ? (Theme.dark ? #ffffff12 : #ffffff47) : Theme.platter;
                             border-width: bare && !Theme.plugin ? 1px : 0;
                             border-color: #ffffff.with-alpha(Theme.dark ? 0.06 : 0.3);
                             clip: true;
@@ -2541,7 +2541,7 @@ export component ControlCenter inherits Window {
                             width: battery-w;
                             height: 40px;
                             border-radius: 20px;
-                            background: bare ? Theme.panel.mix(#ffffff, 0.93) : Theme.platter;
+                            background: bare ? (Theme.dark ? #ffffff12 : #ffffff47) : Theme.platter;
                             border-width: bare && !Theme.plugin ? 1px : 0;
                             border-color: #ffffff.with-alpha(Theme.dark ? 0.06 : 0.3);
                             accessible-role: text;
