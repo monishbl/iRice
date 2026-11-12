@@ -33,7 +33,7 @@
 # it when you're not using the laptop for anything heavy.
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ARENA=7 BIN="" ONLY="*" LOOKS="material,glass" STEPDIRS=()
+PX="" PY="" ARENA=7 BIN="" ONLY="*" LOOKS="material,glass" STEPDIRS=()
 OUT="$HOME/tessera-verify/parity-$(date +%Y%m%d-%H%M)"
 USERCFG="$HOME/iRice/.sandbox/home/.config/tessera/config.json"
 while (($#)); do
@@ -62,6 +62,7 @@ export IRICE_ARENA=$ARENA
 . "$ROOT/site/film/tessera/capture/lib.sh"
 CFG="$HOMEDIR/.config/tessera/config.json"
 mkdir -p "$OUT/shots" "$OUT/recs"
+STEPLOG="$OUT/steps.log"   # (every step and what it printed: a setup that failed shows here)
 log() { printf '[%s] %s\n' "$(date +%H:%M:%S)" "$*" | tee -a "$OUT/run.log"; }
 trap 'dev down >/dev/null 2>&1' EXIT
 # (step files by name; the same name in two folders: the first folder wins)
@@ -108,15 +109,22 @@ fresh() { # between files: settings as they were, no panels, no lock, no test wi
         for a in $(hyprctl clients -j | jq -r ".[].address"); do hyprctl dispatch "hl.dsp.window.close({ window = \"address:$a\" })" >/dev/null; done
         pkill -x fakeplayer.py 2>/dev/null; true' </dev/null >/dev/null 2>&1
     dev pointer -o IRICE-TEST move 1500 600 </dev/null >/dev/null 2>&1
+    PX=1500 PY=600
     sleep 1
 }
 do_step() { # verb args… (ipc/ptr/key/setup: one action)
     local verb=$1; shift
     case "$verb" in
-        ipc) inbox "ipc $*" </dev/null >/dev/null 2>&1 ;;
-        ptr) dev pointer -o IRICE-TEST "$@" </dev/null >/dev/null 2>&1 ;;
-        key) dev run wtype -d 30 "$@" </dev/null >/dev/null 2>&1 ;;
-        setup) inbox "$*" </dev/null >/dev/null 2>&1 ;;
+        ipc) inbox "ipc $*" </dev/null >>"$STEPLOG" 2>&1 ;;
+        ptr) # (each vptr call starts at the screen centre: start where the last one ended)
+            local a=("$@") i
+            [[ -n $PX ]] && a=(move "$PX" "$PY" "${a[@]}")
+            dev pointer -o IRICE-TEST "${a[@]}" </dev/null >/dev/null 2>&1
+            for ((i = 0; i < ${#a[@]}; i++)); do
+                case "${a[i]}" in move|glide) PX=${a[i+1]} PY=${a[i+2]} ;; esac
+            done ;;
+        key) dev run wtype -d 30 "$@" </dev/null >>"$STEPLOG" 2>&1 ;;
+        setup) inbox "$*" </dev/null >>"$STEPLOG" 2>&1 || echo "  (exit $?)" >>"$STEPLOG" ;;
     esac
 }
 run_file() { # name look pass
@@ -129,6 +137,7 @@ run_file() { # name look pass
         read -r verb rest <<<"$line"
         if [[ $verb == look ]]; then section=$rest; continue; fi
         [[ $section == both || $section == "$look" ]] || continue
+        printf '%s %s/%s %s: %s\n' "$(date +%T)" "$look" "$pass" "$name" "${line:0:160}" >>"$STEPLOG"
         case "$verb" in
             note) ;;
             setup|ipc|key) do_step "$verb" $rest ;;
@@ -219,6 +228,7 @@ for name in names:
             rows.append(f"| {look} | static `{rec}` ({pass_}) | {'PASS' if ok else '**FAIL**'} | {t.split(':', 1)[-1].strip()[:80]} |")
     if rows:
         lines += [f"## {name}", "", "| look | what | result | detail |", "|---|---|---|---|", *rows, ""]
+lines += ["", "Every step and its output: `steps.log`. `note` lines and `# MANUAL:` comments in the step files say what to look for."]
 open(os.path.join(out, "report.md"), "w").write("\n".join(lines) + "\n")
 PY
 # (the recordings are big: keep only their timings)
