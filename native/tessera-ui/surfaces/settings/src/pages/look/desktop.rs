@@ -38,14 +38,21 @@ pub fn desktop(cx: &mut Ctx, p: &mut Page) {
     let widgets = cx.list("desktop.widgets").len();
     let edit = cx.on(|cx, _| cx.ask("look", "editWidgets", Value::Null));
     // Files app: Automatic (the first installed), or one of them (the shell says which are)
-    let managers: Vec<(String, String)> = match feed(cx)["files"].as_array() {
+    let mut managers: Vec<(String, String)> = match feed(cx)["files"].as_array() {
         Some(a) => a.iter().map(|m| (m["bin"].as_str().unwrap_or("").to_string(), m["name"].as_str().unwrap_or("").to_string())).collect(),
         // (the standalone shell doesn't say: Files.qml's list, those on the PATH)
         None => FILE_MANAGERS.iter().filter(|(bin, _)| crate::pages::accounts::defaultapps::on_path(bin)).map(|(b, n)| (b.to_string(), n.to_string())).collect(),
     };
-    let mut opts = vec![format!("Automatic{}", managers.first().map(|m| format!(" ({})", m.1)).unwrap_or_default())];
-    opts.extend(managers.iter().map(|m| m.1.clone()));
     let fm = cx.s("desktop.fileManager");
+    // (one chosen that isn't installed here still shows, by its name, as the
+    // QML's Dropdown shows a value it has no option for: not "Choose")
+    let auto = managers.first().map(|m| format!(" ({})", m.1)).unwrap_or_default();
+    let none_installed = managers.is_empty();
+    if !fm.is_empty() && !managers.iter().any(|m| m.0 == fm) {
+        managers.push((fm.clone(), fm.clone()));
+    }
+    let mut opts = vec![format!("Automatic{auto}")];
+    opts.extend(managers.iter().map(|m| m.1.clone()));
     let index = if fm.is_empty() { 0 } else { managers.iter().position(|m| m.0 == fm).map_or(-1, |i| i as i32 + 1) };
     let bins: Vec<String> = managers.iter().map(|m| m.0.clone()).collect();
     let fp = cx.on(move |cx, a| {
@@ -56,7 +63,7 @@ pub fn desktop(cx: &mut Ctx, p: &mut Page) {
         .footer("Drag a widget to move it; it snaps to the grid. Right-click a widget to change its size, set what it shows (Widget Options) or remove it, or right-click the desktop.")
         .row(Row::new("Edit Widgets").detail(format!("{} on the desktop", count(widgets, "widget", "widgets"))).button("Edit…", edit).primary())
         .row(Row::new("Files app")
-            .detail(if managers.is_empty() { "No file manager installed (e.g. sudo pacman -S nautilus)" } else { "Opens folders, Downloads and the Trash" })
+            .detail(if none_installed { "No file manager installed (e.g. sudo pacman -S nautilus)" } else { "Opens folders, Downloads and the Trash" })
             .choice(&opts, index, fp)
             .width(220.0));
 
