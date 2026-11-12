@@ -16,6 +16,12 @@
 #   --sets N   N pairs of arenas at once (1–4; default 4), each taking every
 #              Nth screen: QML in 2..5, Rust in 6..9 (never 1, yours)
 #   --only     only the screens whose name matches (e.g. 'settings-*')
+#   --env K=V  run the Rust side with this variable set (repeatable), e.g.
+#              TESSERA_TEXT_GAMMA=1.4
+#   --fill     only the screens that have no shot yet in --out (a second
+#              pass after timeouts under load)
+#   --reuse-qml DIR  copy the QML shots from an earlier run instead of
+#              capturing them again (the Rust side only: half the sandboxes)
 #
 # The screens are tools/visual-scenes.txt (name | commands run in the
 # sandbox; "-" for none). Open OUT/index.html when it's done.
@@ -23,7 +29,7 @@
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIN="" LOOKS="material,glass" REF="$HOME/tessera-verify/qml-ref" SETS=4 SHARD="0/1" ARENA="" ONLY="*"
-OUT="$HOME/tessera-verify/visual-$(date +%m%d-%H%M)" SIDE=""
+OUT="$HOME/tessera-verify/visual-$(date +%m%d-%H%M)" SIDE="" REUSE="" ENVS=() FILL=""
 USERCFG="$HOME/iRice/.sandbox/home/.config/tessera/config.json"
 WALL=""
 while (($#)); do
@@ -37,6 +43,9 @@ while (($#)); do
         --out) OUT=$2; shift ;;
         --only) ONLY=$2; shift ;;
         --wall) WALL=$2; shift ;;
+        --env) ENVS+=("$2"); shift ;;
+        --reuse-qml) REUSE=$2; shift ;;
+        --fill) FILL=1 ;;
         --side) SIDE=$2; shift ;;   # (internal: one side's run)
         -h|--help) sed -n 2,20p "$0"; exit 0 ;;
         *) echo "unknown option $1"; exit 2 ;;
@@ -91,7 +100,17 @@ PY
         log "[$look] starting the shell"
         use_config "$look"
         if [[ $SIDE == rust ]]; then
-            install -D -m 755 "$BIN" "$HOMEDIR/.local/share/tessera/bin/tessera-ui"
+            if ((${#ENVS[@]})); then
+                # (a wrapper that sets them and becomes the binary: still "tessera-ui")
+                # (the real one keeps the name tessera-ui: the sandbox finds and
+                # stops its shell by that name; under another, a look switch
+                # left the old shell running beside the new one)
+                install -D -m 755 "$BIN" "$HOMEDIR/.local/share/tessera/bin/real/tessera-ui"
+                printf '#!/bin/sh\nexec env %s %q "$@"\n' "$(printf '%q ' "${ENVS[@]}")" "$HOMEDIR/.local/share/tessera/bin/real/tessera-ui" >"$HOMEDIR/.local/share/tessera/bin/tessera-ui"
+                chmod 755 "$HOMEDIR/.local/share/tessera/bin/tessera-ui"
+            else
+                install -D -m 755 "$BIN" "$HOMEDIR/.local/share/tessera/bin/tessera-ui"
+            fi
             rm -f "$HOMEDIR/.local/state/tessera/standalone-starts"
         fi
         dev reload </dev/null >/dev/null 2>&1
@@ -103,6 +122,7 @@ PY
             [[ -z $name || $name == \#* ]] && continue
             k=$((k + 1))
             (( k % ${SHARD#*/} == ${SHARD%/*} )) || continue
+            [[ -n $FILL && -s "$OUT/$SIDE/$look-$name.png" ]] && continue
             # shellcheck disable=SC2053
             [[ $name == $ONLY ]] || continue
             cmds=$(echo "$cmds" | sed 's/^ *//')
@@ -135,11 +155,19 @@ fi
 cp "$WALL" "$OUT/wall.jpg"
 echo "$SETS sets: QML (342a6ac) in arenas 2..$((1 + SETS)), Rust ($BIN) in 6..$((5 + SETS)); looks $LOOKS; out $OUT"
 args=(--bin "$BIN" --looks "$LOOKS" --qml-ref "$REF" --out "$OUT" --only "$ONLY")
+for e in "${ENVS[@]}"; do args+=(--env "$e"); done
+[[ -n $FILL ]] && args+=(--fill)
+if [[ -n $REUSE ]]; then
+    mkdir -p "$OUT/qml" && cp -n "$REUSE"/qml/*.png "$OUT/qml/"
+    echo "QML shots reused from $REUSE"
+fi
 pids=()
 for ((i = 0; i < SETS; i++)); do
-    "$0" "${args[@]}" --side qml --arena $((2 + i)) --shard "$i/$SETS" </dev/null >/dev/null 2>&1 &
-    pids+=($!)
-    sleep 12   # (the arenas start one after another)
+    if [[ -z $REUSE ]]; then
+        "$0" "${args[@]}" --side qml --arena $((2 + i)) --shard "$i/$SETS" </dev/null >/dev/null 2>&1 &
+        pids+=($!)
+        sleep 12   # (the arenas start one after another)
+    fi
     "$0" "${args[@]}" --side rust --arena $((6 + i)) --shard "$i/$SETS" </dev/null >/dev/null 2>&1 &
     pids+=($!)
     sleep 12
