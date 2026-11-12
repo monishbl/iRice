@@ -15,6 +15,10 @@
 #   --steps   a folder of .steps files (repeatable; default: every worktree's
 #             and this checkout's native/tessera-ui/parity/steps)
 #   --only    run only step files whose name matches this glob (e.g. 'Island*')
+#   --shard I/N   only every Nth step file from the Ith (0-based): N runners in
+#             N arenas share the files (tools/parity-par.sh starts them)
+#   --max-wait S  no `wait` longer than S seconds (capped ones logged)
+#   --report-only  write report.md from what's in --out (after the shards)
 #
 # The step DSL, one action per line (# comments):
 #   look material|glass       the lines after it run only in that look (until
@@ -33,7 +37,7 @@
 # it when you're not using the laptop for anything heavy.
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PX="" PY="" ARENA=7 BIN="" ONLY="*" LOOKS="material,glass" STEPDIRS=()
+SHARD="" MAXWAIT="" REPORT_ONLY="" PX="" PY="" ARENA=7 BIN="" ONLY="*" LOOKS="material,glass" STEPDIRS=()
 OUT="$HOME/tessera-verify/parity-$(date +%Y%m%d-%H%M)"
 USERCFG="$HOME/iRice/.sandbox/home/.config/tessera/config.json"
 while (($#)); do
@@ -45,12 +49,15 @@ while (($#)); do
         --arena) ARENA=$2; shift ;;
         --out) OUT=$2; shift ;;
         --config) USERCFG=$2; shift ;;
+        --shard) SHARD=$2; shift ;;
+        --max-wait) MAXWAIT=$2; shift ;;
+        --report-only) REPORT_ONLY=1 ;;
         -h|--help) sed -n 2,34p "$0"; exit 0 ;;
         *) echo "unknown option $1 (--help)"; exit 2 ;;
     esac
     shift
 done
-[[ -x $BIN ]] || { echo "--bin: a tessera-ui build is needed"; exit 2; }
+[[ -n $REPORT_ONLY || -x $BIN ]] || { echo "--bin: a tessera-ui build is needed"; exit 2; }
 [[ $ARENA =~ ^[2-9]$ ]] || { echo "--arena must be 2–9"; exit 2; }
 if ((${#STEPDIRS[@]} == 0)); then
     for d in "$ROOT"/native/tessera-ui/parity/steps "$ROOT"/.claude/worktrees/*/native/tessera-ui/parity/steps; do
@@ -62,9 +69,10 @@ export IRICE_ARENA=$ARENA
 . "$ROOT/site/film/tessera/capture/lib.sh"
 CFG="$HOMEDIR/.config/tessera/config.json"
 mkdir -p "$OUT/shots" "$OUT/recs"
-STEPLOG="$OUT/steps.log"   # (every step and what it printed: a setup that failed shows here)
-log() { printf '[%s] %s\n' "$(date +%H:%M:%S)" "$*" | tee -a "$OUT/run.log"; }
-trap 'dev down >/dev/null 2>&1' EXIT
+TAG=${SHARD:+-${SHARD%/*}}
+STEPLOG="$OUT/steps$TAG.log"   # (every step and what it printed: a setup that failed shows here)
+log() { printf '[%s] %s\n' "$(date +%H:%M:%S)" "$*" | tee -a "$OUT/run$TAG.log"; }
+[[ -n $REPORT_ONLY ]] || trap 'dev down >/dev/null 2>&1' EXIT
 # (step files by name; the same name in two folders: the first folder wins)
 declare -A FILES
 for d in "${STEPDIRS[@]}"; do
@@ -77,6 +85,12 @@ for d in "${STEPDIRS[@]}"; do
     done
 done
 mapfile -t NAMES < <(printf '%s\n' "${!FILES[@]}" | sort)
+ALL=("${!FILES[@]}")
+if [[ -n $SHARD && -z $REPORT_ONLY ]]; then
+    mine=()
+    for ((k = ${SHARD%/*}; k < ${#NAMES[@]}; k += ${SHARD#*/})); do mine+=("${NAMES[k]}"); done
+    NAMES=("${mine[@]}")
+fi
 log "${#NAMES[@]} step files, looks $LOOKS, arena $ARENA, build $BIN"
 
 use_config() { # look standalone(0|1)
@@ -143,17 +157,23 @@ run_file() { # name look pass
             setup|ipc|key) do_step "$verb" $rest ;;
             ptr) # shellcheck disable=SC2086
                 do_step ptr $rest ;;
-            wait) sleep "$rest" ;;
+            wait)
+                if [[ -n $MAXWAIT ]] && awk "BEGIN{exit !($rest > $MAXWAIT)}"; then
+                    echo "  (wait $rest capped to $MAXWAIT)" >>"$STEPLOG"
+                    sleep "$MAXWAIT"
+                else
+                    sleep "$rest"
+                fi ;;
             shot) dev shot "$OUT/shots/$look-$name-$rest-$pass.png" </dev/null >/dev/null 2>&1 ;;
             rec)
                 read -r n s rest <<<"$rest"
-                local mp4="/tmp/parity-rec-$n.mp4"
-                inbox "rm -f $mp4; wf-recorder -o IRICE-TEST -r 60 -f $mp4 >/dev/null 2>&1 & echo \$! > /tmp/parity-rec.pid" </dev/null >/dev/null 2>&1
+                local mp4="/tmp/parity-rec-$ARENA-$n.mp4"
+                inbox "rm -f $mp4; wf-recorder -o IRICE-TEST -r 60 -f $mp4 >/dev/null 2>&1 & echo \$! > /tmp/parity-rec-$ARENA.pid" </dev/null >/dev/null 2>&1
                 sleep 0.6
                 # shellcheck disable=SC2086
                 do_step $rest
                 sleep "$s"
-                inbox "kill -INT \$(cat /tmp/parity-rec.pid) 2>/dev/null; sleep 0.5; cp $mp4 '$OUT/recs/$look-$name-$n-$pass.mp4' 2>/dev/null" </dev/null >/dev/null 2>&1
+                inbox "kill -INT \$(cat /tmp/parity-rec-$ARENA.pid) 2>/dev/null; sleep 0.5; cp $mp4 '$OUT/recs/$look-$name-$n-$pass.mp4' 2>/dev/null" </dev/null >/dev/null 2>&1
                 python3 "$ROOT/tools/anim-timing.py" "$OUT/recs/$look-$name-$n-$pass.mp4" >"$OUT/recs/$look-$name-$n-$pass.txt" 2>&1
                 ;;
             static)
@@ -166,6 +186,7 @@ run_file() { # name look pass
     done <"$f"
 }
 
+if [[ -z $REPORT_ONLY ]]; then
 log "arena setup (your settings from $USERCFG)"
 setup material "$WALLS/wall-tiles.jpg" 1
 for look in ${LOOKS//,/ }; do
@@ -182,8 +203,13 @@ for look in ${LOOKS//,/ }; do
     done
 done
 
+fi
+if [[ -n $SHARD && -z $REPORT_ONLY ]]; then
+    log "done: shard $SHARD (report: --report-only after all shards)"
+    exit 0
+fi
 log "pairing and report"
-python3 -I - "$OUT" "${!FILES[@]}" <<'PY'
+python3 -I - "$OUT" "${ALL[@]}" <<'PY'
 import os, re, subprocess, sys
 out = sys.argv[1]
 shots, recs = os.path.join(out, "shots"), os.path.join(out, "recs")
@@ -228,7 +254,7 @@ for name in names:
             rows.append(f"| {look} | static `{rec}` ({pass_}) | {'PASS' if ok else '**FAIL**'} | {t.split(':', 1)[-1].strip()[:80]} |")
     if rows:
         lines += [f"## {name}", "", "| look | what | result | detail |", "|---|---|---|---|", *rows, ""]
-lines += ["", "Every step and its output: `steps.log`. `note` lines and `# MANUAL:` comments in the step files say what to look for."]
+lines += ["", "Every step and its output: `steps*.log` (capped waits are marked there). `note` lines and `# MANUAL:` comments in the step files say what to look for."]
 open(os.path.join(out, "report.md"), "w").write("\n".join(lines) + "\n")
 PY
 # (the recordings are big: keep only their timings)
