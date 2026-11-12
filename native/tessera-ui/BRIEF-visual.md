@@ -50,6 +50,17 @@ radii, icons and icon styles, empty states, wrong values shown.
 - Custom Settings controls that size themselves belong inside the row
   layout (`inline` in settings.slint); whole-row ones outside.
 
+## A worktree needs three links first
+
+A fresh worktree lacks three git-ignored things the sandbox needs; without
+them captures fail ("NO SHOT") or Glass renders without the plugin (dark,
+opaque: misleading). Link them from the main checkout before capturing:
+    M=/home/user/Projects/Personal/iRice
+    mkdir -p .sandbox && ln -sfn $M/.sandbox/home .sandbox/home && ln -sfn $M/.sandbox/bin .sandbox/bin
+    ln -sfn $M/hypr/plugin/tessera-glass/tessera-glass.so hypr/plugin/tessera-glass/tessera-glass.so
+Check your branch is on rust-rewrite (`git merge-base --is-ancestor rust-rewrite HEAD`).
+Worktree agents share one scratchpad: give logs and images unique names.
+
 ## Build and check (others build and capture at the same time)
 
 Build in your worktree, through the gate, with your own target dir:

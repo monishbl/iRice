@@ -99,6 +99,9 @@ PY
         rm -rf "$HOMEDIR"
     fi
     setup material "$OUT/wall.jpg" 1 >/dev/null 2>&1
+    # (a file in the Trash on both sides: with no Trash folder the QML's
+    # FolderListModel lists the working folder and shows a full trash)
+    mkdir -p "$HOMEDIR/.local/share/Trash/files" && echo test >"$HOMEDIR/.local/share/Trash/files/tessera-test.txt"
     for look in ${LOOKS//,/ }; do
         log "[$look] starting the shell"
         use_config "$look"
