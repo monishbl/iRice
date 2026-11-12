@@ -321,6 +321,9 @@ component RowView {
                 padding-right: link ? (Theme.material ? 16px : 12px) : pad;
                 spacing: 0;
                 iconbox := VerticalLayout {
+                    // (a layout stretches by default: empty, it still took a share
+                    // of the spare width and pushed the text right)
+                    horizontal-stretch: 0;
                     alignment: center;
                     padding-right: !has-icon ? 0 : link ? (Theme.material ? 16px : 10px) : (Theme.material ? 16px : 12px);
                     if has-icon: SIcon {
@@ -388,6 +391,9 @@ component RowView {
                     }
                 }
                 linkbox := HorizontalLayout {
+                    // (a layout stretches by default: empty, it still took a share
+                    // of the spare width and pushed the text right)
+                    horizontal-stretch: 0;
                     spacing: link && r.value != "" ? (Theme.material ? 8px : 6px) : 0;
                     if link && r.value != "": Text {
                         text: r.value;
@@ -407,6 +413,9 @@ component RowView {
                     }
                 }
                 ctlbox := VerticalLayout {
+                    // (a layout stretches by default: empty, it still took a share
+                    // of the spare width and pushed the text right)
+                    horizontal-stretch: 0;
                     alignment: center;
                     padding-top: has-ctl ? 8px : 0;
                     padding-bottom: has-ctl ? 8px : 0;
