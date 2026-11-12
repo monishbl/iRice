@@ -79,6 +79,13 @@ PY
         sleep 1
     }
     log "setup: arena $IRICE_ARENA, code $CODE"
+    # (the same home on both sides: wiped, then `up` copies it afresh from
+    # the one .sandbox/home, with the same excludes in both versions; files
+    # earlier tests left (screenshots on the desktop…) can't differ)
+    dev down </dev/null >/dev/null 2>&1
+    if [[ $HOMEDIR == */.sandbox/arena-[2-9]/home && -d $HOMEDIR ]]; then
+        rm -rf "$HOMEDIR"
+    fi
     setup material "$OUT/wall.jpg" 1 >/dev/null 2>&1
     for look in ${LOOKS//,/ }; do
         log "[$look] starting the shell"
@@ -103,6 +110,11 @@ PY
             [[ $cmds != "-" && -n $cmds ]] && inbox "$cmds" </dev/null >/dev/null 2>&1
             sleep 2.5
             dev shot "$OUT/$SIDE/$look-$name.png" </dev/null >/dev/null 2>&1
+            if [[ ! -s "$OUT/$SIDE/$look-$name.png" ]]; then
+                sleep 1
+                dev shot "$OUT/$SIDE/$look-$name.png" </dev/null >/dev/null 2>&1
+                [[ -s "$OUT/$SIDE/$look-$name.png" ]] || log "[$look] $name: NO SHOT (twice)"
+            fi
             reset
         done <"$SCENES"
     done
