@@ -310,48 +310,81 @@ component RowView {
                 }
             }
             if r.kind == "row" || r.kind == "link": HorizontalLayout {
+                // (the text column's width, worked out from the parts beside
+                // it: a wrapped Text in a layout is measured at the width it's
+                // handed, or its own; nested here it got the row's, so a long
+                // description was given one line and spilled into the next row)
+                property <bool> has-ctl: !link && r.control != "";
+                property <length> text-w: max(40px, root.width - self.padding-left - self.padding-right
+                    - iconbox.preferred-width - linkbox.preferred-width - ctlbox.preferred-width - textcol.padding-right);
                 padding-left: pad;
                 padding-right: link ? (Theme.material ? 16px : 12px) : pad;
                 spacing: 0;
-                if has-icon: VerticalLayout {
+                iconbox := VerticalLayout {
                     alignment: center;
-                    padding-right: link ? (Theme.material ? 16px : 10px) : (Theme.material ? 16px : 12px);
-                    SIcon {
+                    padding-right: !has-icon ? 0 : link ? (Theme.material ? 16px : 10px) : (Theme.material ? 16px : 12px);
+                    if has-icon: SIcon {
                         g: r.icon;
                         size: link ? (Theme.material ? 24px : 18px) : Theme.material ? 24px : 20px;
                         color: link ? Theme.secondary : Theme.material ? Theme.m3-on-surface-variant : Theme.tertiary;
                     }
                 }
-                VerticalLayout {
+                textcol := VerticalLayout {
                     horizontal-stretch: 1;
                     alignment: center;
                     spacing: 2px;
                     padding-top: Theme.material ? 12px : 10px;
                     padding-bottom: Theme.material ? 12px : 10px;
                     padding-right: link ? 12px : r.control != "" ? (Theme.material ? 16px : 12px) : 0;
-                    Text {
-                        text: r.label;
-                        wrap: word-wrap;
-                        color: r.tone == 1 ? Theme.secondary : r.tone == 2 ? Theme.danger : r.tone == 3 ? Theme.success : r.tone == 4 ? (Theme.material ? Theme.m3-primary : Theme.accent-ink) : Theme.label;
-                        font-size: Theme.material ? 16px : Theme.body;
+                    // (each a box as tall as its text wrapped at text-w, measured
+                    // by a hidden copy: only heights flow back, no width loop)
+                    Rectangle {
+                        min-height: ml.preferred-height;
+                        Text {
+                            text: r.label;
+                            wrap: word-wrap;
+                            vertical-alignment: top;
+                            color: r.tone == 1 ? Theme.secondary : r.tone == 2 ? Theme.danger : r.tone == 3 ? Theme.success : r.tone == 4 ? (Theme.material ? Theme.m3-primary : Theme.accent-ink) : Theme.label;
+                            font-size: Theme.material ? 16px : Theme.body;
+                        }
+                        ml := Text {
+                            visible: false;
+                            width: text-w;
+                            text: r.label;
+                            wrap: word-wrap;
+                            font-size: Theme.material ? 16px : Theme.body;
+                            accessible-role: none;
+                        }
                     }
-                    if r.detail != "": Text {
-                        text: r.detail;
-                        wrap: word-wrap;
-                        color: Theme.secondary;
-                        font-size: Theme.material ? 14px : Theme.caption;
+                    if r.detail != "": Rectangle {
+                        min-height: md.preferred-height;
+                        Text {
+                            text: r.detail;
+                            wrap: word-wrap;
+                            vertical-alignment: top;
+                            color: Theme.secondary;
+                            font-size: Theme.material ? 14px : Theme.caption;
+                        }
+                        md := Text {
+                            visible: false;
+                            width: text-w;
+                            text: r.detail;
+                            wrap: word-wrap;
+                            font-size: Theme.material ? 14px : Theme.caption;
+                            accessible-role: none;
+                        }
                     }
                 }
-                if link: HorizontalLayout {
-                    spacing: Theme.material ? 8px : 6px;
-                    if r.value != "": Text {
+                linkbox := HorizontalLayout {
+                    spacing: link && r.value != "" ? (Theme.material ? 8px : 6px) : 0;
+                    if link && r.value != "": Text {
                         text: r.value;
                         vertical-alignment: center;
                         color: Theme.secondary;
                         font-size: Theme.material ? 14px : Theme.body;
                         accessible-role: AccessibleRole.none;
                     }
-                    VerticalLayout {
+                    if link: VerticalLayout {
                         alignment: center;
                         SIcon {
                             g: SG.caret-right;
@@ -361,11 +394,11 @@ component RowView {
                         }
                     }
                 }
-                if !link && r.control != "": VerticalLayout {
+                ctlbox := VerticalLayout {
                     alignment: center;
-                    padding-top: 8px;
-                    padding-bottom: 8px;
-                    Control { r: r; menu-open: root.menu-open; }
+                    padding-top: has-ctl ? 8px : 0;
+                    padding-bottom: has-ctl ? 8px : 0;
+                    if has-ctl: Control { r: r; menu-open: root.menu-open; }
                 }
             }
         }
