@@ -1,0 +1,77 @@
+# visual-compare.sh's screens: name | commands in the sandbox ("-" none).
+# After each shot the panels close, the lock unlocks and island alerts go.
+lock | ipc lock lock; sleep 2
+lock-standby | ipc lock lock; sleep 1.5; ipc lock demo standby; sleep 1
+desktop | -
+island-wifi | ipc island demo wifi
+island-battery | ipc island demo battery
+island-download | ipc island demo download; sleep 1
+island-usb | ipc island demo usb
+osd-volume | ipc shortcut volumeUp
+panel-controlCenter | ipc panels open controlCenter IRICE-TEST
+panel-notificationCenter | ipc panels open notificationCenter IRICE-TEST
+panel-spotlight | ipc panels open spotlight IRICE-TEST
+panel-launchpad | ipc panels open launchpad IRICE-TEST
+panel-overview | ipc panels open overview IRICE-TEST
+panel-missionControl | ipc panels open missionControl IRICE-TEST
+panel-emoji | ipc panels open emoji IRICE-TEST
+panel-clipboard | ipc panels open clipboard IRICE-TEST
+panel-quickNote | ipc panels open quickNote IRICE-TEST
+panel-cheatsheet | ipc panels open cheatsheet IRICE-TEST
+panel-session | ipc panels open session IRICE-TEST
+panel-keyboard | ipc panels open keyboard IRICE-TEST
+panel-overlay | ipc panels open overlay IRICE-TEST
+panel-nowPlaying | ipc panels open nowPlaying IRICE-TEST
+panel-wifiMenu | ipc panels open wifiMenu IRICE-TEST
+panel-bluetoothMenu | ipc panels open bluetoothMenu IRICE-TEST
+panel-soundMenu | ipc panels open soundMenu IRICE-TEST
+panel-batteryMenu | ipc panels open batteryMenu IRICE-TEST
+panel-systemMenu | ipc panels open systemMenu IRICE-TEST
+panel-resourcesMenu | ipc panels open resourcesMenu IRICE-TEST
+panel-screenTools | ipc panels open screenTools IRICE-TEST
+panel-sidebar | ipc panels open sidebar IRICE-TEST
+panel-wallpaper | ipc panels open wallpaper IRICE-TEST
+app-store | ipc panels appStore; sleep 2
+settings-about | ipc panels settings about; sleep 2
+settings-about-bugreport | ipc panels settings about/bugreport; sleep 2
+settings-about-health | ipc panels settings about/health; sleep 2
+settings-about-loginitems | ipc panels settings about/loginitems; sleep 2
+settings-accessibility | ipc panels settings accessibility; sleep 2
+settings-accounts | ipc panels settings accounts; sleep 2
+settings-ai | ipc panels settings ai; sleep 2
+settings-appearance | ipc panels settings appearance; sleep 2
+settings-appearance-glass | ipc panels settings appearance/glass; sleep 2
+settings-appearance-windows | ipc panels settings appearance/windows; sleep 2
+settings-biometrics | ipc panels settings biometrics; sleep 2
+settings-bluetooth | ipc panels settings bluetooth; sleep 2
+settings-calendar | ipc panels settings calendar; sleep 2
+settings-controlcenter | ipc panels settings controlcenter; sleep 2
+settings-defaultapps | ipc panels settings defaultapps; sleep 2
+settings-desktop | ipc panels settings desktop; sleep 2
+settings-dictation | ipc panels settings dictation; sleep 2
+settings-displays | ipc panels settings displays; sleep 2
+settings-dock | ipc panels settings dock; sleep 2
+settings-focus | ipc panels settings focus; sleep 2
+settings-google | ipc panels settings google; sleep 2
+settings-icloud | ipc panels settings icloud; sleep 2
+settings-lock | ipc panels settings lock; sleep 2
+settings-menubar | ipc panels settings menubar; sleep 2
+settings-microsoft | ipc panels settings microsoft; sleep 2
+settings-mouse | ipc panels settings mouse; sleep 2
+settings-mouse-gestures | ipc panels settings mouse/gestures; sleep 2
+settings-network | ipc panels settings network; sleep 2
+settings-notifications | ipc panels settings notifications; sleep 2
+settings-notifications-island | ipc panels settings notifications/island; sleep 2
+settings-notifications-startup | ipc panels settings notifications/startup; sleep 2
+settings-phone | ipc panels settings phone; sleep 2
+settings-power | ipc panels settings power; sleep 2
+settings-power-cooldown | ipc panels settings power/cooldown; sleep 2
+settings-security | ipc panels settings security; sleep 2
+settings-sharing | ipc panels settings sharing; sleep 2
+settings-shortcuts | ipc panels settings shortcuts; sleep 2
+settings-sidebar | ipc panels settings sidebar; sleep 2
+settings-sound | ipc panels settings sound; sleep 2
+settings-trackpad | ipc panels settings trackpad; sleep 2
+settings-update | ipc panels settings update; sleep 2
+settings-wallpaper | ipc panels settings wallpaper; sleep 2
+settings-windowrules | ipc panels settings windowrules; sleep 2
