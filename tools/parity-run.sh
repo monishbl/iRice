@@ -17,7 +17,8 @@
 #   --only    run only step files whose name matches this glob (e.g. 'Island*')
 #
 # The step DSL, one action per line (# comments):
-#   look material|glass       at the top: this file only in that look
+#   look material|glass       the lines after it run only in that look (until
+#                             the next look line); lines before any run in both
 #   setup <cmd>               a shell command inside the arena
 #   ipc <args>                the shell's IPC (QML: qs ipc, Rust: tessera-ui ipc)
 #   ptr <path>                one virtual-pointer call: move X Y sleep MS glide X Y MS click down up scroll DX DY
@@ -93,6 +94,7 @@ PY
 }
 start_shell() { # look pass
     use_config "$1" "$([[ $2 == rust ]] && echo 1 || echo 0)"
+    cp "$CFG" "$OUT/.config-base.json"
     install -D -m 755 "$BIN" "$HOMEDIR/.local/share/tessera/bin/tessera-ui"
     rm -f "$HOMEDIR/.local/state/tessera/standalone-starts"   # (the launcher's 3-crash fallback)
     dev reload </dev/null >/dev/null 2>&1
@@ -100,7 +102,8 @@ start_shell() { # look pass
     inbox 'ipc lock unlock; ipc panels close' </dev/null >/dev/null 2>&1
     sleep 2
 }
-fresh() { # between files: no panels, no lock, no test windows, pointer parked
+fresh() { # between files: settings as they were, no panels, no lock, no test windows, pointer parked
+    cmp -s "$OUT/.config-base.json" "$CFG" || { cp "$OUT/.config-base.json" "$CFG"; sleep 1; }
     inbox 'ipc panels close; ipc lock unlock; wtype -k Escape; wtype -k Escape
         for a in $(hyprctl clients -j | jq -r ".[].address"); do hyprctl dispatch "hl.dsp.window.close({ window = \"address:$a\" })" >/dev/null; done
         pkill -x fakeplayer.py 2>/dev/null; true' </dev/null >/dev/null 2>&1
@@ -117,14 +120,16 @@ do_step() { # verb args… (ipc/ptr/key/setup: one action)
     esac
 }
 run_file() { # name look pass
-    local name=$1 look=$2 pass=$3 f=${FILES[$1]} line verb rest n s
+    local name=$1 look=$2 pass=$3 f=${FILES[$1]} line verb rest n s section=both
     fresh
     while IFS= read -r line || [[ -n $line ]]; do
         line="${line%%$'\r'}"
         [[ -z ${line// } || $line == \#* ]] && continue
         read -r verb rest <<<"$line"
+        if [[ $verb == look ]]; then section=$rest; continue; fi
+        [[ $section == both || $section == "$look" ]] || continue
         case "$verb" in
-            look|note) ;;
+            note) ;;
             setup|ipc|key) do_step "$verb" $rest ;;
             ptr) # shellcheck disable=SC2086
                 do_step ptr $rest ;;
@@ -158,8 +163,10 @@ for look in ${LOOKS//,/ }; do
         log "[$look] $pass pass"
         start_shell "$look" "$pass"
         for name in "${NAMES[@]}"; do
-            only=$(grep -m1 -E '^look ' "${FILES[$name]}" | awk '{print $2}')
-            [[ -n $only && $only != "$look" ]] && continue
+            # (a file with look sections but none for this look: skipped)
+            if grep -qE '^look ' "${FILES[$name]}" && ! grep -qE "^look $look\b" "${FILES[$name]}"; then
+                [[ -n $(sed -n '/^look /q;/^[a-z]/p' "${FILES[$name]}") ]] || continue
+            fi
             run_file "$name" "$look" "$pass"
         done
     done
