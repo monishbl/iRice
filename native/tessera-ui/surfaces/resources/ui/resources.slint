@@ -156,8 +156,10 @@ export component ResourcePopover inherits Window {
         width: root.width - 2 * m;
         height: root.height - 2 * m;
         opacity: progress;
-        border-radius: Theme.radius-popover;
-        background: on-glass ? transparent : Theme.material ? Theme.glass-solid : Theme.panel;
+        border-radius: on-glass ? 18px : Theme.radius-popover; // (the glass shape's radius)
+        // (on the plugin's glass: GlassPopupBackground's tint over it, as the
+        // QML; its rim is the plugin's)
+        background: on-glass ? (Theme.dark ? #1c1c218c : #f7f7fc9e) : Theme.material ? Theme.glass-solid : Theme.panel;
         border-width: Theme.material || on-glass ? 0 : 0.5px;
         border-color: Theme.separator;
         drop-shadow-blur: 20px;

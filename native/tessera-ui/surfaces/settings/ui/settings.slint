@@ -198,11 +198,14 @@ component Control {
         }
         if r.control == "spinner": Busy {}
         if r.control == "custom" && r.group == "look": LookCtl { r: r; }
+        // (a button beside a switch sizes itself: in the layout, so the row
+        // reserves its width; outside it, Scan again spilled past the card)
+        if r.control == "custom" && r.group == "devices" && r.sub == "btn-switch": DevicesCtl { r: r; }
     }
     // (outside the layout: these size themselves from the row, and inside
     // it they would size the row from themselves, a loop)
     if r.control == "custom" && r.group == "notify": NotifyCtl { r: r; }
-    if r.control == "custom" && r.group == "devices": DevicesCtl { r: r; }
+    if r.control == "custom" && r.group == "devices" && r.sub != "btn-switch": DevicesCtl { r: r; }
     if r.control == "custom" && r.group == "input": InputCtl { r: r; }
     if r.control == "custom" && r.group == "accounts": AccountsCtl { r: r; }
     if r.control == "custom" && r.group == "system": SystemCtl { r: r; }
@@ -835,7 +838,11 @@ export component SettingsWindow inherits Window {
             side-keys := FocusScope {
                 width: 0;
                 height: 0;
+                // (the ring is for focus from the keyboard only: FocusRing.qml)
+                in-out property <bool> by-keys;
+                focus-gained(r) => { self.by-keys = r == FocusReason.tab-navigation; }
                 key-pressed(e) => {
+                    self.by-keys = true;
                     if e.text == Key.UpArrow { root.key-nav(-1); return accept; }
                     if e.text == Key.DownArrow { root.key-nav(1); return accept; }
                     if e.text == Key.Home { root.key-nav(-2); return accept; }
@@ -960,11 +967,12 @@ export component SettingsWindow inherits Window {
                                         accessible-role: AccessibleRole.none;
                                     }
                                     // (the list is one Tab stop: the open page, ringed)
-                                    SFocusRing { shown: side-keys.has-focus && s.current; radius: Theme.material ? 28px : 10px; }
+                                    SFocusRing { shown: side-keys.has-focus && side-keys.by-keys && s.current; radius: Theme.material ? 28px : 10px; }
                                     ita := TouchArea {
                                         mouse-cursor: pointer;
                                         clicked => {
                                             side-keys.focus();
+                                            side-keys.by-keys = false;
                                             root.go(s.id);
                                         }
                                     }

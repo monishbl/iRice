@@ -74,7 +74,9 @@ component Platter inherits Rectangle {
         border-radius: parent.border-radius;
         // (Material, see-through: Theme.qml's controlAlpha on its containers)
         background: Theme.material ? Theme.m3-surface-container-high.with-alpha(Theme.blur ? 1 - 0.4 * (1 - Theme.panel-alpha) / 0.55 : 1) : chip ? (Theme.dark ? #ffffff12 : #ffffff47) : Theme.platter;
-        border-width: chip && !Theme.material ? 1px : 0;
+        // (on the plugin's glass its rim is the edge: a circular one here
+        // parted from the squircle at the corners, a second rounding)
+        border-width: chip && !Theme.material && !plugin ? 1px : 0;
         border-color: Theme.dark ? #ffffff0f : #ffffff4d;
     }
 }

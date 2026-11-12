@@ -2002,8 +2002,10 @@ export component Island inherits Rectangle {
             border-radius: radius;
             background: #ff3b3026;
         }
-        // a faint rim on the same curve
-        if !Theme.material: Rectangle {
+        // a faint rim on the same curve (without the plugin: on its glass,
+        // the glass's own rim is the outline, and a second, circular one
+        // parted from its squircle)
+        if !Theme.material && !Theme.plugin: Rectangle {
             border-radius: radius;
             border-width: 1px;
             border-color: #ffffff24;

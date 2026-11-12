@@ -340,6 +340,9 @@ impl Glass {
     }
     /// `shapes`: each shape's 19 numbers (see hypr/plugin/tessera-glass/main.cpp)
     pub fn set(&self, monitor: &str, ns: &str, shapes: &[[f32; 19]]) {
+        // (a shape with no size still gets the plugin's shadow: a dot on
+        // screen, as under the closed island)
+        let shapes: Vec<&[f32; 19]> = shapes.iter().filter(|s| s[2] >= 1.0 && s[3] >= 1.0).collect();
         let mut cmd = format!("{} set {monitor} {ns} {}", glass_cmd(), shapes.len());
         for s in shapes {
             for v in s {

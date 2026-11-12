@@ -486,6 +486,7 @@ macro_rules! __theme_tokens {
             $args
             material / set_material: bool,
             dark / set_dark: bool,
+            plugin / set_plugin: bool,
             font / set_font: slint::SharedString,
             body / set_body: f32,
             bar_tint / set_bar_tint: slint::Color,
@@ -644,6 +645,9 @@ pub fn tokens(look: &Look, plugin: bool) -> Tokens {
     let t = &mut tokens;
     t.set_material(look.material);
     t.set_dark(look.dark);
+    // (the glass plugin draws the glass, its tint and its rim: a surface then
+    // draws no tint or rim of its own on that shape, or the two curves show)
+    t.set_plugin(plugin);
     // (Theme.motion: Material always expressive; Snappy is a Glass choice;
     // a press's bounce is Material's, off with Reduce motion)
     let expressive = look.material || look.motion == "expressive";

@@ -6,6 +6,8 @@
 export global Theme {
     in property <bool> material: false;
     in property <bool> dark: true;
+    // the glass plugin draws the glass under glass shapes (with their tint and rim)
+    in property <bool> plugin: false;
     in property <string> font: "Inter";
     in property <length> body: 13px;
     // Bar

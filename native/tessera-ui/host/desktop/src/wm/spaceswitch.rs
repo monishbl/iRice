@@ -30,6 +30,10 @@ use tessera_core::host::Host;
 /// The focused display, as the last event said
 static FOCUSED: Mutex<String> = Mutex::new(String::new());
 static READ: AtomicBool = AtomicBool::new(false);
+/// When a shell layer (a panel, a menu, the island's popover) last mapped or
+/// unmapped: taking or giving back the keyboard, it moves Hyprland's focus to
+/// its display and back (focusedmonv2), which isn't you moving there
+static LAYER_AT: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
 /// What no_warps was last set from (Hyprland starts at the setting's default, on)
 static WARP: AtomicBool = AtomicBool::new(true);
 
@@ -53,6 +57,11 @@ fn warp_of(cfg: &Value) -> bool {
 pub fn settling(hotplug_at: &Value, now: i64) -> bool {
     let t = hotplug_at.as_f64().unwrap_or(0.0);
     t > 0.0 && (now as f64 - t) < 4000.0
+}
+
+/// The focus moved within 600 ms of a shell layer opening or closing
+pub fn layer_moved(layer_at: i64, now: i64) -> bool {
+    layer_at > 0 && now - layer_at < 600
 }
 
 fn apply_warp(warp: bool) {
@@ -81,6 +90,11 @@ fn read_focused() {
 pub fn event(spaces: &Spaces, h: &mut Host, name: &str, data: &str) {
     match name {
         "configreloaded" => apply_warp(warp_of(h.cfg())),
+        "openlayer" | "closelayer" => {
+            if data.starts_with("tessera") || data.starts_with("irice") {
+                LAYER_AT.store(tessera_core::util::now_ms(), Ordering::SeqCst);
+            }
+        }
         "focusedmonv2" => {
             read_focused();
             let now = data.split(',').next().unwrap_or("").to_string();
@@ -89,6 +103,10 @@ pub fn event(spaces: &Spaces, h: &mut Host, name: &str, data: &str) {
                 Err(_) => return,
             };
             if now == was || was.is_empty() || now.is_empty() || h.st.outputs_now().len() < 2 {
+                return;
+            }
+            // a panel or menu opening or closing took the focus along: not a move
+            if layer_moved(LAYER_AT.load(Ordering::SeqCst), tessera_core::util::now_ms()) || !h.state("open").as_str().unwrap_or("").is_empty() {
                 return;
             }
             let mode = mode_of(h.cfg());
@@ -134,6 +152,13 @@ mod tests {
         assert_eq!(mode_of(&json!({"workspaces": {"dimOthers": false}})), "off");
         assert_eq!(mode_of(&json!({"workspaces": {"switchCue": "glow", "dimOthers": false}})), "glow");
         assert_eq!(mode_of(&json!({"workspaces": {"switchCue": "other", "dimOthers": true}})), "glow");
+    }
+
+    #[test]
+    fn a_layer_opening_or_closing_isnt_a_move() {
+        assert!(layer_moved(10_000, 10_300));
+        assert!(!layer_moved(10_000, 10_700));
+        assert!(!layer_moved(0, 500));
     }
 
     #[test]

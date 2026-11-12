@@ -755,7 +755,8 @@ export component Bar inherits Window {
             } else if k == "battery" {
                 root.tip-hover("island:battery", on, battery-tip, x, y + 14px);
             } else {
-                root.res-hover(k, on, x, y + 14px);
+                // (centred under the island, not under the hovered figure)
+                root.res-hover(k, on, isl-x + isl-w / 2, y + 14px);
             }
         }
     }

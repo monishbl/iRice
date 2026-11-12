@@ -105,7 +105,7 @@ fn follow_events(post: Post) {
     const WANTED: &[&str] = &[
         "openwindow", "closewindow", "movewindow", "movewindowv2", "activewindowv2", "workspace", "workspacev2", "focusedmonv2", "activespecial",
         "monitoraddedv2", "monitorremovedv2", "createworkspacev2", "destroyworkspacev2", "moveworkspacev2", "configreloaded", "changefloatingmode",
-        "tessera-drag", "irice-drag",
+        "tessera-drag", "irice-drag", "openlayer", "closelayer",
     ];
     std::thread::spawn(move || loop {
         use std::io::{BufRead, BufReader};
