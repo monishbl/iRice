@@ -898,8 +898,10 @@ export component Menu inherits Window {
             transform-scale: context ? 0.94 + 0.06 * openness : 0.92 + 0.08 * openness;
             opacity: min(1, openness * 1.6);
             border-radius: m3 ? 16px : Theme.menu-radius + 2px;
-            background: Theme.menu-bg;
-            border-width: m3 ? 0 : 0.5px;
+            // (Glass on the plugin: MenuPopover draws only the glass, with its
+            // own tint and rim; this tint and hairline made it darker and edged twice)
+            background: !m3 && Theme.plugin ? transparent : Theme.menu-bg;
+            border-width: m3 || Theme.plugin ? 0 : 0.5px;
             border-color: Theme.separator;
             drop-shadow-blur: 16px;
             drop-shadow-offset-y: 4px;

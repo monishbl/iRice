@@ -374,7 +374,10 @@ export component StatusMenus inherits Window {
             height: content.preferred-height + 2 * pad;
             opacity: min(1, openness);
             border-radius: Theme.radius-control + pad;
-            background: m3 ? Theme.m3-surface-container.with-alpha(Theme.panel-alpha) : Theme.panel;
+            // (Glass: Popover.qml draws only the plugin's glass, its tint the
+            // glass's own; the panel tint over it made these darker than the
+            // QML's. Without the plugin the tint stands in for the glass)
+            background: m3 ? Theme.m3-surface-container.with-alpha(Theme.panel-alpha) : Theme.plugin ? transparent : Theme.panel;
             border-width: m3 ? 0 : 0.5px;
             border-color: Theme.separator;
             drop-shadow-blur: m3 ? 16px : 0;

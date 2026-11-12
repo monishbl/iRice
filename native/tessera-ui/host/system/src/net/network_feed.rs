@@ -352,6 +352,12 @@ impl Service for NetworkFeed {
                     // Opening: fresh rows and Ookla's tools looked up (as the card does), and said at once
                     self.ticks = 0;
                     self.list(h);
+                    // (and a scan, as the QML's Networking starts one when the
+                    // menu opens: the cached list can hold only a few networks;
+                    // the next look, in a few seconds, has what it found)
+                    if Self::nm_running() {
+                        crate::util::run_async(&["nmcli", "dev", "wifi", "rescan"]);
+                    }
                     self.refresh(true);
                     h.ask("speedtest.probe", Value::Null);
                     self.open = true;
