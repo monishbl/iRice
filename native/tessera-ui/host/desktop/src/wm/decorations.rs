@@ -84,6 +84,12 @@ impl Decorations {
         );
     }
 
+    /// Settings → Windows (RustBridgeNotify's decorationsPlugin, pluginControls:
+    /// controls need the glass plugin)
+    pub fn settings_feed(&self, h: &Host) -> (bool, bool) {
+        (self.plugin_loaded, self.mode == "controls" && h.st.shell.plugin)
+    }
+
     pub fn tick_controls(&mut self, h: &Host) {
         self.controls_sent = format!("{}|{}|{}", self.mode, h.st.shell.look.dark, h.st.shell.look.material);
         self.apply_controls(h);

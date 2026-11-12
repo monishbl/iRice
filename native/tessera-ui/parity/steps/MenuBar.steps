@@ -1,0 +1,109 @@
+# MenuBar: steps from parity/shell_modules_menubar_MenuBar.qml.md (batches 1-5). Screen IRICE-TEST 1920x1080 scale 1;
+# the island is centred at x 960 (closed y ~14, open ~392 wide); the bar is 30 px tall.
+# Each block runs in both looks: the file runs top to bottom, Material first, then Glass.
+
+look material
+shot bar
+note find items' x: Wi-Fi (guess 1760), battery (1730); adjust the guesses below if they differ
+ptr move 1500 600
+rec tip-wifi 1.5 ptr glide 1760 15 150
+note the Wi-Fi tip appears 500 +/- 50 ms after arriving
+ptr glide 1730 15 100
+wait 0.2
+shot tip-switch-200
+note the Wi-Fi tip is gone (~120 ms) and the battery tip is not yet shown
+wait 0.5
+shot tip-battery
+note the battery tip appeared ~500 ms after arriving
+ptr glide 1500 600 200
+wait 0.2
+shot tip-gone
+note gone at once, no fade-out
+note right-click on the logo opens the system menu: the runner's pointer has no right button; check by hand
+setup sh -c 'sleep 0.5; pw-record /dev/null' &
+rec privacy-in 1.5 ptr move 1500 600
+note the orange privacy dot pops in (scale 0 to 1 with a small overshoot)
+ptr glide 1700 15 200
+wait 1
+shot privacy-no-tip
+note no tip over the privacy dots
+ipc timer toggle
+wait 1
+static pill-controls 1000 2 80 24
+rec pill-time 5 ptr move 1500 600
+note the timer's digits change but the pill's controls don't move (stable width)
+ipc timer reset
+setup python3 -c 'import json, os;p = os.path.expanduser("~/.config/tessera/config.json"); c = json.load(open(p)); c.setdefault("appearance", {})["menuIcon"] = "distro"; json.dump(c, open(p, "w"), indent=4)'
+wait 3
+shot distro
+note the system item shows the distro's logo tinted in the bar's text colour
+setup python3 -c 'import json, os;p = os.path.expanduser("~/.config/tessera/config.json"); c = json.load(open(p)); c.setdefault("menubar", {})["autoHide"] = True; json.dump(c, open(p, "w"), indent=4)'
+wait 3
+ptr glide 960 1 200
+wait 0.5
+ptr glide 960 40 300
+wait 1
+shot autohide-island
+note with the pointer on the opening island, the bar stays revealed
+ptr glide 960 700 300
+wait 1.5
+shot autohide-hidden
+note leaving both hides the bar
+setup python3 -c 'import json, os;p = os.path.expanduser("~/.config/tessera/config.json"); c = json.load(open(p)); c["menubar"]["autoHide"] = False; c.setdefault("shelf", {})["menubar"] = True; json.dump(c, open(p, "w"), indent=4)'
+setup python3 sandbox/tools/fakedrag.py /usr/share/pixmaps/archlinux-logo.png &
+wait 2
+shot shelf-drag
+note while files are dragged over the shelf item it fills and turns accent; dropped there the shelf opens with the file; dropped elsewhere on the bar nothing is added
+
+look glass
+shot bar
+note find items' x: Wi-Fi (guess 1760), battery (1730); adjust the guesses below if they differ
+ptr move 1500 600
+rec tip-wifi 1.5 ptr glide 1760 15 150
+note the Wi-Fi tip appears 500 +/- 50 ms after arriving
+ptr glide 1730 15 100
+wait 0.2
+shot tip-switch-200
+note the Wi-Fi tip is gone (~120 ms) and the battery tip is not yet shown
+wait 0.5
+shot tip-battery
+note the battery tip appeared ~500 ms after arriving
+ptr glide 1500 600 200
+wait 0.2
+shot tip-gone
+note gone at once, no fade-out
+note right-click on the logo opens the system menu: the runner's pointer has no right button; check by hand
+setup sh -c 'sleep 0.5; pw-record /dev/null' &
+rec privacy-in 1.5 ptr move 1500 600
+note the orange privacy dot pops in (scale 0 to 1 with a small overshoot)
+ptr glide 1700 15 200
+wait 1
+shot privacy-no-tip
+note no tip over the privacy dots
+ipc timer toggle
+wait 1
+static pill-controls 1000 2 80 24
+rec pill-time 5 ptr move 1500 600
+note the timer's digits change but the pill's controls don't move (stable width)
+ipc timer reset
+setup python3 -c 'import json, os;p = os.path.expanduser("~/.config/tessera/config.json"); c = json.load(open(p)); c.setdefault("appearance", {})["menuIcon"] = "distro"; json.dump(c, open(p, "w"), indent=4)'
+wait 3
+shot distro
+note the system item shows the distro's logo tinted in the bar's text colour
+setup python3 -c 'import json, os;p = os.path.expanduser("~/.config/tessera/config.json"); c = json.load(open(p)); c.setdefault("menubar", {})["autoHide"] = True; json.dump(c, open(p, "w"), indent=4)'
+wait 3
+ptr glide 960 1 200
+wait 0.5
+ptr glide 960 40 300
+wait 1
+shot autohide-island
+note with the pointer on the opening island, the bar stays revealed
+ptr glide 960 700 300
+wait 1.5
+shot autohide-hidden
+note leaving both hides the bar
+setup python3 -c 'import json, os;p = os.path.expanduser("~/.config/tessera/config.json"); c = json.load(open(p)); c["menubar"]["autoHide"] = False; c.setdefault("shelf", {})["menubar"] = True; json.dump(c, open(p, "w"), indent=4)'
+setup python3 sandbox/tools/fakedrag.py /usr/share/pixmaps/archlinux-logo.png &
+wait 2
+shot shelf-drag
+note while files are dragged over the shelf item it fills and turns accent; dropped there the shelf opens with the file; dropped elsewhere on the bar nothing is added

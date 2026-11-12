@@ -1,0 +1,20 @@
+# Arena IRICE-TEST 1920x1080 scale 1, the user's config (expressive motion, Colloid, their 4 widgets).
+# Each file runs top to bottom from a fresh desktop. `static NAME x y w h`: that region must not change
+# from there until the next `shot`, `rec` or `look` (the no-reload blocks end with their last close).
+# Right-clicks: `ptr ... down up` lines marked (right button) need the runner's right button.
+
+look glass
+note add two to-dos first (Today or Reminders' field): Buy milk, Call Ada
+setup python3 -c "import json,os;p=os.path.expanduser('~/.config/tessera/config.json');c=json.load(open(p));c.setdefault('desktop',{})['widgets']=json.loads('[\"clock:m:0:0\", \"stack:m:0:1:pz3mh8\", \"batteries:m:0:2\", \"shortcuts:m:2:0:5a2cav\", \"reminders:m:2:1:pt1\"]');json.dump(c,open(p,'w'),indent=4)"
+wait 2
+shot rm-added
+note click the first row's tick (find it): that row leaves; the second moves up without the widget redrawing whole
+rec rm-tick 1.5 ptr move 1500 600
+
+look material
+note add two to-dos first (Today or Reminders' field): Buy milk, Call Ada
+setup python3 -c "import json,os;p=os.path.expanduser('~/.config/tessera/config.json');c=json.load(open(p));c.setdefault('desktop',{})['widgets']=json.loads('[\"clock:m:0:0\", \"stack:m:0:1:pz3mh8\", \"batteries:m:0:2\", \"shortcuts:m:2:0:5a2cav\", \"reminders:m:2:1:pt1\"]');json.dump(c,open(p,'w'),indent=4)"
+wait 2
+shot rm-added
+note click the first row's tick (find it): that row leaves; the second moves up without the widget redrawing whole
+rec rm-tick 1.5 ptr move 1500 600

@@ -96,6 +96,7 @@ pub fn phone(cx: &mut Ctx, p: &mut Page) {
             .detail(phone_detail(&phone))
             .buttons(icon_button(if mirroring { "Showing" } else { "Show Screen" }, "device-mobile", !mirroring && !needs_tools, false, b("hasScrcpy")), show))
         .row(Row::new("Allow this computer on your phone")
+            .tone(4)
             .visible(!has_phone && waiting)
             .detail("Unlock the phone and tap Allow on the USB debugging prompt (tick Always allow from this computer)."))
         .row(Row::new("No phone connected")
@@ -112,7 +113,8 @@ pub fn phone(cx: &mut Ctx, p: &mut Page) {
     let mut code = Row::custom("devices", "qr").visible(stage == "waiting" && !qr.is_empty());
     code.step = place(false, true);
     if stage == "waiting" && !qr.is_empty() {
-        code.image = cx.picture(&qr, 312, 312);
+        // (phone.py writes an SVG: drawn crisp by the icon loader, which reads SVG)
+        code.image = cx.plain_icon(std::path::Path::new(&qr), 312);
     }
     p.group("Without a cable")
         .above(24.0)

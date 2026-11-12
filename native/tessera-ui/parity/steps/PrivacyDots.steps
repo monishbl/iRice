@@ -1,0 +1,25 @@
+# PrivacyDots: steps from parity/shell_modules_menubar_PrivacyDots.qml.md (batches 1-5). Screen IRICE-TEST 1920x1080 scale 1;
+# the island is centred at x 960 (closed y ~14, open ~392 wide); the bar is 30 px tall.
+# Each block runs in both looks: the file runs top to bottom, Material first, then Glass.
+
+look material
+setup sh -c 'sleep 0.5; pw-record /dev/null' &
+rec dot-in 1.5 ptr move 1500 600
+note the orange dot pops in (200 ms OutBack)
+shot dots
+note Glass: dots; Material: a tertiary chip with icons; find its x
+ptr glide 1700 15 200
+wait 1
+shot no-tip
+note no tip
+
+look glass
+setup sh -c 'sleep 0.5; pw-record /dev/null' &
+rec dot-in 1.5 ptr move 1500 600
+note the orange dot pops in (200 ms OutBack)
+shot dots
+note Glass: dots; Material: a tertiary chip with icons; find its x
+ptr glide 1700 15 200
+wait 1
+shot no-tip
+note no tip

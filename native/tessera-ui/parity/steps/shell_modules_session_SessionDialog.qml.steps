@@ -1,0 +1,23 @@
+# Session dialog (Lock, Sleep, Log Out, Restart, Shut Down). Do NOT press Return on Sleep/Log Out/Restart/Shut Down. Check in each look.
+rec ses-open 1 ipc panels open session IRICE-TEST
+note Open curve compared with QML: Material about 0.3 s, Glass about 0.4 s.
+wait 1
+key -k Right -k Right -k Right -k Right -k Right -k Right
+wait 1
+shot ses-right
+note Six Right presses stop at Shut Down (the last one); the current one is accent (Glass) / its shape filled (Material).
+key -k Left -k Left -k Left -k Left -k Left -k Left
+wait 1
+shot ses-left
+note Six Left presses stop at Lock (the first one); current one marked as before.
+ptr move 700 540 sleep 200 glide 1200 540 300
+wait 1
+shot ses-glide
+note Gliding across the five the current one follows the pointer (the last hovered action is current).
+ptr move 960 540 sleep 100 down glide 965 540 100
+shot ses-press
+note Pressed and held while gliding a few px: the swell (Material) / 94 % (Glass) stays and does not restart. NOTE: click on layer surfaces may not register in the harness.
+ptr move 960 540 up
+wait 1
+rec ses-close 0.5 key -k Escape
+note Escape closes in about 192 ms (QML vs Rust).

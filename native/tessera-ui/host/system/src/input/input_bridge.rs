@@ -134,6 +134,11 @@ pub struct Input {
     binds_cache: (Vec<Value>, Vec<Value>),
     apps_len: usize,
     poll_started: bool,
+    /// Settings → Notifications → Island's CPU temperature (the "notify" group's
+    /// `temperature`, sent from here while Settings is open): the last sent
+    temp_sent: Option<i64>,
+    /// Resources sampled for it while Settings is open (resources.use "desktop")
+    res_used: bool,
 }
 
 impl Input {
@@ -239,7 +244,11 @@ impl Input {
 
     fn publish(&mut self) {
         let binds = self.km.binds();
-        crate::bus::put("keymap", json!({"ready": self.km.ready(), "modKey": self.km.mod_key, "binds": binds, "gestures": self.km.gestures(), "threeFingerDrag": self.km.three_finger_drag()}));
+        // (hasZenity, hasKdialog, home: Settings → About's import and export file dialog, bridge_about.rs)
+        crate::bus::put(
+            "keymap",
+            json!({"ready": self.km.ready(), "modKey": self.km.mod_key, "binds": binds, "gestures": self.km.gestures(), "threeFingerDrag": self.km.three_finger_drag(), "hasZenity": self.tools.0, "hasKdialog": self.tools.1, "home": self.home}),
+        );
     }
 
     fn feed(&mut self, h: &Host) -> Value {
@@ -264,8 +273,9 @@ impl Input {
             self.binds_rev = Some(key);
         }
         let mouse = crate::bus::get("mouse");
-        let dict = crate::bus::get("dictation");
-        let st = crate::bus::get("screentools");
+        // (host-desktop's Dictation and ScreenTools publish these as host state)
+        let dict = h.state("dictation").clone();
+        let st = h.state("ocr").clone();
         let dialog = self.tools.0 || self.tools.1;
         let gdefs: Vec<Value> = self.km.gesture_defaults.iter().map(|d| json!({"id": d["id"], "fingers": d["fingers"], "direction": d["direction"], "action": d["action"], "label": d["label"].as_str().unwrap_or(d["id"].as_str().unwrap_or(""))})).collect();
         json!({
@@ -277,12 +287,12 @@ impl Input {
             },
             "dictation": {
                 "hasBinary": dict["hasBinary"].as_bool().unwrap_or(false), "ready": dict["ready"].as_bool().unwrap_or(false), "installing": dict["installing"].as_bool().unwrap_or(false),
-                "installError": dict["installError"].as_str().unwrap_or(""), "models": if dict["models"].is_null() { json!({}) } else { dict["models"].clone() },
+                "installError": dict["installError"].as_str().unwrap_or(""), "models": if dict["info"]["models"].is_object() { dict["info"]["models"].clone() } else { json!({}) },
                 "downloading": dict["downloading"].as_str().unwrap_or(""), "downloadProgress": dict["downloadProgress"].as_f64().unwrap_or(0.0),
                 "downloadError": dict["downloadError"].as_str().unwrap_or(""), "lastDownload": dict["lastDownload"].as_str().unwrap_or("")
             },
             "tools": {"ready": true, "swappy": has_tool("swappy"), "wtype": has_tool("wtype")},
-            "ocr": {"hasTesseract": st["hasTesseract"].as_bool().unwrap_or(false), "installing": st["ocrInstalling"].as_bool().unwrap_or(false), "error": st["ocrInstallError"].as_str().unwrap_or(""), "languages": if st["ocrLanguages"].is_null() { json!([]) } else { st["ocrLanguages"].clone() }},
+            "ocr": {"hasTesseract": st["hasTesseract"].as_bool().unwrap_or(false), "installing": if st["installing"].is_array() { st["installing"].clone() } else { json!([]) }, "error": st["error"].as_str().unwrap_or(""), "languages": if st["languages"].is_array() { st["languages"].clone() } else { json!([]) }},
             "updatesRunning": crate::bus::get("updates")["running"].as_bool().unwrap_or(false),
             "ie": {"keys": self.ie_keys.state(dialog), "gestures": self.ie_gestures.state(dialog)}
         })
@@ -297,6 +307,12 @@ impl Input {
         if force || s != self.last_feed {
             self.last_feed = s;
             h.tell("settings", json!({"feed": {"input": f}}));
+        }
+        // the CPU's reading (bus "Resources"), whole degrees, for the island page
+        let t = crate::bus::get("Resources")["temperature"].as_f64().unwrap_or(0.0).round() as i64;
+        if force || self.temp_sent != Some(t) {
+            self.temp_sent = Some(t);
+            h.ask("settings.feed", json!(["notify", {"temperature": t}]));
         }
     }
 
@@ -650,6 +666,10 @@ impl Service for Input {
             }
             "live" => {
                 self.live = list.first().and_then(Value::as_bool).unwrap_or(true);
+                if self.live != self.res_used {
+                    self.res_used = self.live;
+                    h.ask("resources.use", json!([{"kind": "desktop", "on": self.live}]));
+                }
                 if self.live {
                     self.sync_apps(h);
                     self.push_feed(h, true);
@@ -668,6 +688,7 @@ impl Service for Input {
             M::Probed(_) | M::RefreshBinds => {}
             M::Tools { zenity, kdialog, gtk_launch } => {
                 self.tools = (zenity, kdialog, gtk_launch);
+                self.publish();
                 self.push_feed(h, false);
             }
             M::Loaded(which, text, mt, path) => {

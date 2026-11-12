@@ -154,7 +154,9 @@ impl Sharing {
                 let a = known_addr.clone();
                 let mut lv = d["battery"].clone();
                 lv["at"] = json!(now);
-                self.fast.levels.insert(a.clone(), lv);
+                self.fast.levels.insert(a.clone(), lv.clone());
+                // (shared: the desktop's Batteries widget shows L, R and case apart, FastPair.levelsFor)
+                h.set_state(&format!("fastLevels.{}", a.replace([':', '.'], "_")), lv);
                 if show_ui && rssi.is_some_and(|r| r > -60.0) && now - self.fast.battery_shown.get(&a).copied().unwrap_or(0) > 60_000 {
                     let kname = js(&d["known"]["name"]);
                     self.island(

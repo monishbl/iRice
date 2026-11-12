@@ -9,7 +9,7 @@
 
 import { Theme } from "@tessera/theme.slint";
 import { Keycap } from "@tessera/widgets.slint";
-import { SIc, SOpt, SetRow, SBlock, SBus, SG, SM, SIcon, SFocusRing, SSwitch, SSlider, SSegmented, SChoice, SButton, SField, SChip, SSwatch, SFilled } from "settings-kit.slint";
+import { SIc, SOpt, SetRow, SBlock, SBus, SG, SM, SIcon, SFocusRing, SSwitch, SSlider, SSegmented, SChoice, SButton, SField, SChip, SSwatch, SFilled, STip } from "settings-kit.slint";
 
 global IG {
     out property <SIc> arrow-right: { p: "\u{e06c}", m: "\u{e5c8}" };
@@ -38,6 +38,7 @@ component InField {
     callback edited(string);
     callback committed(string);
     changed gen => { input.text = root.text; }
+    public function focus-input() { input.focus(); }
     preferred-width: 220px;
     height: field-height;
     if Theme.material: SFilled { active: input.has-focus; hovered: ta.has-hover; }
@@ -89,8 +90,8 @@ component Dots inherits Rectangle {
     width: 28px;
     height: 28px;
     border-radius: Theme.material ? (ta.pressed ? 8px : self.height / 2) : Theme.radius-control - 2px;
-    background: Theme.material ? Theme.m3-on-surface-variant.with-alpha(ta.pressed ? 0.1 : ta.has-hover ? 0.08 : 0)
-        : ta.pressed ? Theme.fill-pressed : ta.has-hover ? Theme.fill : transparent;
+    background: Theme.material ? Theme.m3-on-surface-variant.with-alpha(ta.pressed ? 0.1 : ta.has-hover || shown ? 0.08 : 0)
+        : ta.pressed ? Theme.fill-pressed : ta.has-hover || shown ? Theme.fill : transparent;
     animate background { duration: SM.hover; }
     accessible-role: AccessibleRole.button;
     accessible-label: label;
@@ -98,11 +99,14 @@ component Dots inherits Rectangle {
     public function open() {
         SBus.menu(menu-id, self.absolute-position.x, self.absolute-position.y, self.width, self.height);
     }
-    SIcon { g: SG.dots; size: 16px; color: lit || ta.has-hover ? Theme.label : Theme.tertiary; }
+    // (lit while its menu is open, shortcuts.qml 146)
+    property <bool> shown: SBus.menu-shown == menu-id && menu-id != "";
+    SIcon { g: SG.dots; size: 16px; color: lit || shown || ta.has-hover ? Theme.label : Theme.tertiary; }
     ta := TouchArea {
         mouse-cursor: pointer;
         clicked => { root.open(); }
     }
+    STip { text: root.label; hovered: ta.has-hover; }
 }
 
 // Buttons in a row of their own, at its right (a form's, a preview's)
@@ -136,12 +140,34 @@ component BindRow inherits Tile {
     accessible-label: r.label;
     accessible-description: r.detail;
     accessible-action-default => { dots.open(); }
-    if !Theme.material: Rectangle {
-        background: ta.pressed ? Theme.fill-pressed : ta.has-hover ? Theme.fill : transparent;
+    // (hover: Glass a fill; Material an 8 % state layer, Group.qml 73–83)
+    Rectangle {
+        border-top-left-radius: root.border-top-left-radius;
+        border-top-right-radius: root.border-top-right-radius;
+        border-bottom-left-radius: root.border-bottom-left-radius;
+        border-bottom-right-radius: root.border-bottom-right-radius;
+        background: Theme.material ? Theme.m3-on-surface.with-alpha(ta.pressed ? 0.1 : ta.has-hover ? 0.08 : 0)
+            : ta.pressed ? Theme.fill-pressed : ta.has-hover ? Theme.fill : transparent;
+        animate background { duration: SM.hover; }
     }
+    // Keyboard: a Tab stop; Return, Enter, Space or the Menu key open its menu
+    fs := FocusScope {
+        key-pressed(e) => {
+            if e.text == Key.Return || e.text == " " || e.text == Key.Menu { dots.open(); return accept; }
+            reject
+        }
+    }
+    SFocusRing { shown: fs.has-focus; radius: Theme.material ? 4px : 8px; }
     ta := TouchArea {
         mouse-cursor: pointer;
-        clicked => { dots.open(); }
+        clicked => {
+            fs.focus();
+            dots.open();
+        }
+        // (right-click: the menu too, shortcuts.qml 138)
+        pointer-event(e) => {
+            if e.button == PointerEventButton.right && e.kind == PointerEventKind.up { dots.open(); }
+        }
     }
     HorizontalLayout {
         padding-left: Theme.material ? 20px : 14px;
@@ -248,6 +274,8 @@ component GestureRow inherits Tile {
 component Recorder inherits Tile {
     in property <SetRow> r;
     place: r.num;
+    // "Edit as text" was pressed here: the field it brings takes the caret
+    property <bool> toggled;
     VerticalLayout {
         padding-left: Theme.material ? 20px : 14px;
         padding-right: Theme.material ? 20px : 14px;
@@ -309,7 +337,8 @@ component Recorder inherits Tile {
                         }
                         let held = (e.modifiers.shift ? 1 : 0) + (e.modifiers.control ? 2 : 0) + (e.modifiers.alt ? 4 : 0) + (e.modifiers.meta ? 8 : 0);
                         SBus.act(r.id, 10, held, e.text);
-                        self.clear-focus();
+                        // (the focus goes on to "Edit as text", ShortcutRecorder.qml 184)
+                        toggle.focus();
                         accept
                     }
                 }
@@ -327,6 +356,8 @@ component Recorder inherits Tile {
                     placeholder: "SUPER + SHIFT + S";
                     label: "Keys";
                     edited(t) => { SBus.act(r.id, 20, 0, t); }
+                    // (brought by "Edit as text": the caret in it, ShortcutRecorder.qml 228)
+                    init => { if root.toggled { self.focus-input(); } }
                 }
             }
             Text {
@@ -338,9 +369,12 @@ component Recorder inherits Tile {
         }
         HorizontalLayout {
             alignment: start;
-            SButton {
+            toggle := SButton {
                 text: r.on ? "Use the key picker" : "Edit as text";
-                clicked => { SBus.act(r.id, 21, 0, ""); }
+                clicked => {
+                    root.toggled = true;
+                    SBus.act(r.id, 21, 0, "");
+                }
             }
         }
     }
@@ -356,9 +390,22 @@ component AppRow inherits Tile {
     accessible-checked: r.on;
     accessible-action-default => { SBus.act(r.id, 0, 0, ""); }
     Rectangle {
-        border-radius: Theme.material ? 4px : 0;
-        background: r.on ? Theme.accent-tint : Theme.material ? transparent : ta.pressed ? Theme.fill-pressed : ta.has-hover ? Theme.fill : transparent;
+        border-top-left-radius: root.border-top-left-radius;
+        border-top-right-radius: root.border-top-right-radius;
+        border-bottom-left-radius: root.border-bottom-left-radius;
+        border-bottom-right-radius: root.border-bottom-right-radius;
+        // (Material: the 8 % state layer on hover, Group.qml)
+        background: r.on ? Theme.accent-tint : Theme.material ? Theme.m3-on-surface.with-alpha(ta.pressed ? 0.1 : ta.has-hover ? 0.08 : 0) : ta.pressed ? Theme.fill-pressed : ta.has-hover ? Theme.fill : transparent;
+        animate background { duration: SM.hover; }
     }
+    // Keyboard: a Tab stop; Space or Return choose it (shortcuts.qml 542–562)
+    afs := FocusScope {
+        key-pressed(e) => {
+            if !e.repeat && (e.text == " " || e.text == Key.Return) { SBus.act(r.id, 0, 0, ""); return accept; }
+            reject
+        }
+    }
+    SFocusRing { shown: afs.has-focus; radius: Theme.material ? 4px : 8px; }
     Image {
         x: Theme.material ? 20px : 14px;
         y: (parent.height - self.height) / 2;
@@ -388,7 +435,10 @@ component AppRow inherits Tile {
     }
     ta := TouchArea {
         mouse-cursor: pointer;
-        clicked => { SBus.act(r.id, 0, 0, ""); }
+        clicked => {
+            afs.focus();
+            SBus.act(r.id, 0, 0, "");
+        }
     }
 }
 
@@ -502,6 +552,7 @@ export component InputCtl inherits VerticalLayout {
                 label: r.label;
                 edited(t) => { SBus.act(r.id, 0, 0, t); }
                 committed(t) => { SBus.act(r.id, 1, 0, t); }
+                init => { self.focus-input(); }
             }
         }
         Buttons { r: r; items: r.data; base: 10; }

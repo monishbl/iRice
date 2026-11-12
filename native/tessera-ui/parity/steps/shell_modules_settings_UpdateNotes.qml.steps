@@ -1,0 +1,9 @@
+# Settings window: Material 1040x700 at 440,205 (page column from x~772); Glass 860x620 at 530,230. Sidebar rows (Material, x=560): Appearance 335, Wallpaper 385, Desktop 435, Menu bar 485, Lock 535, Notifications 626, Focus 676, Windows 767, Displays 858.
+# Click coordinates inside pages are not known in advance: those steps are MANUAL unless a keyboard path exists. Check in each look.
+ipc panels settings update
+wait 2
+shot notes0
+note UpdateNotes only shows after a check finds a Tessera update (sandbox: normally not). If 'What's new in Tessera' shows: newest entry only, title + date, 'Show all notes (N)' when N > 1; Markdown differs (QML bold sub-headings and accent links, Rust plain).
+# MANUAL: click Check for updates (safe) and wait; if notes show: N1 shot; N2 'Show all notes (N)' lists all with link 'Show only the latest', click again returns to one
+# MANUAL: N3 hovering a link in the QML body gives a pointing cursor; Rust none (expected different)
+# MANUAL: never press Update

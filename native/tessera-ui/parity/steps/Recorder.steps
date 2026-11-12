@@ -1,0 +1,17 @@
+# Arena IRICE-TEST 1920x1080 scale 1, the user's config (expressive motion, Colloid, their 4 widgets).
+# Each file runs top to bottom from a fresh desktop. `static NAME x y w h`: that region must not change
+# from there until the next `shot`, `rec` or `look` (the no-reload blocks end with their last close).
+# Right-clicks: `ptr ... down up` lines marked (right button) need the runner's right button.
+
+look glass
+ipc recorder screen
+wait 3
+setup sh -c 'p=$(pgrep -x wf-recorder || pgrep -x gpu-screen-reco); grep -E "SigIgn|SigBlk" /proc/$p/status'
+note SigIgn without bit 2 (SIGINT) and SigBlk 0
+ptr move 900 500 glide 1100 600 2000
+rec rc-stop 3 ipc recorder stop
+note within ~1 s: recorder gone, timer gone, "Recording saved" on the island; the file plays (ffprobe)
+ipc recorder screen
+wait 10
+rec rc-static-stop 9 ipc recorder stop
+note a still screen: ends within 8 s at the latest (log: SIGTERM / SIGKILL escalation)

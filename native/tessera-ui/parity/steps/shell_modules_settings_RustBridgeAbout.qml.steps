@@ -1,0 +1,24 @@
+# Settings window: Material 1040x700 at 440,205 (page column from x~772); Glass 860x620 at 530,230. Sidebar rows (Material, x=560): Appearance 335, Wallpaper 385, Desktop 435, Menu bar 485, Lock 535, Notifications 626, Focus 676, Windows 767, Displays 858.
+# Click coordinates inside pages are not known in advance: those steps are MANUAL unless a keyboard path exists. Check in each look.
+ipc panels settings update
+wait 2
+shot b1
+note B1 same 'up to date' or pending list, hold/AUR switches and boot snapshot rows as QML.
+ipc panels settings about/health
+wait 6
+shot b4
+note B4 System health: same checks, groups and 'checked at' time as QML.
+ipc panels settings about/bugreport
+wait 3
+shot b6
+note B6 Report a Bug: log and system info filled as QML; do NOT send.
+ipc panels settings about
+wait 3
+shot b7
+note B7 About: health summary row and welcome name as QML.
+# MANUAL: B2 click Check for Updates, shot after it finishes: same result as QML, log clean; never click Update
+# MANUAL: B3 toggle Show Details if a previous job shows: log text appears/disappears
+# MANUAL: B5 click Copy Report, then wl-paste | head -5 prints the report text
+# MANUAL: B6 type a title in the bug report field, switch tab away and back: title kept
+# MANUAL: B8 click a row's button that opens a folder/file: it opens in Files (hyprctl clients)
+# MANUAL: B9 Export... on About backup of shortcuts: file dialog when zenity/kdialog installed, else the path field

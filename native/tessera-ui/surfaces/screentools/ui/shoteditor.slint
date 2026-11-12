@@ -334,11 +334,18 @@ export component ShotThumbnail inherits Window {
     }
     property <bool> over: hover.has-hover;
     changed over => { hovered(over); }
+    // The swipe: follows the hand, then goes back on 200 ms OutCubic (the
+    // QML's backAnim) when let go short of dismissing
+    property <length> slide: offset;
+    animate slide {
+        duration: swiping ? 0ms : 200ms;
+        easing: cubic-bezier(0.33, 1, 0.68, 1);
+    }
 
     card := Rectangle {
         width: card-w;
         height: card-h;
-        x: root.width - m - card-w + offset + (1 - progress) * (fade ? 0 : travel);
+        x: root.width - m - card-w + slide + (1 - progress) * (fade ? 0 : travel);
         y: root.height - m - card-h;
         opacity: fade ? progress : 1;
         // (Material: a card, corner 16; deleted, a snackbar's corner 4)
@@ -350,18 +357,21 @@ export component ShotThumbnail inherits Window {
         accessible-role: groupbox;
         accessible-label: deleted ? "Screenshot deleted" : "Screenshot";
 
+        // (the QML's HoverHandler covers the Undo toast too: hovering it holds
+        // its 8 s; only the screenshot takes presses, drags and swipes)
         hover := TouchArea {
-            enabled: !deleted;
-            mouse-cursor: swiping ? MouseCursor.grabbing : MouseCursor.pointer;
+            mouse-cursor: deleted ? MouseCursor.default : swiping ? MouseCursor.grabbing : MouseCursor.pointer;
             pointer-event(e) => {
-                if e.button == PointerEventButton.left && e.kind == PointerEventKind.down {
-                    root.press(self.mouse-x + card.x, self.mouse-y + card.y);
-                } else if e.button == PointerEventButton.left && e.kind == PointerEventKind.up {
-                    root.release();
-                } else if e.kind == PointerEventKind.move && self.pressed {
-                    root.drag-to(self.mouse-x + card.x, self.mouse-y + card.y);
-                } else if e.kind == PointerEventKind.cancel {
-                    root.release();
+                if !deleted {
+                    if e.button == PointerEventButton.left && e.kind == PointerEventKind.down {
+                        root.press(self.mouse-x + card.x, self.mouse-y + card.y);
+                    } else if e.button == PointerEventButton.left && e.kind == PointerEventKind.up {
+                        root.release();
+                    } else if e.kind == PointerEventKind.move && self.pressed {
+                        root.drag-to(self.mouse-x + card.x, self.mouse-y + card.y);
+                    } else if e.kind == PointerEventKind.cancel {
+                        root.release();
+                    }
                 }
             }
 
@@ -517,8 +527,13 @@ export component ShotThumbnail inherits Window {
                 border-radius: Theme.material ? self.height / 2 : Theme.radius-control;
                 background: Theme.material ? Theme.m3-inverse-primary.with-alpha(ut.pressed ? 0.1 : ut.has-hover ? 0.08 : 0)
                     : ut.pressed ? Theme.fill-pressed : ut.has-hover ? Theme.fill-hover : Theme.fill;
-                transform-scale: ut.pressed ? (Theme.material ? 1.04 : 0.97) : 1;
-                animate transform-scale { duration: 100ms; }
+                // (Glass: 0.97 over 100 ms; Material: the ElasticControl's
+                // swell, 6 %, on springPress 7.5/0.3 -> 290 ms spring(0.57))
+                transform-scale: ut.pressed ? (Theme.material ? 1.06 : 0.97) : 1;
+                animate transform-scale {
+                    duration: Theme.material ? 290ms : 100ms;
+                    easing: Theme.material ? spring(0.57) : cubic-bezier(0, 0, 1, 1);
+                }
                 accessible-role: button;
                 accessible-label: "Undo";
                 accessible-action-default => { root.undo(); }
@@ -728,68 +743,77 @@ export component ShotEditor inherits Window {
             background: Theme.fill;
             clip: true;
 
+            // (not clipped itself: the crop handles and their 8 px reach stick
+            // out past the picture, as the QML's; the canvas clips them)
             view := Rectangle {
                 width: view-w;
                 height: view-h;
                 visible: status == 1;
-                clip: true;
-                Image {
+                // The picture and its marks, clipped to the part shown (the QML's cropView)
+                Rectangle {
                     x: 0;
                     y: 0;
                     width: view-w;
                     height: view-h;
-                    source: base;
-                    source-clip-x: clip-x;
-                    source-clip-y: clip-y;
-                    source-clip-width: clip-w;
-                    source-clip-height: clip-h;
-                    image-fit: fill;
-                }
-                for ann in anns: AnnView {
-                    x: 0;
-                    y: 0;
-                    a: ann;
-                    vw: view-w;
-                    vh: view-h;
-                }
-                if has-draft: AnnView {
-                    x: 0;
-                    y: 0;
-                    a: draft;
-                    vw: view-w;
-                    vh: view-h;
-                }
+                    clip: true;
+                    Image {
+                        x: 0;
+                        y: 0;
+                        width: view-w;
+                        height: view-h;
+                        source: base;
+                        source-clip-x: clip-x;
+                        source-clip-y: clip-y;
+                        source-clip-width: clip-w;
+                        source-clip-height: clip-h;
+                        image-fit: fill;
+                    }
+                    for ann in anns: AnnView {
+                        x: 0;
+                        y: 0;
+                        a: ann;
+                        vw: view-w;
+                        vh: view-h;
+                    }
+                    if has-draft: AnnView {
+                        x: 0;
+                        y: 0;
+                        a: draft;
+                        vw: view-w;
+                        vh: view-h;
+                    }
 
-                // Typing a label
-                if typing: Rectangle {
-                    x: text-x - 4px;
-                    y: text-y - 4px;
-                    width: max(text-field.preferred-width + 2px, text-size * 4) + 8px;
-                    height: text-field.preferred-height + 8px;
-                    border-width: 1px;
-                    border-color: Theme.accent;
-                    border-radius: 4px;
-                }
-                text-field := TextInput {
-                    visible: typing;
-                    enabled: typing;
-                    x: text-x;
-                    y: text-y;
-                    width: max(self.preferred-width + 2px, text-size * 4);
-                    height: self.preferred-height;
-                    color: text-color;
-                    font-size: text-size;
-                    font-weight: 600;
-                    single-line: true;
-                    selection-background-color: Theme.accent.with-alpha(0.4);
-                    accessible-label: "Label";
-                    accepted => { root.text-done(self.text); }
-                    key-pressed(e) => {
-                        if e.text == Key.Escape {
-                            root.text-cancel();
-                            return accept;
+                    // Typing a label
+                    if typing: Rectangle {
+                        x: text-x - 4px;
+                        y: text-y - 4px;
+                        width: max(text-field.preferred-width + 2px, text-size * 4) + 8px;
+                        height: text-field.preferred-height + 8px;
+                        border-width: 1px;
+                        border-color: Theme.accent;
+                        border-radius: 4px;
+                    }
+                    text-field := TextInput {
+                        visible: typing;
+                        enabled: typing;
+                        x: text-x;
+                        y: text-y;
+                        width: max(self.preferred-width + 2px, text-size * 4);
+                        height: self.preferred-height;
+                        color: text-color;
+                        font-size: text-size;
+                        font-weight: 600;
+                        single-line: true;
+                        selection-background-color: Theme.accent.with-alpha(0.4);
+                        accessible-label: "Label";
+                        accepted => { root.text-done(self.text); }
+                        key-pressed(e) => {
+                            if e.text == Key.Escape {
+                                root.text-cancel();
+                                return accept;
+                            }
+                            reject
                         }
-                        reject
                     }
                 }
 
@@ -1112,8 +1136,13 @@ export component ShotEditor inherits Window {
                             border-radius: 8px;
                             background: c;
                             // (Glass shrinks on press; Material grows)
-                            transform-scale: st.pressed ? (Theme.material ? 1.12 : 0.9) : 1;
-                            animate transform-scale { duration: 100ms; }
+                            // (Material: the ElasticControl's 6 % swell on springPress
+                            // 7.5/0.3 -> 290 ms spring(0.57); Glass: 0.9 over 100 ms)
+                            transform-scale: st.pressed ? (Theme.material ? 1.06 : 0.9) : 1;
+                            animate transform-scale {
+                                duration: Theme.material ? 290ms : 100ms;
+                                easing: Theme.material ? spring(0.57) : cubic-bezier(0, 0, 1, 1);
+                            }
                         }
                         st := TouchArea {
                             enabled: status == 1 && !busy-any;
@@ -1222,7 +1251,7 @@ export component ShotEditor inherits Window {
                     }
                 }
                 // (Material: a split button, Save as a copy, Copy and Share in its menu)
-                if Theme.material: Rectangle {
+                if Theme.material: split := Rectangle {
                     width: lead.width + 2px + 40px;
                     height: 40px;
                     property <bool> can: status == 1 && (root.busy == "" || root.busy == "save" || root.busy == "saveCopy");
@@ -1235,6 +1264,10 @@ export component ShotEditor inherits Window {
                         border-top-right-radius: lt-touch.pressed ? 8px : 4px;
                         border-bottom-right-radius: self.border-top-right-radius;
                         background: Theme.m3-primary.mix(Theme.m3-on-primary, lt-touch.pressed ? 0.9 : lt-touch.has-hover ? 0.92 : 1);
+                        animate background { duration: Theme.hover; }
+                        // (its ElasticControl: a 6 % swell on springPress -> 290 ms spring(0.57))
+                        transform-scale: lt-touch.pressed ? 1.06 : 1;
+                        animate transform-scale { duration: 290ms; easing: spring(0.57); }
                         accessible-role: button;
                         accessible-label: dirty ? "Save" : "Done";
                         accessible-action-default => { root.save(); }
@@ -1260,7 +1293,7 @@ export component ShotEditor inherits Window {
                             }
                         }
                         lt-touch := TouchArea {
-                            enabled: status == 1 && (root.busy == "" || root.busy == "save" || root.busy == "saveCopy");
+                            enabled: split.can && root.busy != "save" && root.busy != "saveCopy";
                             mouse-cursor: pointer;
                             clicked => { root.save(); }
                         }
@@ -1274,19 +1307,25 @@ export component ShotEditor inherits Window {
                         border-bottom-left-radius: inner;
                         border-top-right-radius: 20px;
                         border-bottom-right-radius: 20px;
-                        animate border-top-left-radius, border-bottom-left-radius { duration: 300ms; easing: spring(0.3); }
+                        // (springPress 7.5/0.3: w 21.7, z 0.43 -> 290 ms spring(0.57))
+                        animate border-top-left-radius, border-bottom-left-radius { duration: 290ms; easing: spring(0.57); }
                         background: Theme.m3-primary.mix(Theme.m3-on-primary, tr.pressed ? 0.9 : tr.has-hover ? 0.92 : 1);
+                        animate background { duration: Theme.hover; }
+                        transform-scale: tr.pressed ? 1.06 : 1;
+                        animate transform-scale { duration: 290ms; easing: spring(0.57); }
                         accessible-role: button;
                         accessible-label: "More save options";
-                        accessible-action-default => { menu-open = !menu-open; }
+                        accessible-action-default => { if split.can { menu-open = !menu-open; } }
+                        // (upward: 180 deg closed, a further half turn open, OutCubic)
                         StIcon {
                             icon: ic-caret;
                             size: 18px;
                             color: Theme.m3-on-primary;
-                            transform-rotation: menu-open ? 0deg : 180deg;
-                            animate transform-rotation { duration: Theme.popover; }
+                            transform-rotation: menu-open ? 360deg : 180deg;
+                            animate transform-rotation { duration: Theme.popover; easing: cubic-bezier(0.33, 1, 0.68, 1); }
                         }
                         tr := TouchArea {
+                            enabled: split.can;
                             mouse-cursor: pointer;
                             clicked => { menu-open = !menu-open; }
                         }
@@ -1372,12 +1411,13 @@ export component ShotEditor inherits Window {
             visible: self.opacity > 0.01;
             opacity: menu-open ? 1 : 0;
             animate opacity { duration: menu-open ? Theme.popover : Theme.hover; }
-            width: 230px;
+            width: max(200px, menu-col.preferred-width);
             height: menu-col.preferred-height + 16px;
             x: parent.width - pad - self.width;
-            y: canvas.y + canvas-h + pad - self.height - 8px + (menu-open ? 0 : 6px);
+            // (8 px over the split button, which sits centred in the 48 px bar)
+            y: canvas.y + canvas-h + pad + (bar - 40px) / 2 - self.height - 8px + (menu-open ? 0 : 6px);
             border-radius: 16px;
-            background: Theme.m3-surface-container-high;
+            background: Theme.m3-surface-container;
             drop-shadow-blur: 16px;
             drop-shadow-offset-y: 4px;
             drop-shadow-color: Theme.m3-shadow.with-alpha(Theme.dark ? 0.4 : 0.16);

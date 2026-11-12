@@ -1,0 +1,96 @@
+# Switcher, 4 windows: body 880 wide centred, body left x 520; tile centres x 636, 852, 1068, 1284, y 540. Both looks.
+# NOTE: earlier results: keys in the strip (second Tab, Escape) did not reach Rust under wtype (each wtype is a new virtual keyboard); icons were generic glyphs (fixed by iconStyle); mod key in sandbox is ALT and Alt+Tab bind may be Overview.
+# NOTE: click on layer surfaces may not register in the harness
+ipc lock unlock
+ipc panels close
+setup foot -T A >/dev/null 2>&1 & sleep 1; foot -T B >/dev/null 2>&1 & sleep 1; foot -T C >/dev/null 2>&1 &
+wait 3
+setup hyprctl dispatch workspace 2; foot -T D >/dev/null 2>&1 & sleep 2; hyprctl dispatch workspace 1
+wait 3
+ptr move 100 900
+# 1 quick tap
+rec tap 1 key -M alt -k Tab -m alt
+note Nothing is drawn: every frame free of the strip; focus moves to B (active window title B). Compare QML vs Rust.
+wait 1
+rec tap2 1 key -M alt -k Tab -m alt
+note Tap again returns focus to C; still no strip drawn.
+wait 1
+# 2 hold
+rec hold 1.5 key -M alt -k Tab -s 1200 -m alt
+note Strip starts appearing about 150 ms after Tab (no frame before 120 ms); fade-in about 220 ms (both shells within 2 frames), scale 0.97 to 1; selection on tile 2 (B) with accent ring (Glass) or primary outline (Material); after release fade-out about 143 ms and B focused; Rust first moving frame must not be later than QML.
+wait 2
+# 3 second Tab
+rec second 1.2 key -M alt -k Tab -s 40 -k Tab -s 800 -m alt
+note Strip visible within about 1 frame of the second Tab (well before 150 ms), selection on tile 3; on release window A is focused. Earlier Rust stayed on tile 2 (FAIL T7).
+wait 2
+# 4 steps and wrap
+key -M alt -k Tab -s 400 -k Tab -s 200 -k Tab -s 200 -k Tab -s 300
+shot wrap
+note After four Tabs the selection wrapped to tile 1 (the strip is still held because Alt is not released in the shot; if the key line released Alt the strip is gone, compare with QML).
+# MANUAL: with Alt held: Left x2 -> tile 3; Shift+Tab -> tile 2; Right -> tile 3; Down/Up with one row stays put; finish with Alt release (cannot hold Alt across separate wtype calls)
+wait 1
+# 5 escape
+key -M alt -k Tab -s 400 -k Escape -s 300 -m alt
+wait 1
+shot esc
+note Strip faded after Escape, focus unchanged (still C or whichever was focused before); Rust earlier did not dismiss it (FAIL).
+# 6 enter
+key -M alt -k Tab -s 400 -k Return -s 300 -m alt
+wait 1
+shot enter
+note Strip went and B was focused when Return was pressed (while Alt still held).
+# 7 hover / press / click
+setup wtype -M alt -k Tab -s 4000 -m alt &
+wait 1
+ptr move 960 540 sleep 100 glide 1068 540 300
+shot hover
+note Tile 3 shows the hover fill (Glass fillHover; Material 8 percent state layer).
+ptr move 1068 540 down sleep 50
+shot press
+note Tile 3 at 97 percent scale (Material 10 percent layer).
+ptr move 1068 540 up
+wait 1
+shot click
+note Tile 3's window focused and the strip fades out (click may not register on layer surfaces).
+wait 4
+# 8 hover survives a tab
+setup wtype -M alt -k Tab -s 4000 -m alt &
+wait 1
+ptr move 960 540 sleep 100 glide 852 540 300
+key -k Tab
+shot hover-tab
+note Tile 2's hover fill stays visible after the Tab step (before the fix it vanished until the pointer moved); the non-selected tile at x1214 y457 w140 h166 must not blank and redraw, only the selection ring area changes.
+wait 4
+# 9 elsewhere / minimized
+setup wtype -M alt -k Tab -s 2500 -m alt &
+wait 1
+shot elsewhere
+note Tile for D (space 2) shows its space title ("2" or the space's name) at the right of the title row, as QML.
+wait 3
+# MANUAL: minimize A (ipc apps minimize or the decoration's minimize), open the strip: A's tile says "Minimized"; selecting it brings A back to space 1
+# 10 pictures
+setup wtype -M alt -k Tab -s 2500 -m alt &
+wait 1
+shot pictures
+note Every tile has the window's picture; a window without capture shows its 48 px app icon centred in a fill-coloured card (Colloid icon for foot, not a generic glyph); pictures do not update live.
+wait 3
+# 12 click-through while pending
+setup wtype -M alt -k Tab -s 100 -m alt
+ptr click
+note A click at the centre (960,540) while the strip is only pending lands on the window under it, not on the strip.
+wait 1
+# 13 cancelled by another panel
+setup wtype -M alt -k Tab -s 4000 -m alt &
+wait 1
+ipc panels open controlCenter IRICE-TEST
+wait 1
+shot cancelled
+note The strip is gone as soon as Control Center opens; on release no window switch happens (focus unchanged).
+wait 4
+ipc panels close
+# 11 empty
+setup pkill -x foot || true
+wait 2
+rec empty 1 key -M alt -k Tab -s 600 -m alt
+note With no windows: a 240x72 panel with "No open windows" centred.
+# MANUAL: first press after shell reload + 3 s: step 2 again, first frame must not be later than on the second try (T28)

@@ -69,7 +69,7 @@ component BarButton inherits Rectangle {
     width: 24px;
     height: 24px;
     border-radius: Theme.material && on ? 8px : 12px;
-    animate border-radius { duration: 250ms; easing: spring(0.6); }
+    animate border-radius { duration: 222ms; easing: spring(0.4); } // (springFast)
     background: on ? Theme.accent : t.has-hover ? (Theme.material ? Theme.m3-on-surface-variant.with-alpha(0.08) : Theme.fill-hover) : transparent;
     accessible-role: button;
     accessible-label: label;
@@ -421,7 +421,9 @@ component Toggle inherits Rectangle {
         y: (parent.height - d) / 2;
         border-radius: d / 2;
         background: Theme.material ? (checked ? Theme.m3-on-primary : Theme.m3-outline) : #ffffff;
-        animate x, width, height { duration: 250ms; easing: spring(0.6); }
+        // (Material: springFast; Glass: popover on the emphasized curve, as Switch.qml)
+        animate x { duration: Theme.material ? 222ms : Theme.popover; easing: Theme.material ? spring(0.4) : cubic-bezier(0.2, 0.9, 0.1, 1.0); }
+        animate width, height { duration: 222ms; easing: spring(0.4); }
     }
     t := TouchArea {
         clicked => { root.toggled(); }
@@ -441,11 +443,12 @@ component Pill inherits Rectangle {
     width: label.preferred-width + pad;
     height: h;
     border-radius: Theme.material ? (t.pressed ? 8px : self.height / 2) : self.height / 2;
-    animate border-radius { duration: 250ms; easing: spring(0.6); }
+    animate border-radius { duration: 222ms; easing: spring(0.4); } // (springFast)
     background: Theme.material ? m-base.mix(m-ink, t.pressed ? 0.9 : t.has-hover ? 0.92 : 1)
         : kind == 0 ? Theme.accent : kind == 1 ? Theme.danger : Theme.fill;
-    transform-scale: Theme.material && t.pressed ? 1.03 : 1;
-    animate transform-scale { duration: 250ms; easing: spring(0.35); }
+    // (ElasticControl: Material swells ~6 %, ≤ 10 px, on springPress)
+    transform-scale: Theme.material && t.pressed ? 1 + min(0.06, 10px / max(1px, max(self.width, self.height))) : 1;
+    animate transform-scale { duration: 290ms; easing: spring(0.57); }
     accessible-role: button;
     accessible-label: text;
     accessible-action-default => { clicked(); }
@@ -582,12 +585,12 @@ export component OverlayUi inherits Window {
                 width: Theme.material ? 48px : 40px;
                 height: self.width;
                 border-radius: Theme.material ? (tt.pressed ? 8px : tool.on ? 16px : self.height / 2) : 20px;
-                animate border-radius { duration: 250ms; easing: spring(0.6); }
+                animate border-radius { duration: 222ms; easing: spring(0.4); } // (springFast)
                 background: Theme.material ? (tool.on ? Theme.m3-primary.mix(Theme.m3-on-primary, tt.pressed ? 0.9 : tt.has-hover ? 0.92 : 1)
                         : Theme.m3-on-primary-container.with-alpha(tt.pressed ? 0.1 : tt.has-hover ? 0.08 : 0))
                     : tool.on ? Theme.accent : tt.has-hover ? Theme.fill-hover : Theme.fill;
-                transform-scale: Theme.material && tt.pressed ? 1.06 : 1;
-                animate transform-scale { duration: 250ms; easing: spring(0.35); }
+                transform-scale: Theme.material && tt.pressed ? 1 + min(0.06, 10px / max(1px, self.width)) : 1;
+                animate transform-scale { duration: 290ms; easing: spring(0.57); } // (springPress)
                 accessible-role: button;
                 accessible-label: tool.name;
                 accessible-checkable: true;

@@ -59,10 +59,12 @@ export struct DeskWidget {
     gauges: [DGauge], days: [DDay], hours: [DHour], clocks: [DClock],
     stats: [DStat], stocks: [DStock], buttons: [DButton], bars: [DBar],
     apps: [DApp], runs: [DRun],
+    chars: [string], // (the clock's time one character a slot: tabular digits)
 }
 
 export struct DeskIcon {
     index: int,
+    key: string, // (the file's path, or the stack's kind: rows follow it)
     name: string,
     x: length, y: length,
     selected: bool,
@@ -271,12 +273,55 @@ component Tick inherits Rectangle {
     accessible-action-default => { ticked(); }
 }
 
+// A control inside a widget (a Shortcuts tile, a photo, a calendar day…):
+// a click is its own; a press that moves 6 px drags the whole widget, as
+// the QML's frame DragHandler takes over from a MouseArea; a right-click is
+// the widget's menu (the QML's MouseAreas take only the left button)
+component DragTap inherits TouchArea {
+    callback tapped();
+    callback drag-by(length, length, bool); // the widget moved by, live; false: let go
+    callback menu-at(length, length); // the window's coordinates
+    property <bool> dragged;
+    mouse-cursor: pointer;
+    pointer-event(e) => {
+        if e.button == PointerEventButton.right && e.kind == PointerEventKind.down {
+            root.menu-at(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+        }
+        if e.button == PointerEventButton.left && e.kind == PointerEventKind.down {
+            self.dragged = false;
+        }
+        if e.button == PointerEventButton.left && e.kind == PointerEventKind.up {
+            if self.dragged {
+                self.dragged = false;
+                root.drag-by(0, 0, false);
+            } else if self.has-hover {
+                root.tapped();
+            }
+        }
+    }
+    moved => {
+        if self.pressed {
+            if !self.dragged && (abs(self.mouse-x - self.pressed-x) > 6px || abs(self.mouse-y - self.pressed-y) > 6px) {
+                self.dragged = true;
+            }
+            if self.dragged {
+                root.drag-by(self.mouse-x - self.pressed-x, self.mouse-y - self.pressed-y, true);
+            }
+        }
+    }
+}
+
 // ── The widgets ─────────────────────────────────────────────────────────────
 // Each fills its content box (the card less its padding); `w` is its data
 
 // Clock: small an analog face (clocks[0]); medium t1 the day, t2 the time, t3 the date
 component ClockW inherits Rectangle {
     in property <DeskWidget> w;
+    // (Material: the QML asks Tessera Sans Flex for DemiBold but Qt draws the
+    // variable font at its default instance, a regular weight: the tester
+    // saw light digits there, so the Material time is drawn at 400)
+    property <int> time-weight: Theme.material ? 400 : 600;
+    zero := T { visible: false; text: "0"; font-size: 64px; font-weight: time-weight; }
     if w.size == "s" && w.clocks.length > 0: Analog {
         width: min(root.width, root.height);
         c: w.clocks[0];
@@ -285,12 +330,21 @@ component ClockW inherits Rectangle {
     if w.size != "s": VerticalLayout {
         alignment: center;
         T { text: w.t1; color: Desk.accent-ink; font-weight: 700; letter-spacing: 1px; }
-        T {
-            text: w.t2;
-            color: Theme.material ? Theme.m3-on-primary-container : Theme.label;
-            font-size: 64px;
-            font-weight: 600;
-            letter-spacing: -2px;
+        // (tnum: each digit in a slot as wide as a 0, so the time doesn't
+        // shift as its digits change; Slint can't turn on font features)
+        HorizontalLayout {
+            alignment: start;
+            spacing: -2px;
+            for c in w.chars: T {
+                property <bool> digit: c != ":" && c != " " && c != "." && c != "A" && c != "P" && c != "M";
+                width: digit ? zero.preferred-width : self.preferred-width;
+                horizontal-alignment: center;
+                text: c;
+                color: Theme.material ? Theme.m3-on-primary-container : Theme.label;
+                font-size: 64px;
+                font-weight: root.time-weight;
+                accessible-role: none;
+            }
         }
         T { text: w.t3; color: Theme.material ? Theme.m3-on-primary-container.with-alpha(0.8) : Theme.secondary; font-size: Theme.body; font-weight: 500; }
     }
@@ -412,10 +466,13 @@ component CalendarW inherits Rectangle {
     in property <DeskWidget> w;
     in property <string> cookie9;
     callback act(string, string);
+    callback drag-by(length, length, bool);
+    callback menu-at(length, length);
     property <bool> wide: w.size != "s";
-    if !wide: TouchArea {
-        mouse-cursor: pointer;
-        clicked => { root.act("calendar", ""); }
+    if !wide: DragTap {
+        tapped => { root.act("calendar", ""); }
+        drag-by(x, y, on) => { root.drag-by(x, y, on); }
+        menu-at(x, y) => { root.menu-at(x, y); }
     }
     VerticalLayout {
         x: 0;
@@ -512,9 +569,10 @@ component CalendarW inherits Rectangle {
                 border-radius: 1.5px;
                 background: Theme.accent;
             }
-            dt := TouchArea {
-                mouse-cursor: pointer;
-                clicked => { root.act("day", d.label); }
+            dt := DragTap {
+                tapped => { root.act("day", d.label); }
+                drag-by(x, y, on) => { root.drag-by(x, y, on); }
+                menu-at(x, y) => { root.menu-at(x, y); }
             }
         }
     }
@@ -580,6 +638,8 @@ component RemindersW inherits Rectangle {
 component TodayW inherits Rectangle {
     in property <DeskWidget> w;
     callback act(string, string);
+    callback drag-by(length, length, bool);
+    callback menu-at(length, length);
     property <bool> large: w.size == "l";
     VerticalLayout {
         x: 0;
@@ -593,9 +653,10 @@ component TodayW inherits Rectangle {
             color: Theme.material ? Theme.m3-on-primary-container : Theme.label;
             font-size: large ? 18px : 16px;
             font-weight: 600;
-            TouchArea {
-                mouse-cursor: pointer;
-                clicked => { root.act("today", ""); }
+            DragTap {
+                tapped => { root.act("today", ""); }
+                drag-by(x, y, on) => { root.drag-by(x, y, on); }
+                menu-at(x, y) => { root.menu-at(x, y); }
             }
         }
         T { text: w.t2; color: Theme.secondary; }
@@ -684,19 +745,32 @@ component BatteriesW inherits Rectangle {
 component NowPlayingW inherits Rectangle {
     in property <DeskWidget> w;
     callback act(string, string);
+    callback drag-by(length, length, bool);
+    callback menu-at(length, length);
     property <length> art: w.size == "s" ? 64px : root.height;
-    Rectangle {
+    art-box := Rectangle {
         x: 0;
         y: 0;
         width: art;
         height: art;
         clip: true;
-        // (Material: the cover cut round while it plays, square while
-        // paused; Slint can't clip to the cookie shape)
-        border-radius: Theme.material ? (w.on ? art / 2 : 12px) : 12px;
-        animate border-radius { duration: 300ms; easing: ease-out; }
-        background: Theme.material ? Theme.m3-surface-container-highest : Theme.fill;
-        if w.has-img: Image { width: 100%; height: 100%; source: w.img; image-fit: cover; }
+        // (Material: the cover morphs to a cookie while it plays and back
+        // to a square while paused, MaterialShape's springFast morph: here
+        // the square cover and the cookie-cut one trade places)
+        property <float> cookie: Theme.material && w.on ? 1 : 0;
+        animate cookie { duration: 260ms; easing: cubic-bezier(0.2, 0, 0, 1); }
+        border-radius: 12px;
+        background: Theme.material ? transparent : Theme.fill;
+        if Theme.material && !w.has-img: Rectangle { border-radius: 12px; background: Theme.m3-surface-container-highest; }
+        if w.has-img: Image { width: 100%; height: 100%; source: w.img; image-fit: cover; opacity: 1 - art-box.cookie; }
+        if w.has-img && Theme.material: Image {
+            width: 100%;
+            height: 100%;
+            source: w.img2;
+            image-fit: cover;
+            opacity: art-box.cookie;
+            transform-scale: 0.92 + 0.08 * art-box.cookie;
+        }
         if !w.has-img: SymIcon { text: "\u{e340}"; font-size: 26px; color: Theme.tertiary; }
     }
     VerticalLayout {
@@ -736,10 +810,11 @@ component NowPlayingW inherits Rectangle {
                 font-size: 20px;
                 color: !Theme.material ? Theme.label : !w.flag ? Theme.m3-on-surface.with-alpha(0.38) : i == 1 ? Theme.m3-on-primary : Theme.m3-on-secondary-container;
             }
-            bt := TouchArea {
+            bt := DragTap {
                 enabled: w.flag;
-                mouse-cursor: pointer;
-                clicked => { root.act("media", b.a); }
+                tapped => { root.act("media", b.a); }
+                drag-by(x, y, on) => { root.drag-by(x, y, on); }
+                menu-at(x, y) => { root.menu-at(x, y); }
             }
         }
     }
@@ -786,17 +861,30 @@ component SystemW inherits Rectangle {
 }
 
 // Photos: img / img2 crossfading (front: img on top), t1 the empty state;
-// Material small: cut round (Slint can't clip to the clover)
+// Material small: a clover (the pictures come cut to it; shape its outline)
 component PhotosW inherits Rectangle {
     in property <DeskWidget> w;
     callback act(string, string);
+    callback drag-by(length, length, bool);
+    callback menu-at(length, length);
     property <bool> shaped: Theme.material && w.size == "s";
+    if shaped: Path {
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2;
+        width: min(root.width, root.height);
+        height: self.width;
+        viewbox-width: 100;
+        viewbox-height: 100;
+        commands: w.shape;
+        fill: Theme.m3-surface-container;
+    }
     Rectangle {
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2;
         width: shaped ? min(root.width, root.height) : root.width;
         height: shaped ? self.width : root.height;
-        clip: true;
-        border-radius: shaped ? self.width / 2 : Desk.tile;
-        background: shaped ? Theme.m3-surface-container : transparent;
+        clip: !shaped;
+        border-radius: shaped ? 0 : Desk.tile;
         Image {
             width: 100%;
             height: 100%;
@@ -821,9 +909,10 @@ component PhotosW inherits Rectangle {
         SymIcon { text: "\u{e2ca}"; font-size: 28px; color: Theme.tertiary; }
         T { text: w.t1; horizontal-alignment: center; wrap: word-wrap; color: Theme.secondary; }
     }
-    if w.on: TouchArea {
-        mouse-cursor: pointer;
-        clicked => { root.act("photo", ""); }
+    if w.on: DragTap {
+        tapped => { root.act("photo", ""); }
+        drag-by(x, y, on) => { root.drag-by(x, y, on); }
+        menu-at(x, y) => { root.menu-at(x, y); }
     }
 }
 
@@ -885,6 +974,8 @@ component NotesW inherits Rectangle {
 component ShortcutsW inherits Rectangle {
     in property <DeskWidget> w;
     callback act(string, string);
+    callback drag-by(length, length, bool);
+    callback menu-at(length, length);
     property <int> cols: w.size == "s" ? 2 : 4;
     property <length> bw: (root.width - 20px - (cols - 1) * 10px) / cols;
     property <length> bh: (root.height - 20px - 10px) / 2;
@@ -897,8 +988,11 @@ component ShortcutsW inherits Rectangle {
         animate border-radius { duration: 200ms; easing: cubic-bezier(0.34, 1.56, 0.64, 1); }
         background: Theme.material ? b.bg.mix(b.ink, ta.pressed ? 0.9 : ta.has-hover ? 0.92 : 1) : b.tint.with-alpha(ta.pressed ? 0.32 : ta.has-hover ? 0.26 : 0.18);
         animate background { duration: 150ms; }
-        transform-scale: ta.pressed ? (Theme.material ? 1.04 : 0.95) : 1;
-        animate transform-scale { duration: 100ms; }
+        // (Material: ElasticControl's press: swells by pressGrow, at most
+        // 6% or 10 px, and springs back past its size, springPress ζ 0.3;
+        // Glass: 0.95, a 100 ms ScaleAnimator)
+        transform-scale: ta.pressed ? (Theme.material ? (Theme.press-bounce ? 1 + min(0.06, 10px / max(bw, bh)) : 1) : 0.95) : 1; // (pressBounce: off with Reduce motion)
+        animate transform-scale { duration: Theme.material ? 420ms : 100ms; easing: Theme.material ? spring(0.3) : linear; }
         accessible-role: button;
         accessible-label: b.title;
         accessible-action-default => { root.act("shortcut", b.title); }
@@ -910,9 +1004,10 @@ component ShortcutsW inherits Rectangle {
             HorizontalLayout { alignment: start; SymIcon { text: b.glyph; fill: true; font-size: 20px; color: Theme.material ? b.ink : b.tint; } }
             T { text: b.label; wrap: word-wrap; overflow: elide; color: Theme.material ? b.ink : Theme.label; font-size: Theme.caption; font-weight: 500; }
         }
-        ta := TouchArea {
-            mouse-cursor: pointer;
-            clicked => { root.act("shortcut", b.title); }
+        ta := DragTap {
+            tapped => { root.act("shortcut", b.title); }
+            drag-by(x, y, on) => { root.drag-by(x, y, on); }
+            menu-at(x, y) => { root.menu-at(x, y); }
         }
     }
     if w.buttons.length == 0: T { width: root.width; height: root.height; vertical-alignment: center; horizontal-alignment: center; wrap: word-wrap; text: w.t1; color: Theme.secondary; }
@@ -1083,18 +1178,20 @@ component Content inherits Rectangle {
     in property <string> cookie12;
     in property <string> cookie9;
     callback act(string, string);
+    callback drag-by(length, length, bool); // a control inside dragged the widget
+    callback menu-at(length, length); // a control inside was right-clicked
     if w.kind == "clock": ClockW { w: w; }
     if w.kind == "worldClock": WorldW { w: w; cookie: cookie12; }
     if w.kind == "weather": WeatherW { w: w; }
-    if w.kind == "today": TodayW { w: w; act(a, b) => { root.act(a, b); } }
-    if w.kind == "calendar": CalendarW { w: w; cookie9: cookie9; act(a, b) => { root.act(a, b); } }
+    if w.kind == "today": TodayW { w: w; act(a, b) => { root.act(a, b); } drag-by(x, y, on) => { root.drag-by(x, y, on); } menu-at(x, y) => { root.menu-at(x, y); } }
+    if w.kind == "calendar": CalendarW { w: w; cookie9: cookie9; act(a, b) => { root.act(a, b); } drag-by(x, y, on) => { root.drag-by(x, y, on); } menu-at(x, y) => { root.menu-at(x, y); } }
     if w.kind == "reminders": RemindersW { w: w; act(a, b) => { root.act(a, b); } }
     if w.kind == "batteries": BatteriesW { w: w; }
-    if w.kind == "nowPlaying": NowPlayingW { w: w; act(a, b) => { root.act(a, b); } }
+    if w.kind == "nowPlaying": NowPlayingW { w: w; act(a, b) => { root.act(a, b); } drag-by(x, y, on) => { root.drag-by(x, y, on); } menu-at(x, y) => { root.menu-at(x, y); } }
     if w.kind == "system": SystemW { w: w; }
-    if w.kind == "photos": PhotosW { w: w; act(a, b) => { root.act(a, b); } }
+    if w.kind == "photos": PhotosW { w: w; act(a, b) => { root.act(a, b); } drag-by(x, y, on) => { root.drag-by(x, y, on); } menu-at(x, y) => { root.menu-at(x, y); } }
     if w.kind == "notes": NotesW { w: w; act(a, b) => { root.act(a, b); } }
-    if w.kind == "shortcuts": ShortcutsW { w: w; act(a, b) => { root.act(a, b); } }
+    if w.kind == "shortcuts": ShortcutsW { w: w; act(a, b) => { root.act(a, b); } drag-by(x, y, on) => { root.drag-by(x, y, on); } menu-at(x, y) => { root.menu-at(x, y); } }
     if w.kind == "screenTime": ScreenTimeW { w: w; }
     if w.kind == "batteryHistory": BatteryHistoryW { w: w; }
     if w.kind == "stocks": StocksW { w: w; }
@@ -1117,6 +1214,11 @@ component Frame inherits Rectangle {
     property <length> dx;
     property <length> dy;
     property <bool> dragging;
+    // Lock and unlock (LockFx): the desktop's progress 0..1, the screen's size
+    in property <float> fx: 1;
+    in property <bool> fx-zoom: true;
+    in property <length> screen-w;
+    in property <length> screen-h;
     property <float> shown: 0;
     property <float> grow: 0.9;
     init => {
@@ -1125,18 +1227,26 @@ component Frame inherits Rectangle {
     }
     animate shown { duration: 260ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
     animate grow { duration: 420ms; easing: cubic-bezier(0.34, 1.56, 0.64, 1); }
-    x: w.x + dx;
-    y: w.y + dy;
+    // (LockFx.progress: items further from the centre start later; ease-out cubic)
+    property <length> fx-cx: w.x + w.w / 2;
+    property <length> fx-cy: w.y + w.h / 2;
+    property <float> fx-d: screen-w > 0 && screen-h > 0 ? min(1, sqrt(pow((fx-cx - screen-w / 2) / (screen-w / 2), 2) + pow((fx-cy - screen-h / 2) / (screen-h / 2), 2)) / 1.41421356) : 0;
+    property <float> fx-p: fx >= 1 ? 1 : 1 - pow(1 - clamp((fx - 0.3 * fx-d) / 0.7, 0, 1), 3);
+    property <float> fx-s: fx-zoom ? 1 + 0.22 * (1 - fx-p) : 1;
+    // (scaled about the screen's centre: moved out by the scale, grown about its own)
+    x: w.x + dx + (fx-s - 1) * (fx-cx - screen-w / 2);
+    y: w.y + dy + (fx-s - 1) * (fx-cy - screen-h / 2);
     animate x, y {
-        duration: dragging ? 0ms : 450ms;
+        duration: dragging || fx < 1 ? 0ms : 450ms;
         easing: Theme.material ? spring(0.5) : spring(0.38);
     }
     width: w.w;
     height: w.h;
     z: dragging ? 10 : 0; // (above the others while dragged)
-    opacity: shown;
-    transform-scale: dragging ? 1.04 : grow;
-    animate transform-scale { duration: 150ms; }
+    opacity: shown * fx-p;
+    property <float> lift: dragging ? 1.04 : 1;
+    animate lift { duration: Theme.hover; }
+    transform-scale: lift * grow * fx-s;
     transform-origin: { x: self.width / 2, y: self.height / 2 };
     border-radius: w.pill ? self.height / 2 : Desk.tile;
     // (Glass without the plugin: a see-through tint with a rim; Hyprland
@@ -1173,9 +1283,16 @@ component Frame inherits Rectangle {
                 }
             }
         }
+        // (StackWidget's WheelHandler: one flip per wheel notch, 120 in
+        // Qt's angleDelta, 15 px here; a touchpad's small steps add up)
+        property <length> wheel-acc;
         scroll-event(e) => {
             if w.stack && w.stack-n > 1 {
-                root.act(w.index, "scroll", e.delta-y / 1px > 0 ? "-1" : "1");
+                self.wheel-acc += e.delta-y;
+                if abs(self.wheel-acc) >= 15px {
+                    root.act(w.index, "scroll", self.wheel-acc > 0 ? "-1" : "1");
+                    self.wheel-acc = 0;
+                }
                 return accept;
             }
             reject
@@ -1213,6 +1330,21 @@ component Frame inherits Rectangle {
             cookie12: cookie12;
             cookie9: cookie9;
             act(a, b) => { root.act(w.index, a, b); }
+            // (a control inside: the same drag as the frame's own)
+            drag-by(x, y, on) => {
+                if on {
+                    root.dragging = true;
+                    root.dx += x;
+                    root.dy += y;
+                    root.drag(w.index, root.x, root.y, true);
+                } else if root.dragging {
+                    root.dragging = false;
+                    root.drag(w.index, root.x, root.y, false);
+                    root.dx = 0;
+                    root.dy = 0;
+                }
+            }
+            menu-at(x, y) => { root.menu(w.index, x, y); }
         }
     }
     // A stack's page dots: click one to jump to it
@@ -1237,10 +1369,14 @@ component Frame inherits Rectangle {
             }
         }
     }
-    // Remove badge
+    // Remove badge: springs in (5 / 0.35); gone at once when editing ends
+    property <float> badge: editing ? 1 : 0;
+    animate badge { duration: 380ms; easing: spring(0.35); }
     if editing: Rectangle {
         x: -8px;
         y: -8px;
+        transform-scale: max(0, badge);
+        z: 20;
         width: 24px;
         height: 24px;
         border-radius: 12px;
@@ -1267,15 +1403,26 @@ component IconCell inherits Rectangle {
     in property <DeskIcon> ic;
     in property <length> spot;
     callback icon(int, string, length, length);
+    in property <float> fx: 1;
+    in property <bool> fx-zoom: true;
+    in property <length> screen-w;
+    in property <length> screen-h;
     property <length> dx;
     property <length> dy;
     property <bool> dragging;
-    x: ic.x + dx;
-    y: ic.y + dy;
+    property <length> fx-cx: ic.x + (spot - 6px) / 2;
+    property <length> fx-cy: ic.y + (spot - 2px) / 2;
+    property <float> fx-d: screen-w > 0 && screen-h > 0 ? min(1, sqrt(pow((fx-cx - screen-w / 2) / (screen-w / 2), 2) + pow((fx-cy - screen-h / 2) / (screen-h / 2), 2)) / 1.41421356) : 0;
+    property <float> fx-p: fx >= 1 ? 1 : 1 - pow(1 - clamp((fx - 0.3 * fx-d) / 0.7, 0, 1), 3);
+    property <float> fx-s: fx-zoom ? 1 + 0.22 * (1 - fx-p) : 1;
+    x: ic.x + dx + (fx-s - 1) * (fx-cx - screen-w / 2);
+    y: ic.y + dy + (fx-s - 1) * (fx-cy - screen-h / 2);
     animate x, y {
-        duration: dragging ? 0ms : 450ms;
+        duration: dragging || fx < 1 ? 0ms : 450ms;
         easing: Theme.material ? spring(0.5) : spring(0.4);
     }
+    opacity: fx-p;
+    transform-scale: fx-s;
     width: spot - 6px;
     height: spot - 2px;
     z: dragging ? 5 : 0;
@@ -1322,16 +1469,18 @@ component IconCell inherits Rectangle {
             text: ic.name;
             horizontal-alignment: center;
             overflow: elide;
-            wrap: word-wrap;
+            wrap: char-wrap;
+            height: min(self.preferred-height, 2 * 16px);
             color: #0000008c;
             font-weight: 500;
         }
         label := T {
             width: min(self.preferred-width, root.width - 8px);
-            text: ic.name;
+            text: ic.name; // (cut in the middle beforehand: icon_rows)
             horizontal-alignment: center;
             overflow: elide;
-            wrap: word-wrap;
+            wrap: char-wrap; // (WrapAnywhere, two lines at most)
+            height: min(self.preferred-height, 2 * 16px);
             color: Theme.material && ic.selected ? Theme.m3-on-secondary-container : ic.selected ? Theme.on-accent : white;
             font-weight: 500;
         }
@@ -1394,6 +1543,14 @@ export component Desktop inherits Window {
     in property <[DeskFile]> stack-files;
     in property <length> stack-x;
     in property <length> stack-y;
+    // Lock and unlock (LockFx.desktop): set back to 0 at once, then run to 1
+    // linearly over fx-ms; each widget and icon eases its own share
+    in property <float> fx-to: 1;
+    in property <duration> fx-ms: 0ms;
+    in property <bool> fx-zoom: true;
+    property <float> fx: fx-to;
+    animate fx { duration: fx-ms; easing: linear; }
+    out property <float> fx-now: fx;
     callback act(int, string, string); // a widget's control
     callback drag(int, length, length, bool); // a widget dragged (its top left), released
     callback menu(int, length, length); // right-click: a widget's index, or -1 the desktop
@@ -1449,11 +1606,19 @@ export component Desktop inherits Window {
     for ic in icons: IconCell {
         ic: ic;
         spot: root.spot;
+        fx: root.fx;
+        fx-zoom: root.fx-zoom;
+        screen-w: root.width;
+        screen-h: root.height;
         icon(i, what, x, y) => { root.file(i, what, x, y); }
     }
 
     for w in widgets: Frame {
         w: w;
+        fx: root.fx;
+        fx-zoom: root.fx-zoom;
+        screen-w: root.width;
+        screen-h: root.height;
         editing: root.editing;
         glass-plugin: root.glass-plugin;
         cookie12: root.cookie12;

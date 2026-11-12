@@ -121,7 +121,7 @@ pub fn focus(cx: &mut Ctx, p: &mut Page) {
             cx.local_set("focus.selected", r2["id"].as_str().unwrap_or("").to_string());
             cx.local.remove("focus.removed");
         });
-        p.group("").row(Row::new(format!("Deleted “{}”", removed["name"].as_str().unwrap_or(""))).button("Undo", undo).minor());
+        p.group("").row(Row::new(format!("Deleted “{}”", removed["name"].as_str().unwrap_or(""))).button("Undo", undo).text_link());
     }
 
     let Some(mode) = mode else { return };
@@ -234,7 +234,7 @@ pub fn focus(cx: &mut Ctx, p: &mut Page) {
         .row(Row::new("From").visible(scheduled).detail("24-hour time, e.g. 22:30").field(sch["from"].as_str().unwrap_or(""), "", from).width(90.0))
         .row(Row::new("To").visible(scheduled).field(sch["to"].as_str().unwrap_or(""), "", to).width(90.0))
         .row(days_row)
-        .row(Row::new("Delete this mode").visible(mid != "dnd").button("Delete", delete).danger());
+        .row(Row::new("Delete this mode").visible(mid != "dnd").button("Delete", delete).danger_link());
 }
 
 #[cfg(test)]

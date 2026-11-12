@@ -20,11 +20,13 @@ export component StIcon {
     in property <length> size: 16px;
     in property <bool> fill;
     in property <bool> bold;
+    in property <angle> turn; // (a rotation, e.g. a caret that flips)
     preferred-width: size;
     preferred-height: size;
     Text {
         width: 100%;
         height: 100%;
+        transform-rotation: turn;
         text: icon.t;
         color: root.color;
         font-size: icon.s ? round(size * 1.2 / 1px) * 1px : size;
@@ -106,7 +108,7 @@ export component EditorButton inherits Rectangle {
     property <float> layer: !live ? 0 : touch.pressed ? 0.1 : touch.has-hover ? 0.08 : 0;
     property <bool> filled: primary || variant == 1 || selected;
     property <color> mbg: filled ? (!enabled ? Theme.m3-on-surface.with-alpha(0.12) : (primary || (selected && vibrant) ? Theme.m3-primary : Theme.m3-secondary-container).mix(mfg, 1 - layer)) : mfg.with-alpha(layer);
-    property <color> gbg: primary ? (!enabled ? Theme.fill : touch.pressed ? Theme.accent.darker(0.2) : touch.has-hover ? Theme.accent.darker(0.09) : Theme.accent)
+    property <color> gbg: primary ? (!enabled ? Theme.fill : touch.pressed ? Theme.accent.darker(0.25) : touch.has-hover ? Theme.accent.darker(0.1) : Theme.accent)
         : selected ? Theme.accent.with-alpha(touch.pressed ? 0.28 : 0.18)
         : !live ? (variant == 1 ? Theme.fill : transparent)
         : touch.pressed ? Theme.fill-pressed : touch.has-hover ? Theme.fill-hover : variant == 1 ? Theme.fill : transparent;
@@ -114,12 +116,12 @@ export component EditorButton inherits Rectangle {
     height: Theme.material ? 40px : 36px;
     width: label == "" ? self.height : row.preferred-width + (Theme.material ? 32px : 28px);
     border-radius: Theme.material ? (touch.pressed && live ? 8px : selected ? 12px : self.height / 2) : Theme.radius-control;
-    animate border-radius { duration: 250ms; easing: spring(0.55); }
+    animate border-radius { duration: 222ms; easing: spring(0.4); } // (springFast)
     background: Theme.material ? mbg : gbg;
     animate background { duration: Theme.hover; }
     // (Glass shrinks on press; Material swells and springs back)
-    transform-scale: touch.pressed && live ? (Theme.material ? 1 + min(0.06, 10px / max(1px, self.width)) : 0.97) : 1;
-    animate transform-scale { duration: Theme.material ? 300ms : 100ms; easing: Theme.material ? spring(0.35) : cubic-bezier(0, 0, 0.58, 1); }
+    transform-scale: touch.pressed && live ? (Theme.material ? 1 + min(0.06, 10px / max(1px, max(self.width, self.height))) : 0.97) : 1;
+    animate transform-scale { duration: Theme.material ? 290ms : 100ms; easing: Theme.material ? spring(0.57) : cubic-bezier(0.33, 1, 0.68, 1); }
     accessible-role: button;
     accessible-label: label != "" ? label : tooltip;
     accessible-enabled: live;
@@ -529,6 +531,7 @@ component Note inherits Rectangle {
 component OptionRow inherits Rectangle {
     in property <string> text;
     in property <bool> checked;
+    in property <StIc> check-icon;
     callback clicked();
     height: Theme.material ? 40px : 32px;
     border-radius: Theme.material ? 12px : 8px;
@@ -540,16 +543,14 @@ component OptionRow inherits Rectangle {
     accessible-checked: checked;
     accessible-label: text;
     accessible-action-default => { clicked(); }
-    Text {
+    StIcon {
         x: Theme.material ? 12px : 8px;
         width: 14px;
-        text: "\u{e182}";
-        font-family: "Phosphor-Bold";
-        font-size: 14px;
+        icon: check-icon;
+        bold: true;
+        size: 14px;
         color: Theme.material ? Theme.m3-on-tertiary-container : Theme.accent-ink;
         opacity: checked ? 1 : 0;
-        vertical-alignment: center;
-        accessible-role: none;
     }
     Text {
         x: (Theme.material ? 12px : 8px) + 14px + 8px;
@@ -670,6 +671,7 @@ export component ScreenToolbar inherits Window {
     in property <StIc> ic-folder;
     in property <StIc> ic-caret-up;
     in property <StIc> ic-caret-down;
+    in property <StIc> ic-check;
     in-out property <bool> menu-open; // Material: the split button's menu
 
     callback tool(int);
@@ -765,6 +767,7 @@ export component ScreenToolbar inherits Window {
                 Caption { text: "Microphone"; }
                 for m[i] in mics: OptionRow {
                     text: m.text;
+                    check-icon: ic-check;
                     checked: m.checked;
                     clicked => { root.mic(i); }
                 }
@@ -883,11 +886,14 @@ export component ScreenToolbar inherits Window {
                         // Material: round, squaring off while pressed; the
                         // picked one filled in primary
                         border-radius: Theme.material ? (tt.pressed ? 16px : t.picked ? 20px : self.height / 2) : 12px;
-                        animate border-radius { duration: 250ms; easing: spring(0.55); }
+                        // (MaterialSpring "fast": springFast 12.8 / 0.54 → ω 28.3, ζ 0.60)
+                        animate border-radius { duration: 222ms; easing: spring(0.4); }
                         background: Theme.material ? (t.picked ? Theme.m3-primary : Theme.m3-on-primary-container.with-alpha(parent.active ? 0.1 : tt.has-hover ? 0.08 : 0))
                             : t.picked ? Theme.accent.with-alpha(0.22) : parent.active ? Theme.fill-pressed : tt.has-hover ? Theme.fill : transparent;
-                        transform-scale: Theme.material && tt.pressed ? 1.04 : 1;
-                        animate transform-scale { duration: 300ms; easing: spring(0.35); }
+                        // (ElasticControl, Material: swells by min(6 %, 10 px) on
+                        // springPress 7.5 / 0.3 → ω 21.7, ζ 0.43)
+                        transform-scale: Theme.material && tt.pressed ? 1 + min(0.06, 10px / max(1px, max(self.width, self.height))) : 1;
+                        animate transform-scale { duration: 290ms; easing: spring(0.57); }
                         accessible-role: button;
                         accessible-label: t.label;
                         accessible-checked: t.picked;
@@ -945,7 +951,7 @@ export component ScreenToolbar inherits Window {
                         width: parent.width;
                         height: 36px;
                         border-radius: 18px;
-                        background: !available ? Theme.fill : rt.pressed ? Theme.danger.darker(0.17) : rt.has-hover ? Theme.danger.darker(0.07) : Theme.danger;
+                        background: !available ? Theme.fill : rt.pressed ? Theme.danger.darker(0.2) : rt.has-hover ? Theme.danger.darker(0.08) : Theme.danger;
                         transform-scale: rt.pressed ? 0.97 : 1;
                         animate transform-scale { duration: 100ms; }
                         accessible-role: button;
@@ -969,7 +975,7 @@ export component ScreenToolbar inherits Window {
                     width: split.width + 16px;
                     height: 56px;
                     split := Rectangle {
-                        x: 16px;
+                        x: 8px;
                         width: lead.width + 2px + 40px;
                         height: 40px;
                         opacity: available ? 1 : 0.38;
@@ -982,6 +988,8 @@ export component ScreenToolbar inherits Window {
                             border-bottom-right-radius: self.border-top-right-radius;
                             background: Theme.m3-primary.mix(Theme.m3-on-primary, lt.pressed ? 0.9 : lt.has-hover ? 0.92 : 1);
                             animate background { duration: Theme.hover; }
+                            transform-scale: lt.pressed ? 1 + min(0.06, 10px / max(1px, max(self.width, self.height))) : 1;
+                            animate transform-scale { duration: 290ms; easing: spring(0.57); }
                             accessible-role: button;
                             accessible-label: "Record";
                             accessible-action-default => { if available { root.record(); } }
@@ -1018,15 +1026,23 @@ export component ScreenToolbar inherits Window {
                             border-bottom-left-radius: inner;
                             border-top-right-radius: 20px;
                             border-bottom-right-radius: 20px;
-                            animate border-top-left-radius, border-bottom-left-radius { duration: 300ms; easing: spring(0.3); }
+                            // (springPress 7.5 / 0.3: ω 21.7, ζ 0.43)
+                            animate border-top-left-radius, border-bottom-left-radius { duration: 290ms; easing: spring(0.57); }
                             background: Theme.m3-primary.mix(Theme.m3-on-primary, tr.pressed ? 0.9 : tr.has-hover ? 0.92 : 1);
+                            animate background { duration: Theme.hover; }
+                            transform-scale: tr.pressed ? 1 + min(0.06, 10px / max(1px, max(self.width, self.height))) : 1;
+                            animate transform-scale { duration: 290ms; easing: spring(0.57); }
                             accessible-role: button;
                             accessible-label: "More record options";
                             accessible-action-default => { menu-open = !menu-open; }
+                            // (the caret-down turned: up while closed, a half turn
+                            // more as the menu opens, popover OutCubic)
                             StIcon {
-                                icon: menu-open ? ic-caret-down : ic-caret-up;
+                                icon: ic-caret-down;
                                 size: 18px;
                                 color: Theme.m3-on-primary;
+                                turn: menu-open ? 360deg : 180deg;
+                                animate turn { duration: Theme.popover; easing: cubic-bezier(0.33, 1, 0.68, 1); }
                             }
                             tr := TouchArea {
                                 enabled: available;
@@ -1044,10 +1060,11 @@ export component ScreenToolbar inherits Window {
             visible: self.opacity > 0.01;
             opacity: menu-open ? 1 : 0;
             animate opacity { duration: menu-open ? Theme.popover : Theme.hover; }
-            width: 220px;
+            width: 200px;
             height: menu-col.preferred-height + 16px;
-            x: min(root.width - self.width - 8px, bar.x + bar.width - self.width - 12px);
-            y: bar.y - self.height - 8px + (menu-open ? 0 : 6px);
+            // (the split button: 12 in from the bar's end and 8 in its slot; 12 below the bar's top)
+            x: max(8px, min(root.width - self.width - 8px, bar.x + bar.width - 20px - self.width));
+            y: bar.y + 12px - self.height - 8px + (menu-open ? 0 : 6px);
             border-radius: 16px;
             background: Theme.m3-surface-container;
             drop-shadow-blur: 16px;
@@ -1178,7 +1195,7 @@ export component TranslationCard inherits Window {
     card := Rectangle {
         width: max(280px, min(460px, area-w));
         height: content.preferred-height + 28px;
-        x: max(0, min(area-x, root.width - self.width - 24px));
+        x: max(24px, min(area-x, root.width - self.width - 24px));
         y: max(30px + 24px, min(area-y + area-h + 8px, root.height - self.height - 24px));
         border-radius: Theme.material ? 24px : 20px;
         background: Theme.material ? Theme.m3-surface-container-high : Theme.panel;
@@ -1214,6 +1231,9 @@ export component TranslationCard inherits Window {
                         width: Theme.material ? 32px : 22px;
                         height: self.width;
                         border-radius: Theme.material && bt.pressed ? 8px : self.width / 2;
+                        // (ElasticControl, Material: the press swell on springPress)
+                        transform-scale: Theme.material && bt.pressed ? 1.06 : 1;
+                        animate transform-scale { duration: 290ms; easing: spring(0.57); }
                         background: Theme.material ? Theme.m3-secondary-container.mix(Theme.m3-on-secondary-container, bt.pressed ? 0.9 : bt.has-hover ? 0.92 : 1)
                             : bt.has-hover ? Theme.fill-hover : transparent;
                         accessible-role: button;

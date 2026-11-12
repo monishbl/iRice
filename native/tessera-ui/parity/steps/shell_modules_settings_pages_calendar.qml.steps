@@ -1,0 +1,19 @@
+# calendar: subscriptions and alerts. Check in each look.
+setup printf 'BEGIN:VCALENDAR\nEND:VCALENDAR\n' > /tmp/t.ics
+ipc panels settings calendar
+wait 2
+shot cal-top
+note C1: groups "Subscribed calendars" (No subscriptions yet or the arena's), "Add a calendar" (Link, Name, Add calendar), "Alerts"; same texts in both shells; no account groups (arena has no accounts).
+ptr move 1100 600 scroll 0 5
+wait 1
+shot cal-bottom
+note C1 cont.: the bottom of the page (Alerts, "Last synced N min ago" if any) matches the QML texts and order.
+# MANUAL: C2 click the Link field, type "x.ics", click "Add calendar": Link row detail shows the error text; Add button is primary while text is there.
+# MANUAL: C3 select all in Link (ctrl+a), type /tmp/t.ics, Name "Test", Enter in Link: a "Test" row with colour dot, switch on and trash button; fields cleared; error gone.
+# MANUAL: C4 trash button zoom/hover/Tab to it: QML 28x28 with a 16 px icon in both looks; Material press squares the corners; focus ring on Tab; Space removes. Write Rust's size, ring and press feel.
+# MANUAL: C5 click trash: "Removed "Test"" with Undo below the group; goes after 8 s from the click (time both shells); Undo within 8 s brings the row back; a second removal within the first 8 s keeps its own full 8 s.
+# MANUAL: C6 toggle the Test source off and on: calendars config source enabled false/true.
+# MANUAL: C7 click the Alerts dropdown, shot the list (rows 36 Material / 28 Glass), Esc; pick "30 minutes": closed shows "30 minutes".
+# MANUAL: C8 type x in Name, go to another page and back: Name empty (typed state starts over).
+# MANUAL: clean up: remove the Test subscription.
+ipc panels close

@@ -68,6 +68,8 @@ use std::collections::HashSet;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 use tessera_controlcenter::bridge::{self, Block, BlockKind, Page, Profile, Tone};
+use tessera_controlcenter::live;
+use tessera_core::rows::Rows;
 use tessera_core::services::audio::{self, Cmd, Sound};
 use tessera_core::services::bluez::Bluetooth;
 use tessera_core::services::bridge::ShellState;
@@ -89,6 +91,8 @@ enum M {
     Hovered(bool),
     AutoClose,
     Dismissed,
+    /// a click on the bar's strip: it goes on to the bar (Popover's barItemAt)
+    BarClick(f32, f32),
     Closed,
     PageToggled,
     PageRefreshed,
@@ -137,11 +141,21 @@ pub struct StatusMenus {
     feed: Value,
     shown_bt: Page,
     shown_sound: Page,
+    /// the Bluetooth and Sound menus' rows, changed in place (a slider being
+    /// dragged keeps its row; tessera_controlcenter::live)
+    page_rows: Rows<ui::CcBlock>,
+    sound_rows: Rows<ui::CcBlock>,
+    /// levels just set with a slider, shown at once (live::Held)
+    held: live::Held,
     /// Now Playing: the player picked here (until the shell says `media.bus`)
     pinned: String,
     /// the position (seconds) when read, and when
     position: (String, f64, Option<Instant>),
     art: (String, Option<slint::Image>),
+    /// the art cut into Material's nine-sided cookie (made once per picture)
+    cookie: (String, Option<slint::Image>),
+    /// Now Playing's other players, changed in place
+    others: tessera_core::rows::Rows<SharedString>,
     timer: slint::Timer,
     tick: slint::Timer,
     sender: Option<Rc<dyn Fn(Box<dyn Any + Send>)>>,
@@ -225,16 +239,55 @@ fn block(b: &Block, first: bool, last: bool, material: bool, (caption, small): (
         gap,
         first,
         last,
+        graph: b.graph.as_str().into(),
     }
 }
 
-fn blocks(p: &Page, material: bool, fonts: (f32, f32), width: f32) -> ModelRc<ui::CcBlock> {
+fn blocks(p: &Page, material: bool, fonts: (f32, f32), width: f32) -> Vec<ui::CcBlock> {
     let groups = bridge::groups(&p.blocks);
-    ModelRc::new(VecModel::from(p.blocks.iter().zip(groups).map(|(b, (first, last))| block(b, first, last, material, fonts, width)).collect::<Vec<_>>()))
+    p.blocks.iter().zip(groups).map(|(b, (first, last))| block(b, first, last, material, fonts, width)).collect()
+}
+
+/// A menu's blocks into its rows, in place (matched by id)
+fn set_blocks(rows: &Rows<ui::CcBlock>, new: Vec<ui::CcBlock>) {
+    live::set_blocks_of(rows, new, |b| live::key_of(b.kind, &b.id, &b.title), |b| b.options.clone(), |b, o| b.options = o);
 }
 
 fn hex(c: u32) -> slint::Color {
     slint::Color::from_rgb_u8((c >> 16) as u8, (c >> 8) as u8, c as u8)
+}
+
+/// The art cut into Material's nine-sided cookie (MaterialShape "cookie9"):
+/// 144 px, centre-cropped, the edge r(θ) = R (0.92 + 0.08 cos 9θ), smoothed
+/// over a pixel; transparent outside
+fn cookie9(img: &slint::Image) -> Option<slint::Image> {
+    let src = img.to_rgba8()?;
+    let (w, h) = (src.width() as f32, src.height() as f32);
+    if w < 1.0 || h < 1.0 {
+        return None;
+    }
+    let n = 144usize;
+    let side = w.min(h);
+    let (ox, oy) = ((w - side) / 2.0, (h - side) / 2.0);
+    let px = src.as_slice();
+    let sw = src.width() as usize;
+    let mut out = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(n as u32, n as u32);
+    let o = out.make_mut_slice();
+    let c = n as f32 / 2.0;
+    for y in 0..n {
+        for x in 0..n {
+            let (dx, dy) = (x as f32 + 0.5 - c, y as f32 + 0.5 - c);
+            let r = (dx * dx + dy * dy).sqrt();
+            let edge = c * (0.92 + 0.08 * (9.0 * dy.atan2(dx)).cos());
+            let a = (edge - r + 0.5).clamp(0.0, 1.0);
+            let sx = (ox + (x as f32 + 0.5) / n as f32 * side) as usize;
+            let sy = (oy + (y as f32 + 0.5) / n as f32 * side) as usize;
+            let mut p = px[sy.min(src.height() as usize - 1) * sw + sx.min(sw - 1)];
+            p.a = (p.a as f32 * a) as u8;
+            o[y * n + x] = p;
+        }
+    }
+    Some(slint::Image::from_rgba8(out))
 }
 
 fn model<T: Clone + 'static>(v: Vec<T>) -> ModelRc<T> {
@@ -291,6 +344,7 @@ impl StatusMenus {
         }
         on!(on_hovered, |h| M::Hovered(h));
         on!(on_dismissed, | | M::Dismissed);
+        on!(on_bar_click, |x, y| M::BarClick(x, y));
         on!(on_closed, | | M::Closed);
         on!(on_page_toggled, | | M::PageToggled);
         on!(on_page_refreshed, | | M::PageRefreshed);
@@ -299,6 +353,8 @@ impl StatusMenus {
         on!(on_sound_block, |i, w, _t| M::SoundBlock(i, w.to_string()));
         on!(on_sound_slide, |i, v| M::SoundSlide(i, v));
         on!(on_volume, |v| M::Volume(v));
+        ui.set_page_blocks(self.page_rows.model());
+        ui.set_sound_blocks(self.sound_rows.model());
         on!(on_mode, |i| M::Mode(i));
         on!(on_stop_sharing, | | M::StopSharing);
         on!(on_np_do, |w| M::Np(w.to_string()));
@@ -307,6 +363,7 @@ impl StatusMenus {
         on!(on_menu_pick, |j| M::MenuPick(j));
         on!(on_menu_close, | | M::MenuClose);
         ui.set_sg(sm_glyphs());
+        ui.set_others(self.others.model());
         ui.show().expect("show status menu");
         let a11y = tessera_core::a11y::A11y::new(&surface, st.tx.clone());
         self.win = Some(Win { output: output.into(), surface, ui, a11y, glass_sent: String::new(), region: (0, 0) });
@@ -377,6 +434,8 @@ impl StatusMenus {
         if let Some(tx) = self.sender.clone() {
             self.tick.start(slint::TimerMode::Repeated, Duration::from_secs(1), move || tx(Box::new(M::Tick)));
         }
+        // (another menu: its own 5 s, as each QML popover has its own timer)
+        self.timer.stop();
         self.hold();
     }
 
@@ -466,7 +525,7 @@ impl StatusMenus {
         w.ui.set_page_switch_label(page.switch_label.as_str().into());
         w.ui.set_page_refresh(page.refresh);
         if page != self.shown_bt {
-            w.ui.set_page_blocks(blocks(&page, m, fonts, 300.0));
+            set_blocks(&self.page_rows, blocks(&page, m, fonts, 300.0));
         }
         self.shown_bt = page;
     }
@@ -484,13 +543,20 @@ impl StatusMenus {
         let page = bridge::sound_page(&snd, &self.profiles(), mic_in);
         let fonts = self.fonts();
         let m = Self::material(st);
+        self.held.sweep();
         let Some(w) = &self.win else { return };
-        let (v, muted) = (snd.volume(), snd.muted());
+        // (a level just set shows at once: the server's answer lags the pointer)
+        let (v, muted) = match self.held.get("volume") {
+            Some(h) => (h as f64, false),
+            None => (snd.volume(), snd.muted()),
+        };
         let vol = Block { kind: BlockKind::Slider, id: "volume".into(), icon: tessera_controlcenter::volume_icon(v, muted).into(), value: if muted { 0.0 } else { v }, ..Default::default() };
         w.ui.set_volume_block(block(&vol, true, true, m, fonts, 300.0));
-        if page != self.shown_sound {
-            w.ui.set_sound_blocks(blocks(&page, m, fonts, 300.0));
+        let mut rows = blocks(&page, m, fonts, 300.0);
+        for b in rows.iter_mut().filter(|b| b.kind == 4) {
+            b.value = self.held.or(&format!("block:{}", b.id), b.value);
         }
+        set_blocks(&self.sound_rows, rows);
         self.shown_sound = page;
     }
 
@@ -624,6 +690,9 @@ impl StatusMenus {
                 });
             }
         }
+        if self.cookie.0 != self.art.0 || (self.cookie.1.is_none() && self.art.1.is_some()) {
+            self.cookie = (self.art.0.clone(), self.art.1.as_ref().and_then(cookie9));
+        }
         let Some(w) = &self.win else { return };
         let np = match &p {
             Some(p) => {
@@ -634,6 +703,7 @@ impl StatusMenus {
                     byline: model::byline(&p.track.artist, &p.track.album).into(),
                     identity: p.identity.as_str().into(),
                     has_art: self.art.1.is_some(),
+                    cookie: self.cookie.1.clone().unwrap_or_default(),
                     art: self.art.1.clone().unwrap_or_default(),
                     playing: p.playing,
                     prev: p.can_prev,
@@ -649,7 +719,7 @@ impl StatusMenus {
         };
         w.ui.set_np(np);
         let rows: Vec<SharedString> = others.iter().map(|o| format!("{}{}", o.identity, if o.track.title.is_empty() { String::new() } else { format!(" · {}", o.track.title) }).into()).collect();
-        w.ui.set_others(model(rows));
+        self.others.set(rows);
     }
 
     fn np_do(&mut self, st: &State, what: &str) {
@@ -768,6 +838,8 @@ impl StatusMenus {
     fn volume(&mut self, st: &mut State, v: f32) {
         let snd = st.shell.get::<Sound>().cloned().unwrap_or_default();
         self.hush(st);
+        self.held.set("volume", v);
+        self.push_sound(st);
         if let Some(d) = snd.sink() {
             if d.muted {
                 audio::send(Cmd::SinkMute { index: d.index, muted: false });
@@ -794,6 +866,8 @@ impl StatusMenus {
 
     fn sound_slide(&mut self, st: &mut State, i: i32, v: f32) {
         let Some(b) = self.shown_sound.blocks.get(i.max(0) as usize).cloned() else { return };
+        self.held.set(&format!("block:{}", b.id), v);
+        self.push_sound(st);
         let snd = st.shell.get::<Sound>().cloned().unwrap_or_default();
         let v = v.clamp(0.0, 1.0) as f64;
         if b.id == "mic" {
@@ -913,6 +987,10 @@ impl Part for StatusMenus {
                 }
             }
             M::Dismissed => self.close(st, true),
+            M::BarClick(x, y) => {
+                let screen = self.win.as_ref().map(|w| w.output.clone()).unwrap_or_default();
+                let _ = st.tx.send(tessera_core::Msg::Part("menubar", Box::new(json!({"barClick": true, "x": x, "y": y, "screen": screen}))));
+            }
             M::Closed => self.closed(st),
             M::PageToggled => {
                 let on = st.shell.get::<Bluetooth>().is_some_and(|b| b.powered);
@@ -1009,7 +1087,8 @@ impl Part for StatusMenus {
         }
         let size = w.surface.logical_size();
         if open && size != w.region && size.0 > 0 {
-            st.set_input_region(&w.surface, Some(&[(0, 30, size.0 as i32, size.1 as i32 - 30)]));
+            // (all of it: a click on the bar's strip is passed on to the bar)
+            st.set_input_region(&w.surface, Some(&[(0, 0, size.0 as i32, size.1 as i32)]));
             w.region = size;
         }
         if !st.shell.plugin || st.shell.look.material {

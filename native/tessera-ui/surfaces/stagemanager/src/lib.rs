@@ -32,7 +32,7 @@ use tessera_core::services::icons::Icons;
 use tessera_core::shell::Part;
 use tessera_core::wm::{self, AppIcons, IconsDone, LiveTick, OverviewCfg, Thumbs};
 use tessera_core::wayland::{Spec, State, Surface};
-use slint::{ComponentHandle, ModelRc, VecModel};
+use slint::ComponentHandle;
 use smithay_client_toolkit::reexports::client::protocol::wl_output::WlOutput;
 use smithay_client_toolkit::shell::wlr_layer::{Anchor, KeyboardInteractivity, Layer};
 use std::any::Any;
@@ -85,6 +85,11 @@ struct Win {
     surface: Rc<Surface>,
     ui: ui::StageStrip,
     a11y: Option<crate::a11y::A11y>,
+    /// the stages, and each slot's window cards, changed in place: every
+    /// thumbnail and live tick (200 ms) made them all again, so a hovered
+    /// stage's scale started over
+    stages: tessera_core::rows::Rows<ui::StStage>,
+    cards: Vec<tessera_core::rows::Rows<ui::StCard>>,
 }
 
 #[derive(Default)]
@@ -124,6 +129,8 @@ impl StageManager {
         st.shell.apply_theme(&ui.global::<ui::Theme>());
         let (to, o) = (send(st), name.to_string());
         ui.on_activate(move |id, shift| to(Box::new((o.clone(), id, shift))));
+        let stages = tessera_core::rows::Rows::new();
+        ui.set_stages(stages.model());
         ui.show().expect("show stage strip");
         surface.show(WIDTH, 0);
         let a11y = crate::a11y::A11y::new(&surface, st.tx.clone());
@@ -131,7 +138,7 @@ impl StageManager {
             let t = ui.global::<ui::Theme>();
             self.icons.restyle(st, t.get_accent(), t.get_m3_primary_container(), t.get_m3_on_primary_container());
         }
-        self.wins.push(Win { output: name.into(), surface, ui, a11y });
+        self.wins.push(Win { output: name.into(), surface, ui, a11y, stages, cards: Vec::new() });
     }
 
     /// Strips on every screen while it's on, none while it's off
@@ -164,9 +171,9 @@ impl StageManager {
             let covered = wins.covered(&out, (0.0, 0.0, WIDTH as f32, h));
             let list: Vec<Stage> = self.waiting.get(&ws).cloned().unwrap_or_default().into_iter().take(6).collect();
             let max = ((120.0 * scale) as u32, (80.0 * scale) as u32);
-            let stages: Vec<ui::StStage> = list
-                .iter()
-                .map(|s| {
+            let mut stages: Vec<ui::StStage> = Vec::with_capacity(list.len());
+            for (j, s) in list.iter().enumerate() {
+                {
                     let t = tops(s, &wins.clients);
                     let n = t.len();
                     let cards: Vec<ui::StCard> = t
@@ -184,10 +191,15 @@ impl StageManager {
                     let front = t.last().map(|c| c.class.clone()).unwrap_or_default();
                     let icon = if front.is_empty() { None } else { self.icons.get(st, &front, 36.0, scale, true) };
                     let label = st.shell.get::<Apps>().and_then(|a| a.entry_for(&front)).map(|e| e.name.clone()).unwrap_or(front);
-                    ui::StStage { id: s.id as i32, cards: ModelRc::new(VecModel::from(cards)), has_icon: icon.is_some(), icon: icon.unwrap_or_default(), label: label.into() }
-                })
-                .collect();
-            self.wins[i].ui.set_stages(ModelRc::new(VecModel::from(stages)));
+                    while self.wins[i].cards.len() <= j {
+                        self.wins[i].cards.push(tessera_core::rows::Rows::new());
+                    }
+                    self.wins[i].cards[j].set(cards);
+                    let cards = self.wins[i].cards[j].model();
+                    stages.push(ui::StStage { id: s.id as i32, cards, has_icon: icon.is_some(), icon: icon.unwrap_or_default(), label: label.into() });
+                }
+            }
+            self.wins[i].stages.set(stages);
         }
         self.thumbs.interval = 200;
         self.thumbs.set_live(st, NAME, live);

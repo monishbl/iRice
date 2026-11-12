@@ -1,0 +1,48 @@
+# Arena IRICE-TEST 1920x1080 scale 1, the user's config (expressive motion, Colloid, their 4 widgets).
+# Each file runs top to bottom from a fresh desktop. `static NAME x y w h`: that region must not change
+# from there until the next `shot`, `rec` or `look` (the no-reload blocks end with their last close).
+# Right-clicks: `ptr ... down up` lines marked (right button) need the runner's right button.
+
+look material
+ipc panels open wallpaper IRICE-TEST
+wait 1
+key -k Right -k Right
+rec bg-crossfade 1.6 key -k Return
+note new picture fades in over the old, 700 ms InOutQuad, no dark frame
+key -k Escape
+wait 0.5
+static bg-wall 1500 300 300 200
+setup foot &
+wait 1.5
+setup hyprctl dispatch 'hl.dsp.window.close({ window = "class:foot" })'
+wait 1.5
+ipc panels open launchpad IRICE-TEST
+wait 1
+ipc panels close
+wait 1
+ipc lock lock
+wait 2
+rec bg-lock 1.5 ipc lock unlock
+note wallpaper starts 5 % larger and settles to 1.0 with the veil
+
+look glass
+ipc panels open wallpaper IRICE-TEST
+wait 1
+key -k Right -k Right
+rec bg-crossfade 1.6 key -k Return
+note new picture fades in over the old, 700 ms InOutQuad, no dark frame
+key -k Escape
+wait 0.5
+static bg-wall 1500 300 300 200
+setup foot &
+wait 1.5
+setup hyprctl dispatch 'hl.dsp.window.close({ window = "class:foot" })'
+wait 1.5
+ipc panels open launchpad IRICE-TEST
+wait 1
+ipc panels close
+wait 1
+ipc lock lock
+wait 2
+rec bg-lock 1.5 ipc lock unlock
+note wallpaper starts 5 % larger and settles to 1.0 with the veil

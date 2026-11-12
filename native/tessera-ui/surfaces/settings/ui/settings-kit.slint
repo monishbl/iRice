@@ -57,6 +57,7 @@ export struct SetRow {
     style: int, // a single button: 0 normal, 1 primary, 2 danger, 3 minor
     busy: bool,
     flash: bool, // a search landed here
+    faded: bool, // the whole row at half (a QML row's `opacity: enabled ? 1 : 0.5`)
     group: string, // custom: whose view (the page group's .slint)
     sub: string, // custom: which view
     data: [SOpt],
@@ -107,6 +108,13 @@ export global SBus {
     // a Choice (or a button with a menu) wants its list under it: its id
     // and its place in the window
     callback menu(string, length, length, length, length);
+    // a control that opens a popover says where it is first (its place in
+    // the window): the popover opens by it (lib.rs `sync_popover`)
+    callback anchor(length, length, length, length);
+    // the shell's file chooser is open (PathField's Choosing…; Rust sets it)
+    in-out property <bool> picker-busy;
+    // the id whose menu is open now (Rust sets it): its button stays lit
+    in-out property <string> menu-shown;
     // a search landed on a row: where it is in the window (the page
     // scrolls it into view)
     in-out property <length> reveal-y;
@@ -114,6 +122,18 @@ export global SBus {
     in-out property <int> reveal-seq;
     // the window's width for the page (custom views size from it)
     in-out property <length> page-width: 600px;
+    // the shown page's height (the kept pages sit on top of each other;
+    // only the shown one sizes the scroller)
+    in-out property <length> page-h;
+}
+
+// A page kept once made (Settings.qml's Loader makes it anew each time;
+// here going back to a page shows the one already made): its blocks, and
+// whether it's the one on show
+export struct SPage {
+    id: string,
+    shown: bool,
+    blocks: [SBlock],
 }
 
 // Glyphs drawn here (phosphor.js / material-symbols.js codes)
@@ -176,13 +196,14 @@ export component SFocusRing inherits Rectangle {
     in property <bool> shown;
     in property <length> radius: 8px;
     background: transparent;
+    property <length> out: Theme.material ? 5px : 4px;
     Rectangle {
-        x: -3px;
-        y: -3px;
-        width: root.width + 6px;
-        height: root.height + 6px;
-        border-radius: root.radius + 3px;
-        border-width: root.shown ? 2px : 0;
+        x: -root.out;
+        y: -root.out;
+        width: root.width + 2 * root.out;
+        height: root.height + 2 * root.out;
+        border-radius: root.radius + root.out;
+        border-width: root.shown ? (Theme.material ? 3px : 2px) : 0;
         border-color: Theme.material ? Theme.m3-secondary : Theme.accent;
         background: transparent;
     }
@@ -276,6 +297,9 @@ export component SSlider {
     in property <bool> enabled: true;
     in property <string> label;
     callback moved(float);
+    // let go after a drag (the QML's onPressedChanged/onReleased: a sound
+    // plays at the level chosen)
+    callback released(float);
     property <bool> dragging: ta.pressed;
     property <float> shown: dragging ? drag-value : value;
     property <float> drag-value;
@@ -389,6 +413,9 @@ export component SSlider {
                 root.drag-value = at(self.mouse-x);
                 root.moved(root.drag-value);
             }
+            if e.kind == PointerEventKind.up {
+                root.released(root.drag-value);
+            }
         }
         moved => {
             if self.pressed {
@@ -413,6 +440,7 @@ export component SWordSlider inherits VerticalLayout {
     in property <bool> enabled: true;
     in property <string> label;
     callback moved(float);
+    callback released(float);
     spacing: 2px;
     SSlider {
         value: root.value;
@@ -422,6 +450,7 @@ export component SWordSlider inherits VerticalLayout {
         enabled: root.enabled;
         label: root.label;
         moved(v) => { root.moved(v); }
+        released(v) => { root.released(v); }
     }
     HorizontalLayout {
         Text { text: root.low; color: Theme.tertiary; font-size: Theme.caption; accessible-role: AccessibleRole.none; }
@@ -558,8 +587,11 @@ export component SChoice {
     in property <bool> enabled: true;
     in property <bool> open;
     in property <string> label;
+    // Dropdown.qml rather than Choice.qml: closed, Up/Down step through the
+    // options; Space, Enter or Alt+Down open the list; a 14 px caret
+    in property <bool> dropdown;
     property <string> said: current >= 0 && current < opts.length ? opts[current].text : placeholder;
-    min-width: max(Theme.material ? 140px : 96px, lt.preferred-width + (Theme.material ? 52px : 40px));
+    min-width: dropdown ? max(140px, lt.preferred-width + 40px) : max(Theme.material ? 140px : 96px, lt.preferred-width + (Theme.material ? 52px : 40px));
     preferred-width: self.min-width;
     height: Theme.material ? 40px : 28px;
     opacity: enabled ? 1 : Theme.material ? 0.38 : 0.45;
@@ -573,6 +605,17 @@ export component SChoice {
     forward-focus: fs;
     fs := FocusScope {
         key-pressed(e) => {
+            // (its list is open: the keys are the list's, the window passes them on)
+            if open { return reject; }
+            if dropdown {
+                if e.text == " " || e.text == Key.Return || (e.text == Key.DownArrow && e.modifiers.alt) { show(); return accept; }
+                if e.text == Key.UpArrow || e.text == Key.DownArrow {
+                    let i = max(0, min(opts.length - 1, current < 0 ? 0 : current + (e.text == Key.UpArrow ? -1 : 1)));
+                    if i != current { SBus.act(cid, i, 0, ""); }
+                    return accept;
+                }
+                reject
+            }
             if e.text == " " || e.text == Key.Return || e.text == Key.DownArrow { show(); return accept; }
             reject
         }
@@ -598,18 +641,56 @@ export component SChoice {
         x: parent.width - self.width - 8px;
         g: Theme.material ? SG.caret-down : SG.caret-up-down;
         bold: !Theme.material;
-        size: Theme.material ? 20px : 11px;
+        size: Theme.material ? (dropdown ? 14px : 20px) : 11px;
         color: Theme.secondary;
+        // (Material: the caret turns over while the list is open)
+        transform-rotation: Theme.material && root.open ? 180deg : 0deg;
+        animate transform-rotation { duration: Theme.material ? 200ms : 0ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
     }
     ta := TouchArea {
         enabled: root.enabled;
         mouse-cursor: pointer;
-        clicked => { show(); }
+        clicked => {
+            fs.focus();
+            show();
+        }
+    }
+}
+
+// A tooltip (QQC.ToolTip): over what it names, 600 ms after the pointer
+// rests there, gone as it leaves. Put it last in the element it names
+// (it fills it, drawing its bubble above)
+export component STip inherits Rectangle {
+    in property <string> text;
+    in property <bool> hovered;
+    property <bool> up;
+    Timer {
+        interval: 600ms;
+        running: root.hovered && !root.up && root.text != "";
+        triggered => { root.up = true; }
+    }
+    changed hovered => { if !hovered { up = false; } }
+    if up: Rectangle {
+        width: tl.preferred-width + 16px;
+        height: tl.preferred-height + 8px;
+        x: (parent.width - self.width) / 2;
+        y: -self.height - 6px;
+        border-radius: 6px;
+        background: Theme.dark ? #2c2c31 : #18181b;
+        border-width: Theme.dark ? 1px : 0;
+        border-color: #ffffff1f;
+        tl := Text {
+            text: root.text;
+            color: Theme.dark ? #ededef : #fafafa;
+            font-size: Theme.caption;
+            accessible-role: AccessibleRole.none;
+        }
     }
 }
 
 // ── Button (SettingsButton.qml) ─────────────────────────────────────────
-// style: 0 normal, 1 primary, 2 danger, 3 minor; an icon alone: a round
+// style: 0 normal, 1 primary, 2 danger, 3 minor, 4 a text link (no
+// background, the accent's ink, body 600: controlcenter.qml's Reset); an icon alone: a round
 // icon button (the dock's remove)
 export component SButton {
     in property <string> text;
@@ -618,15 +699,19 @@ export component SButton {
     in property <bool> busy;
     in property <bool> enabled: true;
     in property <string> label; // (what it's for, for screen readers: its row's label)
+    // Glass: 26 px tall, 20 px wider than its label (the dock's Add, Clear all)
+    in property <bool> compact;
     callback clicked();
     property <bool> active: enabled && !busy;
     property <bool> round: text == "" && (icon.p != "" || icon.m != "");
-    property <color> m3-container: !enabled ? Theme.m3-on-surface.with-alpha(0.12) : style == 1 ? Theme.m3-primary : style == 2 ? Theme.m3-error-container : style == 3 ? transparent : Theme.m3-secondary-container;
-    property <color> m3-content: !enabled ? Theme.m3-on-surface.with-alpha(0.38) : style == 1 ? Theme.m3-on-primary : style == 2 ? Theme.m3-on-error-container : style == 3 ? Theme.m3-primary : Theme.m3-on-secondary-container;
+    // (style 5: a red text link, focus.qml's Delete)
+    property <bool> link: style == 4 || style == 5;
+    property <color> m3-container: !enabled ? Theme.m3-on-surface.with-alpha(0.12) : style == 1 ? Theme.m3-primary : style == 2 ? Theme.m3-error-container : style == 3 || link ? transparent : Theme.m3-secondary-container;
+    property <color> m3-content: !enabled ? Theme.m3-on-surface.with-alpha(0.38) : style == 1 ? Theme.m3-on-primary : style == 2 ? Theme.m3-on-error-container : style == 3 || link ? Theme.m3-primary : Theme.m3-on-secondary-container;
     property <float> layer: ta.pressed ? 0.1 : ta.has-hover ? 0.08 : 0;
-    property <color> ink: Theme.material ? m3-content : style == 1 ? Theme.on-accent : style == 2 ? Theme.danger : Theme.label;
-    width: round ? (Theme.material ? 40px : 26px) : row.preferred-width + (Theme.material ? (style == 3 ? 24px : 32px) : 24px);
-    height: round ? self.width : Theme.material ? 40px : 28px;
+    property <color> ink: style == 5 ? (Theme.material ? Theme.m3-error : Theme.danger) : Theme.material ? m3-content : link ? Theme.accent-ink : style == 1 ? Theme.on-accent : style == 2 ? Theme.danger : Theme.label;
+    width: link ? row.preferred-width : round ? (Theme.material ? 40px : 26px) : row.preferred-width + (Theme.material ? (style == 3 ? 24px : 32px) : compact ? 20px : 24px);
+    height: link ? max(20px, row.preferred-height) : round ? self.width : Theme.material ? 40px : compact ? 26px : 28px;
     opacity: Theme.material || enabled ? 1 : 0.45;
     accessible-role: AccessibleRole.button;
     accessible-label: text != "" ? text : label;
@@ -647,9 +732,12 @@ export component SButton {
         width: Theme.material ? parent.width : parent.width * (ta.pressed ? 0.97 : 1);
         height: Theme.material ? parent.height : parent.height * (ta.pressed ? 0.97 : 1);
         animate width, height { duration: SM.press; }
+        transform-scale: Theme.material && ta.pressed && !link ? 1 + min(0.06, 10px / max(root.width, root.height)) : 1;
+        animate transform-scale { duration: ta.pressed ? SM.press : 300ms; easing: ta.pressed ? ease-out : cubic-bezier(0.3, 1.6, 0.5, 1); }
         border-radius: Theme.material ? (ta.pressed && !round ? 8px : self.height / 2) : round ? self.height / 2 : Theme.radius-control;
         animate border-radius { duration: 300ms; easing: spring(0.6); }
-        background: Theme.material ? (style == 3 ? m3-content.with-alpha(layer) : m3-container.mix(m3-content, 1 - layer))
+        background: link ? transparent
+            : Theme.material ? (style == 3 ? m3-content.with-alpha(layer) : m3-container.mix(m3-content, 1 - layer))
             : style == 1 ? (ta.pressed ? Theme.accent.darker(0.2) : ta.has-hover ? Theme.accent.darker(0.1) : Theme.accent)
             : ta.pressed ? Theme.fill-pressed : ta.has-hover ? Theme.fill-hover : Theme.fill;
         animate background { duration: SM.hover; }
@@ -683,8 +771,9 @@ export component SButton {
             text: root.text;
             color: ink;
             vertical-alignment: center;
-            font-size: Theme.material ? 14px : Theme.small;
-            font-weight: Theme.material ? 500 : style == 1 ? 600 : 500;
+            font-size: link ? Theme.body : Theme.material ? 14px : Theme.small;
+            font-weight: link ? 600 : Theme.material ? 500 : style == 1 ? 600 : 500;
+            opacity: link && ta.pressed ? 0.6 : 1;
             letter-spacing: Theme.material ? 0.1px : 0;
             accessible-role: AccessibleRole.none;
         }

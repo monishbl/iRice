@@ -1,0 +1,57 @@
+# ResourceHover: steps from parity/shell_modules_resources_ResourceHover.qml.md (batches 1-5). Screen IRICE-TEST 1920x1080 scale 1;
+# the island is centred at x 960 (closed y ~14, open ~392 wide); the bar is 30 px tall.
+# Each block runs in both looks: the file runs top to bottom, Material first, then Glass.
+
+look material
+ptr move 1500 600
+wait 1
+ptr glide 960 14 400
+wait 1
+rec hover-cpu 1.5 ptr glide 925 49 150
+note the popover's first frame comes ~500 ms after the pointer arrives (QML the same)
+ptr glide 960 700 300
+wait 1
+setup python3 -c 'import json, os;p = os.path.expanduser("~/.config/tessera/config.json"); c = json.load(open(p)); c.setdefault("menubar", {})["resources"] = True; json.dump(c, open(p, "w"), indent=4)'
+wait 3
+shot bar-resources
+note the bar's right side shows a CPU icon with "NN% · NN%" (find its x for the next step; default guess 1560)
+ptr glide 1560 15 200
+wait 0.8
+shot bar-pop
+note the resources popover under the item (top ~38 px), Processor highlighted, no "CPU · memory" text tip
+ptr click
+wait 0.6
+shot bar-menu
+note the Resources status menu opened and the popover is gone; hovering the item while its menu is open shows no popover
+key -k Escape
+ptr glide 1500 600 200
+wait 0.3
+shot bar-left
+note the popover closed within ~120 ms
+
+look glass
+ptr move 1500 600
+wait 1
+ptr glide 960 14 400
+wait 1
+rec hover-cpu 1.5 ptr glide 925 49 150
+note the popover's first frame comes ~500 ms after the pointer arrives (QML the same)
+ptr glide 960 700 300
+wait 1
+setup python3 -c 'import json, os;p = os.path.expanduser("~/.config/tessera/config.json"); c = json.load(open(p)); c.setdefault("menubar", {})["resources"] = True; json.dump(c, open(p, "w"), indent=4)'
+wait 3
+shot bar-resources
+note the bar's right side shows a CPU icon with "NN% · NN%" (find its x for the next step; default guess 1560)
+ptr glide 1560 15 200
+wait 0.8
+shot bar-pop
+note the resources popover under the item (top ~38 px), Processor highlighted, no "CPU · memory" text tip
+ptr click
+wait 0.6
+shot bar-menu
+note the Resources status menu opened and the popover is gone; hovering the item while its menu is open shows no popover
+key -k Escape
+ptr glide 1500 600 200
+wait 0.3
+shot bar-left
+note the popover closed within ~120 ms

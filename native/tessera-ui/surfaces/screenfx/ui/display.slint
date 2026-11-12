@@ -47,28 +47,59 @@ component WavyBar inherits Rectangle {
     }
 }
 
-// Glass's button (SettingsButton): 32 px, the primary one in the accent
-component GlassButton inherits Rectangle {
+// The keyboard focus ring (FocusRing.qml): 2 px accent, 2 px out (Material
+// 3 px secondary); only for focus from the keyboard (focus-on-click false)
+component Ring inherits Rectangle {
+    in property <length> r;
+    in property <length> pw;
+    in property <length> ph;
+    x: Theme.material ? -5px : -4px;
+    y: self.x;
+    width: pw - 2 * self.x;
+    height: ph - 2 * self.y;
+    border-radius: r;
+    border-width: Theme.material ? 3px : 2px;
+    border-color: Theme.material ? Theme.m3-secondary : Theme.accent;
+    background: transparent;
+}
+
+// Glass's button (SettingsButton.qml): 28 high, the primary one in the
+// accent; presses to 0.97 (100 ms); Tab reaches it, Space/Enter press it
+component GlassButton inherits FocusScope {
     in property <string> text;
     in property <bool> primary;
     callback clicked();
-    width: label.preferred-width + 28px;
-    height: 32px;
-    border-radius: Theme.radius-control;
-    background: primary ? (touch.pressed ? Theme.accent.darker(0.2) : touch.has-hover ? Theme.accent.darker(0.1) : Theme.accent)
-        : touch.pressed ? Theme.fill-pressed : touch.has-hover ? Theme.fill-hover : Theme.fill;
-    animate background { duration: 150ms; }
+    focus-on-click: false;
+    width: label.preferred-width + 24px;
+    height: 28px;
     accessible-role: button;
     accessible-label: text;
     accessible-action-default => { clicked(); }
-    label := Text {
-        text: root.text;
-        color: primary ? Theme.on-accent : Theme.label;
-        font-size: Theme.small;
-        font-weight: 600;
-        vertical-alignment: center;
-        horizontal-alignment: center;
-        accessible-role: none;
+    key-pressed(e) => {
+        if !e.repeat && (e.text == " " || e.text == Key.Return) {
+            clicked();
+            return accept;
+        }
+        reject
+    }
+    Rectangle {
+        transform-origin: { x: self.width / 2, y: self.height / 2 };
+        transform-scale: touch.pressed ? 0.97 : 1;
+        animate transform-scale { duration: 100ms; }
+        border-radius: Theme.radius-control;
+        background: primary ? (touch.pressed ? Theme.accent.darker(0.2) : touch.has-hover ? Theme.accent.darker(0.1) : Theme.accent)
+            : touch.pressed ? Theme.fill-pressed : touch.has-hover ? Theme.fill-hover : Theme.fill;
+        animate background { duration: 150ms; }
+        label := Text {
+            text: root.text;
+            color: primary ? Theme.on-accent : Theme.label;
+            font-size: Theme.small;
+            font-weight: primary ? 600 : 500;
+            vertical-alignment: center;
+            horizontal-alignment: center;
+            accessible-role: none;
+        }
+        if root.has-focus: Ring { pw: parent.width; ph: parent.height; r: parent.border-radius + 4px; }
     }
     touch := TouchArea {
         mouse-cursor: pointer;
@@ -76,50 +107,46 @@ component GlassButton inherits Rectangle {
     }
 }
 
-// Material's dialog button: 40 px, fully round (squaring off a little while
-// pressed), filled (primary) or text; state layers in the label's colour
-component DialogButton inherits Rectangle {
+// Material's dialog button: 40 px, fully round (squaring to 12 px while
+// pressed), filled (primary) or text; state layers in the label's colour;
+// swells while held (ElasticControl: pressGrow on the press spring)
+component DialogButton inherits FocusScope {
     in property <string> text;
     in property <bool> filled;
     callback clicked();
     property <color> content: filled ? Theme.m3-on-primary : Theme.m3-primary;
+    focus-on-click: false;
     width: label.preferred-width + (filled ? 48px : 24px);
     height: 40px;
-    border-radius: touch.pressed ? 12px : self.height / 2;
-    animate border-radius { duration: 150ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
-    background: (filled ? Theme.m3-primary : Theme.m3-primary.with-alpha(0)).mix(content, touch.pressed ? 0.9 : touch.has-hover ? 0.92 : 1);
-    animate background { duration: 150ms; }
-    forward-focus: keys;
     accessible-role: button;
     accessible-label: text;
     accessible-action-default => { clicked(); }
-    keys := FocusScope {
-        key-pressed(e) => {
-            if e.text == " " || e.text == "\n" {
-                root.clicked();
-                return accept;
-            }
-            reject
+    key-pressed(e) => {
+        if !e.repeat && (e.text == " " || e.text == Key.Return) {
+            clicked();
+            return accept;
         }
+        reject
     }
-    if keys.has-focus: Rectangle {
-        x: -3px;
-        y: -3px;
-        width: parent.width + 6px;
-        height: parent.height + 6px;
-        border-radius: parent.border-radius + 3px;
-        border-width: 3px;
-        border-color: Theme.m3-secondary;
-        background: transparent;
-    }
-    label := Text {
-        text: root.text;
-        color: content;
-        font-size: 14px;
-        font-weight: 500;
-        vertical-alignment: center;
-        horizontal-alignment: center;
-        accessible-role: none;
+    Rectangle {
+        transform-origin: { x: self.width / 2, y: self.height / 2 };
+        transform-scale: Theme.press-bounce && touch.pressed ? 1 + min(0.06, 10px / self.width) : 1;
+        animate transform-scale { duration: 420ms; easing: spring(0.3); }
+        border-radius: touch.pressed ? 12px : self.height / 2;
+        animate border-radius { duration: 150ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+        background: (filled ? Theme.m3-primary : Theme.m3-primary.with-alpha(0)).mix(content, touch.pressed ? 0.9 : touch.has-hover ? 0.92 : 1);
+        animate background { duration: 150ms; }
+        label := Text {
+            text: root.text;
+            color: content;
+            font-size: 14px;
+            font-weight: 500;
+            letter-spacing: 0.1px;
+            vertical-alignment: center;
+            horizontal-alignment: center;
+            accessible-role: none;
+        }
+        if root.has-focus: Ring { pw: parent.width; ph: parent.height; r: parent.border-radius + 4px; }
     }
     touch := TouchArea {
         mouse-cursor: pointer;

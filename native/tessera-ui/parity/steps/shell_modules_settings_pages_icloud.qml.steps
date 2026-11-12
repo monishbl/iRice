@@ -1,0 +1,10 @@
+# icloud: iCloud page. Check in each look.
+# Never type a real Apple ID or password; never click "Sign in" or "Open account.apple.com".
+ipc panels settings icloud
+wait 2
+shot ic-top
+note I1: "iCloud account" with rows 1.-3. and "Sign in to iCloud" (button greyed), plus the keyring row if the arena has no keyring; same texts and footer as QML.
+# MANUAL: I2 click the "2. Apple ID" field, type x: placeholder hides on focus, accent border (Glass) / primary outline (Material); Sign in stays greyed (password empty). BackSpace, Esc.
+# MANUAL: I3 glide over "Open account.apple.com" and "Sign in": same hover/disabled look as QML.
+# MANUAL: I4 type x in Apple ID, go to another page and back: field empty (Rust must match).
+ipc panels close

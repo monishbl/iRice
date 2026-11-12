@@ -112,6 +112,12 @@ pub struct IconsDone(pub Vec<(IconKey, Option<Px>)>);
 pub struct AppIcons {
     cache: HashMap<IconKey, slint::Image>,
     pending: HashSet<IconKey>,
+    /// files that couldn't be drawn (an SVG resvg refuses, a broken link):
+    /// the generic app icon instead, and never queued again (each refresh
+    /// queued them anew, drawing them over and over, never showing anything)
+    failed: HashSet<PathBuf>,
+    /// the icon index those failures were found with
+    failed_for: usize,
     queued: Vec<IconKey>,
     styled: Option<Style>,
     plain: Option<Style>,
@@ -148,7 +154,16 @@ impl AppIcons {
     /// queued: `flush` starts it)
     pub fn get(&mut self, st: &State, class: &str, size: f32, scale: f32, styled: bool) -> Option<slint::Image> {
         let style = if styled { self.styled.clone()? } else { self.plain.clone()? };
-        let path = Self::path(st, class)?;
+        // (a new index, the theme rebuilt or changed: failed files are tried again)
+        let index = st.shell.get::<Icons>().map_or(0, |i| std::sync::Arc::as_ptr(&i.index) as usize);
+        if index != self.failed_for {
+            self.failed_for = index;
+            self.failed.clear();
+        }
+        let mut path = Self::path(st, class)?;
+        if self.failed.contains(&path) {
+            path = st.shell.get::<Icons>()?.path(&[], &["application-x-executable"]).filter(|p| !self.failed.contains(p))?;
+        }
         let key = IconKey { path, px: (size * scale.max(1.0)).ceil().max(8.0) as u32, style };
         if let Some(i) = self.cache.get(&key) {
             return Some(i.clone());
@@ -178,8 +193,16 @@ impl AppIcons {
     pub fn done(&mut self, d: IconsDone) {
         for (k, px) in d.0 {
             self.pending.remove(&k);
-            if let Some(px) = px {
-                self.cache.insert(k, slint::Image::from_rgba8(px));
+            match px {
+                Some(px) => {
+                    self.cache.insert(k, slint::Image::from_rgba8(px));
+                }
+                None => {
+                    if crate::perf::on() {
+                        eprintln!("debug: icon not drawn: {}", k.path.display());
+                    }
+                    self.failed.insert(k.path);
+                }
             }
         }
         if self.cache.len() > 600 {

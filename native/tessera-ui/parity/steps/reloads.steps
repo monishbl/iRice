@@ -1,0 +1,39 @@
+# Nothing reloads when windows open and close, focus moves or a notification
+# arrives (latency.md step 6). The desktop widgets' area must not change in
+# the recordings (static), and with TESSERA_PERF the Rust log has no
+# `debug: reload` line for these. (Widgets at 30,50 720x540 at 1x: check
+# against the first shot and adjust if the user's layout differs.)
+look material
+ptr move 1000 700
+wait 2
+shot desktop-start
+# a terminal opens (ALT + Return), and a second
+rec open-window 2.5 key -M alt -k Return -m alt
+static widgets-open-window 30 50 720 540
+rec open-second 2.5 key -M alt -k Return -m alt
+static widgets-open-second 30 50 720 540
+shot two-windows
+# the focused one closes (ALT + F4)
+rec close-window 2.0 key -M alt -k F4 -m alt
+static widgets-close-window 30 50 720 540
+# focus moves to the other by a click on it
+rec focus-click 1.5 ptr move 1300 500 click
+static widgets-focus 30 50 720 540
+# a notification arrives (sent from inside the recording's single step: by
+# the shell's own test call)
+setup sleep 0.3; notify-send -a Files 'Copied' '3 files' &
+rec notification 2.5 ptr move 1300 520
+static widgets-notification 30 50 720 540
+# panels open and close over the desktop
+rec nc-open 1.6 ipc panels open notificationCenter IRICE-TEST
+rec nc-close 1.4 ipc panels close
+static widgets-nc 30 50 720 540
+rec overview-open 1.6 ipc panels open overview IRICE-TEST
+rec overview-close 1.4 ipc panels close
+rec mc-open 1.6 ipc panels open missionControl IRICE-TEST
+rec mc-close 1.4 ipc panels close
+static widgets-mc 30 50 720 540
+# the last window goes
+rec close-last 2.0 key -M alt -k F4 -m alt
+static widgets-close-last 30 50 720 540
+note every static check holds; `grep "debug: reload" tessera-ui.log` lists nothing for these steps (Rust)

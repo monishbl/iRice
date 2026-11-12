@@ -8,7 +8,8 @@
 //!     "privacy": Privacy's state, "resources": Resources' {cpu, memory, swap,
 //!     memUsedGb, memTotalGb, temperature}, "profiles": AudioProfiles'
 //!     alternatives as [{name, kind, busy}]}`
-//! (said at once on opening, then twice a second when it changed), and what
+//! (said at once on opening: the host's turn that opened it, before the menu
+//! is drawn; then within 250 ms of a change, StatusMenusFeed.qml's debounce), and what
 //! the menus ask (`shell::ask("statusmenus", [what, …])`) is done here:
 //!   stopSharing             Privacy.stopSharing()
 //!   mode <profile>          Power.setMode (power-saver | balanced | performance)
@@ -107,7 +108,7 @@ impl Service for StatusMenusFeed {
     }
     fn start(&mut self, h: &mut Host) {
         let send = h.sender(NAME);
-        self.tick.start(slint::TimerMode::Repeated, Duration::from_millis(500), move || send(Box::new(M::Tick)));
+        self.tick.start(slint::TimerMode::Repeated, Duration::from_millis(250), move || send(Box::new(M::Tick)));
     }
     fn call(&mut self, h: &mut Host, call: &str, args: &Value) {
         let a = if call == "statusmenus" {
@@ -140,6 +141,15 @@ impl Service for StatusMenusFeed {
         }
         if !self.open.is_empty() {
             self.send(h, false);
+        }
+    }
+    /// After every turn of the host: a status menu just opened (Panels set
+    /// `open` this turn) gets its readings at once, not on the next tick
+    fn settled(&mut self, h: &mut Host) {
+        let now = h.state("open").as_str().unwrap_or("");
+        let open = if PANELS.contains(&now) { now } else { "" };
+        if open != self.open {
+            self.message(h, Box::new(M::Tick));
         }
     }
     fn message(&mut self, h: &mut Host, msg: Box<dyn Any + Send>) {

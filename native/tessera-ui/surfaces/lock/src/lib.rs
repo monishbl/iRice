@@ -55,15 +55,13 @@
 //! axes (Slint sets only the weight), so "wide" is as wide as the default
 //! width allows; Material's shapes morph by mixing outlines (close to
 //! MaterialShape's); the large calendar in Bedside Mode is a month view
-//! only (the QML's is Notification Center's, with Week and To-do); Bedside
-//! Mode's photos change every 20 s without a cross-fade between pictures;
-//! the wavy timeline in Material's Now Playing is a straight bar (and the
-//! position isn't read, so it doesn't show yet); the small analog clock is
-//! the dial without its hands; Glass's error text wraps under the field
-//! (the QML's runs on one line, past the column); the wallpaper is read again
-//! when the settings change, not as a time-of-day picture turns over; "touch"
-//! that wakes the face camera is input on the lock's own surfaces (the QML
-//! also counts the compositor's idle notification, e.g. with the screen off).
+//! only (the QML's is Notification Center's, with Week and To-do); the wave
+//! in Material's Now Playing is quadratic arcs (the QML's a sine); the
+//! wallpaper is read again when the settings change, not as a time-of-day
+//! picture turns over; in the sandbox the password is checked by the mock
+//! ("mock"; the QML refuses every password there).
+//! Parity notes, per QML file, with the tester's steps:
+//! native/tessera-ui/parity/shell_modules_lock_*.md
 
 pub mod ui {
     slint::include_modules!();
@@ -79,6 +77,7 @@ pub mod auth;
 pub mod intro;
 pub mod logic;
 pub mod shape;
+pub mod veil;
 
 use tessera_core::services::calendar::Calendar;
 use tessera_core::services::mpris::{self, Players};
@@ -89,6 +88,7 @@ use tessera_core::shell::Part;
 use tessera_core::wayland::{LockEvent, Spec, State, Surface};
 use auth::{Backend, Conv, Event as Auth, Kind, Outcome};
 use slint::{ComponentHandle, Image, ModelRc, VecModel};
+use tessera_core::rows::Rows;
 use smithay_client_toolkit::reexports::client::protocol::wl_output::WlOutput;
 use smithay_client_toolkit::reexports::protocols::wp::idle_inhibit::zv1::client::zwp_idle_inhibitor_v1::ZwpIdleInhibitorV1;
 use smithay_client_toolkit::session_lock::SessionLock;
@@ -98,6 +98,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 const NAME: &str = "lock";
+
 const NS_DEMO: &str = "tessera:lock";
 const WAITING: &str = "Touch the fingerprint reader to unlock";
 
@@ -143,7 +144,8 @@ pub fn account_name() -> String {
 }
 
 enum M {
-    Edited(String),
+    /// (the screen typed on, the field's text)
+    Edited(String, String),
     Submit,
     Woke,
     Step(i32),
@@ -161,6 +163,12 @@ enum M {
     Photo(String, Option<slint::SharedPixelBuffer<slint::Rgb8Pixel>>),
     Avatar(Option<(Vec<u8>, Vec<u8>)>),
     Art(String, Option<(Vec<u8>, Vec<u8>)>),
+    /// the player's position (bus, µs), read once a second while its timeline shows
+    Position(String, i64),
+    /// the compositor ended the lock while it's still wanted: take it again
+    Retake,
+    /// the wallpaper is late: play the entrance without it
+    RevealNow,
 }
 
 struct Win {
@@ -170,9 +178,15 @@ struct Win {
     a11y: Option<crate::a11y::A11y>,
     inhibitor: Option<ZwpIdleInhibitorV1>,
     revealed: bool,
-    /// the wallpaper decoded for this size (path, size)
+    /// shown, its entrance waiting for the wallpaper (LockSurface.qml's
+    /// Image is there before the lock shows; here it decodes after)
+    waiting: bool,
+    /// the wallpaper decoded for this size (path, size), and the picture (the veil shows it too)
     picture: (String, (u32, u32)),
+    sharp: Option<Image>,
     own_fy: f64,
+    /// the notification cards this screen shows (by its shape)
+    cards: Rows<ui::LNote>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -240,6 +254,9 @@ pub struct Lock {
     secure: bool,
     wins: Vec<Win>,
     password: String,
+    /// the screen whose field the password came from (never written back there:
+    /// its edits arrive later than its keys, and an older text would undo the newest)
+    typed_on: Option<String>,
     error: String,
     busy: bool,
     fails: u32,
@@ -268,6 +285,23 @@ pub struct Lock {
     t_rest: slint::Timer,
     t_photo: slint::Timer,
     intro: intro::Intro,
+    veil: veil::Veil,
+    /// the lists every screen shows, changed in place (tessera_core::rows)
+    notes_rows: Rows<ui::LNote>,
+    apps_rows: Rows<ui::LNote>,
+    days_rows: Rows<ui::LDay>,
+    /// notification icons, loaded once each
+    icons: std::collections::HashMap<String, Option<Image>>,
+    /// the hands' angles, only ever growing (they turn forward past 12)
+    angles: (f32, f32),
+    /// the player whose position is read now (the reader thread's target)
+    position_for: std::sync::Arc<std::sync::Mutex<Option<String>>>,
+    position_thread: bool,
+    /// the position (µs) and the track's length (µs) of the shown player
+    position: (String, i64),
+    /// tries at taking the lock again after the compositor ended it
+    retakes: u32,
+    t_retake: slint::Timer,
 }
 
 impl Default for Lock {
@@ -289,6 +323,7 @@ impl Default for Lock {
             secure: false,
             wins: Vec::new(),
             password: String::new(),
+            typed_on: None,
             error: String::new(),
             busy: false,
             fails: 0,
@@ -317,8 +352,39 @@ impl Default for Lock {
             t_rest: slint::Timer::default(),
             t_photo: slint::Timer::default(),
             intro: intro::Intro::default(),
+            veil: veil::Veil::default(),
+            notes_rows: Rows::new(),
+            apps_rows: Rows::new(),
+            days_rows: Rows::new(),
+            icons: Default::default(),
+            angles: (-1.0, -1.0),
+            position_for: Default::default(),
+            position_thread: false,
+            position: (String::new(), 0),
+            retakes: 0,
+            t_retake: slint::Timer::default(),
         }
     }
+}
+
+/// An angle that only grows: `a` (0..360) the next turn on from `prev`
+/// (RotationAnimation.Clockwise: 354° → 0° is 6° forward, not 354° back)
+pub fn forward(prev: f32, a: f32) -> f32 {
+    if prev < 0.0 {
+        return a;
+    }
+    let base = prev - prev.rem_euclid(360.0);
+    let mut v = base + a;
+    if v < prev - 0.01 {
+        v += 360.0;
+    }
+    v
+}
+
+/// The MPRIS player's Position (µs), read off the session bus
+fn read_position(conn: &zbus::blocking::Connection, bus: &str) -> Option<i64> {
+    let p = zbus::blocking::Proxy::new(conn, bus.to_string(), "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2.Player").ok()?;
+    p.get_property::<i64>("Position").ok()
 }
 
 fn cfg_lock(st: &State) -> &serde_json::Value {
@@ -329,6 +395,15 @@ fn s<'a>(v: &'a serde_json::Value, k: &str, d: &'a str) -> &'a str {
 }
 fn b(v: &serde_json::Value, k: &str, d: bool) -> bool {
     v[k].as_bool().unwrap_or(d)
+}
+
+/// A screen's entrance, once it's shown (`waiting`)
+fn reveal(w: &mut Win) {
+    if w.waiting && !w.revealed {
+        w.waiting = false;
+        w.revealed = true;
+        w.ui.global::<ui::LockData>().set_revealed(true);
+    }
 }
 
 fn hex(c: &str) -> slint::Color {
@@ -410,6 +485,7 @@ impl Lock {
         self.finger.busy = 0;
         self.sb.idle = false;
         self.password.clear();
+        self.typed_on = None;
         if held {
             eprintln!("tessera-ui: lock: held ({})", if self.demo { "demo: overlay surfaces" } else { "session lock" });
             self.leaving = false;
@@ -421,9 +497,14 @@ impl Lock {
         } else {
             self.release(st);
             self.t_second.stop();
+            self.t_retake.stop();
+            self.retakes = 0;
             self.pass_conv = None;
             self.busy = false;
             self.error.clear();
+            self.angles = (-1.0, -1.0);
+            // (the position reader rests)
+            self.player(st);
         }
         self.rules(st);
     }
@@ -507,16 +588,28 @@ impl Lock {
                 d.$set(move |$($a),*| to(Box::new($m)));
             }};
         }
-        on!(on_edited, |t| M::Edited(t.to_string()));
+        {
+            let to = to.clone();
+            let on = name.to_string();
+            d.on_edited(move |t| to(Box::new(M::Edited(on.clone(), t.to_string()))));
+        }
         on!(on_submit, | | M::Submit);
         on!(on_woke, | | M::Woke);
         on!(on_step, |i| M::Step(i));
         on!(on_player, |a| M::Player(a.to_string()));
-        ui.show().expect("show lock");
-        let a11y = crate::a11y::A11y::new(&surface, st.tx.clone());
-        self.wins.push(Win { output: name.to_string(), surface, ui, a11y, inhibitor: None, revealed: false, picture: (String::new(), (0, 0)), own_fy: 0.0 });
+        // (the lists, handed over once: every refresh after changes them in place)
+        let cards = Rows::new();
+        d.set_notes(self.notes_rows.model());
+        d.set_apps(self.apps_rows.model());
+        d.set_days(self.days_rows.model());
+        d.set_cards(cards.model());
+        self.wins.push(Win { output: name.to_string(), surface, ui, a11y: None, inhibitor: None, revealed: false, waiting: false, picture: (String::new(), (0, 0)), sharp: None, own_fy: 0.0, cards });
         let i = self.wins.len() - 1;
+        // (filled before its first frame: the hands and the clock start in place, not turning into it)
         self.fill(st, i);
+        let w = &mut self.wins[i];
+        w.ui.show().expect("show lock");
+        w.a11y = crate::a11y::A11y::new(&w.surface, st.tx.clone());
     }
 
     /// Everything a new screen shows
@@ -566,7 +659,7 @@ impl Lock {
             "auto" => top_light,
             _ => false,
         };
-        let roles: std::collections::HashMap<String, String> = if look.material { crate::theme::material_roles(&look.seed, look.dark, &look.style).into_iter().collect() } else { Default::default() };
+        let roles: std::collections::HashMap<String, String> = if look.material { crate::theme::look_roles(&look).into_iter().collect() } else { Default::default() };
         let r = |k: &str| roles.get(k).map(|v| hex(v)).unwrap_or(slint::Color::from_rgb_u8(255, 255, 255));
         let name = account_name();
         let h24 = b(&st.shell.cfg["appearance"], "clock24", false);
@@ -620,12 +713,9 @@ impl Lock {
         let day = crate::wallpaper::Day::now(sunrise, sunset).is_day();
         let night = logic::night(day, h);
         // the month for Bedside Mode's calendar
-        let first = crate::services::calendar::local(crate::services::calendar::make(t.y, t.mo, 1, 12, 0, 0));
-        let days: Vec<ui::LDay> = logic::month_grid(first.wday as u32, logic::days_in_month(t.y, t.mo as u32))
-            .into_iter()
-            .map(|(dd, col, row)| ui::LDay { label: dd.to_string().into(), col: col as i32, row: row as i32, today: dd == t.d as u32 })
-            .collect();
-        let month = format!("{} {}", &logic::month_name(t.mo as u32)[..3], t.y);
+        self.calendar(st);
+        self.angles = (forward(self.angles.0, ((h % 12) as f32 + m as f32 / 60.0) * 30.0), forward(self.angles.1, m as f32 * 6.0));
+        let (ah, am) = self.angles;
         self.each(|d| {
             d.set_date(date.clone().into());
             d.set_time(logic::clock(h, m, h24).into());
@@ -633,16 +723,108 @@ impl Lock {
             d.set_hh2(format!("{:0>2}", hh).into());
             d.set_mm(format!("{m:02}").into());
             d.set_half(half.clone().into());
-            d.set_angle_h(((h % 12) as f32 + m as f32 / 60.0) * 30.0);
-            d.set_angle_m(m as f32 * 6.0);
+            d.set_angle_h(ah);
+            d.set_angle_m(am);
             d.set_sb_night(night);
-            d.set_days(ModelRc::new(VecModel::from(days.clone())));
-            d.set_month(month.clone().into());
         });
         // (the notes' "5m ago" moves with the clock)
         if !force {
             self.notes_push();
         }
+    }
+
+    /// Bedside Mode's calendar (Notification Center's, large, as the desktop
+    /// widget's preview: this month's six weeks with today chosen): the
+    /// dates with their dots, what repeats every day, today's events and
+    /// to-dos (host today/notif.rs calendar_payload, the same rules)
+    fn calendar(&self, st: &State) {
+        use crate::services::calendar as cal;
+        let now = crate::util::now_ms();
+        let t = cal::local(now);
+        let h24 = b(&st.shell.cfg["appearance"], "clock24", false);
+        let first = cal::local(cal::make(t.y, t.mo, 1, 12, 0, 0));
+        let lead = logic::lead(first.wday);
+        let (from, to) = (cal::make(t.y, t.mo, 1 - lead, 0, 0, 0), cal::make(t.y, t.mo, 1 - lead + 42, 0, 0, 0));
+        let c = st.shell.get::<Calendar>();
+        let list = c.map(|c| c.between(from, to)).unwrap_or_default();
+        let daily = cal::daily_in(&list, from, to);
+        let accent = st.shell.look.accent.clone();
+        let colour = |e: &cal::Event| if e.color.is_empty() { accent.clone() } else { e.color.clone() };
+        // day start -> (event colours, a to-do due)
+        let mut marks: std::collections::HashMap<i64, (Vec<String>, bool)> = std::collections::HashMap::new();
+        for e in list.iter().filter(|e| !daily.contains_key(&cal::series_of(e))) {
+            let last = if e.all_day { e.end - 1 } else { e.end };
+            let (mut d, end) = (cal::day_bounds(e.start).0, cal::day_bounds(last.max(e.start)).0);
+            while d <= end {
+                let m = marks.entry(d).or_default();
+                let k = colour(e);
+                if !m.0.contains(&k) {
+                    m.0.push(k);
+                }
+                d = cal::day_bounds(d).1;
+            }
+        }
+        let todos = st.shell.get::<Todos>().map(|t| t.list.clone()).unwrap_or_default();
+        for td in todos.iter().filter(|td| td.due != 0 && !td.done) {
+            marks.entry(cal::day_bounds(td.due).0).or_default().1 = true;
+        }
+        let days: Vec<ui::LDay> = (0..42)
+            .map(|i| {
+                let ms = cal::make(t.y, t.mo, 1 - lead + i, 12, 0, 0);
+                let dt = cal::local(ms);
+                let m = marks.get(&cal::day_bounds(ms).0);
+                let colors: Vec<slint::Color> = m.map(|m| m.0.iter().take(3).map(|c| hex(c)).collect()).unwrap_or_default();
+                ui::LDay {
+                    label: dt.d.to_string().into(),
+                    col: i % 7,
+                    row: i / 7,
+                    today: (dt.y, dt.mo, dt.d) == (t.y, t.mo, t.d),
+                    in_month: dt.mo == t.mo,
+                    colors: ModelRc::new(VecModel::from(colors)),
+                    todos: m.is_some_and(|m| m.1),
+                }
+            })
+            .collect();
+        self.days_rows.set(days);
+        // today: its events, then the to-dos due today
+        let hm = |ms: i64| {
+            let l = cal::local(ms);
+            logic::hm(l.h as u32, l.mi as u32, h24)
+        };
+        let (a, z) = cal::day_bounds(now);
+        let mut items: Vec<ui::LItem> = c
+            .map(|c| {
+                c.between(a, z)
+                    .iter()
+                    .map(|e| {
+                        let when = if e.all_day { "All day".to_string() } else if e.end > e.start { format!("{} – {}", hm(e.start), hm(e.end)) } else { hm(e.start) };
+                        let name = cal::name_of(c, e);
+                        ui::LItem {
+                            event: true,
+                            title: e.title.clone().into(),
+                            sub: if name.is_empty() { when } else { format!("{when} · {name}") }.into(),
+                            color: hex(&colour(e)),
+                            done: false,
+                        }
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        items.extend(todos.iter().filter(|td| td.due >= a && td.due < z).map(|td| ui::LItem {
+            event: false,
+            title: td.text.clone().into(),
+            sub: if td.all_day { "To-do".to_string() } else { format!("To-do · {}", hm(td.due)) }.into(),
+            color: slint::Color::default(),
+            done: td.done,
+        }));
+        items.truncate(8);
+        let every = daily.values().cloned().collect::<Vec<_>>().join(", ");
+        let month = format!("{} {}", &logic::month_name(t.mo as u32)[..3], t.y);
+        self.each(|d| {
+            d.set_month(month.clone().into());
+            d.set_every_day(every.clone().into());
+            d.set_cal_items(ModelRc::new(VecModel::from(items.clone())));
+        });
     }
 
     /// Battery, weather, the next event and the open to-dos
@@ -685,27 +867,34 @@ impl Lock {
     }
 
     /// The notifications: the shelf's apps, the newest cards
-    fn notes_push(&self) {
+    fn notes_push(&mut self) {
         let now = crate::util::now_ms();
         let h24 = self.wins.first().is_some_and(|w| w.ui.global::<ui::LockData>().get_h24());
+        // (Notifications.iconFor: a picture, the app's icon, its desktop
+        // entry's Icon=, else dialog-information; each loaded once)
+        for n in &self.notes {
+            if !self.icons.contains_key(&n.icon) {
+                let i = n.icon.as_str();
+                let path = if let Some(f) = i.strip_prefix("file://") {
+                    Some(std::path::PathBuf::from(f))
+                } else if i.starts_with('/') {
+                    Some(std::path::PathBuf::from(i))
+                } else {
+                    let name = i.strip_prefix("image://icon/").unwrap_or(i);
+                    let name = name.split('?').next().unwrap_or(name);
+                    let entry = (!name.is_empty()).then(|| crate::util::desktop_field(name, "Icon")).flatten();
+                    (!name.is_empty()).then(|| crate::icon_theme::find(name, None)).flatten().or_else(|| entry.and_then(|e| crate::icon_theme::find(&e, None))).or_else(|| crate::icon_theme::find("dialog-information", None))
+                };
+                let img = path.and_then(|p| Image::load_from_path(&p).ok());
+                self.icons.insert(n.icon.clone(), img);
+            }
+        }
         let newest: Vec<&Note> = self.notes.iter().rev().collect();
         let keys: Vec<String> = newest.iter().map(|n| n.key.clone()).collect();
         let apps = logic::shelf_apps(&keys);
-        let icon = |n: &Note| -> Option<Image> {
-            let i = n.icon.as_str();
-            let path = if let Some(f) = i.strip_prefix("file://") {
-                Some(std::path::PathBuf::from(f))
-            } else if i.starts_with('/') {
-                Some(std::path::PathBuf::from(i))
-            } else {
-                let name = i.strip_prefix("image://icon/").unwrap_or(i);
-                let name = name.split('?').next().unwrap_or(name);
-                crate::icon_theme::find(if name.is_empty() { "dialog-information" } else { name }, None)
-            };
-            path.and_then(|p| Image::load_from_path(&p).ok())
-        };
+        let icons = &self.icons;
         let make = |n: &Note| {
-            let img = icon(n);
+            let img = icons.get(&n.icon).cloned().flatten();
             let t = crate::services::calendar::local(n.at);
             ui::LNote {
                 icon: img.clone().unwrap_or_default(),
@@ -718,6 +907,9 @@ impl Lock {
         };
         let all: Vec<ui::LNote> = newest.iter().take(4).map(|n| make(n)).collect();
         let shelf: Vec<ui::LNote> = apps.iter().map(|&i| make(newest[i])).collect();
+        let count = newest.len() as i32;
+        self.notes_rows.set(all.clone());
+        self.apps_rows.set(shelf);
         for w in &self.wins {
             let d = w.ui.global::<ui::LockData>();
             // the cards this screen shows: the newest (shelf), the latest
@@ -727,10 +919,13 @@ impl Lock {
             let style = d.get_note_style();
             let split = style == "column" && sw > sh;
             let n = if style == "icons" { 0 } else if !split { 1 } else if self.material { 4 } else { 3 };
-            d.set_notes(ModelRc::new(VecModel::from(all.clone())));
-            d.set_cards(ModelRc::new(VecModel::from(all.iter().take(n).cloned().collect::<Vec<_>>())));
-            d.set_apps(ModelRc::new(VecModel::from(shelf.clone())));
-            d.set_note_count(newest.len() as i32);
+            w.cards.set(all.iter().take(n).cloned().collect());
+            d.set_note_count(count);
+        }
+        // (icons of notifications gone: let go)
+        if self.icons.len() > 64 {
+            let keep: std::collections::HashSet<&String> = self.notes.iter().map(|n| &n.icon).collect();
+            self.icons.retain(|k, _| keep.contains(k));
         }
     }
 
@@ -749,13 +944,43 @@ impl Lock {
                 });
             }
         }
+        // The timeline (Material's LockPlayer): while the track's length is
+        // known, its position read once a second off the bus (the QML's
+        // positionChanged timer); a new player or track starts unknown
+        let length = p.as_ref().map(|p| p.track.length).unwrap_or(0);
+        let bus = p.as_ref().map(|p| p.bus.clone()).unwrap_or_default();
+        let want = self.held && st.shell.look.material && has && length > 0;
+        if self.position.0 != bus {
+            self.position = (bus.clone(), -1);
+        }
+        if let Ok(mut t) = self.position_for.lock() {
+            *t = want.then(|| bus.clone());
+        }
+        if want && !self.position_thread {
+            self.position_thread = true;
+            let (target, to) = (self.position_for.clone(), Self::send(st));
+            std::thread::spawn(move || {
+                let Ok(conn) = zbus::blocking::Connection::session() else { return };
+                loop {
+                    let bus = target.lock().ok().and_then(|t| t.clone());
+                    if let Some(bus) = bus {
+                        if let Some(pos) = read_position(&conn, &bus) {
+                            to(Box::new(M::Position(bus, pos)));
+                        }
+                    }
+                    std::thread::sleep(Duration::from_secs(1));
+                }
+            });
+        }
+        let known = want && self.position.1 >= 0;
+        let progress = if known { (self.position.1 as f64 / length as f64).clamp(0.0, 1.0) as f32 } else { 0.0 };
         self.each(|d| {
             d.set_has_player(has);
             d.set_track(p.as_ref().map(|p| p.track.title.clone()).unwrap_or_default().into());
             d.set_artist(p.as_ref().map(|p| p.track.artist.clone()).unwrap_or_default().into());
             d.set_playing(p.as_ref().is_some_and(|p| p.playing));
-            // (the position isn't read here: the bar shows only while known)
-            d.set_has_timeline(false);
+            d.set_has_timeline(known);
+            d.set_progress(progress);
         });
     }
 
@@ -763,10 +988,13 @@ impl Lock {
     fn field(&self) {
         let face_looking = self.face.conv.is_some();
         let pw = self.password.clone();
-        self.each(|d| {
-            if d.get_password().as_str() != pw {
+        for w in &self.wins {
+            let d = w.ui.global::<ui::LockData>();
+            if self.typed_on.as_deref() != Some(w.output.as_str()) && d.get_password().as_str() != pw {
                 d.set_password(pw.clone().into());
             }
+        }
+        self.each(|d| {
             d.set_error(self.error.clone().into());
             d.set_busy(self.busy);
             d.set_error_count(self.error_count);
@@ -831,9 +1059,13 @@ impl Lock {
         if photo_on && !self.t_photo.running() {
             let to = Self::send(st);
             self.t_photo.start(slint::TimerMode::Repeated, Duration::from_secs(20), move || to(Box::new(M::PhotoNext)));
+            // (coming in: the photo fades in once loaded, as StandBy.qml's status)
+            self.each(|d| d.set_has_photo(false));
             self.load_photo(st);
-        } else if !photo_on {
+        } else if !photo_on && self.t_photo.running() {
             self.t_photo.stop();
+            // (gone: the next time in fades in again, not a cut to the last one)
+            self.each(|d| d.set_has_photo(false));
         }
         for w in &self.wins {
             let d = w.ui.global::<ui::LockData>();
@@ -889,6 +1121,8 @@ impl Lock {
             return;
         }
         let path = self.sb.photos[self.sb.photo % self.sb.photos.len()].clone();
+        // (a change every 20 s swaps in one frame once loaded, as StandBy.qml:
+        // its Image goes Loading → Ready faster than its 800 ms fade moves)
         let (w, h) = self.wins.iter().map(|w| w.surface.logical_size()).max().unwrap_or((1920, 1080));
         let to = Self::send(st);
         std::thread::spawn(move || {
@@ -1013,7 +1247,8 @@ impl Lock {
         crate::shell::tell(NAME, serde_json::json!({"unlocked": true}));
     }
 
-    fn set_password(&mut self, st: &mut State, text: String) {
+    fn set_password(&mut self, st: &mut State, on: String, text: String) {
+        self.typed_on = Some(on);
         if text == self.password {
             return;
         }
@@ -1056,6 +1291,7 @@ impl Lock {
                 }
                 self.pam_locked = false;
                 self.password.clear();
+                self.typed_on = None;
                 self.rules(st);
             }
             Auth::Info(Kind::Finger, id, m) | Auth::Error(Kind::Finger, id, m) if self.finger.conv.as_ref().is_some_and(|c| c.id == id) => {
@@ -1172,6 +1408,7 @@ impl Lock {
                 self.sb.demo_charging = true;
                 self.sb.idle = true;
                 self.password.clear();
+                self.typed_on = None;
             }
             "wake" => self.woke(st),
             "finger" => {
@@ -1191,18 +1428,22 @@ impl Lock {
             "typing" => {
                 self.sb.idle = false;
                 self.password = "tessera".into();
+                self.typed_on = None;
             }
             "wrong" => {
                 self.password.clear();
+                self.typed_on = None;
                 self.error = "Incorrect password. Try again.".into();
                 self.error_count += 1;
             }
             "busy" => {
                 self.password = "tessera".into();
+                self.typed_on = None;
                 self.busy = true;
             }
             "lockout" => {
                 self.password.clear();
+                self.typed_on = None;
                 self.busy = false;
                 self.error = logic::locked_text(540);
                 self.error_count += 1;
@@ -1220,6 +1461,7 @@ impl Lock {
                 self.error.clear();
                 self.busy = false;
                 self.password.clear();
+                self.typed_on = None;
             }
         }
         // (the face spinner while "Looking for your face…" shows)
@@ -1294,6 +1536,7 @@ impl Part for Lock {
             st.drop_surface(&w.surface);
         }
         self.intro.output_removed(st, name);
+        self.veil.output_removed(st, name);
     }
 
     fn config_changed(&mut self, st: &mut State, _look: bool) {
@@ -1317,6 +1560,9 @@ impl Part for Lock {
             self.rules(st);
         } else if [TypeId::of::<Weather>(), TypeId::of::<Calendar>(), TypeId::of::<Todos>()].contains(&what) {
             self.widgets(st);
+            if what != TypeId::of::<Weather>() {
+                self.calendar(st);
+            }
         } else if what == TypeId::of::<Players>() {
             self.player(st);
         } else if what == TypeId::of::<crate::services::wallpaper::WallTop>() {
@@ -1338,17 +1584,35 @@ impl Part for Lock {
                         eprintln!("tessera-ui: lock: the compositor ended the lock");
                         self.lock = None;
                         for w in std::mem::take(&mut self.wins) {
+                            if let Some(i) = w.inhibitor {
+                                i.destroy();
+                            }
                             st.drop_surface(&w.surface);
                         }
+                        self.sb.shown = false;
                         if self.secure {
                             self.secure = false;
                             crate::shell::tell(NAME, serde_json::json!({"secure": false}));
                         }
-                        crate::shell::tell(NAME, serde_json::json!({"refused": true}));
+                        // Still meant to be locked: take it again in a moment
+                        // (Lock.qml locked again at once from the QML side;
+                        // standalone there's no other locker), a few times,
+                        // then say so
+                        if self.held && !self.demo && self.retakes < 5 {
+                            self.retakes += 1;
+                            let to = Self::send(st);
+                            self.t_retake.start(slint::TimerMode::SingleShot, Duration::from_millis(1000), move || to(Box::new(M::Retake)));
+                        } else {
+                            crate::shell::tell(NAME, serde_json::json!({"refused": true}));
+                        }
                     }
                 }
                 return;
             }
+            Err(m) => m,
+        };
+        let msg = match msg.downcast::<veil::Tick>() {
+            Ok(_) => return self.veil.tick(st),
             Err(m) => m,
         };
         let msg = match msg.downcast::<Auth>() {
@@ -1365,7 +1629,7 @@ impl Part for Lock {
         };
         let Ok(m) = msg.downcast::<M>() else { return };
         match *m {
-            M::Edited(t) => self.set_password(st, t),
+            M::Edited(on, t) => self.set_password(st, on, t),
             M::Submit => self.submit(st),
             M::Woke => {
                 // (a pointer moving says so many times a second: once in a
@@ -1439,8 +1703,12 @@ impl Part for Lock {
             }
             M::PhotoNext => {
                 if self.sb.photos.len() > 1 {
-                    self.sb.photo = (logic::random() * self.sb.photos.len() as f64) as usize % self.sb.photos.len();
-                    self.load_photo(st);
+                    let next = (logic::random() * self.sb.photos.len() as f64) as usize % self.sb.photos.len();
+                    // (the same one again: it stays, as the QML's unchanged source)
+                    if next != self.sb.photo % self.sb.photos.len() {
+                        self.sb.photo = next;
+                        self.load_photo(st);
+                    }
                 }
             }
             M::FingerRetry => {
@@ -1505,7 +1773,11 @@ impl Part for Lock {
                 }
             }
             M::Wallpaper(path, size, px) => {
-                let Some((sharp, soft)) = px else { return };
+                let Some((sharp, soft)) = px else {
+                    // (no picture: the entrance over the plain colour)
+                    self.wins.iter_mut().for_each(reveal);
+                    return;
+                };
                 let (sharp, soft) = (Image::from_rgb8(sharp), Image::from_rgb8(soft));
                 for w in &mut self.wins {
                     if w.picture.0 == path && w.picture.1 == size {
@@ -1513,6 +1785,7 @@ impl Part for Lock {
                         d.set_wallpaper(sharp.clone());
                         d.set_soft(soft.clone());
                         d.set_has_wallpaper(true);
+                        w.sharp = Some(sharp.clone());
                     }
                 }
                 self.intro.picture(&path, &sharp, &soft);
@@ -1551,6 +1824,20 @@ impl Part for Lock {
                 }
                 self.art.1 = imgs;
             }
+            M::Position(bus, pos) => {
+                if bus == self.position.0 && pos != self.position.1 {
+                    self.position.1 = pos;
+                    self.player(st);
+                }
+            }
+            M::RevealNow => self.wins.iter_mut().for_each(reveal),
+            M::Retake => {
+                if self.held && self.lock.is_none() && !self.demo {
+                    eprintln!("tessera-ui: lock: taking the session lock again (try {})", self.retakes);
+                    self.take(st);
+                    self.rules(st);
+                }
+            }
         }
     }
 
@@ -1569,10 +1856,16 @@ impl Part for Lock {
                 a.update(false, f);
             }
             // the entrance plays once the screen has shown its first frame
-            if w.surface.mapped.get() && !w.revealed {
-                w.revealed = true;
-                w.ui.global::<ui::LockData>().set_revealed(true);
+            // and has its wallpaper (else the circle opens over black and
+            // the picture cuts in after); 800 ms at most
+            if w.surface.mapped.get() && !w.revealed && !w.waiting {
+                w.waiting = true;
                 sized = true;
+                let to = Self::send(st);
+                slint::Timer::single_shot(Duration::from_millis(800), move || to(Box::new(M::RevealNow)));
+            }
+            if w.waiting && (w.sharp.is_some() || path.is_empty()) {
+                reveal(w);
             }
             // the wallpaper at this screen's size
             let (lw, lh) = w.surface.logical_size();
@@ -1644,6 +1937,13 @@ impl Lock {
                 .collect();
             self.notes_push();
         }
+        // The veil (Lock.qml's lockveil), as LockFx steps: made from the
+        // lock's own pictures while they're still here (before `held` goes)
+        if let Some(step) = v["veil"].as_str() {
+            let pictures: Vec<(String, Image)> = self.wins.iter().filter_map(|w| w.sharp.clone().map(|p| (w.output.clone(), p))).collect();
+            let (zoom, ms) = (v["zoom"].as_bool().unwrap_or(true), v["ms"].as_f64().unwrap_or(0.0));
+            self.veil.step(st, step, zoom, ms, &pictures);
+        }
         if let Some(h) = v["held"].as_bool() {
             self.set_held(st, h);
         }
@@ -1666,6 +1966,17 @@ impl Lock {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn hands_only_turn_forward() {
+        use super::forward;
+        assert_eq!(forward(-1.0, 354.0), 354.0);
+        // 354° → 0°: six degrees on, not round the other way
+        assert_eq!(forward(354.0, 0.0), 360.0);
+        assert_eq!(forward(360.0, 6.0), 366.0);
+        assert_eq!(forward(366.0, 6.0), 366.0);
+        assert_eq!(forward(725.0, 10.0), 730.0);
+    }
+
     #[test]
     fn modes_from_the_environment() {
         // (the test binary has no --demo: real unless a sandbox says so)

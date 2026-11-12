@@ -10,6 +10,10 @@
 //! setting, the startup chime, LockFx's settle under it): LoginIntro.qml
 //! says `{"to":"lock","intro":"arm"}` (the cover goes up), `"play"` (its
 //! clock starts; `pace` slows it for recording) and `"stop"`.
+//! Its clock starts once every screen shows its cover (and, Glass, its
+//! picture: LoginIntro.qml's pictureReady), 900 ms after "play" at most (its
+//! holdLimit): started at once, the first few hundred ms played to a screen
+//! not up yet, or over black while the picture decoded.
 //! Not like the QML: the blur is a cross-fade from a blurred copy (Slint has
 //! no blur); the badge isn't cut by the opening as it grows (it has faded by
 //! then).
@@ -33,6 +37,8 @@ struct Win {
     surface: Rc<Surface>,
     ui: ui::LoginIntro,
     picture: (String, (u32, u32)),
+    /// a wallpaper is in it (Glass)
+    ready: bool,
 }
 
 #[derive(Default)]
@@ -40,6 +46,8 @@ pub struct Intro {
     wins: Vec<Win>,
     shown: bool,
     started: Option<Instant>,
+    /// "play" asked, the clock waiting for the screens
+    asked: Option<Instant>,
     pace: f64,
     material: bool,
     timer: slint::Timer,
@@ -92,6 +100,7 @@ impl Intro {
                 self.pace = pace;
                 self.shown = true;
                 self.started = None;
+                self.asked = None;
                 for (o, name) in st.outputs_now() {
                     self.window(st, &o, &name);
                 }
@@ -99,7 +108,8 @@ impl Intro {
             }
             "play" if self.shown => {
                 self.pace = pace.max(1.0);
-                self.started = Some(Instant::now());
+                self.started = None;
+                self.asked = Some(Instant::now());
                 let to = st.shell.sender(super::NAME);
                 self.timer.start(slint::TimerMode::Repeated, Duration::from_millis(16), move || to(Box::new(Tick)));
             }
@@ -111,12 +121,25 @@ impl Intro {
         self.timer.stop();
         self.shown = false;
         self.started = None;
+        self.asked = None;
         for w in std::mem::take(&mut self.wins) {
             st.drop_surface(&w.surface);
         }
     }
 
+    /// Every screen shows its cover (Glass: with its picture)
+    fn ready(&self) -> bool {
+        !self.wins.is_empty() && self.wins.iter().all(|w| w.surface.mapped.get() && (self.material || w.ready))
+    }
+
     pub fn tick(&mut self, st: &mut State) {
+        if self.started.is_none() {
+            let Some(a) = self.asked else { return };
+            if !self.ready() && a.elapsed() < Duration::from_millis(900) {
+                return;
+            }
+            self.started = Some(Instant::now());
+        }
         let Some(s) = self.started else { return };
         let t = s.elapsed().as_secs_f64() * 1000.0 / self.pace.max(1.0);
         if t >= self.length() {
@@ -177,7 +200,8 @@ impl Intro {
             ui.set_has_picture(true);
         }
         ui.show().expect("show intro");
-        self.wins.push(Win { output: name.to_string(), surface, ui, picture: (String::new(), (0, 0)) });
+        let ready = self.picture.is_some();
+        self.wins.push(Win { output: name.to_string(), surface, ui, picture: (String::new(), (0, 0)), ready });
     }
 
     pub fn output_added(&mut self, st: &mut State, output: &WlOutput, name: &str) {
@@ -196,11 +220,12 @@ impl Intro {
     /// A decoded wallpaper (the lock's decoder): the one this intro waits for
     pub fn picture(&mut self, path: &str, sharp: &Image, soft: &Image) {
         self.picture = Some((path.to_string(), sharp.clone(), soft.clone()));
-        for w in &self.wins {
+        for w in &mut self.wins {
             if w.picture.0 == path {
                 w.ui.set_wallpaper(sharp.clone());
                 w.ui.set_soft(soft.clone());
                 w.ui.set_has_picture(true);
+                w.ready = true;
             }
         }
     }

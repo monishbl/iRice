@@ -1,0 +1,43 @@
+# StandBy (Bedside mode), both looks. Sandbox clock may be after 22:00: night mode (red); compare in the same mode.
+# MANUAL: put 3+ JPEGs in the arena's ~/Pictures first (needed for the photos view)
+setup mkdir -p ~/Pictures && cp /usr/share/backgrounds/*.jpg ~/Pictures/ 2>/dev/null; true
+ipc lock lock
+wait 2
+ipc lock demo standby
+wait 1
+shot clock
+note Clock view centred across, dots at the bottom visible for 4 s then fade (400 ms) (PASS earlier; red in night mode). Material: thin stacked clock, date line (+weather), battery/weather cookies; may have no battery.
+wait 5
+shot dots-gone
+note About 5 s later the page dots at the bottom have faded out.
+key -k Right
+wait 1
+shot widgets
+note FAILED earlier: widgets view must show an analog clock with hands at the time plus the calendar: "Nov 2026", Month/Week/To-do tabs with Month chosen, prev/next arrows, six weeks with the adjacent months' days dimmed, today marked, dots under days with events, an "Every day: Daily" line when a daily event exists, and "Today" with a + button and today's events. Rust showed only the analog dial and a month calendar without tabs, arrows, event dots, adjacent days, Every day line or Today list.
+rec photos 2 key -k Right
+note FAILED earlier: the photo must FADE IN (opacity ramps over ~800 ms; QML cross-fades in ~400 ms over 25 frames); Rust was a hard cut (1 changed frame). Small clock bottom-right.
+wait 3
+shot photos
+note Photos view: photo shown with the small clock bottom-right.
+# Step 3: photo change every 20 s
+rec photo-swap 45 ipc lock demo standby
+note FAILED earlier: every 20 s a new photo replaces the old one in a single frame, as QML does (QML's Image reloads faster than its 800 ms fade). Rust dimmed the old photo for ~2.7 s before the swap: FAIL if the old one dims for seconds first.
+# Step 4: scroll
+ptr scroll 0 3
+wait 1
+shot scroll-down
+note Scroll down cycles to the next view like Right (NOT RUN earlier: the scroll command did not change QML either; check both).
+ptr scroll 0 -3
+wait 1
+shot scroll-up
+note Scroll up cycles back like Left.
+# Step 5: night
+# NOTE: night mode (everything red/dim) applies when the sandbox time is 22:00-06:00 (PASS earlier); otherwise skip.
+# Step 6: burn-in
+# MANUAL: shots at 3 consecutive minute changes: the content's vertical position differs each time and glides (~3000 ms in-out) (NOT RUN earlier)
+# Step 8: back
+rec off 1.5 ipc lock demo off
+note Back to the lock (morph or fade per lock.standbyTransition); lock visible (PASS earlier).
+wait 1
+ipc lock unlock
+wait 2

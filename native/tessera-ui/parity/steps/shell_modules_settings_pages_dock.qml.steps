@@ -1,0 +1,15 @@
+# dock: Dock heading of Menu Bar & Dock. Check in each look.
+ipc panels settings dock
+wait 2
+shot dock-top
+note Page lands on Menu Bar & Dock at the Dock heading: groups "Show the dock", Size, Kept in Dock, Add to Dock; same labels and details in both shells.
+ptr move 1100 600 scroll 0 5
+wait 1
+shot dock-scroll
+note Lower groups (Add to Dock "Search apps" field, More options) same rows as the QML. Glass: the "Add" button is 26 px tall, about 20 px wider than its label (QML 26); Material has no Magnification, Glass does.
+# MANUAL: D1 click "Show the dock" off: footer line appears, Size / Kept in Dock / Add to Dock groups fade to 0.45 and ignore clicks; on again restores.
+# MANUAL: D2 drag the Size slider end to end (Material 36-56, Glass 32-72): detail goes by 2 px, dock.iconSize saved even, same ends as QML.
+# MANUAL: D3 click the first pinned app's minus: row goes and the dock loses the icon; click "Search apps", type first 3 letters of its name: up to 6 matches while typing (field keeps focus and text), the removed app among them; Add puts it back at the end of Kept in Dock. Glass: Add button 26 px tall.
+# MANUAL: D4 open More options: Material shows "App names in the App Drawer" and no Magnification, Glass the opposite; Glass: drag Magnification far left: detail "Off"; one step right: "110% when you point at an icon".
+# MANUAL: D5 drag Space between icons: detail = round(size x gap) px, matching QML at the same slider position.
+ipc panels close

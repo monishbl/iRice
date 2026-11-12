@@ -32,7 +32,8 @@ use tessera_core::surfaces::kit::hex;
 tessera_core::gl_fn!(ui);
 use tessera_core::theme;
 use tessera_core::wayland::{Spec, State, Surface};
-use slint::{ComponentHandle, ModelRc, VecModel};
+use slint::ComponentHandle;
+use tessera_core::rows::Rows;
 use smithay_client_toolkit::shell::wlr_layer::{Anchor, KeyboardInteractivity, Layer};
 use smithay_client_toolkit::shell::WaylandSurface;
 use std::any::Any;
@@ -82,6 +83,11 @@ pub struct Resources {
     timer: Option<slint::Timer>,
     shown: bool,
     started: Option<std::time::Instant>,
+    /// an island is open: its figures' popover may open any moment, so the
+    /// graphs already hold the last minute (Resources.desktopUsers)
+    warm: bool,
+    /// the rows, changed in place each second (a new model rebuilt them all)
+    rows: Rows<ui::ResRow>,
 }
 
 impl Resources {
@@ -130,9 +136,7 @@ impl Resources {
 
     fn refresh(&mut self, st: &State) {
         let rows = self.rows(st);
-        if let Some(w) = &self.win {
-            w.ui.set_rows(ModelRc::new(VecModel::from(rows)));
-        }
+        self.rows.set(rows);
     }
 
     fn open(&mut self, st: &mut State, key: String, x: f32, y: f32, screen: String) {
@@ -165,6 +169,7 @@ impl Resources {
             let ui = ui::ResourcePopover::new().expect("ResourcePopover");
             st.shell.apply_theme(&ui.global::<ui::Theme>());
             ui.set_on_glass(st.shell.plugin && !st.shell.look.material);
+            ui.set_rows(self.rows.model());
             ui.show().expect("show resources popover");
             self.win = Some(Win { output: screen, surface, ui, pos, glass_sent: String::new() });
         } else if let Some(win) = self.win.as_mut() {
@@ -177,6 +182,8 @@ impl Resources {
         }
         self.refresh(st);
         if let Some(w) = &self.win {
+            // (read once while still hidden, so the change to shown animates: fade and 6 px drop)
+            let _ = w.ui.get_progress();
             w.ui.set_shown(true);
         }
     }
@@ -185,7 +192,7 @@ impl Resources {
     /// figures (Resources.qml's menubarActive: the graphs then already hold
     /// the last minute when the popover opens)
     fn sampling(&mut self, st: &State) {
-        let want = self.shown || bar_figures(&st.shell.cfg);
+        let want = self.shown || self.warm || bar_figures(&st.shell.cfg);
         if want && self.timer.is_none() {
             self.sample();
             let tx = st.tx.clone();
@@ -218,6 +225,11 @@ impl Part for Resources {
     fn message(&mut self, st: &mut State, msg: Box<dyn Any + Send>) {
         let msg = match msg.downcast::<serde_json::Value>() {
             Ok(v) => {
+                if let Some(w) = v["warm"].as_bool() {
+                    self.warm = w;
+                    self.sampling(st);
+                    return;
+                }
                 let key = v["key"].as_str().unwrap_or("cpu").to_string();
                 let screen = v["screen"].as_str().unwrap_or("").to_string();
                 if v["open"].as_bool() == Some(true) {

@@ -1,0 +1,35 @@
+# Settings window: Material 1040x700 at 440,205 (page column from x~772); Glass 860x620 at 530,230. Sidebar rows (Material, x=560): Appearance 335, Wallpaper 385, Desktop 435, Menu bar 485, Lock 535, Notifications 626, Focus 676, Windows 767, Displays 858.
+# Click coordinates inside pages are not known in advance: those steps are MANUAL unless a keyboard path exists. Check in each look.
+ipc panels settings shortcuts
+wait 2
+shot kb
+note K1 Keyboard page: Tap Super row, search + Add shortcut, 'Your shortcuts' (empty state with Add shortcut), then groups in the same order with the same keycaps (ALT where Super is).
+# K2 search (click on search field first is MANUAL; Tab from page start may reach it)
+key -k Tab
+key screenshot
+wait 1
+shot kb-search
+note K2 typed 'screenshot': only matching binds, same rows in both shells (if the field did not have focus this shot is the plain list: re-check manually).
+key -k BackSpace -k BackSpace -k BackSpace -k BackSpace -k BackSpace -k BackSpace -k BackSpace -k BackSpace -k BackSpace -k BackSpace
+key alt s
+wait 1
+shot kb-keys
+note K2 query 'alt s' matches keys only: same rows in both shells.
+key -k BackSpace -k BackSpace -k BackSpace -k BackSpace -k BackSpace
+key zzzz
+wait 1
+shot kb-none
+note K2 'zzzz': No shortcuts match “zzzz” plus a Clear search button; Clear search restores the full list with the field empty.
+# K5 keyboard on rows
+key -k Escape
+# MANUAL: K3 click a default bind row (not the ...): popup under its ... with Change shortcut / Turn off / Reset to default (greyed when unchanged); right-click opens the same menu (batch 2 fixed #11)
+# MANUAL: K4 Turn off: label secondary, 'Off' detail, keycaps faded, undo row 'Turned off X' on top; Undo restores; after 9 s the undo row disappears
+# MANUAL: K5 Tab through rows with shots: focus ring on bind rows, Return opens the row menu, Esc closes (fixed #12)
+# MANUAL: K6 Material hover over a bind row lightens the tile (8 % layer); with a row's menu open its ... stays lit (#14, #15)
+# MANUAL: K7 Change shortcut form: head 'Change shortcut', subtitle '<label> . <group>', Keys group with recorder, no Name/Action/Options; SHIFT chip shows a Default row 'Use default keys'; clash shows 'Used by ...'
+# MANUAL: K8 Add shortcut kind Command, type true, record F9, Save: 'Your shortcuts' lists 'Runs true' F9 with undo 'Runs true: F9'; Undo removes it
+# MANUAL: K9 validation texts: 'Choose a key: click the box and press one, or use Edit as text.' / 'Choose a Tessera action.' / 'Choose an app from the list.'
+# MANUAL: K10 App kind: search 'fire' narrows list, click app tints with a check and moves first, Name 'Open <app>'; reopen: search empty and full list (#31); Tab into list, Space chooses (#33 fixed batch 3)
+# MANUAL: K11 conflict: 'Used by X', 'Only one shortcut can use ...', 'Use anyway (turns that one off)'; plain Save shows 'These keys are used by X. ...'; cancel
+# MANUAL: K12 More options: Screenshots and Text in screenshots rows identical
+# MANUAL: never run the shortcuts you record; K13 Glass repeats K1, K3, K6, K10 (runner runs this file in both looks)

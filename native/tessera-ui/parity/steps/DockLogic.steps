@@ -1,0 +1,54 @@
+# Arena IRICE-TEST 1920x1080 scale 1, the user's config (expressive motion, Colloid, their 4 widgets).
+# Each file runs top to bottom from a fresh desktop. `static NAME x y w h`: that region must not change
+# from there until the next `shot`, `rec` or `look` (the no-reload blocks end with their last close).
+# Right-clicks: `ptr ... down up` lines marked (right button) need the runner's right button.
+
+look glass
+static dl-right 1000 990 200 90
+setup foot &
+wait 2
+setup foot &
+wait 2
+setup hyprctl dispatch 'hl.dsp.window.close({ window = "class:foot" })'
+wait 1.5
+setup hyprctl dispatch 'hl.dsp.window.close({ window = "class:foot" })'
+wait 1.5
+note on open only foot's icon is inserted; on close nothing hops and Downloads/Trash don't reload (they may slide as a block)
+setup python3 -c "import json,os;p=os.path.expanduser('~/.config/tessera/config.json');c=json.load(open(p));c.setdefault('dock',{})['autoHide']=json.loads('\"always\"');json.dump(c,open(p,'w'),indent=4)"
+ptr move 1500 500
+wait 1.5
+rec dl-autohide 3 ptr glide 960 1079 300 sleep 1200 glide 960 700 300 sleep 800
+setup python3 -c "import json,os;p=os.path.expanduser('~/.config/tessera/config.json');c=json.load(open(p));c.setdefault('dock',{})['autoHide']=json.loads('\"off\"');json.dump(c,open(p,'w'),indent=4)"
+wait 1
+ptr move 1027 1038
+note (right button, manual) right-click Trash to open its menu, then:
+ipc panels open controlCenter IRICE-TEST
+wait 0.5
+shot dl-menu-gone
+note opening a panel closes the dock menu at once
+ipc panels close
+
+look material
+static dl-right 1000 990 200 90
+setup foot &
+wait 2
+setup foot &
+wait 2
+setup hyprctl dispatch 'hl.dsp.window.close({ window = "class:foot" })'
+wait 1.5
+setup hyprctl dispatch 'hl.dsp.window.close({ window = "class:foot" })'
+wait 1.5
+note on open only foot's icon is inserted; on close nothing hops and Downloads/Trash don't reload (they may slide as a block)
+setup python3 -c "import json,os;p=os.path.expanduser('~/.config/tessera/config.json');c=json.load(open(p));c.setdefault('dock',{})['autoHide']=json.loads('\"always\"');json.dump(c,open(p,'w'),indent=4)"
+ptr move 1500 500
+wait 1.5
+rec dl-autohide 3 ptr glide 960 1079 300 sleep 1200 glide 960 700 300 sleep 800
+setup python3 -c "import json,os;p=os.path.expanduser('~/.config/tessera/config.json');c=json.load(open(p));c.setdefault('dock',{})['autoHide']=json.loads('\"off\"');json.dump(c,open(p,'w'),indent=4)"
+wait 1
+ptr move 1027 1032
+note (right button, manual) right-click Trash to open its menu, then:
+ipc panels open controlCenter IRICE-TEST
+wait 0.5
+shot dl-menu-gone
+note opening a panel closes the dock menu at once
+ipc panels close

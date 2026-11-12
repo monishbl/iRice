@@ -1,0 +1,46 @@
+# Region selector. Check in each look.
+setup foot -T A & foot -T B &
+wait 3
+rec rs-first 1 ipc screen region screenshot
+note Dim and hint appear no later in Rust than in QML (+-1 frame): the first selection must be immediate.
+wait 1
+ptr move 400 300 sleep 200 down glide 900 650 400
+shot rs-drag
+note Dim outside the rectangle 400..900 x 300..650; outline square (1 px white / 2 px primary); readout "500 x 350" at about (908,658). Compare QML vs Rust. NOTE: click on layer surfaces may not register in the harness.
+rec rs-up 1 ptr move 400 300 down glide 900 650 200 up
+note On release the overlay goes at once and the screenshot thumbnail appears about 160 ms later (QML vs Rust).
+wait 2
+ipc shotEditor close
+ipc screen region ocr
+wait 1
+ptr glide 700 400 150
+wait 1
+shot rs-window
+note Pointer over a window: its rect outlined (r 12 Glass / 16 Material), the rest dimmed; hint "Drag to select an area to copy text, or click a window. Esc to cancel."
+key -k Escape
+wait 1
+shot rs-esc
+note Escape removes the overlay completely.
+ipc screen circle
+wait 1
+rec rs-circle 2 ptr move 800 500 down glide 1000 400 150 glide 1200 500 150 glide 1000 650 150 glide 800 520 150
+note Circle to search: the stroke has a glow, no box and no size readout while drawing. The search itself needs the network and is not testable here; the Rust log should show screen.captured ["circle", ...].
+shot rs-circle-shot
+note Stroke and glow still visible (button held); no rectangle or size.
+ptr move 960 540 up
+wait 1
+ipc screen region screenshot
+wait 1
+key -k Escape
+wait 1
+shot rs-keys-esc
+note After Escape the overlay is gone.
+ipc screen region screenshot
+wait 1
+key -k Return
+wait 2
+shot rs-keys-return
+note Return captures the whole screen (the screenshot thumbnail appears).
+ipc shotEditor close
+# MANUAL: Right button at (960,540) while the selector is open (the pointer helper has no right button)
+# MANUAL: Circle search result (no network): check the Rust log for screen.captured

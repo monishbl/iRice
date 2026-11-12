@@ -1,0 +1,18 @@
+# menubar: Menu Bar & Dock page. Check in each look.
+ipc panels settings menubar
+wait 2
+shot mb-top
+note M1: top of the page, same groups, labels, details and order as QML; key combos in the Search/AI/Quick Settings/Clock hints read the same as the QML (e.g. "Super Space"). Battery Off hides the detail.
+ptr move 1100 600 scroll 0 5
+wait 1
+shot mb-mid
+note M1 cont.: scrolled; same groups, labels, details and order as QML (battery, spaces, buttons).
+ptr move 1100 600 scroll 0 10
+wait 1
+shot mb-dock
+note M1/M6: scroll until the Dock heading shows; "Dock" and "Quick Settings" headings and their groups follow More options, as the QML.
+# MANUAL: M2 click battery "Off", then "% inside", then "Icon": Off hides the detail; "% inside" shows it; after "Icon" config menubar.battery true, batteryPercent "off"; both shells write the same.
+# MANUAL: M3 set Spaces to "Off", open More options: the three spaces rows under "Left and centre" are hidden; "Dots" brings them back; "Spaces always shown" slider: detail "1 space; ..." at left end, "N spaces" else.
+# MANUAL: M4 Screens chips need 2 outputs (else note "1 screen"): chip order and colours as QML (first screen at the RIGHT, Glass on = solid accent); click one off then on: list goes [other] -> [].
+# MANUAL: M5 switch "Colour picker" on: menubar.utilButtons gains "colorPicker" and the menu bar shows the button in both shells.
+ipc panels close

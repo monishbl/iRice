@@ -1,0 +1,59 @@
+# Screenshot editor flow (thumbnail, history, save, delete). Check in each look.
+setup (magick -size 1600x900 xc:white -fill black -pointsize 48 -annotate +100+200 "Invoice total 42.00" -annotate +100+320 "https://example.com/pay" /tmp/t.png || convert -size 1600x900 xc:white -fill black -pointsize 48 -annotate +100+200 "Invoice total 42.00" -annotate +100+320 "https://example.com/pay" /tmp/t.png); cp /tmp/t.png /tmp/t2.png
+ipc shotEditor thumbnail /tmp/t.png
+wait 1
+shot se-thumb
+note Thumbnail card about 212x125 at x 1684..1896, y 931..1056, slid in at the bottom right.
+ptr move 1790 993 click
+wait 1
+shot se-editor
+note Clicking the thumbnail opens the editor centred. NOTE: click on layer surfaces may not register in the harness.
+key -k p
+ptr move 500 400 down glide 800 500 200 up
+ipc shotEditor thumbnail /tmp/t2.png
+wait 1
+ptr move 1790 993 click
+wait 1
+shot se-ask
+note Banner "Save changes before opening the new screenshot?" with Keep editing / Discard changes / Save buttons. Discard then reopens the editor on t2 with no marks.
+key -k Escape
+wait 1
+ipc shotEditor close
+wait 1
+ipc shotEditor edit /tmp/t.png
+wait 1
+key -k p
+ptr move 500 300 down glide 600 350 100 up
+ptr move 500 400 down glide 600 450 100 up
+ptr move 500 500 down glide 600 550 100 up
+key -M ctrl -k z -m ctrl
+key -M ctrl -k z -m ctrl
+key -M ctrl -M shift -k z -m shift -m ctrl
+wait 1
+shot se-history
+note After 3 marks, Ctrl+Z twice, Ctrl+Shift+Z once: exactly 2 marks are visible, and the Undo/Redo buttons are enabled/disabled to match (Redo enabled, Undo enabled).
+key -k a
+ptr move 600 700 down glide 1000 700 100 up
+key -k Escape
+wait 1
+key -k Escape
+wait 1
+ipc shotEditor edit /tmp/t.png
+wait 1
+shot se-tool-memory
+note After closing and reopening the editor the last tool (Arrow) is still selected (highlighted in the top bar); the colour choice (4 Orchid if picked) persists too.
+ptr move 500 400 down glide 800 500 100 up
+rec se-save 1 key -M ctrl -k s -m ctrl
+note Ctrl+S: the editor fades out in about 200 ms and the thumbnail of the saved file slides in; the file on disk has the marks (QML vs Rust timing).
+wait 2
+ipc shotEditor close
+wait 1
+ipc shotEditor edit /tmp/t2.png
+wait 1
+shot se-delete-before
+note Editor open on a copy; the trash button is the first action button of the bottom bar.
+# MANUAL: Delete + Undo: click the trash in the bottom bar -> toast "Screenshot deleted" with Undo; click Undo -> editor back with the marks; delete again and wait 8 s: the file is in the Trash (needs real clicks on layer surfaces)
+ipc shotEditor close
+wait 1
+shot se-closed
+note ipc shotEditor close closes the editor without asking, even with unsaved marks.

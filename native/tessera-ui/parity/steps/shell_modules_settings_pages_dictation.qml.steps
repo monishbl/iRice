@@ -1,0 +1,13 @@
+# dictation: Dictation part of the Keyboard page ("shortcuts"). Check in each look.
+# Never let a model download finish; cancel within seconds. No network in the sandbox.
+ipc panels settings shortcuts
+wait 2
+ptr move 1100 600 scroll 0 40
+wait 1
+shot dic-part
+note D1: the "Dictation" group: same rows, details, buttons and footers as the QML; status row matches what is installed in the arena; model rows e.g. Tiny "Fastest, makes more mistakes - 75 MB" with Download buttons.
+# MANUAL: D2 click "Download" on Tiny: detail "Downloading... N%" counting up, other Download buttons greyed; click Cancel: back to "Fastest, makes more mistakes - 75 MB" (needs network: not testable offline).
+# MANUAL: D3 click the Language control, shot the list, pick "English": config dictation.language "en".
+# MANUAL: D4 toggle Play sounds: config dictation.sounds follows.
+# MANUAL: D5 open Keyboard, go to another page and back: a Dictation.refresh each time Keyboard opens (check the shell log); Rust must do the same.
+ipc panels close

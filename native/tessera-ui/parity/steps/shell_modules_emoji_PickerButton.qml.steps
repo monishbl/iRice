@@ -1,0 +1,15 @@
+# PickerButton: buttons on the GIF tab without a key. Check in each look.
+ipc panels open emoji IRICE-TEST
+wait 1
+# NOTE: click on layer surfaces may not register in the harness
+ptr move 1141 398 sleep 300 click
+wait 1
+shot buttons
+note GIF tab without key: two buttons centred under the text about y 640: "Open Settings" (primary) and "Get a key"; Glass row about x 849..1071. Same as QML.
+# Open Settings assumed near (906, 640); read the exact box from the shot
+ptr move 1141 398 sleep 300 click glide 906 640 200 sleep 300
+shot hover
+note Glass: background of the hovered button darkens within 150 ms (Material: 8 % layer). Same as QML.
+rec press 0.8 ptr move 906 640 sleep 100 down sleep 400 glide 960 700 100 up
+note Press on the button then release away from it: Glass shrinks to 97 % in 100 ms and returns; Material corners 20 -> 12 on a ~0.22 s spring, grows ~6 % with a small overshoot (~0.3 s), on release overshoots once and settles. Compare QML vs Rust strips.
+ipc panels close

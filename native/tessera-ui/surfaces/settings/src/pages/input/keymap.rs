@@ -527,6 +527,8 @@ pub fn key_name(text: &str) -> Option<(String, bool)> {
         '\u{F703}' => name("Right"),
         '\u{F704}'..='\u{F71B}' => Some((format!("F{}", c as u32 - 0xF704 + 1), false)),
         '\u{F727}' => name("Insert"),
+        // (Slint's SysReq is the Print Screen key: core sends it for Print)
+        '\u{F731}' => name("Print"),
         '\u{F729}' => name("Home"),
         '\u{F72B}' => name("End"),
         '\u{F72C}' => name("Page_Up"),

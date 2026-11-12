@@ -28,7 +28,8 @@ use serde_json::json;
 use crate::theme;
 use crate::ui;
 use crate::wayland::{Spec, State, Surface};
-use slint::{ComponentHandle, Model, ModelRc, VecModel};
+use slint::{ComponentHandle, Model};
+use tessera_core::rows::Rows;
 use smithay_client_toolkit::reexports::client::protocol::wl_output::WlOutput;
 use smithay_client_toolkit::shell::wlr_layer::{Anchor, KeyboardInteractivity, Layer};
 use std::any::Any;
@@ -70,7 +71,8 @@ pub struct WallpaperPicker {
     /// the pictures listed, and the generation of that listing
     files: Vec<String>,
     listing: u64,
-    model: Option<Rc<VecModel<ui::Thumb>>>,
+    /// the thumbnails, handed to the window once (changed in place)
+    thumbs: Rows<ui::Thumb>,
     /// which thumbnails are decoded
     loaded: Vec<bool>,
     /// the range in view when the thumbnails were last asked for
@@ -177,6 +179,7 @@ impl WallpaperPicker {
             ui.on_open_folder(move || t2(Box::new(Msg::OpenFolder)));
             ui.on_dismissed(move || t3(Box::new(Msg::Dismissed)));
             ui.on_closed(move || t4(Box::new(Msg::Closed)));
+            ui.set_thumbs(self.thumbs.model());
             ui.show().expect("show wallpaper picker");
             let a11y = crate::a11y::A11y::new(&surface, st.tx.clone());
             self.win = Some(Win { output: output.clone(), surface, ui, a11y, shown: false, glass_sent: String::new(), settled: false });
@@ -210,24 +213,23 @@ impl WallpaperPicker {
         }
         self.files = list;
         let names = self.files.iter().map(|p| ui::Thumb { name: p.rsplit('/').next().unwrap_or(p).into(), image: Default::default(), ready: false });
-        let model = Rc::new(VecModel::from(names.collect::<Vec<_>>()));
+        self.thumbs.set(names.collect());
         self.loaded = vec![false; self.files.len()];
         self.range = (usize::MAX, 0);
         let applied = self.applied(st);
         let w = self.win.as_ref().unwrap();
-        w.ui.set_thumbs(ModelRc::from(model.clone()));
         w.ui.set_applied(applied);
         w.ui.set_current(applied.max(0));
         w.ui.set_listed(true);
         w.ui.invoke_reveal();
-        self.model = Some(model);
         self.pool.get_or_insert_with(|| Pool::new(2, "tessera-thumbs"));
         self.thumbs(st);
     }
 
     /// Ask for the thumbnails in view, let go of the far ones
     fn thumbs(&mut self, st: &mut State) {
-        let (Some(w), Some(model)) = (&self.win, &self.model) else { return };
+        let Some(w) = &self.win else { return };
+        let model = self.thumbs.model();
         let (offset, width, step) = (w.ui.get_offset(), w.ui.get_list_width(), w.ui.get_step());
         let want = wanted(offset, width, step, self.files.len());
         let range = (want.iter().copied().min().unwrap_or(0), want.iter().copied().max().unwrap_or(0));
@@ -272,7 +274,7 @@ impl WallpaperPicker {
         }
         // (an unreadable one stays an empty tile, as the QML's)
         self.loaded[i] = true;
-        let Some(model) = &self.model else { return };
+        let model = self.thumbs.model();
         let Some(mut t) = model.row_data(i) else { return };
         if let Some(px) = px {
             t.image = slint::Image::from_rgb8(px);
@@ -312,7 +314,7 @@ impl WallpaperPicker {
             let w = self.win.take().unwrap();
             st.shell.glass.set(&w.output, NS, &[]);
             st.drop_surface(&w.surface);
-            self.model = None;
+            self.thumbs.set(Vec::new());
             self.files.clear();
             self.loaded.clear();
             self.pool = None;
@@ -337,7 +339,9 @@ impl Part for WallpaperPicker {
         if self.win.as_ref().is_some_and(|w| w.output == name) {
             let w = self.win.take().unwrap();
             st.drop_surface(&w.surface);
-            self.model = None;
+            self.thumbs.set(Vec::new());
+            self.files.clear();
+            self.loaded.clear();
             self.pool = None;
         }
     }

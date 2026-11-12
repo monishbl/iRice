@@ -39,7 +39,7 @@ use tessera_core::shell::{Command, Part};
 use tessera_core::surfaces::polar as shape;
 use tessera_core::theme;
 use tessera_core::wayland::{Spec, State, Surface};
-use slint::{ComponentHandle, ModelRc, VecModel};
+use slint::{ComponentHandle};
 use smithay_client_toolkit::shell::wlr_layer::{Anchor, KeyboardInteractivity, Layer};
 use smithay_client_toolkit::shell::WaylandSurface;
 use std::any::Any;
@@ -100,6 +100,11 @@ struct Win {
     ui: ui::SessionDialog,
     a11y: Option<crate::a11y::A11y>,
     glass_sent: String,
+    /// the choices, changed in place (they were made again on every hover,
+    /// which restarted a press under the pointer)
+    opts: tessera_core::rows::Rows<ui::SOpt>,
+    /// About's rows, changed in place (rows.rs)
+    rows: tessera_core::rows::Rows<ui::SRow>,
 }
 
 pub struct Session {
@@ -176,17 +181,21 @@ impl Session {
         on!(on_choose, |i| M::Choose(i));
         on!(on_pressing, |i, p| M::Press(i, p));
         on!(on_dismissed, | | M::Dismissed);
+        let opts = tessera_core::rows::Rows::new();
+        ui.set_options(opts.model());
+        let rows = tessera_core::rows::Rows::new();
+        ui.set_rows(rows.model());
         ui.show().expect("show session");
         let a11y = crate::a11y::A11y::new(&surface, st.tx.clone());
         surface.hide();
-        self.win = Some(Win { output: output.into(), surface, ui, a11y, glass_sent: String::new() });
+        self.win = Some(Win { output: output.into(), surface, ui, a11y, glass_sent: String::new(), opts, rows });
         true
     }
 
     fn options(&self, st: &State) {
         let Some(w) = &self.win else { return };
         let look = &st.shell.look;
-        let roles: std::collections::HashMap<String, String> = if look.material { theme::material_roles(&look.seed, look.dark, &look.style).into_iter().collect() } else { Default::default() };
+        let roles: std::collections::HashMap<String, String> = if look.material { theme::look_roles(&look).into_iter().collect() } else { Default::default() };
         let r = |k: &str| roles.get(k).map(|v| hex(v)).unwrap_or(slint::Color::from_rgb_u8(128, 128, 128));
         let cap = |s: &str| {
             let mut c = s.chars();
@@ -207,7 +216,7 @@ impl Session {
                 danger: *id == "shutdown" || *id == "restart",
             })
             .collect();
-        w.ui.set_options(ModelRc::new(VecModel::from(opts)));
+        w.opts.set(opts);
         w.ui.set_current(self.current as i32);
         w.ui.set_keyboard_confirm(!self.action.is_empty());
     }
@@ -297,6 +306,15 @@ impl Session {
 }
 
 impl Part for Session {
+    // (the window it keeps while closed, made ahead: window() leaves it unmapped)
+    fn prewarm(&mut self, st: &mut State) {
+        if self.win.is_none() {
+            if let Some(out) = st.likely_output() {
+                self.window(st, &out);
+            }
+        }
+    }
+
     fn name(&self) -> &'static str {
         NAME
     }
@@ -330,7 +348,7 @@ impl Part for Session {
                             .filter(|(_, k)| !s(k).is_empty())
                             .map(|(l, k)| ui::SRow { label: (*l).into(), value: s(k).into() })
                             .collect();
-                        w.ui.set_rows(ModelRc::new(VecModel::from(rows)));
+                        w.rows.set(rows);
                         let logo = s("logo");
                         let img = logo.strip_prefix("file://").map(str::to_string).or(Some(logo)).filter(|p| p.starts_with('/')).and_then(|p| slint::Image::load_from_path(std::path::Path::new(&p)).ok());
                         w.ui.set_has_logo(img.is_some());
@@ -427,7 +445,7 @@ impl Part for Session {
         let y = ui.get_body_y() + bh * (1.0 - s) / 2.0;
         let o = ui.get_body_opacity();
         let shape = theme::glass_shape(&st.shell.look, x, y, bw * s, bh * s, 28.0 * s, o, 1.0);
-        let key = format!("{shape:?}");
+        let key = tessera_core::theme::glass_key(&shape);
         if key != w.glass_sent {
             st.shell.glass.set(&w.output, NS, if o > 0.002 { std::slice::from_ref(&shape) } else { &[] });
             w.glass_sent = key;

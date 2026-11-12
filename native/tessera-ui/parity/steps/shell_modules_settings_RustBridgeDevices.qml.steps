@@ -1,0 +1,27 @@
+# Settings window: Material 1040x700 at 440,205 (page column from x~772); Glass 860x620 at 530,230. Sidebar rows (Material, x=560): Appearance 335, Wallpaper 385, Desktop 435, Menu bar 485, Lock 535, Notifications 626, Focus 676, Windows 767, Displays 858.
+# Click coordinates inside pages are not known in advance: those steps are MANUAL unless a keyboard path exists. Check in each look.
+ipc panels settings network
+wait 5
+shot d1
+note D1 Wi-Fi list: same networks (top 30, connected first), known marks and lock icons as QML; D3 same Wi-Fi/Bluetooth backend notices (none when NetworkManager/BlueZ are fine).
+ptr move 1100 600 scroll 0 15
+wait 1
+shot d4
+note D4 Bluetooth group: adapter name, paired devices with pictures, trusted toggles as QML.
+ipc panels settings sound
+wait 3
+shot d7
+note D7 Sound page: AirPlay row as QML.
+ipc panels settings displays
+wait 3
+shot d8
+note D8 monitors, scales, DDC brightness rows (if an external screen), mirroring/TV row as QML.
+ipc panels settings phone
+wait 3
+shot d9
+note D9 phone row (or 'No phone'), adb/scrcpy install state, LocalSend/Quick Share availability, file manager list, firewall/pairing notice as QML.
+# MANUAL: D2 click Rescan: list refreshes, no 'no act' in the log
+# MANUAL: D5 click Test speed: live figure and button 'Cancel'; Cancel stops it
+# MANUAL: D6 network menu > Share: QR shows; Copy password puts it on the clipboard; closing, leaving to Sound and back leaves the card closed
+# MANUAL: D8 click Identify: numbers show on the screens
+# MANUAL: never wifiForget, btForget, pairing, installs, displaysSet/Reset, sharingFix, fileManager install/remove

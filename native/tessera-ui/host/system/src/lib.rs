@@ -96,7 +96,8 @@ impl Mirror {
         let r = bus::get("Resources");
         // (whatever was sampled, for whoever asked: the bar, or the expanded
         // island's last line, which asks resources.use "island" itself)
-        h.set_state("resources", json!({"cpu": r["cpu"].as_f64().unwrap_or(0.0), "memory": r["memory"].as_f64().unwrap_or(0.0)}));
+        // (the island's status line shows the temperature too, and turns it red while hot)
+        h.set_state("resources", json!({"cpu": r["cpu"].as_f64().unwrap_or(0.0), "memory": r["memory"].as_f64().unwrap_or(0.0), "temperature": r["temperature"].as_f64().unwrap_or(0.0)}));
         // Power.has("cooldown"): Cool-down holds a request (the island's "running hot" wording)
         let cooling = p["requests"].as_array().is_some_and(|r| r.iter().any(|q| q["owner"] == "cooldown"));
         h.set_state("power.cooldown", json!(cooling));

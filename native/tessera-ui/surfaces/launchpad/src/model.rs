@@ -372,4 +372,41 @@ mod tests {
         assert_eq!(a, vec![("New Window".into(), "firefox --new-window %u".into()), ("New Private Window".into(), "firefox --private-window %u".into())]);
         assert_eq!(categories(t), vec!["Network", "WebBrowser"]);
     }
+
+    /// Every app's icon with an icon theme, as the drawer finds and draws it:
+    /// `ICON_THEMES=Colloid,Adwaita cargo test -p tessera-launchpad -- --ignored icons_in`
+    #[test]
+    #[ignore]
+    fn icons_in_the_themes() {
+        use crate::services::apps::{data_dirs, Apps};
+        use crate::services::icons::{build, roots, Icons};
+        let apps = Apps::scan_dirs(&data_dirs());
+        let themes = std::env::var("ICON_THEMES").unwrap_or("Colloid,Adwaita".into());
+        for theme in themes.split(',') {
+            let icons = Icons { theme: theme.into(), index: std::sync::Arc::new(build(&roots(), theme)) };
+            let (mut generic, mut failed, mut n) = (Vec::new(), Vec::new(), 0);
+            for e in apps.entries.iter().filter(|e| !e.no_display) {
+                n += 1;
+                let name = if e.icon.is_empty() { e.id.clone() } else { e.icon.clone() };
+                let exact = if name.starts_with('/') { Some(std::path::PathBuf::from(&name)) } else { icons.exact(&name) };
+                let Some(p) = icons.path(&[name.as_str()], &["application-x-executable"]) else {
+                    failed.push(format!("{} ({name}): no file at all", e.id));
+                    continue;
+                };
+                if exact.is_none() {
+                    generic.push(format!("{} ({name})", e.id));
+                }
+                if crate::appicon::load(&p, 64).is_none() {
+                    failed.push(format!("{} ({name}): {} won't draw", e.id, p.display()));
+                }
+            }
+            eprintln!("{theme}: {n} apps, {} generic, {} failed", generic.len(), failed.len());
+            for g in &generic {
+                eprintln!("  generic: {g}");
+            }
+            for f in &failed {
+                eprintln!("  FAILED: {f}");
+            }
+        }
+    }
 }

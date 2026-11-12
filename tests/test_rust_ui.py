@@ -89,7 +89,7 @@ class Agreement(unittest.TestCase):
         for word in ('"cmd"', '"surface"', '"screen"', '"closed"', '"call"'):
             self.assertIn(word, shell_rs)
         main_rs = (CRATE / "src/main.rs").read_text()
-        self.assertIn("Command::parse", main_rs)
+        self.assertIn("Command::from_value", main_rs)  # (each line read once: Command, then the bridge's state)
         # every call a part asks for is one RustUi.qml answers
         asked = set()
         for p in rust_sources():
@@ -351,7 +351,7 @@ class Agreement(unittest.TestCase):
         qml = (ROOT / "shell/services/RustUi.qml").read_text()
         self.assertIn("list !== root.armedWith", qml)
         self.assertIn('kind: "glass", tone: hex(Wallpaper.tone), cooldown: CoolDown.glass', qml)
-        self.assertIn('"glass" => Some(Box::new(crate::theme::shell_glass_from(&v)))', (CRATE / "core/src/services/bridge.rs").read_text())
+        self.assertIn('"glass" => Some(Box::new(crate::theme::shell_glass_from(v)))', (CRATE / "core/src/services/bridge.rs").read_text())
 
     def test_sharing_surfaces_feed_their_part_and_step_aside(self):
         # share, appstore, shelf, network (the Wi-Fi menu), statusmenus (the

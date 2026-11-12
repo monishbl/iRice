@@ -1,0 +1,33 @@
+# Right-clicks are press-and-hold here (the DSL's click is the left button).
+# Coordinates: IRICE-TEST 1920x1080, scale 1, the default Control Center layout
+# (setup below resets it). Material grid: x0 1512, y0 50, columns 94 apart
+# (86 wide), rows 80 apart (72 tall). Glass grid: x0 1560, y0 50, columns
+# and rows 82.5 apart (72.5). Default layout rows: 0 Wi-Fi 2x1 + Now Playing
+# 2x2; 1 Bluetooth, Night Light; 2 Focus 2x1, Stages, Dark Mode; 3 Display;
+# 4 Sound; 5 Screenshot, Record, Caffeine, Clipboard; 6 Mirroring 2x1.
+look material
+wait 3
+note panel: x 1844..1904, y 380..700 (mute 1874,410; slider 1874 440..640; button 1874,670); card x 1536..1832 bottom 700
+ipc shortcut volumeUp
+ptr glide 1874 410 200 sleep 300 glide 1874 540 200 sleep 300 glide 1874 670 200 sleep 300 click
+wait 0.5
+ptr glide 1700 600 300
+wait 3
+shot held-while-on-card
+note it stays up while the pointer moves over toggle, slider and card
+ptr glide 1000 600 300
+wait 2
+shot gone
+note gone ~1.6 s after leaving
+ipc shortcut volumeUp
+ptr glide 1874 640 150 sleep 50 down sleep 20 glide 1874 440 200 sleep 20 up
+wait 0.5
+setup wpctl get-volume @DEFAULT_AUDIO_SINK@
+note 1.00, handle at the top
+ptr move 1874 425 sleep 50 click
+wait 0.3
+shot empty-click
+note nothing happens between toggle and slider
+ptr move 1300 540 sleep 50 click
+wait 0.3
+note the click reaches the desktop (outside panel/card)

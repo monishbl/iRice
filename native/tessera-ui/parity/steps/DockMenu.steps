@@ -1,0 +1,30 @@
+# Arena IRICE-TEST 1920x1080 scale 1, the user's config (expressive motion, Colloid, their 4 widgets).
+# Each file runs top to bottom from a fresh desktop. `static NAME x y w h`: that region must not change
+# from there until the next `shot`, `rec` or `look` (the no-reload blocks end with their last close).
+# Right-clicks: `ptr ... down up` lines marked (right button) need the runner's right button.
+
+look glass
+setup sh -c 'mkdir -p ~/.local/share/Trash/files && echo x > ~/.local/share/Trash/files/a.txt'
+wait 2.5
+note right-click Trash (the runner's right button), then:
+ptr move 1027 1038
+note menu centred over Trash, 8 px above the pill: Open Trash / — / Empty Trash… (red, enabled); spring ≈350 ms
+key -k Down -k Down -k Up
+wait 0.3
+shot dm-keys
+key -k Escape
+wait 0.5
+note click Empty Trash… once: "Delete 1 item for good"; again: emptied, trash sound, icon empty within 2 s
+
+look material
+setup sh -c 'mkdir -p ~/.local/share/Trash/files && echo x > ~/.local/share/Trash/files/a.txt'
+wait 2.5
+note right-click Trash (the runner's right button), then:
+ptr move 1027 1032
+note menu centred over Trash, 8 px above the pill: Open Trash / — / Empty Trash… (red, enabled); spring ≈350 ms
+key -k Down -k Down -k Up
+wait 0.3
+shot dm-keys
+key -k Escape
+wait 0.5
+note click Empty Trash… once: "Delete 1 item for good"; again: emptied, trash sound, icon empty within 2 s

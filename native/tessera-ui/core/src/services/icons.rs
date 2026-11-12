@@ -89,6 +89,10 @@ pub fn theme_name(cfg: &serde_json::Value) -> String {
 }
 
 /// The theme, the ones it inherits (breadth first), then hicolor
+pub fn chain_of(roots: &[PathBuf], name: &str) -> Vec<String> {
+    chain(roots, name)
+}
+
 fn chain(roots: &[PathBuf], name: &str) -> Vec<String> {
     let mut order: Vec<String> = Vec::new();
     let mut todo = vec![name.to_string()];
@@ -168,6 +172,9 @@ pub fn build(roots: &[PathBuf], theme: &str) -> HashMap<String, PathBuf> {
                 let key = (rank, -score(&p.to_string_lossy()));
                 match best.get(name) {
                     Some((k, _)) if *k <= key => {}
+                    // (a link to nothing — themes like Colloid are mostly
+                    // links — must not hide a real file further down)
+                    _ if !p.exists() => {}
                     _ => {
                         best.insert(name.to_string(), (key, p.to_path_buf()));
                     }
@@ -186,19 +193,112 @@ pub fn build(roots: &[PathBuf], theme: &str) -> HashMap<String, PathBuf> {
     best.into_iter().map(|(k, (_, p))| (k, p)).collect()
 }
 
-/// The shell's cached index for a theme ($XDG_CACHE_HOME/tessera/icon-index-<theme>.tsv)
-fn cached(theme: &str) -> Option<HashMap<String, PathBuf>> {
-    let base = std::env::var("XDG_CACHE_HOME").ok().filter(|s| !s.is_empty()).map(PathBuf::from).unwrap_or_else(|| PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".cache"));
-    let text = ["tessera", "irice"].iter().find_map(|d| std::fs::read_to_string(base.join(d).join(format!("icon-index-{theme}.tsv"))).ok())?;
+fn cache_base() -> PathBuf {
+    std::env::var("XDG_CACHE_HOME").ok().filter(|s| !s.is_empty()).map(PathBuf::from).unwrap_or_else(|| PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".cache"))
+}
+
+/// The cached index for a theme ($XDG_CACHE_HOME/tessera/icon-index-<theme>.tsv,
+/// icon-index.py's file, shared with the QML shell), and when it was written
+fn cached(theme: &str) -> Option<(HashMap<String, PathBuf>, std::time::SystemTime)> {
+    let base = cache_base();
+    let (text, made) = ["tessera", "irice"].iter().find_map(|d| {
+        let f = base.join(d).join(format!("icon-index-{theme}.tsv"));
+        Some((std::fs::read_to_string(&f).ok()?, std::fs::metadata(&f).ok()?.modified().ok()?))
+    })?;
     let map: HashMap<String, PathBuf> = text.lines().filter_map(|l| l.split_once('\t')).map(|(n, p)| (n.to_string(), PathBuf::from(p))).collect();
-    (!map.is_empty()).then_some(map)
+    (!map.is_empty()).then_some((map, made))
+}
+
+/// Is an index written at `made` still right? (icon-index.py's fresh(): less
+/// than a week old, and no folder of the theme's chain or the pixmaps
+/// changed since: an icon theme installed or updated after it was written)
+fn fresh(roots: &[PathBuf], theme: &str, made: std::time::SystemTime) -> bool {
+    if made.elapsed().map_or(true, |a| a.as_secs() > 7 * 86400) {
+        return false;
+    }
+    let mut newer = false;
+    let mut check = |d: &Path| {
+        if !newer && std::fs::metadata(d).and_then(|m| m.modified()).is_ok_and(|t| t > made) {
+            newer = true;
+        }
+    };
+    for t in chain(roots, theme) {
+        for base in theme_paths(roots, &t) {
+            walk_dirs(&base, &mut std::collections::HashSet::new(), &mut check);
+        }
+    }
+    walk_dirs(Path::new("/usr/share/pixmaps"), &mut std::collections::HashSet::new(), &mut check);
+    !newer
+}
+
+fn walk_dirs(dir: &Path, seen: &mut std::collections::HashSet<(u64, u64)>, f: &mut dyn FnMut(&Path)) {
+    use std::os::unix::fs::MetadataExt;
+    let Ok(md) = std::fs::metadata(dir) else { return };
+    if !md.is_dir() || !seen.insert((md.dev(), md.ino())) {
+        return;
+    }
+    f(dir);
+    let Ok(rd) = std::fs::read_dir(dir) else { return };
+    for e in rd.flatten() {
+        let p = e.path();
+        if p.is_dir() {
+            walk_dirs(&p, seen, f);
+        }
+    }
+}
+
+/// The index written where the QML shell's icon-index.py writes it (so the
+/// next start, either shell's, reads it at once)
+fn write_cache(theme: &str, index: &HashMap<String, PathBuf>) {
+    let dir = cache_base().join("tessera");
+    let mut names: Vec<&String> = index.keys().collect();
+    names.sort();
+    let mut text = String::with_capacity(index.len() * 64);
+    for n in names {
+        text.push_str(n);
+        text.push('\t');
+        text.push_str(&index[n].to_string_lossy());
+        text.push('\n');
+    }
+    let _ = std::fs::create_dir_all(&dir);
+    let _ = crate::util::write_atomic(&dir.join(format!("icon-index-{theme}.tsv")), text.as_bytes());
+}
+
+static SHARED: std::sync::RwLock<Option<Icons>> = std::sync::RwLock::new(None);
+
+/// The index as last built, for lookups outside a part (core/src/icon_theme.rs:
+/// the tray, the menu bar's app icons, notifications…)
+pub fn shared() -> Option<Icons> {
+    SHARED.read().ok().and_then(|s| s.clone())
 }
 
 pub fn spawn(tx: Sender<Msg>) {
     std::thread::spawn(move || {
         let theme = theme_name(&crate::theme::read_json());
-        let index = cached(&theme).unwrap_or_else(|| build(&roots(), &theme));
-        let _ = tx.send(Msg::Data(Box::new(Icons { theme, index: Arc::new(index) })));
+        let roots = roots();
+        let send = |index: HashMap<String, PathBuf>| {
+            let icons = Icons { theme: theme.clone(), index: Arc::new(index) };
+            if let Ok(mut s) = SHARED.write() {
+                *s = Some(icons.clone());
+            }
+            crate::icon_theme::forget();
+            let _ = tx.send(Msg::Data(Box::new(icons)));
+        };
+        // (the cached index at once; then, if a theme changed since it was
+        // written, or there was none — standalone the QML never runs to
+        // write it — the themes walked here, sent again and written for next time)
+        let stale = match cached(&theme) {
+            Some((index, made)) => {
+                send(index);
+                !fresh(&roots, &theme, made)
+            }
+            None => true,
+        };
+        if stale {
+            let index = build(&roots, &theme);
+            write_cache(&theme, &index);
+            send(index);
+        }
     });
 }
 

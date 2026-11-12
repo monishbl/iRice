@@ -37,8 +37,14 @@ component ShelfButton inherits Rectangle {
     border-radius: Theme.material ? (touch.pressed ? min(8px, self.height / 2) : self.height / 2) : Theme.radius-control - 2px;
     background: Theme.material ? (touch.pressed ? Theme.m3-on-surface-variant.with-alpha(0.1) : touch.has-hover ? Theme.m3-on-surface-variant.with-alpha(0.08) : transparent)
         : touch.pressed ? Theme.fill-pressed : touch.has-hover ? Theme.fill : transparent;
-    animate background { duration: 150ms; }
+    animate background { duration: Theme.hover; }
     animate border-radius { duration: 150ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+    // (ElasticControl: Material swells 1 + min(6 %, 10 px) = 1.06 on springPress
+    // 7.5/0.3 → 290 ms spring(0.57); Glass squishes to 0.95 on spring 6 /
+    // damping 0.37 → ω 19.4, ζ 0.60: 325 ms spring(0.4); no rubber band)
+    transform-scale: touch.pressed ? (Theme.material ? 1.06 : 0.95) : 1;
+    transform-origin: { x: self.width / 2, y: self.height / 2 };
+    animate transform-scale { duration: Theme.material ? 290ms : 325ms; easing: Theme.material ? spring(0.57) : spring(0.4); }
     accessible-role: button;
     accessible-label: label;
     accessible-action-default => { clicked(); }
@@ -402,14 +408,15 @@ component Target inherits Rectangle {
     height: 116px;
     // (Material: tonal, the one under the drag in primaryContainer with a primary outline, rounder)
     border-radius: Theme.material ? (over ? 28px : 20px) : 20px;
-    animate border-radius { duration: 200ms; easing: spring(0.3); }
+    // (MaterialSpring fast: springFast 12.8/0.54 → 222 ms spring(0.4))
+    animate border-radius { duration: 222ms; easing: spring(0.4); }
     background: Theme.material ? (over ? Theme.m3-primary-container : Theme.m3-surface-container-highest) : over ? Theme.accent.with-alpha(0.38) : #ffffff14;
-    animate background { duration: 150ms; }
+    animate background { duration: Theme.hover; }
     border-width: Theme.material ? (over ? 2px : 0) : 1px;
     border-color: Theme.material ? Theme.m3-primary : over ? Theme.accent : #ffffff1f;
     transform-scale: over ? 1.03 : 1;
     transform-origin: { x: self.width / 2, y: self.height / 2 };
-    animate transform-scale { duration: 150ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+    animate transform-scale { duration: Theme.hover; easing: cubic-bezier(0.33, 1, 0.68, 1); }
     accessible-role: groupbox;
     accessible-label: title + ": " + detail;
     VerticalLayout {
@@ -466,7 +473,8 @@ export component ShelfZone inherits Window {
     // In with a spring from the island's size, out a little faster
     animate shown {
         duration: open ? 320ms : 180ms;
-        easing: open ? cubic-bezier(0.34, 1.45, 0.64, 1) : cubic-bezier(0.33, 1, 0.68, 1);
+        // (Easing.OutBack, overshoot 1.2: peaks ≈ 5.3 % over)
+        easing: open ? cubic-bezier(0.34, 1.4, 0.64, 1) : cubic-bezier(0.33, 1, 0.68, 1);
     }
 
     zone := Rectangle {
@@ -530,7 +538,7 @@ export component ShelfZone inherits Window {
             // (Material: a standard icon button, its state layer)
             background: Theme.material ? Theme.m3-on-surface-variant.with-alpha(closeTa.has-hover ? 0.08 : 0)
                 : closeTa.has-hover ? #ffffff33 : #ffffff1a;
-            animate background { duration: 150ms; }
+            animate background { duration: Theme.hover; }
             accessible-role: button;
             accessible-label: "Close";
             accessible-action-default => { root.cancel(); }

@@ -1,0 +1,53 @@
+# Incoming share card (sandbox demo). Glass card x 810..1110 (Material 804..1116), centred. With a PIN the buttons' centre y about 645: Decline about (892,645), Accept about (1027,645) (take exact y from the first shot). Check in each look.
+rec in-enter 0.6 ipc sharingdemo ask
+note Enter: scale 0.9 -> 1 with about 5 % overshoot near 0.18 s, settled by 0.32 s; compare the scale curve QML vs Rust (+-1 frame).
+wait 1
+shot in-ask
+note Card with avatar, PIN, Decline and Accept buttons; take the buttons' exact y from here.
+ptr move 1027 645 sleep 200 down
+shot in-press
+note Material: Accept pressed: corners 20 -> 12 in about 0.22 s with a slight overshoot, swelling to 1.06; Glass: 0.97 scale, linear over 100 ms. NOTE: click on layer surfaces may not register in the harness.
+ptr move 1027 645 down glide 960 950 100 up
+wait 1
+shot in-press-off
+note Released off the button: nothing happens (the card stays asking).
+rec in-press-rec 0.4 ptr move 1027 645 down sleep 200 glide 960 950 100 up
+note Press curve for the Accept button: Material corners 20 -> 12 on a quick spring with slight overshoot, 1.06 swell; Glass 0.97 linear 100 ms.
+wait 1
+ipc sharingdemo progress 10
+wait 1
+ptr move 892 700 sleep 300 glide 892 700 100
+ipc sharingdemo progress 40
+wait 1
+ipc sharingdemo progress 80
+wait 1
+shot in-progress
+note Receiving: the Cancel button keeps its hover fill through every progress update (QML vs Rust); ring/wave progress and "Receiving 2 photos... 80%", "5 MB of 6.2 MB"; (Cancel y is approximate, adjust from the ask shot).
+ipc sharingdemo done
+wait 1
+shot in-done
+note Done: sunny / check, "2 photos are in Downloads.", buttons Done / Show in Files; 9 s later the card goes.
+wait 10
+shot in-gone
+note The card has gone (about 9 s after done).
+ipc sharingdemo ask
+wait 1
+ptr move 960 540 click
+wait 1
+key -k Escape
+wait 1
+shot in-esc
+note Escape declines: the card goes (a click on the card body gives it the keyboard first; the click may not register in the harness).
+ipc sharingdemo ask
+wait 1
+ptr move 960 540 click
+wait 1
+key -k Return
+wait 1
+shot in-return
+note Return accepts: the card moves to the receiving state.
+ipc sharingdemo fail
+wait 1
+shot in-fail
+note Failure: a square in errorContainer / danger x, "Maya's phone stopped sending.", an OK button.
+# MANUAL: A real phone's transfer is not testable here

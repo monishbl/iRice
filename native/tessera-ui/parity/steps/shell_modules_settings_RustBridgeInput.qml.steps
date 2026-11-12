@@ -1,0 +1,20 @@
+# Settings window: Material 1040x700 at 440,205 (page column from x~772); Glass 860x620 at 530,230. Sidebar rows (Material, x=560): Appearance 335, Wallpaper 385, Desktop 435, Menu bar 485, Lock 535, Notifications 626, Focus 676, Windows 767, Displays 858.
+# Click coordinates inside pages are not known in advance: those steps are MANUAL unless a keyboard path exists. Check in each look.
+ipc panels settings mouse
+wait 2
+shot i1
+note I1 same mice/trackpads with their settings and three-finger drag row as QML.
+ipc panels settings mouse/gestures
+wait 2
+shot i2
+note I2 same gesture list and texts as QML.
+ipc panels settings shortcuts
+wait 2
+shot i3
+note I3 same groups, keys and mod key as QML.
+# MANUAL: I4 disable one shortcut with its switch, Undo in the toast: disabled then back, keybinds.json unchanged
+# MANUAL: I5 Keyboard > Export... with typed path ~/Documents/test-shortcuts.json: 'Exported to ~/Documents/test-shortcuts.json'
+# MANUAL: I6 Import... that file: preview lists 0 changes or the same as QML; Cancel
+# MANUAL: I7 Keyboard > Dictation: binary/model state and model list as QML
+# MANUAL: I8 Live Text languages: tesseract installed state and language list as QML
+# MANUAL: never install/download/remove dictation, installOcr or apply an import

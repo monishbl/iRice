@@ -1,0 +1,7 @@
+# Notification Center: panel at the right under the bar (x≈1530..1912 Material, 1544..1912 Glass); read rows from the first shot
+look material
+wait 2
+setup notify-send -a App 'Long' 'line one line two line three line four line five'
+wait 0.5
+shot banner
+note hover: close shows; click expands when it has more

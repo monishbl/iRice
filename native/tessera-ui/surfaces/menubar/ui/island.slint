@@ -9,6 +9,236 @@
 import { Theme } from "@tessera/theme.slint";
 import { Symbols, SymIcon } from "@tessera/symbols.slint";
 
+// The drawn battery (BatteryGlyph): a capsule, its fill, the nub; a bolt or
+// plug when on power; the number inside when asked
+export component BatteryGlyph inherits Rectangle {
+    in property <float> level;
+    in property <bool> charging;
+    in property <bool> plugged;
+    in property <bool> low-power;
+    in property <bool> show-percent;
+    in property <color> ink;
+    in property <bool> ink-dark;
+    in property <length> size: 12px;
+    property <length> cap-w: round(size * (show-percent ? 2.3 : Theme.material ? 1.9 : 2.05) / 1px) * 1px;
+    property <length> nub-w: max(2px, round(size * (Theme.material ? 0.16 : 0.17) / 1px) * 1px);
+    property <string> mark: charging ? "\u{e2de}" : plugged ? "\u{e946}" : ""; // lightning | plug
+    property <length> mark-size: round(size * (Theme.material ? 1.15 : 1.3) / 1px) * 1px;
+    property <bool> beside: mark != "" && (show-percent || Theme.material);
+    property <length> beside-size: Theme.material ? mark-size : round(size * 0.95 / 1px) * 1px;
+    property <color> green: Theme.dark ? #6DD58C : #1E8E3E;
+    property <color> fill-color: low-power ? Theme.yellow : Theme.material && (charging || plugged) ? green : !charging && !plugged && level <= 0.2 ? Theme.danger : ink;
+    property <color> faint: ink.with-alpha(Theme.material ? 0.3 : 0.35);
+    width: cap-w + 1px + nub-w + (beside ? 2px + beside-size : 0);
+    height: 16px;
+    background: transparent;
+    capsule := Rectangle {
+        x: 0;
+        width: cap-w;
+        height: size;
+        border-radius: round(size * (Theme.material ? 0.36 : 0.32) / 1px) * 1px;
+        clip: true;
+        background: faint;
+        Rectangle {
+            x: 0;
+            width: round(parent.width * max(0, min(1, level)) / 1px) * 1px;
+            background: fill-color;
+        }
+        if show-percent: Text {
+            text: round(level * 100);
+            color: ink-dark ? #ffffffd9 : #000000c0;
+            font-size: round(size * (Theme.material ? 0.78 : 0.82) / 1px) * 1px;
+            font-weight: 700;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+    Rectangle {
+        x: cap-w + 1px;
+        width: nub-w;
+        height: round(size * (Theme.material ? 0.42 : 0.38) / 1px) * 1px;
+        border-radius: nub-w / 2;
+        background: faint;
+    }
+    // Glass: the bolt over the capsule with a gap round it (BatteryGlyph
+    // cuts it out; Slint can't, so the gap is the bolt drawn eight times a
+    // pixel off each way, in a shade that reads as the wallpaper's)
+    for o in [{x: -1.25, y: 0}, {x: 1.25, y: 0}, {x: 0, y: -1.25}, {x: 0, y: 1.25}, {x: -1, y: -1}, {x: 1, y: -1}, {x: -1, y: 1}, {x: 1, y: 1}]: SymIcon {
+        visible: mark != "" && !beside;
+        x: (cap-w - mark-size) / 2 + o.x * 1px;
+        y: o.y * 1px;
+        width: mark-size;
+        height: parent.height;
+        text: mark;
+        fill: true;
+        font-size: mark-size;
+        color: ink-dark ? #ffffff80 : #00000040;
+    }
+    if mark != "" && !beside: SymIcon {
+        x: (cap-w - mark-size) / 2;
+        width: mark-size;
+        text: mark;
+        fill: true;
+        font-size: mark-size;
+        color: ink;
+    }
+    if beside: SymIcon {
+        x: cap-w + 1px + nub-w + 2px;
+        width: beside-size;
+        text: mark;
+        fill: true;
+        // (Material: the symbol at the mark's own size, not SymIcon's 1.2x)
+        font-size: Theme.material ? beside-size / 1.2 : beside-size;
+        color: Theme.material && (charging || plugged) ? fill-color : ink;
+    }
+}
+
+// The open island's last line (IslandStatus): battery, CPU (with the
+// package temperature, reddish when running hot) and memory, each an icon
+// and its figure, centred, 14 px apart. Staggers in after the activities
+// (fades in and rises 8 px, 280 ms). Hovering CPU, memory or the
+// temperature for half a second shows its last minute in the resources
+// popover (ResourceHover, `hover`); the battery shows its summary in a
+// tip (HoverTip).
+export struct IslandStats {
+    battery: bool,
+    level: float,
+    charging: bool,
+    cpu: string,
+    temp: string, // "" without a reading
+    mem: string,
+    hot: bool,
+    // the figures with every digit a 0: each figure is as wide as that, so the
+    // line doesn't shift as the numbers change (Slint has no tabular figures)
+    battery-shape: string,
+    cpu-shape: string,
+    temp-shape: string,
+    mem-shape: string,
+    // the icons (Phosphor: cpu, thermometer-simple, memory)
+    cpu-icon: string,
+    temp-icon: string,
+    mem-icon: string,
+}
+
+component StatFigure inherits Rectangle {
+    in property <string> key;
+    in property <string> icon;
+    in property <string> label;
+    in property <string> shape; // (the label with 0 for each digit: its width)
+    in property <color> tint;
+    in property <IslandStats> s;
+    callback hover(string, bool, length, length);
+    min-width: row.preferred-width;
+    preferred-width: row.preferred-width;
+    max-width: row.preferred-width;
+    accessible-role: text;
+    accessible-label: (key == "battery" ? "Battery " : key == "cpu" ? "CPU " : key == "temperature" ? "Temperature " : "Memory ") + label;
+    row := HorizontalLayout {
+        spacing: 4px;
+        if key == "battery": VerticalLayout {
+            alignment: center;
+            BatteryGlyph {
+                size: 10px;
+                level: s.level;
+                charging: s.charging && s.level < 1;
+                plugged: s.charging && s.level >= 1;
+                ink: tint;
+            }
+        }
+        if key != "battery": SymIcon {
+            text: icon;
+            font-size: 13px;
+            color: tint;
+        }
+        Text {
+            text: label;
+            color: tint;
+            font-size: Theme.small;
+            vertical-alignment: center;
+            min-width: probe.preferred-width;
+            accessible-role: none;
+        }
+    }
+    probe := Text {
+        visible: false;
+        text: shape;
+        font-size: Theme.small;
+    }
+    TouchArea {
+        changed has-hover => {
+            root.hover(key, self.has-hover, root.absolute-position.x + root.width / 2, root.absolute-position.y + root.height);
+        }
+    }
+}
+
+export component IslandStatus inherits Rectangle {
+    in property <IslandStats> s;
+    in property <bool> shown;
+    in property <duration> delay;
+    in property <color> dim; // IslandInk.dim(0.6)
+    // a figure hovered: its key, on/off, its bottom centre (window coordinates)
+    callback hover(string, bool, length, length);
+    height: 22px;
+    // (fades in and rises 8 px over 280 ms OutCubic after `delay`, from when
+    // it's shown: its own clock, which runs only while it enters)
+    property <duration> t0;
+    property <bool> entering;
+    changed shown => {
+        if shown { t0 = animation-tick(); entering = true; }
+    }
+    Timer {
+        interval: delay + 300ms;
+        running: entering;
+        triggered => { entering = false; }
+    }
+    property <float> lin: !shown ? 0 : !entering ? 1 : max(0, min(1, (animation-tick() - t0 - delay) / 280ms));
+    property <float> appear: 1 - (1 - lin) * (1 - lin) * (1 - lin);
+    opacity: appear;
+    property <color> hot-tint: Theme.material ? Theme.m3-error : #ff8c80d9;
+    HorizontalLayout {
+        x: (root.width - self.preferred-width) / 2;
+        y: (1 - appear) * 8px;
+        width: self.preferred-width;
+        height: root.height;
+        spacing: 14px;
+        if s.battery: StatFigure {
+            key: "battery";
+            label: round(s.level * 100) + "%";
+            shape: s.battery-shape;
+            tint: dim;
+            s: s;
+            hover(k, on, x, y) => { root.hover(k, on, x, y); }
+        }
+        StatFigure {
+            key: "cpu";
+            icon: s.cpu-icon;
+            label: s.cpu;
+            shape: s.cpu-shape;
+            tint: dim;
+            s: s;
+            hover(k, on, x, y) => { root.hover(k, on, x, y); }
+        }
+        if s.temp != "": StatFigure {
+            key: "temperature";
+            icon: s.temp-icon;
+            label: s.temp;
+            shape: s.temp-shape;
+            tint: s.hot ? hot-tint : dim;
+            s: s;
+            hover(k, on, x, y) => { root.hover(k, on, x, y); }
+        }
+        StatFigure {
+            key: "memory";
+            icon: s.mem-icon;
+            label: s.mem;
+            shape: s.mem-shape;
+            tint: dim;
+            s: s;
+            hover(k, on, x, y) => { root.hover(k, on, x, y); }
+        }
+    }
+}
+
 export struct Chip {
     id: int,
     x: length,
@@ -122,8 +352,11 @@ export component Spaces inherits Rectangle {
         height: 18px;
         visible: c.fall > 0.01;
         opacity: (c.elsewhere && !c.shown-there ? 0.55 : 1) * (c.fall >= 0.99 ? 1 : c.fall >= 0.69 ? 0.6 : 0.3);
-        animate x, width { duration: Theme.material ? 420ms : Theme.popover; easing: Theme.material ? spring(0.2) : ease-out; }
+        animate x, width { duration: Theme.material ? 222ms : Theme.popover; easing: Theme.material ? spring(0.4) : cubic-bezier(0.33, 1, 0.68, 1); }
         animate opacity { duration: Theme.popover; }
+        // (past the window's ends, dynamic overflow: the whole chip smaller, Workspaces' scale)
+        transform-scale-y: c.fall;
+        animate transform-scale-y { duration: Theme.popover; easing: cubic-bezier(0.33, 1, 0.68, 1); }
         accessible-role: tab;
         accessible-label: "Space " + Math.mod(c.id, 100) + (c.occupied ? ", has windows" : ", empty") + (c.elsewhere ? ", on another display" : "");
         accessible-item-selectable: true;
@@ -214,7 +447,56 @@ export struct Live {
     show-title: bool,
     show-time: bool,
     show-bars: bool,
+    show-scroll: bool, // a long song title scrolls (Island.shows("music", "scroll"))
     controls: [Ctl],
+    time-shape: string, // the time with 0 for each digit (its width: no tabular figures in Slint)
+    // the open music card (IslandFocusCard): where the song is, the volume, the app
+    seekable: bool,
+    progress: float,
+    pos: string,
+    rem: string,
+    volume: float,
+    muted: bool,
+    app-name: string,
+    // the art for the card's background (Material: blurred, under a wash) and,
+    // Glass with playerArt "island", the island itself (its lower part faded out)
+    bg-art: image,
+    has-bg-art: bool,
+}
+
+// A line of the HUD's inline list (IslandLevels): an output or input (a
+// check on the one in use; a click switches to it), or an app's own volume
+export struct LevelRow {
+    id: string,
+    title: string,
+    icon: string,
+    on: bool,
+    app: bool,
+    value: float,
+}
+
+// A line of the Recent list (IslandRecent)
+export struct RecentRow {
+    hid: int,
+    icon: string,
+    tint: color,
+    title: string,
+    detail: string,
+    ago: string,
+    has-act: bool,
+    has-picture: bool,
+    picture: image,
+}
+
+// One live activity in the open island when they're all shown (IslandActivity)
+export struct ActRow {
+    kind: string,
+    icon: string,
+    tint: color,
+    title: string,
+    detail: string,
+    progress: float, // 0..1, or -1 for none
+    controls: [Ctl], // every one but "reset"
 }
 
 // A battery ring (a device's, or its left, right and case): its arc drawn by Rust
@@ -262,6 +544,13 @@ export struct AlertRow {
     device: string,
     leaving: bool,
     delay: duration,
+    // a ringing call (IslandCall)
+    call-name: string,
+    call-app: string,
+    call-initials: string,
+    call-open-only: bool,
+    has-call-photo: bool,
+    call-photo: image,
 }
 
 // Its buttons: a pill (the action: filled; others outlined)
@@ -303,6 +592,7 @@ component IconButton inherits Rectangle {
     in property <length> size: 13px;
     in property <string> label;
     callback clicked();
+    out property <bool> hovered: t.has-hover;
     border-radius: self.height / 2;
     background: ink.with-alpha(t.pressed ? 0.2 : t.has-hover ? 0.12 : 0);
     accessible-role: button;
@@ -319,10 +609,66 @@ component IconButton inherits Rectangle {
     }
 }
 
+// A ringing call's round button (IslandCall.CallButton): 44 px, lighter on
+// hover, darker and 94 % pressed (100 ms), its label under it
+component CallButton inherits VerticalLayout {
+    in property <string> label;
+    in property <string> icon;
+    in property <color> fill-color;
+    in property <color> icon-color;
+    in property <color> ink2;
+    callback clicked();
+    spacing: 4px;
+    alignment: center;
+    HorizontalLayout {
+        alignment: center;
+        Rectangle {
+            width: 44px;
+            height: 44px;
+            border-radius: 22px;
+            background: t.pressed ? fill-color.darker(0.2) : t.has-hover ? fill-color.brighter(0.1) : fill-color;
+            animate background { duration: Theme.hover; }
+            transform-scale: !Theme.material && t.pressed ? 0.94 : 1;
+            animate transform-scale { duration: 100ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+            accessible-role: button;
+            accessible-label: label + " call";
+            accessible-action-default => { root.clicked(); }
+            SymIcon {
+                text: icon;
+                fill: true;
+                font-size: 22px;
+                color: icon-color;
+            }
+            t := TouchArea {
+                x: -4px;
+                y: -4px;
+                width: parent.width + 8px;
+                height: parent.height + 8px;
+                mouse-cursor: pointer;
+                clicked => { root.clicked(); }
+            }
+        }
+    }
+    Text {
+        text: label;
+        color: ink2;
+        font-size: Theme.small;
+        font-weight: 500;
+        horizontal-alignment: center;
+        accessible-role: none;
+    }
+}
+
 // One alert in the open island (IslandEvent): the glyph, title and detail,
 // trailing battery rings and buttons; or the HUD's level row; or a card
 component AlertView inherits Rectangle {
     in property <AlertRow> a;
+    in property <bool> reduce-motion;
+    // the HUD's inline list (IslandLevels), open under its row
+    in property <[LevelRow]> levels;
+    in property <bool> levels-open;
+    callback level-pick(string);
+    callback level-set(string, float);
     in property <bool> first;
     in property <color> ink;
     in property <color> ink2;
@@ -332,7 +678,7 @@ component AlertView inherits Rectangle {
     property <bool> in-view;
     property <length> row-h: a.has-picture && !a.has-art ? 60px : 52px;
     init => { in-view = true; }
-    height: a.hud ? 34px : a.card ? card.preferred-height : row-h + (a.more.length > 0 ? 36px : 0);
+    height: a.hud ? 34px + (levels-open && levels.length > 0 ? levels.length * 34px + 8px : 0) : a.kind == "ringing" ? 68px : a.card ? card.preferred-height : row-h + (a.more.length > 0 ? 36px : 0);
     opacity: in-view && !a.leaving ? 1 : 0;
     animate opacity { duration: a.leaving ? 140ms : 320ms; delay: a.leaving ? 0 : a.delay; easing: a.leaving ? ease-in : ease-out; }
 
@@ -345,6 +691,8 @@ component AlertView inherits Rectangle {
 
     // ── HUD
     if a.hud: Rectangle {
+        y: 0;
+        height: 34px;
         SymIcon {
             x: 6px;
             width: 18px;
@@ -367,9 +715,9 @@ component AlertView inherits Rectangle {
             y: (parent.height - self.height) / 2;
             width: 28px;
             height: 28px;
-            icon: "\u{e136}"; // caret-down
+            icon: levels-open ? "\u{e13c}" : "\u{e136}"; // caret-up | caret-down
             ink: root.ink;
-            label: "Outputs";
+            label: levels-open ? "Hide outputs" : "Outputs";
             clicked => { root.act(a.uid, "levels " + (self.absolute-position.x / 1px)); }
         }
         if a.device != "": Text {
@@ -410,10 +758,203 @@ component AlertView inherits Rectangle {
         }
     }
 
+    // the inline list: outputs or inputs, then the apps' own volumes
+    if a.hud && levels-open: VerticalLayout {
+        y: 42px;
+        height: levels.length * 34px;
+        for l in levels: Rectangle {
+            height: 34px;
+            border-radius: 10px;
+            background: !l.app && lt.has-hover ? ink.with-alpha(0.08) : transparent;
+            animate background { duration: Theme.hover; }
+            SymIcon {
+                x: 6px;
+                width: 18px;
+                text: l.icon;
+                fill: true;
+                font-size: 16px;
+                color: !l.app && l.on && Theme.material ? Theme.m3-primary : ink;
+            }
+            Text {
+                x: 34px;
+                width: l.app ? parent.width * 0.4 : parent.width - 34px - 30px;
+                height: parent.height;
+                text: l.title;
+                color: ink;
+                font-size: Theme.small;
+                font-weight: l.on && !l.app ? 600 : 400;
+                overflow: elide;
+                vertical-alignment: center;
+            }
+            if !l.app && l.on: SymIcon {
+                x: parent.width - 26px;
+                width: 20px;
+                text: "\u{e182}"; // check
+                bold: true;
+                font-size: 14px;
+                color: Theme.material ? Theme.m3-primary : ink;
+            }
+            lt := TouchArea {
+                enabled: !l.app;
+                mouse-cursor: pointer;
+                clicked => { root.level-pick(l.id); }
+            }
+            // an app's level: drag, click or scroll
+            if l.app: Rectangle {
+                x: 34px + parent.width * 0.4 + 10px;
+                width: parent.width - self.x - 8px;
+                y: (parent.height - self.height) / 2;
+                height: Theme.material ? 12px : 6px;
+                border-radius: self.height / 2;
+                background: Theme.material ? Theme.m3-secondary-container : #ffffff29;
+                Rectangle {
+                    x: 0;
+                    width: parent.width * max(0, min(1, l.value));
+                    border-radius: parent.border-radius;
+                    background: Theme.material ? Theme.m3-primary : ink;
+                }
+                TouchArea {
+                    y: -8px;
+                    height: parent.height + 16px;
+                    pointer-event(e) => {
+                        if e.kind == PointerEventKind.down { root.level-set(l.id, self.mouse-x / self.width); }
+                    }
+                    moved => { if self.pressed { root.level-set(l.id, max(0, min(1, self.mouse-x / self.width))); } }
+                    scroll-event(e) => {
+                        root.level-set(l.id, max(0, min(1, l.value + (e.delta-y > 0 ? 0.05 : -0.05))));
+                        accept
+                    }
+                }
+            }
+        }
+    }
+
+    // ── A ringing call (IslandCall): the photo (or initials) with two
+    // rings swelling out of it (1.6 s a beat), the name, the app, round
+    // Decline (red) and Answer (green; Open for a call on the phone)
+    if a.kind == "ringing": Rectangle {
+        height: 68px;
+        property <bool> go;
+        init => { go = true; }
+        property <float> p1: go ? 1 : 0;
+        property <float> p2: go ? 1 : 0;
+        property <float> p3: go ? 1 : 0;
+        animate p1 { duration: 315ms; delay: 70ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+        animate p2 { duration: 315ms; delay: 105ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+        animate p3 { duration: 315ms; delay: 210ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+        photo := Rectangle {
+            transform-scale: 0.7 + 0.3 * parent.p1;
+            x: 4px;
+            y: (parent.height - 52px) / 2;
+            width: 52px;
+            height: 52px;
+            property <color> pulse: Theme.material ? Theme.m3-primary : #30D158;
+            // (reduce motion: one still ring)
+            for i in reduce-motion ? 1 : 2: Rectangle {
+                property <float> u: reduce-motion ? 0.45 : Math.mod(animation-tick() / 1.6s + i * 0.5, 1);
+                width: 52px * (1 + 0.45 * u);
+                height: self.width;
+                x: (52px - self.width) / 2;
+                y: (52px - self.height) / 2;
+                border-radius: self.width / 2;
+                border-width: 2px;
+                border-color: pulse.with-alpha(0.5 * (1 - u));
+            }
+            Rectangle {
+                border-radius: 26px;
+                clip: true;
+                background: Theme.material ? Theme.m3-tertiary-container : #8E8E93;
+                Text {
+                    text: a.call-initials;
+                    color: Theme.material ? Theme.m3-on-tertiary-container : #ffffff;
+                    font-size: 20px;
+                    font-weight: 600;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                if a.has-call-photo: Image {
+                    width: 100%;
+                    height: 100%;
+                    source: a.call-photo;
+                    image-fit: cover;
+                }
+            }
+            if a.has-app-icon: Image {
+                x: parent.width - 18px;
+                y: parent.height - 18px;
+                width: 22px;
+                height: 22px;
+                source: a.app-icon;
+                image-fit: contain;
+            }
+        }
+        call-buttons := HorizontalLayout {
+            opacity: parent.p3;
+            x: parent.width - self.width - 2px;
+            width: self.preferred-width;
+            y: (parent.height - self.preferred-height) / 2;
+            height: self.preferred-height;
+            spacing: 16px;
+            CallButton {
+                label: "Decline";
+                icon: "\u{e3bc}"; // phone-disconnect
+                fill-color: Theme.material ? Theme.m3-error : #FF453A;
+                icon-color: Theme.material ? Theme.m3-on-error : #ffffff;
+                ink2: root.ink2;
+                clicked => { root.act(a.uid, "decline"); }
+            }
+            CallButton {
+                label: a.call-open-only ? "Open" : "Answer";
+                icon: a.call-open-only ? "\u{e5de}" : "\u{e3b8}"; // arrow-square-out | phone
+                fill-color: Theme.material ? Theme.m3-primary : #30D158;
+                icon-color: Theme.material ? Theme.m3-on-primary : #ffffff;
+                ink2: root.ink2;
+                clicked => { root.act(a.uid, "answer"); }
+            }
+        }
+        VerticalLayout {
+            opacity: parent.p2;
+            x: photo.x + photo.width + 14px + (1 - parent.p2) * 12px;
+            width: call-buttons.x - 12px - photo.x - photo.width - 14px;
+            alignment: center;
+            spacing: 4px;
+            Text {
+                text: a.call-name;
+                color: ink;
+                font-size: 17px;
+                font-weight: 600;
+                overflow: elide;
+            }
+            Text {
+                text: (a.call-app != "" ? a.call-app : "Call") + (a.call-open-only ? " · on your phone" : " · incoming call");
+                color: ink2;
+                font-size: Theme.body;
+                overflow: elide;
+            }
+        }
+    }
+
     // ── Alert
-    if !a.hud && !a.card: Rectangle {
+    if !a.hud && !a.card && a.kind != "ringing": Rectangle {
         height: row-h;
         y: 0;
+        // (the whole row under everything in it: a wheel or two-finger
+        // swipe up dismisses it, and its hover shows the close button. It
+        // was laid over the row and took every click from its buttons.)
+        row := TouchArea {
+        property <length> wheel-sum;
+        property <duration> wheel-at;
+        scroll-event(e) => {
+            // (IslandEvent's WheelHandler: up adds, a notch (120 in Qt's
+            // units, 15 px here) leaves; a pause of 400 ms starts over)
+            if animation-tick() - wheel-at > 400ms { wheel-sum = 0; }
+            wheel-at = animation-tick();
+            wheel-sum = e.delta-y > 0 ? wheel-sum + e.delta-y : 0;
+            // (a wheel notch, 15 px in one event, or 60 px of a two-finger swipe:
+            // a touchpad's few-pixel ticks alone never dismiss it)
+            if (e.delta-y >= 15px && wheel-sum >= 15px) || wheel-sum >= 60px { wheel-sum = 0; root.dismiss(a.uid); }
+            accept
+        }
         glyph := Rectangle {
             x: 0;
             width: row-h - 8px;
@@ -448,7 +989,7 @@ component AlertView inherits Rectangle {
                 text: a.icon;
                 fill: true;
                 font-size: round(parent.width * (a.ringed ? (Theme.material ? 0.34 : 0.42) : 0.48) / 1px) * 1px;
-                color: Theme.material ? Theme.m3-on-primary : a.tint;
+                color: Theme.material ? (a.tint == Theme.m3-error ? Theme.m3-on-error : Theme.m3-on-primary) : a.tint;
             }
             if a.ringed: Path {
                 width: 100%;
@@ -555,11 +1096,36 @@ component AlertView inherits Rectangle {
                 clicked => { root.act(a.uid, "1"); }
             }
         }
-        TouchArea {
-            // (a wheel or two-finger swipe up dismisses it)
-            scroll-event(e) => {
-                if e.delta-y > 0 { root.dismiss(a.uid); }
-                accept
+        }
+        // Close, over the glyph's top-left corner while hovered (IslandEvent's closeButton)
+        Rectangle {
+            x: -6px;
+            y: (row-h - (row-h - 8px)) / 2 - 6px;
+            width: 20px;
+            height: 20px;
+            border-radius: 10px;
+            opacity: !a.leaving && a.kind != "ringing" && (row.has-hover || ct.has-hover) ? 1 : 0;
+            animate opacity { duration: Theme.hover; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+            visible: self.opacity > 0.01;
+            background: Theme.material ? Theme.m3-secondary-container.mix(Theme.m3-on-secondary-container, ct.pressed ? 0.9 : ct.has-hover ? 0.92 : 1) : ct.pressed ? #5A5A5E : ct.has-hover ? #48484A : #3A3A3C;
+            border-width: Theme.material ? 0 : 1px;
+            border-color: #ffffff33;
+            accessible-role: button;
+            accessible-label: "Dismiss alert";
+            accessible-action-default => { root.dismiss(a.uid); }
+            SymIcon {
+                text: "\u{e4f6}"; // x
+                bold: true;
+                font-size: 10px;
+                color: Theme.material ? Theme.m3-on-secondary-container : ink;
+            }
+            ct := TouchArea {
+                x: -4px;
+                y: -4px;
+                width: parent.width + 8px;
+                height: parent.height + 8px;
+                mouse-cursor: pointer;
+                clicked => { root.dismiss(a.uid); }
             }
         }
     }
@@ -578,6 +1144,12 @@ component AlertView inherits Rectangle {
     }
 
     // ── Card (a notification)
+    // (hovered: the close button over the card's top-left corner)
+    card-hover := TouchArea {
+        visible: a.card;
+        width: card.width;
+        height: card.height;
+    }
     card := VerticalLayout {
         visible: a.card;
         spacing: 12px;
@@ -592,7 +1164,8 @@ component AlertView inherits Rectangle {
         }
         // the glass card: lighter than the island, with a soft rim
         // (Material: a tonal layer, no rim)
-        if a.card: Rectangle {
+        card-box := Rectangle {
+            visible: a.card;
             border-radius: 20px;
             background: Theme.material ? Theme.m3-on-surface.with-alpha(0.1) : #ffffff24;
             border-width: Theme.material ? 0 : 1px;
@@ -668,6 +1241,471 @@ component AlertView inherits Rectangle {
             }
         }
     }
+    // the card's close button (IslandEvent's closeButton over the card's corner)
+    if a.card: Rectangle {
+        x: -6px;
+        y: card.y + card-box.y - 6px;
+        width: 20px;
+        height: 20px;
+        border-radius: 10px;
+        opacity: !a.leaving && (card-hover.has-hover || cx.has-hover) ? 1 : 0;
+        animate opacity { duration: Theme.hover; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+        visible: self.opacity > 0.01;
+        background: Theme.material ? Theme.m3-secondary-container.mix(Theme.m3-on-secondary-container, cx.pressed ? 0.9 : cx.has-hover ? 0.92 : 1) : cx.pressed ? #5A5A5E : cx.has-hover ? #48484A : #3A3A3C;
+        border-width: Theme.material ? 0 : 1px;
+        border-color: #ffffff33;
+        accessible-role: button;
+        accessible-label: "Dismiss alert";
+        accessible-action-default => { root.dismiss(a.uid); }
+        SymIcon {
+            text: "\u{e4f6}"; // x
+            bold: true;
+            font-size: 10px;
+            color: Theme.material ? Theme.m3-on-secondary-container : ink;
+        }
+        cx := TouchArea {
+            x: -4px;
+            y: -4px;
+            width: parent.width + 8px;
+            height: parent.height + 8px;
+            mouse-cursor: pointer;
+            clicked => { root.dismiss(a.uid); }
+        }
+    }
+}
+
+// Material's seek bar (WavyProgress): the played part a sine (wavelength
+// 40, amplitude 3) travelling right once a second while it plays, flat and
+// still paused or near the ends (amplitude over 300 ms); the rest a track
+// with a stop dot at its end
+component WavySeek inherits Rectangle {
+    in property <float> value;
+    in property <bool> paused;
+    in property <color> wave: Theme.m3-primary;
+    in property <color> track: Theme.m3-secondary-container;
+    height: 10px;
+    property <length> end: self.width * max(0, min(1, value));
+    property <float> amp: paused || value <= 0.1 || value >= 0.95 ? 0 : 1;
+    animate amp { duration: 300ms; }
+    Rectangle {
+        x: min(root.width, end + 4px + (end > 0 ? 2px : 0));
+        y: 3px;
+        width: max(0, root.width - self.x);
+        height: 4px;
+        border-radius: 2px;
+        background: track;
+        Rectangle {
+            x: parent.width - 4px;
+            width: 4px;
+            border-radius: 2px;
+            background: wave;
+        }
+    }
+    Rectangle {
+        width: end;
+        clip: true;
+        Path {
+            x: amp > 0.01 ? -(40px - Math.mod(animation-tick() / 1000ms, 1) * 40px) : 0;
+            width: 520px;
+            height: 10px;
+            viewbox-width: 520;
+            viewbox-height: 10;
+            commands: "M 0 5.00 L 2 5.93 L 4 6.76 L 6 7.43 L 8 7.85 L 10 8.00 L 12 7.85 L 14 7.43 L 16 6.76 L 18 5.93 L 20 5.00 L 22 4.07 L 24 3.24 L 26 2.57 L 28 2.15 L 30 2.00 L 32 2.15 L 34 2.57 L 36 3.24 L 38 4.07 L 40 5.00 L 42 5.93 L 44 6.76 L 46 7.43 L 48 7.85 L 50 8.00 L 52 7.85 L 54 7.43 L 56 6.76 L 58 5.93 L 60 5.00 L 62 4.07 L 64 3.24 L 66 2.57 L 68 2.15 L 70 2.00 L 72 2.15 L 74 2.57 L 76 3.24 L 78 4.07 L 80 5.00 L 82 5.93 L 84 6.76 L 86 7.43 L 88 7.85 L 90 8.00 L 92 7.85 L 94 7.43 L 96 6.76 L 98 5.93 L 100 5.00 L 102 4.07 L 104 3.24 L 106 2.57 L 108 2.15 L 110 2.00 L 112 2.15 L 114 2.57 L 116 3.24 L 118 4.07 L 120 5.00 L 122 5.93 L 124 6.76 L 126 7.43 L 128 7.85 L 130 8.00 L 132 7.85 L 134 7.43 L 136 6.76 L 138 5.93 L 140 5.00 L 142 4.07 L 144 3.24 L 146 2.57 L 148 2.15 L 150 2.00 L 152 2.15 L 154 2.57 L 156 3.24 L 158 4.07 L 160 5.00 L 162 5.93 L 164 6.76 L 166 7.43 L 168 7.85 L 170 8.00 L 172 7.85 L 174 7.43 L 176 6.76 L 178 5.93 L 180 5.00 L 182 4.07 L 184 3.24 L 186 2.57 L 188 2.15 L 190 2.00 L 192 2.15 L 194 2.57 L 196 3.24 L 198 4.07 L 200 5.00 L 202 5.93 L 204 6.76 L 206 7.43 L 208 7.85 L 210 8.00 L 212 7.85 L 214 7.43 L 216 6.76 L 218 5.93 L 220 5.00 L 222 4.07 L 224 3.24 L 226 2.57 L 228 2.15 L 230 2.00 L 232 2.15 L 234 2.57 L 236 3.24 L 238 4.07 L 240 5.00 L 242 5.93 L 244 6.76 L 246 7.43 L 248 7.85 L 250 8.00 L 252 7.85 L 254 7.43 L 256 6.76 L 258 5.93 L 260 5.00 L 262 4.07 L 264 3.24 L 266 2.57 L 268 2.15 L 270 2.00 L 272 2.15 L 274 2.57 L 276 3.24 L 278 4.07 L 280 5.00 L 282 5.93 L 284 6.76 L 286 7.43 L 288 7.85 L 290 8.00 L 292 7.85 L 294 7.43 L 296 6.76 L 298 5.93 L 300 5.00 L 302 4.07 L 304 3.24 L 306 2.57 L 308 2.15 L 310 2.00 L 312 2.15 L 314 2.57 L 316 3.24 L 318 4.07 L 320 5.00 L 322 5.93 L 324 6.76 L 326 7.43 L 328 7.85 L 330 8.00 L 332 7.85 L 334 7.43 L 336 6.76 L 338 5.93 L 340 5.00 L 342 4.07 L 344 3.24 L 346 2.57 L 348 2.15 L 350 2.00 L 352 2.15 L 354 2.57 L 356 3.24 L 358 4.07 L 360 5.00 L 362 5.93 L 364 6.76 L 366 7.43 L 368 7.85 L 370 8.00 L 372 7.85 L 374 7.43 L 376 6.76 L 378 5.93 L 380 5.00 L 382 4.07 L 384 3.24 L 386 2.57 L 388 2.15 L 390 2.00 L 392 2.15 L 394 2.57 L 396 3.24 L 398 4.07 L 400 5.00 L 402 5.93 L 404 6.76 L 406 7.43 L 408 7.85 L 410 8.00 L 412 7.85 L 414 7.43 L 416 6.76 L 418 5.93 L 420 5.00 L 422 4.07 L 424 3.24 L 426 2.57 L 428 2.15 L 430 2.00 L 432 2.15 L 434 2.57 L 436 3.24 L 438 4.07 L 440 5.00 L 442 5.93 L 444 6.76 L 446 7.43 L 448 7.85 L 450 8.00 L 452 7.85 L 454 7.43 L 456 6.76 L 458 5.93 L 460 5.00 L 462 4.07 L 464 3.24 L 466 2.57 L 468 2.15 L 470 2.00 L 472 2.15 L 474 2.57 L 476 3.24 L 478 4.07 L 480 5.00 L 482 5.93 L 484 6.76 L 486 7.43 L 488 7.85 L 490 8.00 L 492 7.85 L 494 7.43 L 496 6.76 L 498 5.93 L 500 5.00 L 502 4.07 L 504 3.24 L 506 2.57 L 508 2.15 L 510 2.00 L 512 2.15 L 514 2.57 L 516 3.24 L 518 4.07 L 520 5.00";
+            stroke: wave;
+            stroke-width: 4px;
+            opacity: amp;
+        }
+        Rectangle {
+            y: 3px;
+            height: 4px;
+            border-radius: 2px;
+            background: wave;
+            opacity: 1 - amp;
+        }
+    }
+}
+
+// Material's play button (PlayButton): a primary circle while paused that
+// springs into a rounded square while playing
+component PlayMorph inherits Rectangle {
+    in property <bool> playing;
+    in property <string> icon;
+    callback clicked();
+    width: 44px;
+    height: 44px;
+    border-radius: playing ? 14px : 22px;
+    animate border-radius { duration: 350ms; easing: spring(0.35); }
+    background: t.pressed ? Theme.m3-primary.mix(Theme.m3-on-primary, 0.9) : t.has-hover ? Theme.m3-primary.mix(Theme.m3-on-primary, 0.92) : Theme.m3-primary;
+    transform-scale: t.pressed ? 0.94 : 1;
+    animate transform-scale { duration: 100ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+    accessible-role: button;
+    accessible-label: playing ? "Pause" : "Play";
+    accessible-action-default => { root.clicked(); }
+    SymIcon {
+        text: icon;
+        fill: true;
+        font-size: 20px;
+        color: Theme.m3-on-primary;
+    }
+    t := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// One live activity, stacked in the open island (IslandActivity): its icon
+// in a tinted circle, its title and detail (a progress line for a timer),
+// its controls on the right. Fades and rises 8 px in after `delay`.
+component ActivityRow inherits Rectangle {
+    in property <ActRow> r;
+    in property <bool> shown;
+    in property <duration> delay;
+    in property <color> ink;
+    in property <color> ink2;
+    callback control(string, int);
+    height: r.progress >= 0 ? 42px : 36px;
+    // (fades in and rises 8 px over 280 ms OutCubic after `delay`, on its own clock)
+    property <duration> t0;
+    property <bool> entering;
+    init => { if shown { t0 = animation-tick(); entering = true; } }
+    changed shown => { if shown { t0 = animation-tick(); entering = true; } }
+    Timer {
+        interval: delay + 300ms;
+        running: entering;
+        triggered => { entering = false; }
+    }
+    property <float> lin: !shown ? 0 : !entering ? 1 : max(0, min(1, (animation-tick() - t0 - delay) / 280ms));
+    property <float> appear: 1 - (1 - lin) * (1 - lin) * (1 - lin);
+    opacity: appear;
+    property <bool> red: r.tint.red > 204 && r.tint.green < 115 && r.tint.blue < 115;
+    inner := Rectangle {
+        y: (1 - appear) * 8px;
+        lead := Rectangle {
+            x: 0;
+            width: 30px;
+            height: 30px;
+            y: (parent.height - self.height) / 2;
+            border-radius: 15px;
+            background: Theme.material ? (red ? Theme.m3-error : Theme.m3-primary) : r.tint.with-alpha(0.22);
+            SymIcon {
+                text: r.icon;
+                fill: true;
+                font-size: 15px;
+                color: Theme.material ? (red ? Theme.m3-on-error : Theme.m3-on-primary) : r.tint;
+            }
+        }
+        controls := HorizontalLayout {
+            x: parent.width - self.width;
+            width: self.preferred-width;
+            y: (parent.height - 32px) / 2;
+            height: 32px;
+            spacing: 2px;
+            for c[i] in r.controls: IconButton {
+                width: 32px;
+                height: 32px;
+                icon: c.icon;
+                fill: c.fill;
+                size: 16px;
+                ink: c.danger ? (Theme.material ? Theme.m3-error : #ff453a) : root.ink;
+                opacity: c.on ? 1 : 0.4;
+                label: c.icon;
+                clicked => { if c.on { root.control(r.kind, i); } }
+            }
+        }
+        VerticalLayout {
+            x: lead.width + 12px;
+            width: controls.x - 8px - self.x;
+            alignment: center;
+            spacing: 1px;
+            Text {
+                text: r.title;
+                color: ink;
+                font-size: Theme.body;
+                font-weight: Theme.material ? 500 : 600;
+                overflow: elide;
+            }
+            Text {
+                text: r.detail;
+                color: ink2;
+                font-size: Theme.small;
+                overflow: elide;
+            }
+            if r.progress >= 0: Rectangle {
+                height: 3px;
+                border-radius: 1.5px;
+                background: Theme.material ? Theme.m3-secondary-container : #ffffff29;
+                Rectangle {
+                    x: 0;
+                    width: parent.width * max(0, min(1, r.progress));
+                    border-radius: 1.5px;
+                    background: Theme.material ? (red ? Theme.m3-error : Theme.m3-primary) : r.tint;
+                    animate width { duration: 900ms; }
+                }
+            }
+        }
+    }
+}
+
+// The open island's Recent list (IslandRecent): a header (Recent · N, a
+// toggle when it shares the island; Clear), then a line per alert: its
+// icon, what and its detail, how long ago (a close button while hovered).
+// A click runs its remembered button; dragged sideways past 72 px, or its
+// close button, it slides off (150 ms) and goes.
+component RecentList inherits VerticalLayout {
+    in property <[RecentRow]> rows;
+    in property <int> n;
+    in property <bool> shown;
+    in property <bool> collapsible;
+    in property <color> ink;
+    in property <color> ink2;
+    callback toggle();
+    callback run(int);
+    callback forget(int);
+    callback clear();
+    spacing: 4px;
+    // (fades in over 280 ms OutCubic, on its own clock)
+    property <duration> t0;
+    property <bool> entering;
+    init => { if shown { t0 = animation-tick(); entering = true; } }
+    changed shown => { if shown { t0 = animation-tick(); entering = true; } }
+    Timer {
+        interval: 300ms;
+        running: entering;
+        triggered => { entering = false; }
+    }
+    property <float> lin: !shown ? 0 : !entering ? 1 : max(0, min(1, (animation-tick() - t0) / 280ms));
+    property <float> appear: 1 - (1 - lin) * (1 - lin) * (1 - lin);
+    opacity: appear;
+    Rectangle {
+        height: 24px;
+        Rectangle {
+            x: -6px;
+            width: head.preferred-width + 12px;
+            height: 24px;
+            border-radius: 12px;
+            background: !collapsible ? transparent : ht.pressed ? ink.with-alpha(0.16) : ht.has-hover ? ink.with-alpha(0.1) : transparent;
+            animate background { duration: Theme.hover; }
+            head := Text {
+                x: 6px;
+                text: "Recent";
+                color: ink2;
+                font-size: Theme.small;
+                font-weight: 600;
+                vertical-alignment: center;
+                height: 24px;
+            }
+            ht := TouchArea {
+                enabled: collapsible;
+                mouse-cursor: collapsible ? pointer : default;
+                clicked => { root.toggle(); }
+            }
+        }
+        Rectangle {
+            x: parent.width - self.width + 6px;
+            width: clear-t.preferred-width + 16px;
+            height: 24px;
+            border-radius: 12px;
+            background: ct.pressed ? ink.with-alpha(0.16) : ct.has-hover ? ink.with-alpha(0.1) : transparent;
+            animate background { duration: Theme.hover; }
+            accessible-role: button;
+            accessible-label: "Clear recent alerts";
+            accessible-action-default => { root.clear(); }
+            clear-t := Text {
+                text: "Clear";
+                color: ink2;
+                font-size: Theme.small;
+                font-weight: 500;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                accessible-role: none;
+            }
+            ct := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.clear(); }
+            }
+        }
+    }
+    Flickable {
+        height: min(rows.length * 40px, 300px);
+        content-height: rows.length * 40px;
+        interactive: rows.length * 40px > 300px;
+        VerticalLayout {
+            spacing: 4px;
+            for l in rows: line := Rectangle {
+                height: 36px;
+                property <length> dx;
+                property <bool> leaving;
+                property <length> off: leaving ? (dx < 0 ? -1 : 1) * self.width : dx;
+                animate off { duration: leaving ? 150ms : 0ms; easing: cubic-bezier(0.32, 0, 0.67, 0); }
+                lt := TouchArea {
+                    property <bool> dragged;
+                    property <length> last-x;
+                    property <duration> last-at;
+                    property <float> speed; // px per second, the last move's
+                    mouse-cursor: l.has-act ? pointer : default;
+                    pointer-event(e) => {
+                        if e.kind == PointerEventKind.down { dragged = false; }
+                        if e.kind == PointerEventKind.up {
+                            if abs(line.dx) > 72px || abs(self.speed) > 500 {
+                                line.leaving = true;
+                                rm.running = true;
+                            } else {
+                                line.dx = 0;
+                            }
+                        }
+                    }
+                    moved => {
+                        if self.pressed {
+                            line.dx = self.mouse-x - self.pressed-x;
+                            if animation-tick() > last-at { self.speed = (self.mouse-x - last-x) / 1px / ((animation-tick() - last-at) / 1s); }
+                            last-x = self.mouse-x;
+                            last-at = animation-tick();
+                            if abs(line.dx) > 6px { dragged = true; }
+                        }
+                    }
+                    clicked => { if !dragged && l.has-act { root.run(l.hid); } }
+                }
+                rm := Timer {
+                    interval: 150ms;
+                    running: false;
+                    triggered => { self.running = false; root.forget(l.hid); }
+                }
+                Rectangle {
+                    x: off;
+                    opacity: line.leaving ? 0 : 1 - min(0.7, abs(off) / max(1px, line.width));
+                    animate opacity { duration: line.leaving ? 150ms : 0ms; }
+                    Rectangle {
+                        x: -6px;
+                        width: parent.width + 12px;
+                        border-radius: 10px;
+                        background: ink.with-alpha(lt.has-hover || xt.has-hover ? 0.08 : 0);
+                        animate background { duration: Theme.hover; }
+                    }
+                    badge := Rectangle {
+                        x: 0;
+                        y: (parent.height - 24px) / 2;
+                        width: 24px;
+                        height: 24px;
+                        border-radius: 12px;
+                        property <bool> red: l.tint.red > 204 && l.tint.green < 115 && l.tint.blue < 115;
+                        background: l.has-picture ? transparent : Theme.material ? (red ? Theme.m3-error : Theme.m3-primary) : l.tint.with-alpha(0.22);
+                        if l.has-picture: Image {
+                            width: 100%;
+                            height: 100%;
+                            source: l.picture;
+                            image-fit: contain;
+                        }
+                        if !l.has-picture: SymIcon {
+                            text: l.icon;
+                            fill: true;
+                            font-size: Theme.material ? 13px : 14px;
+                            color: Theme.material ? (badge.red ? Theme.m3-on-error : Theme.m3-on-primary) : l.tint;
+                        }
+                    }
+                    what := Text {
+                        x: 34px;
+                        width: min(self.preferred-width, (trail.x - self.x - 8px) * 0.6);
+                        height: parent.height;
+                        text: l.title;
+                        color: ink;
+                        font-size: Theme.small;
+                        font-weight: 600;
+                        overflow: elide;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        x: what.x + what.width + 6px;
+                        width: trail.x - 8px - self.x;
+                        height: parent.height;
+                        text: l.detail;
+                        color: ink2;
+                        font-size: Theme.small;
+                        overflow: elide;
+                        vertical-alignment: center;
+                    }
+                    trail := Rectangle {
+                        width: max(28px, ago.preferred-width);
+                        x: parent.width - self.width;
+                        ago := Text {
+                            x: parent.width - self.width;
+                            width: self.preferred-width;
+                            visible: !(lt.has-hover || xt.has-hover);
+                            text: l.ago;
+                            color: ink.with-alpha(Theme.material ? 0.7 : 0.45);
+                            font-size: Theme.caption;
+                            vertical-alignment: center;
+                        }
+                        Rectangle {
+                            x: parent.width - 20px;
+                            y: (parent.height - 20px) / 2;
+                            width: 20px;
+                            height: 20px;
+                            border-radius: 10px;
+                            visible: lt.has-hover || xt.has-hover;
+                            background: Theme.material ? Theme.m3-secondary-container.mix(Theme.m3-on-secondary-container, xt.pressed ? 0.9 : xt.has-hover ? 0.92 : 1) : xt.pressed ? #5A5A5E : xt.has-hover ? #48484A : #3A3A3C;
+                            border-width: Theme.material ? 0 : 1px;
+                            border-color: #ffffff33;
+                            accessible-role: button;
+                            accessible-label: "Remove " + l.title;
+                            SymIcon {
+                                text: "\u{e4f6}"; // x
+                                bold: true;
+                                font-size: 10px;
+                                color: Theme.material ? Theme.m3-on-secondary-container : ink;
+                            }
+                            xt := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => {
+                                    line.leaving = true;
+                                    rm.running = true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// A title too long for its room scrolls (Marquee): it rests 1.8 s, glides
+// out to its end, rests 1.4 s, glides back, and again; cosine easing, the
+// way out ~33 ms per px (at least 0.6 s), back ~12 ms per px (0.4 s).
+// It doesn't scroll when `scroll` is off: it's cut short with an ellipsis.
+component Marquee inherits Rectangle {
+    in property <string> text;
+    in property <color> ink;
+    in property <length> size;
+    in property <int> weight: 400;
+    in property <bool> scroll: true;
+    in property <length> max-w: 140px;
+    property <bool> over: probe.preferred-width > max-w;
+    property <bool> moving: over && scroll;
+    min-width: min(probe.preferred-width, max-w);
+    preferred-width: self.min-width;
+    max-width: self.min-width;
+    clip: moving;
+    probe := Text {
+        visible: false;
+        text: root.text;
+        font-size: size;
+        font-weight: weight;
+    }
+    property <length> span: probe.preferred-width - root.width;
+    property <float> out: max(0.6, span / 1px * 0.033);
+    property <float> back: max(0.4, span / 1px * 0.012);
+    property <float> t: moving ? Math.mod(animation-tick() / 1s, 1.8 + out + 1.4 + back) : 0;
+    property <float> k: t < 1.8 ? 0 : t < 1.8 + out ? 0.5 - 0.5 * cos((t - 1.8) / out * 180deg) : t < 3.2 + out ? 1 : 1 - (0.5 - 0.5 * cos((t - 3.2 - out) / back * 180deg));
+    Text {
+        x: moving ? -round(span * k / 1px) * 1px : 0;
+        width: moving ? probe.preferred-width : root.width;
+        text: root.text;
+        color: ink;
+        font-size: size;
+        font-weight: weight;
+        overflow: moving ? TextOverflow.clip : TextOverflow.elide;
+        vertical-alignment: center;
+    }
 }
 
 // One side of the collapsed live activity (IslandLive): art or icon, title,
@@ -685,7 +1723,7 @@ component LiveInfo inherits HorizontalLayout {
             height: self.width;
             border-radius: Theme.material || !live.has-art ? self.width / 2 : 5px;
             clip: true;
-            background: live.has-art ? ink.with-alpha(0.15) : Theme.material ? (live.kind == "recording" ? Theme.m3-error : Theme.m3-primary) : transparent;
+            background: live.has-art ? ink.with-alpha(0.15) : Theme.material ? (live.tint == Theme.m3-error ? Theme.m3-error : Theme.m3-primary) : transparent;
             if live.has-art: Image {
                 width: 100%;
                 height: 100%;
@@ -704,25 +1742,36 @@ component LiveInfo inherits HorizontalLayout {
                 text: live.icon;
                 fill: true;
                 font-size: Theme.material ? 12px : 14px;
-                color: Theme.material ? Theme.m3-on-primary : live.tint;
+                color: Theme.material ? (live.tint == Theme.m3-error ? Theme.m3-on-error : Theme.m3-on-primary) : live.tint;
             }
         }
     }
-    if live.show-title && live.title != "": Text {
-        max-width: live.kind == "music" ? 132px : 90px;
+    if live.show-title && live.title != "": Marquee {
+        max-w: live.kind == "music" ? 132px : 90px;
         text: live.title;
-        color: ink;
-        font-size: Theme.small;
-        font-weight: 500;
-        overflow: elide;
-        vertical-alignment: center;
+        ink: ink;
+        size: Theme.small;
+        weight: 500;
+        scroll: live.kind == "music" && live.show-scroll;
     }
-    if live.show-time && live.time != "": Text {
-        text: live.time;
-        color: live.kind == "recording" ? (Theme.material ? Theme.m3-error : Theme.danger) : Theme.material ? ink : live.tint;
-        font-size: Theme.small;
-        font-weight: 600;
-        vertical-alignment: center;
+    // (as wide as the time with zeros: it doesn't shift as it counts)
+    if live.show-time && live.time != "": Rectangle {
+        min-width: max(tt.preferred-width, tp.preferred-width);
+        preferred-width: self.min-width;
+        tt := Text {
+            width: 100%;
+            text: live.time;
+            color: live.kind == "recording" ? (Theme.material ? Theme.m3-error : Theme.danger) : Theme.material ? ink : live.tint;
+            font-size: Theme.small;
+            font-weight: 600;
+            vertical-alignment: center;
+        }
+        tp := Text {
+            visible: false;
+            text: live.time-shape;
+            font-size: Theme.small;
+            font-weight: 600;
+        }
     }
     // three bars that dance while it plays (12 frames a second)
     if live.show-bars && live.playing: Rectangle {
@@ -762,12 +1811,37 @@ export component Island inherits Rectangle {
     // the live activity shown, and how many there are
     in property <Live> live;
     in property <int> live-count;
+    // open: the focused (or, all at once, the music) card, and the other rows
+    in property <Live> card;
+    in property <bool> card-on;
+    in property <bool> all-mode;
+    // Glass, island.playerArt "island": the music's art as the open island
+    in property <bool> island-art;
+    in property <bool> reduce-motion; // appearance.reduceMotion: the call's ring holds still
+    in property <[LevelRow]> levels;
+    in property <bool> levels-open;
+    // IslandAlertStack: alerts that came while it was hovered or pinned open
+    // drop in as a card under it (the island keeps what it showed)
+    in property <bool> alerts-below;
+    out property <length> below-x: below.x;
+    out property <length> below-y: below.y;
+    out property <length> below-w: below.width;
+    out property <length> below-h: below.height;
+    out property <float> below-o: below.opacity;
+    out property <bool> island-hovered: hovering;
+    in property <[ActRow]> act-rows;
+    // the Recent list (IslandRecent): its lines (at most 8), how many alerts the history keeps
+    in property <[RecentRow]> recent;
+    in property <int> recent-n;
+    // the island has the keyboard (an alert was clicked): Esc dismisses the newest
+    out property <bool> wants-keys: hovering && event-inside;
     in property <int> live-index;
     in property <[AlertRow]> alerts;
     in property <string> pill-text; // over a fullscreen app (compact)
     in property <string> pill-icon;
     in property <color> pill-tint;
-    in property <string> status; // the open island's last line
+    in property <IslandStats> stats; // the open island's last line
+    in property <int> act-n; // live activities (the status line's stagger)
     in property <int> tick; // the bars' clock
     callback go(int);
     callback space-menu(int, length);
@@ -776,12 +1850,23 @@ export component Island inherits Rectangle {
     callback hover(bool);
     callback open-pill();
     callback cycle(length, length); // a wheel over the activity
-    callback control(int); // the activity's control
+    callback control(string, int, bool); // an activity's control: its kind, index, of every one (not the pill's)
     callback act(int, string);
     callback dismiss(int);
     callback set-level(float);
     callback pin();
     callback holding(bool);
+    callback stat-hover(string, bool, length, length);
+    callback recent-run(int);
+    callback level-pick(string);
+    callback level-set(string, float);
+    callback recent-forget(int);
+    callback recent-clear();
+    callback seek(float);
+    callback set-volume(float);
+    callback mute();
+    callback open-player();
+    callback escape();
     // for the glass and the input region
     out property <length> shape-x: shape.x;
     out property <length> shape-y: shape.y;
@@ -805,7 +1890,7 @@ export component Island inherits Rectangle {
     property <length> area: max(dots-w, trail-w + 26px);
     property <length> compact-w: layout == "split" ? 2 * pad + 2 * side + 24px + dots-w : layout == "beside" ? 2 * pad + dots-w + 21px + area : pad + lead-w + 12px + trail-w + pad;
     property <length> target-w: mode == 3 ? min(420px, pill-row.preferred-width + 28px) : expanded && event-inside ? (has-card ? 440px : 392px) : expanded ? 392px : compact ? compact-w : dots-w + 14px;
-    property <length> target-h: expanded ? body.y + body.preferred-height + (event-inside ? 16px : 14px) : mode == 3 ? 30px : 26px;
+    property <length> target-h: expanded ? max(body.y + body.preferred-height + (event-inside ? 16px : 14px), recent-over && !event-inside ? recent-hold-h : 0) : mode == 3 ? 30px : 26px;
     property <length> radius: min(Theme.radius-tile, shape.height / 2);
     property <length> group-left: shape.width / 2 - compact-w / 2 + pad;
     property <length> lead-x: layout == "split" ? shape.width / 2 - dots-w / 2 - 12px - lead-w : layout == "beside" ? group-left + dots-w + 21px : group-left;
@@ -820,11 +1905,16 @@ export component Island inherits Rectangle {
     animate content-in { duration: expanded ? Theme.hover : 0ms; easing: ease-out; }
 
     // hover opens it (after a moment), leaving closes it
-    property <bool> hovering: over.has-hover;
+    property <bool> hovering: over.has-hover || pinb.hovered || recb.hovered;
+    // (the compact pill's own buttons, stop or pause, don't open it: the
+    // island grew under the pointer on the way to them and the click landed
+    // on the open island instead; IslandView.overControls)
+    property <bool> over-controls: compact && trail-w > 0 && over.mouse-x >= trail-x - 4px && over.mouse-x < trail-x + trail-w + 4px && over.mouse-y < 30px;
+    property <bool> hover-wants: hovering && !over-controls;
     property <bool> hover-open;
     Timer {
         interval: 140ms;
-        running: hovering && !hover-open;
+        running: hover-wants && !hover-open;
         triggered => { hover-open = true; root.hover(true); }
     }
     Timer {
@@ -832,7 +1922,26 @@ export component Island inherits Rectangle {
         running: !hovering && hover-open;
         triggered => { hover-open = false; root.hover(false); }
     }
-    changed hovering => { root.holding(hovering && event-inside); }
+    changed hovering => {
+        root.holding(hovering && event-inside);
+        if !(hovering && event-inside) { clicked-in = false; }
+    }
+    // A click on an alert gives the island the keyboard until the pointer
+    // leaves (only resting the pointer there never takes it)
+    property <bool> clicked-in;
+    // Recent: opened over the live activities (closes with the island)
+    property <bool> recent-open;
+    property <bool> recent-over: recent-open && live-count > 0 && recent-n > 0;
+    // (Recent opened over the activities keeps the island as tall as it was,
+    // so it doesn't shrink from under the pointer and close)
+    property <length> recent-hold-h;
+    // the seek bar while it's dragged (sent once, on release)
+    property <bool> seeking;
+    property <float> seek-drag;
+    // (closed under the pointer: its status line's popover and tip go too)
+    changed expanded => {
+        if !expanded { root.stat-hover("*", false, 0, 0); recent-open = false; }
+    }
 
     background: transparent;
 
@@ -841,7 +1950,7 @@ export component Island inherits Rectangle {
         y: 3px;
         width: target-w;
         height: target-h;
-        animate width, height { duration: 480ms; easing: spring(0.22); }
+        animate width, height { duration: Theme.material ? 300ms : 320ms; easing: spring(0.2); }
         property <float> open-fade: filled ? 1 : 0;
         animate open-fade { duration: Theme.hover; }
         property <float> fade: filled ? open-fade : max(0, min(1, (self.height - 26px) / max(1px, close-from - 26px)));
@@ -866,6 +1975,28 @@ export component Island inherits Rectangle {
             opacity: shape.fade;
             background: @linear-gradient(180deg, #000000f0 0%, #000000e6 30%, #0000001f 100%);
         }
+        // Glass, music playing, open: the album art is the island itself, solid
+        // up top and melting into the glass below like the black (faded in Rust)
+        if !Theme.material && island-art: artbox := Rectangle {
+            border-radius: radius;
+            clip: true;
+            opacity: expanded && !event-inside && !recent-over ? 0.82 : 0;
+            animate opacity { duration: Theme.popover; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+            for k in 10: Rectangle {
+                y: artbox.height * k / 10;
+                height: artbox.height / 10 + 1px;
+                clip: true;
+                property <float> t: (k + 0.5) / 10;
+                opacity: t < 0.3 ? 1 : max(0, 1 - (t - 0.3) / 0.7);
+                Image {
+                    y: -parent.y;
+                    width: parent.width;
+                    height: artbox.height;
+                    source: card.bg-art;
+                    image-fit: cover;
+                }
+            }
+        }
         // running hot, closed: the chip's glow (no ripples: Slint has no shaders)
         if !Theme.material && hot && !filled: Rectangle {
             border-radius: radius;
@@ -883,6 +2014,7 @@ export component Island inherits Rectangle {
             // (a click on the compact pill opens it; right-click pins it)
             pointer-event(e) => {
                 if e.kind == PointerEventKind.up && e.button == PointerEventButton.right { root.pin(); }
+                if e.kind == PointerEventKind.down && event-inside { clicked-in = true; keys.focus(); }
             }
             clicked => {
                 if mode == 3 { root.open-pill(); } else if compact { hover-open = true; root.hover(true); }
@@ -895,6 +2027,12 @@ export component Island inherits Rectangle {
                 reject
             }
 
+            keys := FocusScope {
+                key-pressed(e) => {
+                    if e.text == Key.Escape && event-inside { root.escape(); return accept; }
+                    reject
+                }
+            }
             Rectangle {
                 clip: true;
                 border-radius: radius;
@@ -952,7 +2090,7 @@ export component Island inherits Rectangle {
                         ink: c.danger ? (Theme.material ? Theme.m3-error : Theme.danger) : root.ink;
                         opacity: c.on ? 1 : 0.4;
                         label: c.icon;
-                        clicked => { if c.on && compact { root.control(i); } }
+                        clicked => { if c.on && compact { root.control(live.kind, i, false); } }
                     }
                 }
                 // Beside: a thin divider between the spaces and the activity
@@ -995,12 +2133,19 @@ export component Island inherits Rectangle {
                     x: event-inside ? 18px : 12px;
                     y: event-inside ? 16px : 36px;
                     width: (event-inside ? (has-card ? 440px : 392px) : 392px) - 2 * self.x;
+                    height: self.preferred-height;
+                    alignment: start;
                     spacing: 10px;
                     opacity: expanded ? content-in : 0;
                     visible: shape.height > 30px;
                     if event-inside: VerticalLayout {
                         spacing: 10px;
                         for a[i] in alerts: AlertView {
+                            reduce-motion: root.reduce-motion;
+                            levels: root.levels;
+                            levels-open: root.levels-open;
+                            level-pick(id) => { root.level-pick(id); }
+                            level-set(id, v) => { root.level-set(id, v); }
                             a: a;
                             first: i == 0;
                             ink: root.ink;
@@ -1011,51 +2156,280 @@ export component Island inherits Rectangle {
                         }
                     }
                     // the focused activity, open (IslandFocusCard, simplified)
-                    if !event-inside && live-count > 0: VerticalLayout {
+                    if !event-inside && card-on && !recent-over: cardl := VerticalLayout {
                         spacing: 8px;
-                        HorizontalLayout {
-                            spacing: 12px;
+                        // (Material, music: the art fills the card under a wash of the island's surface)
+                        if Theme.material && card.kind == "music" && card.has-bg-art: Rectangle {
+                            height: 0;
                             Rectangle {
-                                width: live.has-art ? 64px : 40px;
-                                height: self.width;
-                                border-radius: live.has-art ? (Theme.material ? 16px : 12px) : self.width / 2;
+                                x: -12px;
+                                y: -12px;
+                                width: parent.width + 24px;
+                                height: cardl.height + 24px;
+                                border-radius: Theme.radius-tile - 12px;
                                 clip: true;
-                                background: live.has-art ? ink.with-alpha(0.1) : Theme.material ? Theme.m3-primary : live.tint.with-alpha(0.24);
-                                if live.has-art: Image {
+                                Image {
                                     width: 100%;
                                     height: 100%;
-                                    source: live.art;
+                                    source: card.bg-art;
                                     image-fit: cover;
                                 }
-                                if !live.has-art: SymIcon {
-                                    text: live.icon;
+                                Rectangle {
+                                    background: Theme.m3-surface-container-highest.with-alpha(0.72);
+                                }
+                            }
+                        }
+                        if card.kind == "music": Rectangle {
+                            height: 64px;
+                            if !card.has-art: SymIcon {
+                                text: card.icon;
+                                fill: true;
+                                font-size: 40px;
+                                color: ink2;
+                            }
+                        }
+                        if card.kind == "music": VerticalLayout {
+                            spacing: 0;
+                            Marquee {
+                                text: card.title != "" ? card.title : "Not Playing";
+                                ink: ink;
+                                size: 16px;
+                                weight: 600;
+                                max-w: 368px;
+                                scroll: card.show-scroll;
+                            }
+                            if card.artist != "": Text {
+                                text: card.artist;
+                                color: Theme.material ? Theme.m3-on-surface-variant : #ffffffbf;
+                                font-size: Theme.small;
+                                overflow: elide;
+                            }
+                        }
+                        if card.kind != "music": HorizontalLayout {
+                            spacing: 12px;
+                            Rectangle {
+                                width: card.has-art ? 64px : 40px;
+                                height: self.width;
+                                border-radius: card.has-art ? (Theme.material ? 16px : 12px) : self.width / 2;
+                                clip: true;
+                                background: card.has-art ? ink.with-alpha(0.1) : Theme.material ? Theme.m3-primary : card.tint.with-alpha(0.24);
+                                if card.has-art: Image {
+                                    width: 100%;
+                                    height: 100%;
+                                    source: card.art;
+                                    image-fit: cover;
+                                }
+                                if !card.has-art: SymIcon {
+                                    text: card.icon;
                                     fill: true;
                                     font-size: 20px;
-                                    color: Theme.material ? Theme.m3-on-primary : live.tint;
+                                    color: Theme.material ? Theme.m3-on-primary : card.tint;
                                 }
                             }
                             VerticalLayout {
                                 alignment: center;
                                 spacing: 2px;
                                 Text {
-                                    text: live.title;
+                                    text: card.title;
                                     color: ink;
                                     font-size: 15px;
                                     font-weight: 600;
                                     overflow: elide;
                                 }
-                                if live.artist != "" || live.time != "": Text {
-                                    text: live.kind == "music" ? live.artist : live.time;
+                                if card.artist != "" || card.time != "": Text {
+                                    text: card.kind == "music" ? card.artist : card.time;
                                     color: ink2;
                                     font-size: Theme.small;
                                     overflow: elide;
                                 }
                             }
                         }
-                        HorizontalLayout {
+                        // where the song is: a click (or a drag) seeks
+                        if card.kind == "music" && card.seekable: HorizontalLayout {
+                            spacing: 8px;
+                            height: 14px;
+                            Text {
+                                text: card.pos;
+                                color: Theme.material ? Theme.m3-on-surface-variant : #ffffffbf;
+                                font-size: Theme.caption;
+                                vertical-alignment: center;
+                            }
+                            if Theme.material: WavySeek {
+                                horizontal-stretch: 1;
+                                value: seeking ? seek-drag : card.progress;
+                                paused: !card.playing;
+                                TouchArea {
+                                    y: -4px;
+                                    height: parent.height + 8px;
+                                    mouse-cursor: pointer;
+                                    pointer-event(e) => {
+                                        if e.kind == PointerEventKind.down && e.button == PointerEventButton.left { seek-drag = max(0, min(1, self.mouse-x / self.width)); seeking = true; }
+                                        if e.kind == PointerEventKind.up && seeking { seeking = false; root.seek(seek-drag); }
+                                    }
+                                    moved => { if self.pressed { seek-drag = max(0, min(1, self.mouse-x / self.width)); } }
+                                }
+                            }
+                            if !Theme.material: Rectangle {
+                                horizontal-stretch: 1;
+                                height: 14px;
+                                property <bool> hot: seekt.has-hover || seekt.pressed;
+                                Rectangle {
+                                    y: (parent.height - self.height) / 2;
+                                    height: parent.hot ? 6px : 4px;
+                                    animate height { duration: Theme.hover; }
+                                    border-radius: self.height / 2;
+                                    background: Theme.material ? Theme.m3-secondary-container : #ffffff33;
+                                    Rectangle {
+                                        x: 0;
+                                        width: parent.width * max(0, min(1, seeking ? seek-drag : card.progress));
+                                        border-radius: parent.border-radius;
+                                        background: Theme.material ? Theme.m3-primary : #F5F5F7;
+                                    }
+                                }
+                                seekt := TouchArea {
+                                    mouse-cursor: pointer;
+                                    pointer-event(e) => {
+                                        if e.kind == PointerEventKind.down && e.button == PointerEventButton.left { seek-drag = max(0, min(1, self.mouse-x / self.width)); seeking = true; }
+                                        if e.kind == PointerEventKind.up && seeking { seeking = false; root.seek(seek-drag); }
+                                    }
+                                    moved => { if self.pressed { seek-drag = max(0, min(1, self.mouse-x / self.width)); } }
+                                }
+                            }
+                            Text {
+                                text: card.rem;
+                                color: Theme.material ? Theme.m3-on-surface-variant : #ffffffbf;
+                                font-size: Theme.caption;
+                                vertical-alignment: center;
+                            }
+                        }
+                        if card.kind == "music": Rectangle {
+                            height: 44px;
+                            // the volume: a click on the speaker mutes; the pointer on it opens a slider; the wheel over both
+                            vol := Rectangle {
+                                x: 0;
+                                y: (parent.height - self.height) / 2;
+                                property <bool> open: volt.has-hover || vols.pressed;
+                                width: open ? 104px : 36px;
+                                animate width { duration: Theme.hover; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+                                height: 36px;
+                                border-radius: 18px;
+                                background: ink.with-alpha(open ? 0.12 : 0);
+                                animate background { duration: Theme.hover; }
+                                volt := TouchArea {
+                                    scroll-event(e) => {
+                                        root.set-volume(card.volume + (e.delta-y > 0 ? 0.05 : -0.05));
+                                        accept
+                                    }
+                                    IconButton {
+                                        x: 0;
+                                        width: 36px;
+                                        height: 36px;
+                                        icon: card.muted ? "\u{e45c}" : card.volume < 0.4 ? "\u{e44c}" : "\u{e44a}"; // speaker-x | -low | -high
+                                        fill: !vol.open;
+                                        size: 18px;
+                                        ink: root.ink;
+                                        label: card.muted ? "Unmute" : "Mute";
+                                        clicked => { root.mute(); }
+                                    }
+                                    Rectangle {
+                                        x: 38px;
+                                        width: parent.width - 38px - 14px;
+                                        y: (parent.height - 20px) / 2;
+                                        height: 20px;
+                                        opacity: max(0, (vol.width - 60px) / 44px);
+                                        visible: self.opacity > 0.01;
+                                        Rectangle {
+                                            y: (parent.height - self.height) / 2;
+                                            height: Theme.material ? 6px : 4px;
+                                            border-radius: self.height / 2;
+                                            background: Theme.material ? Theme.m3-secondary-container : #ffffff40;
+                                            Rectangle {
+                                                x: 0;
+                                                width: parent.width * (card.muted ? 0 : max(0, min(1, card.volume)));
+                                                border-radius: parent.border-radius;
+                                                background: Theme.material ? Theme.m3-primary : ink;
+                                            }
+                                        }
+                                        vols := TouchArea {
+                                            y: -8px;
+                                            height: parent.height + 16px;
+                                            mouse-cursor: pointer;
+                                            pointer-event(e) => {
+                                                if e.kind == PointerEventKind.down { root.set-volume(self.mouse-x / self.width); }
+                                            }
+                                            moved => { if self.pressed { root.set-volume(max(0, min(1, self.mouse-x / self.width))); } }
+                                        }
+                                    }
+                                }
+                            }
+                            HorizontalLayout {
+                                x: (parent.width - self.width) / 2;
+                                width: self.preferred-width;
+                                spacing: 10px;
+                                for c[i] in card.controls: Rectangle {
+                                    width: i == 1 ? 44px : 36px;
+                                    height: 44px;
+                                    if Theme.material && i == 1: PlayMorph {
+                                        playing: card.playing;
+                                        icon: c.icon;
+                                        clicked => { root.control(card.kind, i, true); }
+                                    }
+                                    if !(Theme.material && i == 1): IconButton {
+                                    y: (44px - self.height) / 2;
+                                    width: i == 1 ? 44px : 36px; // (play, the middle one, wider)
+                                    height: 36px;
+                                    icon: c.icon;
+                                    fill: true;
+                                    size: 18px;
+                                    ink: root.ink;
+                                    opacity: c.on ? 1 : 0.4;
+                                    label: c.icon;
+                                    clicked => { if c.on { root.control(card.kind, i, true); } }
+                                    }
+                                }
+                            }
+                            // open the player's window: pointed at, it widens to say which app
+                            oa := Rectangle {
+                                property <bool> open: oat.has-hover && card.app-name != "";
+                                width: open ? min(140px, oa-name.preferred-width + 42px) : 36px;
+                                animate width { duration: Theme.hover; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+                                x: parent.width - self.width;
+                                y: (parent.height - self.height) / 2;
+                                height: 36px;
+                                border-radius: 18px;
+                                background: ink.with-alpha(oat.pressed ? 0.2 : oat.has-hover ? 0.12 : 0);
+                                animate background { duration: Theme.hover; }
+                                accessible-role: button;
+                                accessible-label: "Open " + (card.app-name != "" ? card.app-name : "the player");
+                                accessible-action-default => { root.open-player(); }
+                                oa-name := Text {
+                                    x: 10px;
+                                    width: parent.width - 10px - 32px;
+                                    text: card.app-name;
+                                    color: ink;
+                                    font-size: Theme.small;
+                                    font-weight: 500;
+                                    overflow: elide;
+                                    vertical-alignment: center;
+                                    opacity: max(0, (oa.width - 52px) / 30px);
+                                }
+                                SymIcon {
+                                    x: parent.width - 34px;
+                                    width: 32px;
+                                    text: "\u{e5de}"; // arrow-square-out
+                                    font-size: 17px;
+                                    color: ink;
+                                }
+                                oat := TouchArea {
+                                    mouse-cursor: pointer;
+                                    clicked => { root.open-player(); }
+                                }
+                            }
+                        }
+                        if card.kind != "music": HorizontalLayout {
                             alignment: center;
                             spacing: 18px;
-                            for c[i] in live.controls: IconButton {
+                            for c[i] in card.controls: IconButton {
                                 width: 36px;
                                 height: 32px;
                                 icon: c.icon;
@@ -1064,11 +2438,11 @@ export component Island inherits Rectangle {
                                 ink: c.danger ? (Theme.material ? Theme.m3-error : Theme.danger) : root.ink;
                                 opacity: c.on ? 1 : 0.4;
                                 label: c.icon;
-                                clicked => { if c.on { root.control(i); } }
+                                clicked => { if c.on { root.control(card.kind, i, true); } }
                             }
                         }
                         // which one this is, when there are several
-                        if live-count > 1: HorizontalLayout {
+                        if live-count > 1 && !all-mode: HorizontalLayout {
                             alignment: center;
                             spacing: 6px;
                             for n[i] in live-count: Rectangle {
@@ -1080,25 +2454,65 @@ export component Island inherits Rectangle {
                             }
                         }
                     }
-                    if !event-inside: Text {
-                        height: 22px;
-                        text: status;
-                        color: ink2;
-                        font-size: Theme.small;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
+                    // all at once: the others, stacked (IslandActivity)
+                    if !event-inside && all-mode && !recent-over: VerticalLayout {
+                        spacing: 10px;
+                        for r[i] in act-rows: ActivityRow {
+                            r: r;
+                            shown: expanded;
+                            delay: i * 45ms;
+                            ink: root.ink;
+                            ink2: root.ink2;
+                            control(k, j) => { root.control(k, j, true); }
+                        }
+                    }
+                    if !event-inside: IslandStatus {
+                        s: stats;
+                        shown: expanded;
+                        delay: act-n * 45ms;
+                        dim: Theme.material ? Theme.m3-on-surface-variant : #ffffff99;
+                        hover(k, on, x, y) => { root.stat-hover(k, on && expanded, x, y); }
+                    }
+                    // the last few alerts; with live activities, a header that opens them in their place
+                    if !event-inside && recent-n > 0 && (live-count == 0 || recent-open): RecentList {
+                        rows: recent;
+                        n: recent-n;
+                        shown: expanded;
+                        collapsible: live-count > 0;
+                        ink: root.ink;
+                        ink2: root.ink2;
+                        toggle => { recent-hold-h = recent-open ? 0 : shape.height; recent-open = !recent-open; }
+                        run(h) => { root.recent-run(h); }
+                        forget(h) => { root.recent-forget(h); }
+                        clear => { root.recent-clear(); }
                     }
                 }
             }
         }
 
+        // Recent, when live activities share the island: opens the last alerts in their place
+        recb := IconButton {
+            x: 6px;
+            y: 3px;
+            width: 26px;
+            height: 26px;
+            visible: !event-inside && live-count > 0 && recent-n > 0 && expanded && shape.height > 40px;
+            opacity: content-in;
+            icon: "\u{e1a0}"; // clock-counter-clockwise
+            fill: recent-open;
+            size: 14px;
+            ink: recent-open ? root.ink : root.ink2;
+            label: recent-open ? "Hide recent alerts" : "Recent alerts · " + min(8, recent-n);
+            clicked => { recent-hold-h = recent-open ? 0 : shape.height; recent-open = !recent-open; }
+        }
+
         // Pin: keep the island open even with nothing happening
-        if !event-inside: IconButton {
+        pinb := IconButton {
             x: parent.width - self.width - 6px;
             y: 3px;
             width: 26px;
             height: 26px;
-            visible: expanded && shape.height > 40px;
+            visible: !event-inside && expanded && shape.height > 40px;
             opacity: content-in;
             icon: pinned ? "\u{e3e4}" : "\u{e3e2}"; // push-pin-slash | push-pin
             fill: pinned;
@@ -1106,6 +2520,67 @@ export component Island inherits Rectangle {
             ink: pinned ? root.ink : root.ink2;
             label: pinned ? "Unpin the island" : "Keep the island open";
             clicked => { root.pin(); }
+        }
+    }
+
+    // IslandAlertStack: the newest alert in a card under the open island, the
+    // ones before it peeking out under it, "+N waiting"; it drops in (300 ms
+    // OutCubic, 8 px) and holds the alerts while pointed at
+    below := Rectangle {
+        property <bool> on: alerts-below && alerts.length > 0;
+        x: (root.width - self.width) / 2;
+        y: shape.y + shape.height + 8px + (on ? 0 : -8px);
+        animate y { duration: 300ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+        width: 392px;
+        height: on ? bl.preferred-height + 28px + (alerts.length > 1 ? 10px : 0) : 0;
+        opacity: on ? 1 : 0;
+        animate opacity { duration: on ? 300ms : 150ms; }
+        visible: self.opacity > 0.01;
+        // the earlier ones, peeking out under it
+        if alerts.length > 1: Rectangle {
+            x: 12px;
+            y: 10px;
+            width: parent.width - 24px;
+            height: parent.height - 10px;
+            border-radius: Theme.material ? 24px : 20px;
+            background: Theme.material ? Theme.m3-surface-container : #000000b3;
+            opacity: 0.7;
+        }
+        Rectangle {
+            height: parent.height - (alerts.length > 1 ? 10px : 0);
+            border-radius: Theme.material ? 28px : 22px;
+            background: Theme.material ? Theme.m3-surface-container-high : #000000e6;
+            border-width: Theme.material ? 0 : 1px;
+            border-color: #ffffff24;
+            drop-shadow-blur: Theme.material ? 12px : 0;
+            drop-shadow-offset-y: 2px;
+            drop-shadow-color: Theme.m3-shadow.with-alpha(Theme.dark ? 0.4 : 0.16);
+            bt := TouchArea {
+                changed has-hover => { root.holding(self.has-hover); }
+                bl := VerticalLayout {
+                    x: 18px;
+                    y: 14px;
+                    width: parent.width - 36px;
+                    height: self.preferred-height;
+                    spacing: 6px;
+                    if below.on: AlertView {
+                        a: alerts[alerts.length - 1];
+                        first: true;
+                        ink: Theme.material ? Theme.m3-on-surface : #F5F5F7;
+                        ink2: root.ink2;
+                        reduce-motion: root.reduce-motion;
+                        act(u, w) => { root.act(u, w); }
+                        dismiss(u) => { root.dismiss(u); }
+                        set-level(v) => { root.set-level(v); }
+                    }
+                    if alerts.length > 1: Text {
+                        text: "+" + (alerts.length - 1) + " waiting";
+                        color: root.ink2;
+                        font-size: Theme.caption;
+                        horizontal-alignment: center;
+                    }
+                }
+            }
         }
     }
 }

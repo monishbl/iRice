@@ -1,0 +1,60 @@
+# Arena IRICE-TEST 1920x1080 scale 1, the user's config (expressive motion, Colloid, their 4 widgets).
+# Each file runs top to bottom from a fresh desktop. `static NAME x y w h`: that region must not change
+# from there until the next `shot`, `rec` or `look` (the no-reload blocks end with their last close).
+# Right-clicks: `ptr ... down up` lines marked (right button) need the runner's right button.
+
+look glass
+rec sw-notch 1.2 ptr move 200 316 scroll 0 15
+note exactly one flip: the next widget slides up 24 px and fades in (300/200 ms); the current dot grows to 12 px
+ptr scroll 0 -15
+wait 0.8
+rec sw-touchpad 1.2 ptr move 200 316 scroll 0 3 sleep 10 scroll 0 3 sleep 10 scroll 0 3 sleep 10 scroll 0 3 sleep 10 scroll 0 3
+note five small steps (15 px in all): one flip, not five
+rec sw-dot 1 ptr glide 366 300 300 click
+note the dot turns label/on-surface-variant on hover; click jumps with the slide
+note no reload: widgets must not fade or grow in again while windows open, focus and close (only the clock's minute may change)
+ptr move 1500 600
+shot sw-before
+setup sh -c "foot & sleep 0.8; hyprctl dispatch \"hl.dsp.window.move({ workspace = 'special:parity', follow = false, window = 'class:foot' })\""
+shot sw-after-open-1
+setup sh -c "foot & sleep 0.8; hyprctl dispatch \"hl.dsp.window.move({ workspace = 'special:parity', follow = false, window = 'class:foot' })\""
+shot sw-after-open-2
+note the after-open shots equal the before shot over the widgets (no widget at 0.9 scale or faded)
+static sw-clock 32 54 344 164
+static sw-stack 32 234 344 164
+static sw-batteries 32 414 344 164
+static sw-shortcuts 392 54 344 164
+ptr move 1300 700 click
+wait 1
+setup hyprctl dispatch 'hl.dsp.window.close({ window = "class:foot" })'
+wait 1.5
+setup hyprctl dispatch 'hl.dsp.window.close({ window = "class:foot" })'
+wait 1.5
+
+look material
+rec sw-notch 1.2 ptr move 200 316 scroll 0 15
+note exactly one flip: the next widget slides up 24 px and fades in (300/200 ms); the current dot grows to 12 px
+ptr scroll 0 -15
+wait 0.8
+rec sw-touchpad 1.2 ptr move 200 316 scroll 0 3 sleep 10 scroll 0 3 sleep 10 scroll 0 3 sleep 10 scroll 0 3 sleep 10 scroll 0 3
+note five small steps (15 px in all): one flip, not five
+rec sw-dot 1 ptr glide 366 300 300 click
+note the dot turns label/on-surface-variant on hover; click jumps with the slide
+note no reload: widgets must not fade or grow in again while windows open, focus and close (only the clock's minute may change)
+ptr move 1500 600
+shot sw-before
+setup sh -c "foot & sleep 0.8; hyprctl dispatch \"hl.dsp.window.move({ workspace = 'special:parity', follow = false, window = 'class:foot' })\""
+shot sw-after-open-1
+setup sh -c "foot & sleep 0.8; hyprctl dispatch \"hl.dsp.window.move({ workspace = 'special:parity', follow = false, window = 'class:foot' })\""
+shot sw-after-open-2
+note the after-open shots equal the before shot over the widgets (no widget at 0.9 scale or faded)
+static sw-clock 32 54 344 164
+static sw-stack 32 234 344 164
+static sw-batteries 32 414 344 164
+static sw-shortcuts 392 54 344 164
+ptr move 1300 700 click
+wait 1
+setup hyprctl dispatch 'hl.dsp.window.close({ window = "class:foot" })'
+wait 1.5
+setup hyprctl dispatch 'hl.dsp.window.close({ window = "class:foot" })'
+wait 1.5

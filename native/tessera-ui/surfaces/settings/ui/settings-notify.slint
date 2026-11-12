@@ -25,7 +25,7 @@
 //   edithead back (act 0), the app, Remove rule (b.on: shown; act 1)
 
 import { Theme } from "@tessera/theme.slint";
-import { SIc, SOpt, SetRow, SBlock, SBus, SG, SM, SIcon, SFocusRing, SSwitch, SSlider, SSegmented, SChoice, SButton, SField, SChip, SSwatch, SFilled } from "settings-kit.slint";
+import { SIc, SOpt, SetRow, SBlock, SBus, SG, SM, SIcon, SFocusRing, SSwitch, SSlider, SSegmented, SChoice, SButton, SField, SChip, SSwatch, SFilled, STip } from "settings-kit.slint";
 
 // A ghost icon button (IconButton.qml)
 component Ghost inherits Rectangle {
@@ -35,9 +35,10 @@ component Ghost inherits Rectangle {
     in property <length> size: 16px;
     in property <string> label;
     callback clicked();
-    width: Theme.material ? 40px : 28px;
+    width: 28px;
     height: self.width;
-    border-radius: Theme.material ? self.height / 2 : Theme.radius-control - 2px;
+    border-radius: Theme.material ? (ta.pressed ? 8px : self.height / 2) : Theme.radius-control - 2px;
+    animate border-radius { duration: 150ms; }
     background: Theme.material ? Theme.m3-on-surface-variant.with-alpha(ta.pressed ? 0.1 : ta.has-hover ? 0.08 : 0) : ta.pressed ? Theme.fill-pressed : ta.has-hover ? Theme.fill : transparent;
     animate background { duration: SM.hover; }
     accessible-role: AccessibleRole.button;
@@ -48,6 +49,7 @@ component Ghost inherits Rectangle {
         mouse-cursor: pointer;
         clicked => { root.clicked(); }
     }
+    STip { text: root.label; hovered: ta.has-hover; }
 }
 
 // One letter, at a fixed width (focus.qml's days: Chip, tick off, solid)
@@ -194,7 +196,7 @@ component ItemRow {
         background: ta.has-hover ? Theme.m3-surface-container-high.mix(Theme.m3-on-surface, 0.92) : Theme.m3-surface-container-high;
         animate background { duration: SM.hover; }
     }
-    if !Theme.material: Rectangle {
+    if !Theme.material && r.text == "chevron": Rectangle {
         background: ta.pressed ? Theme.fill-pressed : ta.has-hover ? Theme.fill : transparent;
         animate background { duration: SM.hover; }
     }

@@ -28,6 +28,11 @@ pub struct Look {
     /// The glass material Settings chose (Theme.glass: Glass, Frost, Solid,
     /// Custom, the optics, the wallpaper's tint, Cool-down's cheaper glass)
     pub glass: GlassMaterial,
+    /// appearance.motion: "subtle" (the default), "snappy" or "expressive"
+    /// (Theme.motion; the Material look always moves on its expressive springs)
+    pub motion: String,
+    /// appearance.reduceMotion
+    pub reduce_motion: bool,
 }
 
 pub fn config_path() -> PathBuf {
@@ -92,7 +97,11 @@ pub fn look_with(v: &Value, look_override: Option<&str>, wallpaper: impl Fn(&str
     let dark = s("mode", "dark") != "light"; // ("auto" follows the sun in the shell; dark here)
     let accent_name = s("accent", "blue");
     let accent = if accent_name == "wallpaper" {
-        v["wallpaper"]["path"].as_str().filter(|p| !p.is_empty()).and_then(&wallpaper).map_or_else(|| accent_hex("blue", dark), |c| snap_accent(&c, dark))
+        // (Wallpaper.qml: the tone — the shell's when it said one, else the
+        // picture's by the QML's own rule — snapped by hue; not the Material seed)
+        let said = shell.tone.map(|t| format!("#{:02x}{:02x}{:02x}", (t[0] * 255.0).round() as u8, (t[1] * 255.0).round() as u8, (t[2] * 255.0).round() as u8));
+        let path = v["wallpaper"]["path"].as_str().filter(|p| !p.is_empty());
+        said.or_else(|| path.and_then(wallpaper_tone)).or_else(|| path.and_then(&wallpaper)).map_or_else(|| accent_hex("blue", dark), |c| snap_accent(&c, dark))
     } else {
         accent_hex(&accent_name, dark)
     };
@@ -107,10 +116,12 @@ pub fn look_with(v: &Value, look_override: Option<&str>, wallpaper: impl Fn(&str
     let transparency = if material && !reduce && shell.cooldown != "solid" { a["materialTransparency"].as_f64().unwrap_or(0.0).clamp(0.0, 1.0) as f32 } else { 0.0 };
     let style = s("materialStyle", "tonalSpot");
     let glass = glass_material(v, material, dark, transparency, shell, || {
-        let roles = material_roles(&seed, dark, &style);
+        let roles = material_roles_at(&seed, dark, &style, [0.0, 0.5, 1.0][contrast.min(2) as usize]);
         rgbf(roles.iter().find(|(n, _)| n == "surfaceContainer").map_or("#000000", |(_, c)| c.as_str()))
     });
-    Look { material, dark, seed, style, accent, contrast, transparency, glass }
+    let motion = s("motion", "subtle"); // (Config.qml's default)
+    let reduce_motion = a["reduceMotion"].as_bool().unwrap_or(false);
+    Look { material, dark, seed, style, accent, contrast, transparency, glass, motion, reduce_motion }
 }
 
 // ── Glass: Theme.glass (shell/common/Theme.qml) ─────────────────────────────
@@ -347,16 +358,40 @@ pub fn accent_hex(name: &str, dark: bool) -> String {
 /// The wallpaper's colour snapped to the nearest named accent by hue
 /// (graphite when it has hardly any colour), as Wallpaper.qml's snapAccent
 pub fn snap_accent(color: &str, dark: bool) -> String {
-    let rgb = Rgb::from_str(color).unwrap_or(Rgb::new(0x0a, 0x84, 0xff));
-    let hct: Hct = rgb.into();
-    if hct.get_chroma() < 12.0 {
-        return accent_hex("graphite", dark);
+    // (Wallpaper.qml's snapAccent: HSV hue, the first nearest in its order;
+    // hardly any colour, HSV saturation under 0.15, is blue)
+    let rgb = |c: &str| {
+        let v = u32::from_str_radix(c.trim_start_matches('#').get(..6).unwrap_or("0a84ff"), 16).unwrap_or(0x0a84ff);
+        [(v >> 16) as u8, (v >> 8) as u8, v as u8]
+    };
+    let (h, s, _) = crate::seed::hsv(rgb(color));
+    if s < 0.15 {
+        return accent_hex("blue", dark);
     }
-    let names = ["blue", "purple", "pink", "red", "orange", "yellow", "green", "teal", "cyan", "indigo"];
-    let hue = |c: &str| -> f64 { let h: Hct = Rgb::from_str(c).unwrap().into(); h.get_hue() };
-    let dist = |a: f64, b: f64| -> f64 { let d = (a - b).abs() % 360.0; d.min(360.0 - d) };
-    let best = names.iter().min_by(|a, b| dist(hue(&accent_hex(a, dark)), hct.get_hue()).total_cmp(&dist(hue(&accent_hex(b, dark)), hct.get_hue()))).unwrap();
-    accent_hex(best, dark)
+    let mut best = ("blue", 2.0f64);
+    for n in ["red", "orange", "yellow", "green", "teal", "cyan", "blue", "indigo", "purple", "pink"] {
+        let mut d = (crate::seed::hsv(rgb(&accent_hex(n, dark))).0 - h).abs();
+        d = d.min(1.0 - d);
+        if d < best.1 {
+            best = (n, d);
+        }
+    }
+    accent_hex(best.0, dark)
+}
+
+/// The tone Wallpaper.qml finds in a picture (seed.rs), remembered per picture
+fn wallpaper_tone(path: &str) -> Option<String> {
+    use std::sync::Mutex;
+    static LAST: Mutex<Option<(String, Option<String>)>> = Mutex::new(None);
+    let mut last = LAST.lock().ok()?;
+    if let Some((p, tone)) = last.as_ref() {
+        if p == path {
+            return tone.clone();
+        }
+    }
+    let tone = crate::seed::tone_from_picture(std::path::Path::new(path));
+    *last = Some((path.to_string(), tone.clone()));
+    tone
 }
 
 const BASELINE: &str = "#6750A4";
@@ -395,9 +430,19 @@ fn variant(style: &str) -> Variant {
 
 /// Every Material role for a seed, as (camelCase name, #rrggbb)
 pub fn material_roles(seed: &str, dark: bool, style: &str) -> Vec<(String, String)> {
+    material_roles_at(seed, dark, style, 0.0)
+}
+
+/// A look's roles, at its contrast (Theme.qml: `[0, 0.5, 1][contrastLevel]`)
+pub fn look_roles(look: &Look) -> Vec<(String, String)> {
+    material_roles_at(&look.seed, look.dark, &look.style, [0.0, 0.5, 1.0][look.contrast.min(2) as usize])
+}
+
+/// The roles at a contrast level (0 standard, 0.5 medium, 1 high)
+pub fn material_roles_at(seed: &str, dark: bool, style: &str, contrast: f64) -> Vec<(String, String)> {
     let rgb = Rgb::from_str(seed).unwrap_or(Rgb::new(0x67, 0x50, 0xA4));
     let hct: Hct = rgb.into();
-    let scheme = DynamicScheme::from_spec(hct, variant(style), dark, Some(0.0), Platform::Phone, SpecVersion::Spec2025);
+    let scheme = DynamicScheme::from_spec(hct, variant(style), dark, Some(contrast), Platform::Phone, SpecVersion::Spec2025);
     Role::ALL
         .iter()
         .map(|r| {
@@ -529,6 +574,9 @@ macro_rules! __theme_tokens {
             radius_module / set_radius_module: f32,
             radius_panel / set_radius_panel: f32,
             spring / set_spring: f32,
+            expressive / set_expressive: bool,
+            snappy / set_snappy: bool,
+            press_bounce / set_press_bounce: bool,
         }
     };
 }
@@ -596,8 +644,15 @@ pub fn tokens(look: &Look, plugin: bool) -> Tokens {
     let t = &mut tokens;
     t.set_material(look.material);
     t.set_dark(look.dark);
+    // (Theme.motion: Material always expressive; Snappy is a Glass choice;
+    // a press's bounce is Material's, off with Reduce motion)
+    let expressive = look.material || look.motion == "expressive";
+    let snappy = !look.material && look.motion == "snappy";
+    t.set_expressive(expressive);
+    t.set_snappy(snappy);
+    t.set_press_bounce(look.material && !look.reduce_motion);
     if look.material {
-        let roles = material_roles(&look.seed, look.dark, &look.style);
+        let roles = look_roles(look);
         let r = |k: &str| hex(roles.iter().find(|(n, _)| n == k).map(|(_, v)| v.as_str()).unwrap_or("#ff00ff"));
         t.set_font("Tessera Sans Flex".into());
         t.set_body(14.0);
@@ -762,7 +817,8 @@ pub fn tokens(look: &Look, plugin: bool) -> Tokens {
         t.set_radius_popover(18.0);
         t.set_radius_module(20.0);
         t.set_radius_panel(26.0);
-        t.set_spring(0.32);
+        // (Theme.motion.damping: Snappy 0.5, Expressive 0.22, Subtle 0.32)
+        t.set_spring(if snappy { 0.5 } else if expressive { 0.22 } else { 0.32 });
     }
     tokens
 }
@@ -831,10 +887,78 @@ pub fn glass_shape(look: &Look, x: f32, y: f32, w: f32, h: f32, radius: f32, opa
     ]
 }
 
+/// What a part's after_frame compares to tell whether its glass shapes (or
+/// input region) changed since it last sent them: a hash of the numbers'
+/// bits, not `format!("{shapes:?}")` (every float printed, every frame)
+pub trait GlassKey {
+    fn feed(&self, h: &mut u64);
+}
+impl GlassKey for f32 {
+    fn feed(&self, h: &mut u64) {
+        // (FNV-1a over the bits)
+        *h = (*h ^ self.to_bits() as u64).wrapping_mul(0x100000001b3);
+    }
+}
+impl<T: GlassKey, const N: usize> GlassKey for [T; N] {
+    fn feed(&self, h: &mut u64) {
+        self.iter().for_each(|v| v.feed(h));
+    }
+}
+impl<T: GlassKey> GlassKey for [T] {
+    fn feed(&self, h: &mut u64) {
+        *h = (*h ^ self.len() as u64).wrapping_mul(0x100000001b3);
+        self.iter().for_each(|v| v.feed(h));
+    }
+}
+impl<T: GlassKey + ?Sized> GlassKey for &T {
+    fn feed(&self, h: &mut u64) {
+        (**self).feed(h)
+    }
+}
+impl<T: GlassKey> GlassKey for Vec<T> {
+    fn feed(&self, h: &mut u64) {
+        self.as_slice().feed(h)
+    }
+}
+impl<T: GlassKey> GlassKey for Option<T> {
+    fn feed(&self, h: &mut u64) {
+        match self {
+            Some(v) => {
+                *h = (*h ^ 1).wrapping_mul(0x100000001b3);
+                v.feed(h)
+            }
+            None => *h = (*h ^ 2).wrapping_mul(0x100000001b3),
+        }
+    }
+}
+impl GlassKey for (f32, f32, f32, f32) {
+    fn feed(&self, h: &mut u64) {
+        [self.0, self.1, self.2, self.3].feed(h)
+    }
+}
+
+/// The key for `v` (see GlassKey); never empty, so "" still means "nothing sent"
+pub fn glass_key<T: GlassKey + ?Sized>(v: &T) -> String {
+    let mut h = 0xcbf29ce484222325u64;
+    v.feed(&mut h);
+    format!("{h:016x}")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn glass_keys_change_with_any_number() {
+        let a = [[1.0f32; 19], [2.0; 19]];
+        let mut b = a;
+        assert_eq!(glass_key(&a.to_vec()), glass_key(&b.to_vec()));
+        b[1][18] = 2.001;
+        assert_ne!(glass_key(&a.to_vec()), glass_key(&b.to_vec()));
+        assert_ne!(glass_key(&Vec::<[f32; 19]>::new()), glass_key(&vec![[0.0f32; 19]]));
+        assert!(!glass_key(&None::<[f32; 19]>).is_empty());
+    }
 
     fn none(_: &str) -> Option<String> {
         None
@@ -845,10 +969,12 @@ mod tests {
         let v = json!({"appearance": {"accent": "orange", "mode": "light"}});
         assert_eq!(look_from(&v, None, none).accent, "#FF9500");
         assert_eq!(look_from(&json!({}), None, none).accent, "#0A84FF");
-        // the wallpaper's colour, snapped: a sea blue is blue, a leaf green green, grey graphite
+        // the wallpaper's colour, snapped by HSV hue (Wallpaper.qml): a sea blue
+        // is blue, a leaf green green, grey blue; a warm amber orange, not red
         assert_eq!(snap_accent("#1e6fd9", true), "#0A84FF");
         assert_eq!(snap_accent("#3f8f2a", true), "#30D158");
-        assert_eq!(snap_accent("#808080", true), "#98989D");
+        assert_eq!(snap_accent("#808080", true), "#0A84FF");
+        assert_eq!(snap_accent("#d9782a", true), "#FF9F0A");
         let v = json!({"appearance": {"accent": "wallpaper"}, "wallpaper": {"path": "/p.jpg"}});
         assert_eq!(look_from(&v, None, |_| Some("#3f8f2a".into())).accent, "#30D158");
     }

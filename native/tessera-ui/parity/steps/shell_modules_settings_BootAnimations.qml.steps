@@ -1,0 +1,28 @@
+# Boot animation cards on the lock page. Never finish a real change (no root helper); cancel any password prompt.
+ipc panels settings lock
+wait 2
+ptr move 1100 600 sleep 200 scroll 0 20
+wait 1
+shot boot
+note B1 System card with the distro logo, one card per design with its still, None with three text lines, names under them, the chosen one ringed; card size 136 and gap 12, identical in both shells.
+ptr move 1100 700 sleep 600 glide 1100 700 100
+wait 1
+shot boot-hover
+note B2 hovering a card that is not chosen: the still is a little lighter (6 percent white), pointer hand. Position is a guess: read card positions from the boot shot.
+# Keys
+ptr move 700 700 sleep 200 glide 700 700 100 click
+wait 1
+key -k Tab
+wait 1
+shot boot-tab
+note B3 focus ring moves to the next card (ring on the picture).
+key -k space
+wait 1
+shot boot-busy
+note B4 the card shows a dark veil plus a 24 px light spinner (#EDEDEF); compare size and colour with QML. If a password prompt is up, it must be cancelled afterwards.
+key -k Escape
+wait 1
+shot boot-cancel
+note After cancelling the prompt the veil is gone and the old choice is ringed again.
+# MANUAL: cancel the password prompt if one appears (cannot be checked automatically)
+ipc panels close

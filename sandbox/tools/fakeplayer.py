@@ -24,6 +24,7 @@ XML = """<node>
 <interface name="org.mpris.MediaPlayer2.Player">
  <method name="Next"/><method name="Previous"/><method name="Pause"/><method name="PlayPause"/><method name="Stop"/><method name="Play"/>
  <method name="Seek"><arg direction="in" type="x"/></method>
+ <signal name="Seeked"><arg type="x"/></signal>
  <method name="SetPosition"><arg direction="in" type="o"/><arg direction="in" type="x"/></method>
  <property name="PlaybackStatus" type="s" access="read"/><property name="Rate" type="d" access="readwrite"/>
  <property name="Metadata" type="a{sv}" access="read"/><property name="Volume" type="d" access="readwrite"/>
@@ -54,7 +55,7 @@ def meta():
 
 def props(iface):
     if iface == "org.mpris.MediaPlayer2":
-        return {"CanQuit": GLib.Variant("b", False), "CanRaise": GLib.Variant("b", False), "HasTrackList": GLib.Variant("b", False),
+        return {"CanQuit": GLib.Variant("b", False), "CanRaise": GLib.Variant("b", True), "HasTrackList": GLib.Variant("b", False),
                 "Identity": GLib.Variant("s", os.environ.get("FAKEPLAYER_IDENTITY", "Test Player")), "DesktopEntry": GLib.Variant("s", "foot"),
                 "SupportedUriSchemes": GLib.Variant("as", []), "SupportedMimeTypes": GLib.Variant("as", [])}
     return {"PlaybackStatus": GLib.Variant("s", "Playing" if state["playing"] else "Paused"), "Rate": GLib.Variant("d", 1.0),
@@ -80,8 +81,23 @@ def call(c, sender, path, iface, method, params, inv):
         state["pos"] = 0; state["t"] = time.time()
         changed(["Metadata"])
     elif method == "SetPosition":
-        state["pos"] = params.unpack()[1] / 1e6; state["t"] = time.time()
+        state["pos"] = max(0.0, min(210.0, params.unpack()[1] / 1e6)); state["t"] = time.time()
+        seeked()
+    elif method == "Seek":
+        # (relative, microseconds; past the end goes to the next track, as players do)
+        state["pos"] = max(0.0, pos() + params.unpack()[0] / 1e6); state["t"] = time.time()
+        if state["pos"] >= 210.0:
+            state["i"] = (state["i"] + 1) % len(TRACKS); state["pos"] = 0
+            changed(["Metadata"])
+        seeked()
+    elif method == "Raise":
+        # (logged, so a test can see "open the player" reached it)
+        print("fakeplayer: Raise", file=sys.stderr, flush=True)
     inv.return_value(None)
+
+
+def seeked():
+    conn.emit_signal(None, "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2.Player", "Seeked", GLib.Variant("(x)", (int(pos() * 1e6),)))
 
 
 def get(c, sender, path, iface, name):

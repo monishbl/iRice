@@ -58,7 +58,7 @@ component LpSegmented inherits Rectangle {
         border-bottom-left-radius: self.border-top-left-radius;
         border-top-right-radius: !Theme.material ? 0 : i == options.length - 1 || sg.chosen-here ? full : st.pressed ? 4px : 8px;
         border-bottom-right-radius: self.border-top-right-radius;
-        animate border-top-left-radius, border-top-right-radius { duration: 200ms; easing: spring(0.4); }
+        animate border-top-left-radius, border-top-right-radius { duration: 150ms; easing: spring(0.28); } // (springFast, measured)
         background: !Theme.material ? transparent : (sg.chosen-here ? Theme.m3-primary : Theme.m3-surface-container-highest).mix(sg.chosen-here ? Theme.m3-on-primary : Theme.m3-on-surface-variant, st.pressed ? 0.9 : st.has-hover ? 0.92 : 1);
         animate background { duration: 150ms; }
         accessible-role: tab;
@@ -115,10 +115,20 @@ export component LaunchpadPanel inherits Window {
     in property <length> menu-h;
     in-out property <int> menu-current: -1;
 
+    // Theme.motion: 0 standard, 1 expressive, 2 snappy (Glass's choice), and its pace
+    // (Theme.motion's kind, live from core: 0 standard, 1 expressive, 2 snappy)
+    in property <int> motion-kind: Theme.snappy ? 2 : Theme.expressive ? 1 : 0;
+    in property <float> pace: Theme.snappy ? 0.85 : 1; // (Theme.motion.pace)
+
+    // Opens on a spring, closes quickly (Theme.motion.panel × 0.6 on the exit
+    // curve). The springs are Qt's SpringAnimations measured (their 16 ms
+    // steps fitted to Slint's spring: duration, bounce): Material's
+    // springDefault (AppDrawer); Glass's Dialog: Theme.motion.spring + 0.4,
+    // damping + 0.08 (expressive 3.4/0.30, standard 4.2/0.40, snappy 6.48/0.58)
     out property <float> progress: shown ? 1 : 0;
     animate progress {
-        duration: shown ? (Theme.material ? 560ms : 480ms) : 192ms;
-        easing: shown ? spring(0.4) : (Theme.material ? cubic-bezier(0.3, 0, 0.8, 0.15) : cubic-bezier(0.4, 0, 1, 1));
+        duration: shown ? (Theme.material ? 230ms : motion-kind == 1 ? 345ms : motion-kind == 2 ? 240ms : 285ms) : 192ms * pace;
+        easing: shown ? (Theme.material ? spring(0.01) : motion-kind == 1 ? spring(0.25) : motion-kind == 2 ? spring(0.0) : spring(0.02)) : (Theme.material ? cubic-bezier(0.3, 0, 0.8, 0.15) : cubic-bezier(0.4, 0, 1, 1));
     }
     changed progress => {
         if !shown && progress <= 0.001 { closed(); }
@@ -158,6 +168,7 @@ export component LaunchpadPanel inherits Window {
     callback dismissed(); // a click on the scrim
     callback sheet-clicked();
     callback closed();
+    callback wheel(length); // a scroll's step (touchpad or wheel), as Slint gives it
 
     public function open() {
         field.text = "";
@@ -222,6 +233,11 @@ export component LaunchpadPanel inherits Window {
                     height: 36px;
                     border-radius: Theme.radius-control - 2px;
                     background: bb.pressed ? Theme.fill-pressed : bb.has-hover ? Theme.fill : transparent;
+                    animate background { duration: Theme.hover; }
+                    // (IconButton's ElasticControl: Theme.motion.squish while
+                    // held, on its spring, measured; no rubber band here)
+                    transform-scale: bb.pressed ? (motion-kind == 1 ? 0.9 : motion-kind == 2 ? 0.97 : 0.95) : 1;
+                    animate transform-scale { duration: motion-kind == 1 ? 270ms : motion-kind == 2 ? 250ms : 245ms; easing: motion-kind == 1 ? spring(0.55) : motion-kind == 2 ? spring(0.0) : spring(0.29); }
                     accessible-role: button;
                     accessible-label: "Back to categories";
                     accessible-action-default => { back(); }
@@ -264,8 +280,14 @@ export component LaunchpadPanel inherits Window {
                         y: 8px;
                         width: 40px;
                         height: 40px;
+                        // (IconButton: radius 150 ms OutCubic, colour Theme.motion.hover,
+                        // ElasticControl's swell on springPress)
                         border-radius: mb.pressed ? 8px : 20px;
+                        animate border-radius { duration: 150ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
                         background: mb.pressed ? Theme.m3-on-surface-variant.with-alpha(0.1) : mb.has-hover ? Theme.m3-on-surface-variant.with-alpha(0.08) : transparent;
+                        animate background { duration: 150ms; }
+                        transform-scale: mb.pressed && Theme.press-bounce ? 1.06 : 1;
+                        animate transform-scale { duration: 235ms; easing: spring(0.53); }
                         accessible-role: button;
                         accessible-label: "Back to categories";
                         accessible-action-default => { back(); }
@@ -318,7 +340,11 @@ export component LaunchpadPanel inherits Window {
                         width: 40px;
                         height: 40px;
                         border-radius: cb.pressed ? 8px : 20px;
+                        animate border-radius { duration: 150ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
                         background: cb.pressed ? Theme.m3-on-surface-variant.with-alpha(0.1) : cb.has-hover ? Theme.m3-on-surface-variant.with-alpha(0.08) : transparent;
+                        animate background { duration: 150ms; }
+                        transform-scale: cb.pressed && Theme.press-bounce ? 1.06 : 1;
+                        animate transform-scale { duration: 235ms; easing: spring(0.53); }
                         accessible-role: button;
                         accessible-label: "Clear search";
                         accessible-action-default => { field.text = ""; root.edited(""); }
@@ -382,11 +408,29 @@ export component LaunchpadPanel inherits Window {
                 height: parent.height - self.y;
                 content-height: max(self.height, content-h);
                 content-y <=> scroll-y;
+                // Scrolling is Rust's (Momentum.qml): every scroll moves the grid
+                // at once, and a touchpad run that ends still moving glides on
+                // as the QML's Flickable flicks. (Slint's own wheel handling
+                // gets no touchpad phases here: each step was a 180 ms
+                // animation and nothing glided after the fingers lifted.)
+                wheel-area := TouchArea {
+                    width: parent.width;
+                    height: max(grid.height, content-h);
+                    scroll-event(e) => {
+                        if e.delta-y == 0 { return reject; }
+                        root.wheel(e.delta-y);
+                        accept
+                    }
+                    // (a click on the grid's gaps is a click on the sheet)
+                    clicked => { sheet-clicked(); }
                 for c[i] in cells: cell := Rectangle {
                     property <bool> sel: i == selected;
                     property <bool> lit: picked != "" && alphabetical && c.letter == picked;
                     property <duration> delay: 16ms + min(i, 24) * 14ms;
-                    property <float> intro: entering && i <= 40 ? max(0, min(1, (animation-tick() - intro-t0 - delay) / 260ms)) : 1;
+                    // (AppDrawer: each cell's intro 1 → 0 on springDefault after
+                    // its delay; measured: critically damped, ω = 2π / 230 ms)
+                    property <float> it: max(0, (animation-tick() - intro-t0 - delay) / 1s) * 27.32;
+                    property <float> intro: entering && i <= 40 ? max(0, min(1, 1 - pow(2.71828, -it) * (1 + it))) : 1;
                     x: mod(i, cols) * cell-w;
                     y: floor(i / cols) * cell-h + (1 - intro) * 20px;
                     width: cell-w;
@@ -399,9 +443,9 @@ export component LaunchpadPanel inherits Window {
                         width: Theme.material ? 108px : 104px;
                         height: self.width;
                         border-radius: Theme.material ? (cell.sel ? 36px : 20px) : Theme.radius-module;
-                        animate border-radius { duration: 250ms; easing: spring(0.5); }
+                        animate border-radius { duration: 150ms; easing: spring(0.28); } // (springFast, measured)
                         background: Theme.material ? (cell.sel || cell.lit ? Theme.m3-secondary-container : transparent) : cell.sel || cell.lit ? Theme.accent.with-alpha(Theme.dark ? 0.3 : 0.16) : at.has-hover ? Theme.fill : transparent;
-                        animate background { duration: 150ms; }
+                        animate background { duration: Theme.material ? 150ms : 0ms; } // (Glass: its colour has no Behavior)
                         opacity: picked != "" && alphabetical && !cell.lit ? 0.4 : 1;
                         animate opacity { duration: 150ms; }
                         accessible-role: button;
@@ -418,8 +462,8 @@ export component LaunchpadPanel inherits Window {
                             width: 56px;
                             height: 56px;
                             source: c.icon;
-                            transform-scale: at.pressed ? (Theme.material ? 1.06 : 0.94) : 1;
-                            animate transform-scale { duration: Theme.material ? 300ms : 100ms; easing: Theme.material ? spring(0.5) : ease-out; }
+                            transform-scale: at.pressed ? (Theme.material ? (Theme.press-bounce ? 1.06 : 1) : 0.94) : 1;
+                            animate transform-scale { duration: Theme.material ? 235ms : 100ms * pace; easing: Theme.material ? spring(0.53) : linear; } // (Material: ElasticControl's springPress, measured; Glass: ScaleAnimator, Theme.motion.press)
                             transform-origin: { x: 28px, y: 28px };
                             accessible-role: none;
                         }
@@ -467,13 +511,13 @@ export component LaunchpadPanel inherits Window {
                             y: 0;
                             height: 188px;
                             border-radius: Theme.material ? (cell.sel ? 64px : 28px) : Theme.radius-panel;
-                            animate border-radius { duration: 250ms; easing: spring(0.5); }
+                            animate border-radius { duration: 150ms; easing: spring(0.28); } // (springFast, measured)
                             background: Theme.material ? (cell.sel ? Theme.m3-secondary-container : Theme.m3-surface-container-high) : ft.has-hover || cell.sel ? Theme.fill-hover : Theme.platter;
-                            animate background { duration: 150ms; }
+                            animate background { duration: Theme.material ? 150ms : 0ms; }
                             border-width: Theme.material ? 0 : cell.sel ? 2px : 1px;
                             border-color: cell.sel ? Theme.accent : Theme.separator;
-                            transform-scale: ft.pressed ? (Theme.material ? 1.04 : 0.97) : 1;
-                            animate transform-scale { duration: Theme.material ? 300ms : 100ms; easing: Theme.material ? spring(0.5) : ease-out; }
+                            transform-scale: ft.pressed ? (Theme.material ? (Theme.press-bounce ? 1.0532 : 1) : 0.97) : 1;
+                            animate transform-scale { duration: Theme.material ? 235ms : 100ms * pace; easing: Theme.material ? spring(0.53) : linear; }
                             transform-origin: { x: 94px, y: 94px };
                             if Theme.material: Rectangle {
                                 border-radius: parent.border-radius;
@@ -541,6 +585,7 @@ export component LaunchpadPanel inherits Window {
                         }
                     }
                 }
+                }
             }
 
             // ── The letter index (A–Z) ──
@@ -567,6 +612,9 @@ export component LaunchpadPanel inherits Window {
                         background: Theme.material ? Theme.m3-primary : Theme.fill;
                         opacity: Theme.material ? (lt.marked ? 1 : 0) : (sc.has-hover && floor((sc.mouse-y - scrub.col-y) / scrub.step) == k ? 1 : 0);
                         animate opacity { duration: 150ms; }
+                        // (Material: the mark grows in from half on springFast)
+                        transform-scale: Theme.material && !lt.marked ? 0.5 : 1;
+                        animate transform-scale { duration: 150ms; easing: spring(0.28); }
                     }
                     Text {
                         text: l.letter;

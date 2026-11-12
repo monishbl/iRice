@@ -317,7 +317,7 @@ impl Part for Decorations {
             let (gw, gh) = (ww - 2.0 * M, wh - 2.0 * M);
             let radius = if w.ui.get_tiling() { 18.0 } else { gh / 2.0 };
             let shape = theme::glass_shape(&st.shell.look, w.pos.0 as f32 + x + M, w.pos.1 as f32 + M, gw, gh, radius, 1.0, 1.0);
-            let key = format!("{shape:?}");
+            let key = tessera_core::theme::glass_key(&shape);
             if key != w.glass_sent {
                 st.shell.glass.set(&w.output, NS, std::slice::from_ref(&shape));
                 w.glass_sent = key;

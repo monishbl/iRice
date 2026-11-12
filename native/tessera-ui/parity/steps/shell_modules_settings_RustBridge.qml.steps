@@ -1,0 +1,49 @@
+# Settings window: Material 1040x700 at 440,205 (page column from x~772); Glass 860x620 at 530,230. Sidebar rows (Material, x=560): Appearance 335, Wallpaper 385, Desktop 435, Menu bar 485, Lock 535, Notifications 626, Focus 676, Windows 767, Displays 858.
+# Click coordinates inside pages are not known in advance: those steps are MANUAL unless a keyboard path exists. Check in each look.
+ipc panels settings network
+wait 2
+shot r1a
+note R1 Network page shown.
+ipc panels settings sound
+wait 1
+shot r1b
+note R1 Sound page in the same window, no reopen flash.
+key -k Escape
+wait 1
+shot r1c
+note R1 after Escape the Settings window is gone.
+ipc panels settings bluetooth
+wait 2
+shot r2
+note R2 old page id: Network page scrolled to Bluetooth (alias resolved).
+ipc panels settings appearance
+wait 2
+ipc panels settings sound Output
+wait 1
+shot r3
+note R3 Sound page at the Output group.
+key -k Escape
+wait 1
+ipc panels settings
+wait 2
+shot r4
+note R4 reopening with no page shows the last page (QML: panel remembers); compare with QML.
+ipc panels settings notifications
+wait 2
+shot r7a
+note R7 Notifications: same live values as QML (notification count).
+ipc panels settings focus
+wait 2
+shot r7b
+note R7 Focus: modes listed as QML.
+ipc panels settings lock
+wait 2
+shot r7c
+note R7 Lock & Login Screen: login screen installed state and boot animations as QML.
+ipc panels settings wallpaper
+wait 2
+shot r7d
+note R7 Wallpaper: same live values as QML.
+# MANUAL: R4 click Displays in the sidebar (560 858) before closing so reopening lands on Displays
+# MANUAL: R5 open wallpaper, click a path row's Choose button, cancel the chooser; log has no 'no call'/'no page group'
+# MANUAL: R6 one safe act per group (Notifications sound preview, Edit Controls, Network Rescan, About > Check again); log shows no 'no act' warnings

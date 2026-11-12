@@ -5,14 +5,15 @@
 //! each look's own drawing (DockGlass + DockItem, MaterialDock +
 //! MaterialDockItem), DockMenu.qml with glass/ContextMenu.qml.
 //!
-//! What it doesn't do yet, and why: minimized windows show their app's icon
-//! on a tile, not their last frame (no screencopy here yet); no unread-count
-//! badges (the notifications service isn't in Rust); clicking the app in
-//! front doesn't open App Exposé (the QML shell has no IPC for it: it
-//! focuses the app instead); the Downloads stack is its own part
-//! (stack.rs: Glass and Material); the phone item and the touchscreen swipe aren't here; Empty Trash plays no
-//! sound. App icons are styled on the CPU (src/appicon.rs: Slint has no
-//! custom shaders), once per icon and size.
+//! Minimized windows show their last frame (core's window pictures, as the
+//! QML's ScreencopyView) with their app's badge; unread counts and the
+//! attention dot come from the host's `badges` state (Badges.qml); clicking
+//! the app in front opens App Exposé. The slots are one `Rows` per window,
+//! keyed by item: a window opening or closing inserts or removes just its
+//! icon (the rest keep theirs, and their hops). The Downloads stack is its
+//! own part (stack.rs: Glass and Material). Not here: the phone item and the
+//! touchscreen swipe. App icons are styled on the CPU (core's appicon.rs:
+//! Slint has no custom shaders), once per icon and size.
 
 pub mod ui {
     slint::include_modules!();
@@ -28,6 +29,7 @@ pub mod layout;
 pub mod model;
 pub mod settings;
 pub mod stack;
+pub mod touch;
 
 pub use stack::DownloadsStack;
 
@@ -36,12 +38,15 @@ use tessera_core::services::apps::{self, Apps};
 use tessera_core::services::clients::{self, Windows};
 use tessera_core::services::icons::Icons;
 use tessera_core::shell::Part;
+use tessera_core::rows::Rows;
+use tessera_core::services::bridge::ShellState;
 use tessera_core::theme;
+use tessera_core::wm::Thumbs;
 use tessera_core::wayland::{Spec, State, Surface};
 use layout::{Metrics, Reveal, Timers};
 use model::{Action, Item, Kind};
 use settings::Settings;
-use slint::{ComponentHandle, Model, ModelRc, VecModel};
+use slint::ComponentHandle;
 use smithay_client_toolkit::reexports::client::protocol::wl_output::WlOutput;
 use smithay_client_toolkit::shell::wlr_layer::{Anchor, KeyboardInteractivity, Layer};
 use std::any::{Any, TypeId};
@@ -70,6 +75,8 @@ enum M {
     MenuClosed,
     /// the Downloads stack closed (stack.rs)
     StackClosed,
+    /// a swipe's 4 s are over (touchHold)
+    TouchHold(String),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -85,7 +92,7 @@ struct Win {
     output: String,
     surface: Rc<Surface>,
     ui: ui::Dock,
-    slots: Rc<VecModel<ui::DockSlot>>,
+    slots: Rows<ui::DockSlot>,
     a11y: Option<crate::a11y::A11y>,
     glass_sent: String,
     region_sent: Option<Vec<(i32, i32, i32, i32)>>,
@@ -99,6 +106,12 @@ struct Win {
     hide_timer: slint::Timer,
     tip_timer: slint::Timer,
     tips_warm: bool,
+    /// it auto-hides now (as last worked out)
+    auto: bool,
+    /// a finger on it: where it went down, where it is, whether it swiped up
+    finger: Option<((f32, f32), (f32, f32), bool)>,
+    /// touchHold: a swipe keeps it up 4 s
+    touch_hold: slint::Timer,
 }
 
 struct MenuWin {
@@ -109,7 +122,10 @@ struct MenuWin {
     open: bool,
     item: Item,
     rows: Vec<model::Row>,
+    ui_rows: Rows<ui::DockMenuRow>,
     glass_sent: String,
+    /// the panel open when it came up: another one opening closes it (DockLogic)
+    open_was: String,
 }
 
 #[derive(Default)]
@@ -133,6 +149,10 @@ pub struct Dock {
     trash_timer: slint::Timer,
     /// the Downloads stack is up (the dock stays out meanwhile, as with its menu)
     stack_open: bool,
+    /// unread counts by entry id (the host's `badges` state)
+    badges: HashMap<String, i64>,
+    /// minimized windows' last frames
+    thumbs: Thumbs,
 }
 
 fn rgb(c: slint::Color) -> [u8; 3] {
@@ -188,6 +208,29 @@ fn shell_ipc(args: Vec<String>) {
     });
 }
 
+/// The settings as AppIcon.qml reads them: `iconStyle` "default" is each
+/// app's own logo (mode 0) once Config.qml's defaults are at version 3 or
+/// later (before that it renames "default" to "look" as it loads). Core's
+/// Style::from_settings takes "default" as "look" always (Clear in Glass,
+/// Themed in Material: the dock's Colloid folder and trash drawn white or
+/// blank where the QML shows them as they are), so here it's handed a
+/// style name that means the plain logo.
+fn style_cfg(cfg: &serde_json::Value) -> std::borrow::Cow<'_, serde_json::Value> {
+    let v3 = cfg["defaultsVersion"].as_i64().unwrap_or(0) >= 3;
+    if v3 && cfg["appearance"]["iconStyle"].as_str() == Some("default") {
+        let mut c = cfg.clone();
+        c["appearance"]["iconStyle"] = serde_json::json!("original");
+        std::borrow::Cow::Owned(c)
+    } else {
+        std::borrow::Cow::Borrowed(cfg)
+    }
+}
+
+/// DockItem.launcherThemed: a real app-grid icon, not the generic one or a symbolic glyph
+fn launcher_themed(path: &str) -> bool {
+    !path.contains("application-x-executable") && !path.contains("default-icon") && !path.contains("-symbolic")
+}
+
 fn count_trash() -> usize {
     std::fs::read_dir(trash_dir()).map(|d| d.count()).unwrap_or(0)
 }
@@ -204,7 +247,7 @@ impl Dock {
     /// How icons are drawn in this look
     fn style(st: &State, t: &ui::Theme) -> Style {
         let themed = (rgb(t.get_m3_primary_container()), rgb(t.get_m3_on_primary_container()));
-        Style::from_settings(&st.shell.cfg, st.shell.look.material, st.shell.look.dark, rgb(t.get_accent()), themed)
+        Style::from_settings(&style_cfg(&st.shell.cfg), st.shell.look.material, st.shell.look.dark, rgb(t.get_accent()), themed)
     }
 
     fn spec<'a>(output: &'a WlOutput, name: &'a str, m: &Metrics, s: &Settings) -> Spec<'a> {
@@ -241,8 +284,21 @@ impl Dock {
         }
         self.urgent = urgent;
         self.items = items;
+        self.want_thumbs(st);
         self.find_icons(st);
         self.update(st);
+    }
+
+    /// Minimized windows' last frames (DockItem's ScreencopyView, live:
+    /// false): taken once while minimized; taken again when minimized again
+    fn want_thumbs(&mut self, st: &State) {
+        let minimized: HashSet<String> = self.items.iter().filter(|i| i.kind == Kind::Minimized).filter_map(|i| i.windows.first().cloned()).collect();
+        self.thumbs.images.retain(|a, _| minimized.contains(a));
+        self.thumbs.failed.retain(|a| minimized.contains(a));
+        let px = (Self::metrics(st).base * 2.0 * self.scale.max(1.0)).ceil() as u32;
+        for a in &minimized {
+            self.thumbs.ask(st, NAME, a, (px, px));
+        }
     }
 
     /// Each item's icon file (looked up once per item and theme), and the
@@ -257,13 +313,11 @@ impl Dock {
                 let (names, fallbacks) = it.icon_names(full);
                 let names: Vec<&str> = names.iter().map(String::as_str).collect();
                 if it.kind == Kind::Launcher {
-                    // the theme's app grid, when it has one (else the dot grid);
-                    // each name or its symbolic version in turn, as Qt's lookup does
-                    let p = names.iter().find_map(|n| icons.exact(n).or_else(|| icons.exact(&format!("{n}-symbolic"))));
-                    let themed = p.as_ref().is_some_and(|p| {
-                        let s = p.to_string_lossy();
-                        !s.contains("application-x-executable") && !s.contains("default-icon")
-                    });
+                    // the theme's app grid, when it has a full-colour one
+                    // (DockItem.launcherThemed); else the dot grid (Adwaita
+                    // has only a symbolic one)
+                    let p = icons.path(&names, &[]);
+                    let themed = p.as_ref().is_some_and(|p| launcher_themed(&p.to_string_lossy()));
                     (p.filter(|_| themed), themed)
                 } else {
                     (icons.path(&names, &fallbacks), false)
@@ -335,9 +389,20 @@ impl Dock {
         let Some(first) = self.wins.first() else { return };
         let style = Self::style(st, &first.ui.global::<ui::Theme>());
         let mut base_slots = Vec::with_capacity(self.items.len());
+        let urgent = windows.urgent.clone();
         for it in &self.items {
             let (icon, has_icon, themed) = self.slot_for(st, it, &style);
+            // Badges.countFor / urgentFor: apps with an entry only
+            let has_entry = it.kind.is_app() && it.entry.is_some();
+            let badge = if has_entry { self.badges.get(&it.id).copied().unwrap_or(0) } else { 0 };
+            let dot = has_entry && badge == 0 && it.windows.iter().any(|a| urgent.contains(a));
+            let thumb = if it.kind == Kind::Minimized { it.windows.first().and_then(|a| self.thumbs.images.get(a).cloned()) } else { None };
             base_slots.push(ui::DockSlot {
+                key: it.key().into(),
+                badge: badge as i32,
+                dot,
+                has_thumb: thumb.is_some(),
+                thumb: thumb.unwrap_or_default(),
                 kind: it.kind.name().into(),
                 name: it.name.as_str().into(),
                 icon,
@@ -351,6 +416,7 @@ impl Dock {
             });
         }
         let to = st.shell.sender(NAME);
+        let mut slots: Vec<ui::DockSlot> = Vec::with_capacity(base_slots.len());
         for w in &mut self.wins {
             let ui = &w.ui;
             let (ww, wh) = w.surface.logical_size();
@@ -370,6 +436,7 @@ impl Dock {
                 }
             }
             w.hot = hit.hot;
+            slots.clear();
             for (i, (slot, p)) in base_slots.iter().zip(&hit.placed).enumerate() {
                 let mut slot = slot.clone();
                 slot.x = p.x;
@@ -377,17 +444,11 @@ impl Dock {
                 slot.lead = p.lead;
                 slot.hot = hit.hot == Some(i);
                 slot.pressed = w.pressed.is_some_and(|(j, _)| j == i);
-                if i < w.slots.row_count() {
-                    if w.slots.row_data(i).as_ref() != Some(&slot) {
-                        w.slots.set_row_data(i, slot);
-                    }
-                } else {
-                    w.slots.push(slot);
-                }
+                slots.push(slot);
             }
-            while w.slots.row_count() > base_slots.len() {
-                w.slots.remove(w.slots.row_count() - 1);
-            }
+            // (by item: an app opening or closing adds or removes only its
+            // icon; the others keep theirs, mid-hop included)
+            w.slots.set_keyed(std::mem::take(&mut slots), |s| s.key.clone());
             ui.set_pill_width(hit.pill_w);
             ui.set_base(m.base);
             ui.set_pad(m.pad);
@@ -406,6 +467,7 @@ impl Dock {
                     windows.covered(&w.output, layout::cover_rect(&m, &dividers, sw, sh))
                 });
             let auto = layout::auto_hiding(s.auto_hide, overlapped);
+            w.auto = auto;
             let hidden = layout::hidden(auto, w.reveal.revealed, popup);
             ui.set_hidden(hidden);
             if ww > 0.0 && w.surface.mapped.get() {
@@ -505,8 +567,19 @@ impl Dock {
                     self.update(st);
                     return;
                 }
-                // its newest window you can see, else bring back its newest one
                 let mine: Vec<&clients::Client> = windows.clients.iter().filter(|c| it.windows.contains(&c.address)).collect();
+                // Clicking the app that's already in front: App Exposé (only
+                // when some of its windows are in sight; else they come back)
+                if it.focused && mine.iter().any(|c| !c.aside()) {
+                    crate::shell::ask("panels.appExpose", serde_json::json!([it.id, output]));
+                    return;
+                }
+                if crate::host::standalone() {
+                    // (Apps.activateOrLaunch: Show Desktop's windows bring the desktop back)
+                    tessera_core::wm::ask("apps.activateOrLaunch", serde_json::json!([it.id]));
+                    return;
+                }
+                // its newest window you can see, else bring back its newest one
                 if let Some(c) = mine.iter().rev().find(|c| !c.aside()) {
                     clients::focus(&c.address);
                 } else if let Some(c) = mine.last() {
@@ -516,11 +589,45 @@ impl Dock {
         }
     }
 
+    /// A finger on the dock window (touch.rs): a swipe up reveals it while
+    /// it auto-hides (DockLogic's DragHandler → touchReveal, 4 s touchHold).
+    /// Taps, drags and long presses reach the dock through core's touch
+    /// (core/src/touch.rs: pointer press / move / release, as Qt's mouse
+    /// made from touches), so nothing here clicks: one touch acts once.
+    fn touch(&mut self, st: &mut State, t: touch::Touch) {
+        let to = st.shell.sender(NAME);
+        match t {
+            touch::Touch::Down(o, x, y) => {
+                if let Some(w) = self.win(&o) {
+                    w.finger = Some(((x, y), (x, y), false));
+                }
+            }
+            touch::Touch::Move(o, x, y) => {
+                let Some(w) = self.win(&o) else { return };
+                let Some((from, _, swiped)) = w.finger else { return };
+                let swipe = !swiped && touch::swiped_up(from, (x, y));
+                w.finger = Some((from, (x, y), swiped || swipe));
+                if swipe && w.auto {
+                    w.reveal.touch();
+                    w.hide_timer.stop();
+                    let o2 = o.clone();
+                    w.touch_hold.start(slint::TimerMode::SingleShot, Duration::from_millis(touch::HOLD_MS), move || to(Box::new(M::TouchHold(o2.clone()))));
+                    self.update(st);
+                }
+            }
+            touch::Touch::Up(o) | touch::Touch::Cancel(o) => {
+                if let Some(w) = self.win(&o) {
+                    w.finger = None;
+                }
+            }
+        }
+    }
+
     /// The Downloads stack, pointing at an item (DockSlot: stackX; stack.rs)
     fn open_stack(&mut self, st: &mut State, output: &str, i: usize) {
         let m = Self::metrics(st);
         let Some(w) = self.wins.iter().find(|w| w.output == output) else { return };
-        let slot = w.slots.row_data(i).unwrap_or_default();
+        let slot = w.slots.get(i).unwrap_or_default();
         let at = w.ui.get_pill_x() + slot.x + if m.material { m.base } else { slot.size } / 2.0;
         st.shell.sender("downloadsstack")(Box::new(serde_json::json!({"open": true, "screen": output, "x": at, "barH": m.bar_h, "gap": m.bottom_gap})));
         self.stack_open = true;
@@ -534,7 +641,7 @@ impl Dock {
         let m = Self::metrics(st);
         let Some(w) = self.wins.iter().find(|w| w.output == output) else { return };
         // the screen x the menu points at: the icon's centre
-        let slot = w.slots.row_data(i).unwrap_or_default();
+        let slot = w.slots.get(i).unwrap_or_default();
         let at = w.ui.get_pill_x() + slot.x + if m.material { m.base } else { slot.size } / 2.0;
         if it.kind == Kind::Trash {
             self.trash = count_trash();
@@ -566,9 +673,13 @@ impl Dock {
             ui.on_closed(move || to3(Box::new(M::MenuClosed)));
             ui.show().expect("show dock menu");
             let a11y = crate::a11y::A11y::new(&surface, st.tx.clone());
-            self.menu = Some(MenuWin { output: output.to_string(), surface, ui, a11y, open: false, item: it.clone(), rows: Vec::new(), glass_sent: String::new() });
+            let ui_rows = Rows::new();
+            ui.set_rows(ui_rows.model());
+            self.menu = Some(MenuWin { output: output.to_string(), surface, ui, a11y, open: false, item: it.clone(), rows: Vec::new(), ui_rows, glass_sent: String::new(), open_was: String::new() });
         }
+        let open_was = st.shell.get::<ShellState>().map(|s| s.str("open").to_string()).unwrap_or_default();
         let mw = self.menu.as_mut().unwrap();
+        mw.open_was = open_was;
         let ui_rows: Vec<ui::DockMenuRow> = rows
             .iter()
             .map(|r| ui::DockMenuRow { text: r.text.as_str().into(), confirm: r.confirm.as_str().into(), enabled: r.enabled, danger: r.danger, separator: r.action.is_none() })
@@ -576,7 +687,7 @@ impl Dock {
         // (ContextMenu.qml: about 7.5 px a character, at least 200)
         let widest = rows.iter().map(|r| r.text.chars().count().max(r.confirm.chars().count())).max().unwrap_or(0);
         mw.ui.set_menu_width((widest as f32 * 7.5 + 40.0).max(200.0));
-        mw.ui.set_rows(ModelRc::new(VecModel::from(ui_rows)));
+        mw.ui_rows.set(ui_rows);
         mw.ui.set_point_x(at);
         mw.ui.set_point_bottom(m.bar_h + m.bottom_gap + 8.0);
         mw.ui.set_glass_plugin(st.shell.plugin && !st.shell.look.material);
@@ -634,7 +745,10 @@ impl Dock {
             }
             Action::RemoveDownloads => settings::write("downloads", serde_json::json!(false)),
             Action::OpenTrash => open_trash(&cfg),
-            Action::EmptyTrash => apps::run(vec!["gio".into(), "trash".into(), "--empty".into()], "gio", None),
+            Action::EmptyTrash => {
+                apps::run(vec!["gio".into(), "trash".into(), "--empty".into()], "gio", None);
+                crate::shell::ask("sound.play", serde_json::json!(["trash"]));
+            }
             Action::Launch => {
                 if let Some(e) = &it.entry {
                     apps::launch(e);
@@ -718,8 +832,8 @@ impl Part for Dock {
         let surface = st.prepare_surface(Self::spec(output, name, &m, &s));
         let ui = ui::Dock::new().expect("Dock");
         st.shell.apply_theme(&ui.global::<ui::Theme>());
-        let slots = Rc::new(VecModel::<ui::DockSlot>::default());
-        ui.set_slots(ModelRc::from(slots.clone()));
+        let slots = Rows::new();
+        ui.set_slots(slots.model());
         let to = st.shell.sender(NAME);
         let (o1, o2, o3, o4) = (name.to_string(), name.to_string(), name.to_string(), name.to_string());
         let (t1, t2, t3, t4) = (to.clone(), to.clone(), to.clone(), to);
@@ -729,6 +843,7 @@ impl Part for Dock {
         ui.on_activate(move |i| t4(Box::new(M::Activate(o4.clone(), i.max(0) as usize))));
         ui.show().expect("show dock");
         let a11y = crate::a11y::A11y::new(&surface, st.tx.clone());
+        touch::bind(st, &surface.wl);
         self.wins.push(Win {
             output: name.to_string(),
             surface,
@@ -746,6 +861,9 @@ impl Part for Dock {
             hide_timer: slint::Timer::default(),
             tip_timer: slint::Timer::default(),
             tips_warm: false,
+            auto: false,
+            finger: None,
+            touch_hold: slint::Timer::default(),
         });
         self.rebuild(st);
     }
@@ -809,10 +927,35 @@ impl Part for Dock {
             }
             self.paths.clear();
             self.rebuild(st);
+        } else if what == TypeId::of::<ShellState>() {
+            let Some(s) = st.shell.get::<ShellState>() else { return };
+            // Opening any panel closes the menu (DockLogic's Panels.onOpenChanged)
+            let open = s.str("open").to_string();
+            let badges: HashMap<String, i64> = s.get("badges.counts").as_object().map(|o| o.iter().filter_map(|(k, v)| v.as_i64().map(|n| (k.clone(), n))).collect()).unwrap_or_default();
+            if self.menu.as_ref().is_some_and(|m| m.open && m.open_was != open) {
+                self.close_menu(st);
+            }
+            if badges != self.badges {
+                self.badges = badges;
+                self.update(st);
+            }
         }
     }
 
     fn message(&mut self, st: &mut State, msg: Box<dyn Any + Send>) {
+        let msg = match msg.downcast::<tessera_core::services::capture::Shot>() {
+            Ok(shot) => {
+                if self.thumbs.got(*shot) {
+                    self.update(st);
+                }
+                return;
+            }
+            Err(m) => m,
+        };
+        let msg = match msg.downcast::<touch::Touch>() {
+            Ok(t) => return self.touch(st, *t),
+            Err(m) => m,
+        };
         let Ok(m) = msg.downcast::<M>() else { return };
         match *m {
             M::Pointer(o, x, y, on) => self.pointer(st, &o, x, y, on),
@@ -826,8 +969,15 @@ impl Part for Dock {
                 self.update(st);
             }
             M::Hide(o) => {
-                if let Some(w) = self.win(&o) {
+                // (not while a swipe's hold runs: hideDelay checks touchHold)
+                if let Some(w) = self.win(&o).filter(|w| !w.touch_hold.running()) {
                     w.reveal.hide();
+                }
+                self.update(st);
+            }
+            M::TouchHold(o) => {
+                if let Some(w) = self.win(&o) {
+                    w.reveal.hold_over();
                 }
                 self.update(st);
             }
@@ -872,9 +1022,22 @@ impl Part for Dock {
         }
     }
 
+    /// Only its own windows: any other part's surface closing is none of the
+    /// dock's business (it used to drop the dock and make it again)
     fn surface_closed(&mut self, st: &mut State, s: &Rc<Surface>) {
-        let name = s.output.clone();
-        self.output_removed(st, &name);
+        if let Some(name) = self.wins.iter().find(|w| Rc::ptr_eq(&w.surface, s)).map(|w| w.output.clone()) {
+            self.output_removed(st, &name);
+            // (made again on the same screen, as the QML's Variants would)
+            if let Some((o, n)) = st.outputs_now().into_iter().find(|(_, n)| *n == name) {
+                self.output_added(st, &o, &n);
+            }
+        } else if self.menu.as_ref().is_some_and(|m| Rc::ptr_eq(&m.surface, s)) {
+            if let Some(m) = self.menu.as_mut() {
+                m.open = false;
+            }
+            self.menu_closed(st);
+            self.update(st);
+        }
     }
 
     /// Icons drawn for the output's scale; the glass shapes for the plugin
@@ -961,6 +1124,86 @@ impl Part for Dock {
         }
         if let Some(m) = &self.menu {
             crate::services::hypr::Glass::clear_now(&m.output, MENU_NS);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tessera_core::services::icons;
+
+    #[test]
+    fn default_icon_style_is_the_plain_logo_once_migrated() {
+        let theme = ([0x30, 0x40, 0x60], [0xd0, 0xe0, 0xff]);
+        let style = |cfg: serde_json::Value, material: bool| Style::from_settings(&style_cfg(&cfg), material, true, [0, 0, 0], theme);
+        // (the user's: defaults v3, "default", squircles): the logos as they are, on the shape
+        for material in [false, true] {
+            let s = style(serde_json::json!({"defaultsVersion": 3, "appearance": {"iconStyle": "default", "iconShape": "squircle"}}), material);
+            assert_eq!(s.mode, 0);
+            assert!(s.tiled);
+        }
+        // an old file (Config.qml renames it "look" as it loads): each look's own
+        assert_eq!(style(serde_json::json!({"appearance": {"iconStyle": "default"}}), false).mode, 2);
+        assert_eq!(style(serde_json::json!({"defaultsVersion": 3, "appearance": {"iconStyle": "look"}}), true).mode, 4);
+    }
+
+    #[test]
+    fn the_apps_button_is_themed_only_by_a_full_colour_grid() {
+        assert!(launcher_themed("/i/Colloid/apps/scalable/view-app-grid.svg"));
+        assert!(!launcher_themed("/i/Adwaita/symbolic/actions/view-app-grid-symbolic.svg"));
+        assert!(!launcher_themed("/i/hicolor/48x48/apps/application-x-executable.png"));
+    }
+
+    fn test_item(kind: Kind, id: &str) -> Item {
+        Item { kind, id: id.into(), name: id.into(), entry: None, pinned: false, divider: false, running: false, focused: false, windows: Vec::new() }
+    }
+
+    /// Every icon the dock and its stack ask for, in the themes the user
+    /// picks between (Colloid, Adwaita): found, and drawn (not empty) in
+    /// each look's style. Reads this machine's icon folders:
+    /// `cargo test -p tessera-dock -- --ignored icons_resolve`
+    #[test]
+    #[ignore]
+    fn icons_resolve_in_colloid_and_adwaita() {
+        let roots = icons::roots();
+        let accent = [0x0a, 0x84, 0xff];
+        let styles = [
+            Style::from_settings(&serde_json::json!({}), false, true, accent, ([0x30, 0x40, 0x60], [0xd0, 0xe0, 0xff])),
+            Style::from_settings(&serde_json::json!({}), true, true, accent, ([0x30, 0x40, 0x60], [0xd0, 0xe0, 0xff])),
+        ];
+        let entry = |id: &str| apps::Entry { id: id.into(), icon: id.into(), ..Default::default() };
+        for theme in ["Colloid", "Adwaita"] {
+            if !roots.iter().any(|r| r.join(theme).join("index.theme").is_file()) {
+                eprintln!("{theme}: not installed, skipped");
+                continue;
+            }
+            let i = Icons { theme: theme.into(), index: std::sync::Arc::new(icons::build(&roots, theme)) };
+            let mut items = vec![test_item(Kind::Downloads, "Downloads"), test_item(Kind::Trash, "Trash")];
+            for app in ["firefox", "foot", "org.gnome.Nautilus", "kitty", "code"] {
+                items.push(Item { entry: Some(entry(app)), ..test_item(Kind::App, app) });
+            }
+            for full in [false, true] {
+                for it in &items {
+                    let (names, fallbacks) = it.icon_names(full);
+                    let names: Vec<&str> = names.iter().map(String::as_str).collect();
+                    let p = i.path(&names, &fallbacks).unwrap_or_else(|| panic!("{theme}: no icon for {names:?}"));
+                    for s in &styles {
+                        let px = appicon::render(&p, 64, s, None).unwrap_or_else(|| panic!("{theme}: {} doesn't draw", p.display()));
+                        assert!(px.as_slice().iter().any(|c| c.a > 0), "{theme}: {} draws nothing", p.display());
+                    }
+                    eprintln!("{theme}: {:?} -> {}", names.first(), p.display());
+                }
+            }
+            let (names, _) = test_item(Kind::Launcher, "Apps").icon_names(false);
+            let names: Vec<&str> = names.iter().map(String::as_str).collect();
+            let grid = i.path(&names, &[]);
+            eprintln!("{theme}: Apps button {grid:?} themed={}", grid.as_ref().is_some_and(|p| launcher_themed(&p.to_string_lossy())));
+            for f in ["a.pdf", "b.zip", "c.png", "d.mp4", "e.txt", "f.unknownext"] {
+                let p = i.path(&[tessera_core::rank::icon_for_file(f)], &["text-x-generic"]).unwrap_or_else(|| panic!("{theme}: no icon for {f}"));
+                assert!(slint::Image::load_from_path(&p).is_ok(), "{theme}: {} doesn't load", p.display());
+                eprintln!("{theme}: {f} -> {}", p.display());
+            }
         }
     }
 }

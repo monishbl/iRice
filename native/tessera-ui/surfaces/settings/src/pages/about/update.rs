@@ -154,9 +154,10 @@ pub fn page(cx: &mut Ctx, p: &mut Page) {
         "Tessera and your system (pacman, and the AUR if you use yay or paru), together.".to_string()
     } else if !report.is_null() {
         format!(
-            "Tessera {}{}{}",
+            "Tessera {}{}{}{}",
             s(&report["current"]),
             if available { format!(" → {}", s(&report["latest"])) } else { String::new() },
+            if s(&report["ui"]).is_empty() { String::new() } else { format!(" · {}", s(&report["ui"])) },
             if hypr.is_empty() { String::new() } else { format!(" · Hyprland {hypr}") }
         )
     } else {

@@ -24,7 +24,7 @@ pub struct AppTheme {
 }
 
 fn roles_map(look: &Look) -> std::collections::HashMap<String, String> {
-    theme::material_roles(&look.seed, look.dark, &look.style).into_iter().collect()
+    theme::look_roles(look).into_iter().collect()
 }
 
 fn hex6(c: &str) -> String {

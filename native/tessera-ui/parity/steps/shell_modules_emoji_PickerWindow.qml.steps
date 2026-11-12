@@ -1,0 +1,80 @@
+# PickerWindow: panel x 750..1170, y 326..754 (no focused window). Both looks.
+# Tabs centre y 398: Frequently 778, Smileys 811, Kaomoji 1075, Text symbols 1108, GIFs 1141. First Smileys row centre y 536, cell c centre x 784+44c.
+rec em-open 0.8 ipc panels open emoji IRICE-TEST
+note Open: panel top edge drops 6 px and scales; Material settles about 0.3 s (overshoot at most 1 %), Glass about 0.37 s with about 5 % overshoot. Compare QML vs Rust within 1 frame.
+wait 1
+shot open
+note Picker open: search y 338..374, tabs y 398, list y 418..694, footer y 694..750; same as QML.
+rec em-close 0.3 key -k Escape
+note Close in 154 ms with slow start (Material 0.3,0,0.8,0.15; Glass 0.4,0,1,1). Same as QML.
+wait 1
+ipc panels open emoji IRICE-TEST
+wait 1
+# NOTE: click on layer surfaces may not register in the harness
+ptr move 811 398 sleep 200 click
+wait 1
+shot smileys
+note Smileys tab: list jumped to Smileys; Glass: 14 px accent line grows under the tab in 150 ms; first row centre y 536. Same as QML.
+ptr move 828 536 sleep 100 glide 828 536 200 sleep 200
+key s
+key m
+shot rows-kept
+note After hovering cell 1 and typing "sm" the results appear without the grid blanking between keystrokes; same as QML.
+rec em-type 0.6 key i
+note Typing "i" updates results with no blank frame between old and new grid; compare QML vs Rust.
+key -M ctrl -k a -m ctrl
+key -k BackSpace
+wait 1
+rec em-g-press 0.3 ptr move 784 536 sleep 100 down sleep 200
+note Glass: the glyph shrinks to 90 % at once and the cell turns fillPressed; Material see next recording. Pointer is still down.
+ptr up
+wait 1
+# panel closed by the pick (if click works); reopen
+ipc panels open emoji IRICE-TEST
+wait 1
+ptr move 811 398 sleep 200 click
+wait 1
+rec em-m-press 0.7 ptr move 784 536 sleep 100 down sleep 500 glide 900 650 100 up
+note Material: pressed selection rounds fully (~0.22 s spring), swells about 6 % with the row's glyphs, pressed glyph about 0.95; on release overshoots and settles (~0.3 s). Glass: glyph 90 % then back. Released off the cell so nothing is picked.
+wait 1
+shot after-press
+note Panel still open after releasing off the cell (nothing picked).
+ptr move 1075 398 sleep 200 glide 1075 398 200 sleep 800
+shot tab-hover
+note Material: tab indicator grew from 24 to 48 px on a ~0.22 s spring; after 600 ms a "Kaomoji" tooltip shows below it. Glass: tooltip only.
+ptr move 1075 398 sleep 200 click
+wait 1
+shot kaomoji
+note Kaomoji tab: three per row, 40 px rows; same as QML.
+ptr move 811 398 sleep 200 click
+wait 1
+key -M ctrl -k a -m ctrl
+key wave
+wait 1
+ptr move 784 468 sleep 200 down sleep 600
+shot tone-hold
+note Holding the press on the waving hand for 0.5 s (long press) opens the tone chooser at x 762..1010, y 494..542 with no shadow. Same as QML. (Right button not supported by ptr; long press stands in.)
+ptr move 784 468 sleep 200 down sleep 700 glide 906 518 100 sleep 300
+shot tone-hover
+note Gliding to tone 3 (906, 518): that tone is highlighted.
+ptr up
+ipc panels close
+wait 1
+ipc panels open emoji IRICE-TEST
+wait 1
+key wave
+wait 1
+key -k Menu
+wait 1
+shot tone-menukey
+note With the waving hand chosen, the Menu key opens the tone chooser (same as QML).
+ptr move 900 650 sleep 100 down sleep 200 up
+wait 1
+shot tone-close
+note Pressing outside the chooser at (900, 650) closes it on the press.
+ptr move 1141 398 sleep 200 click
+wait 1
+shot nokey
+note No KLIPY key: GIF tab shows "Add a KLIPY key to use GIFs", search placeholder "Search KLIPY", buttons "Open Settings" / "Get a key". Same as QML.
+# MANUAL: GIFs with a key and network: hover the last-but-one row's GIF -> next page loads (spinner under the grid); Down on the last row -> nothing moves
+ipc panels close

@@ -197,6 +197,13 @@ impl Region {
         true
     }
 
+    /// Made ahead (a moment after start), so the first selection draws at once
+    pub fn make_ahead(&mut self, st: &mut State, output: &str) {
+        if self.win.is_none() {
+            self.window(st, output);
+        }
+    }
+
     /// The shell's ScreenTools.selecting changed: show it for that mode, or
     /// put it away ("")
     pub fn select(&mut self, st: &mut State, mode: &str, screen: &str) {

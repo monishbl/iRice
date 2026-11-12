@@ -5,7 +5,7 @@
 //!
 //! Bus "bootsplash": checked, installed, helper, splash, hooked, builder,
 //! theme, record, designs, original, chosen, blocked, pending, error, done,
-//! busy. Calls: bootsplash.refresh (Settings does it when its page opens),
+//! busy (also sent to Settings as its "look" feed's `boot`: settings.feed). Calls: bootsplash.refresh (Settings does it when its page opens),
 //! bootsplash.set [id].
 
 use super::common::*;
@@ -33,6 +33,8 @@ pub struct BootSplash {
     error: String,
     done: bool,
     probing: bool,
+    /// what Settings was last sent (its "look" feed's `boot`)
+    sent: Value,
 }
 
 /// `^(tessera|irice)-(.+)$` → the id (irice-<id>: set before iRice became Tessera)
@@ -80,15 +82,18 @@ impl BootSplash {
             ""
         }
     }
-    fn publish(&self) {
+    fn publish(&mut self, h: &mut Host) {
         let designs = Self::designs();
-        put(
-            "bootsplash",
-            json!({"checked": self.checked, "installed": self.installed, "helper": self.helper, "splash": self.splash, "hooked": self.hooked,
+        let v = json!({"checked": self.checked, "installed": self.installed, "helper": self.helper, "splash": self.splash, "hooked": self.hooked,
                    "builder": self.builder, "theme": self.theme, "record": self.record, "designs": designs, "original": self.original(),
                    "chosen": self.chosen(&designs), "blocked": self.blocked(), "pending": self.pending, "error": self.error, "done": self.done,
-                   "busy": !self.pending.is_empty()}),
-        );
+                   "busy": !self.pending.is_empty()});
+        put("bootsplash", v.clone());
+        // Settings → Lock & Login Screen reads it as feed["look"]["boot"]
+        if v != self.sent {
+            self.sent = v.clone();
+            h.ask("settings.feed", json!(["look", {"boot": v}]));
+        }
     }
     fn probe(&mut self) {
         if self.probing {
@@ -132,9 +137,9 @@ impl Service for BootSplash {
         self.tx = Some(Tx::new(h.sender("BootSplash")));
         self.splash = true;
         self.hooked = true;
-        self.publish();
+        self.publish(h);
     }
-    fn call(&mut self, _h: &mut Host, call: &str, args: &Value) {
+    fn call(&mut self, h: &mut Host, call: &str, args: &Value) {
         match call.split('.').nth(1).unwrap_or("") {
             "refresh" => self.probe(),
             "set" => {
@@ -147,12 +152,12 @@ impl Service for BootSplash {
                 self.done = false;
                 if tessera_core::env::sandboxed() {
                     self.error = "Not from the test session: it would change this computer's boot animation.".into();
-                    self.publish();
+                    self.publish(h);
                     return;
                 }
                 if !has_tool("pkexec") {
                     self.error = NO_PKEXEC.into();
-                    self.publish();
+                    self.publish(h);
                     return;
                 }
                 self.pending = id.clone();
@@ -162,12 +167,12 @@ impl Service for BootSplash {
                     let (code, _, err) = run_full(&cmd, None);
                     tx.send(M::Set(code, err));
                 });
-                self.publish();
+                self.publish(h);
             }
             _ => {}
         }
     }
-    fn message(&mut self, _h: &mut Host, msg: Box<dyn Any + Send>) {
+    fn message(&mut self, h: &mut Host, msg: Box<dyn Any + Send>) {
         let Ok(m) = msg.downcast::<M>() else { return };
         match *m {
             M::Probe(text) => {
@@ -203,7 +208,7 @@ impl Service for BootSplash {
                 self.probe();
             }
         }
-        self.publish();
+        self.publish(h);
     }
 }
 

@@ -1,0 +1,12 @@
+# Settings window: Material 1040x700 at 440,205 (page column from x~772); Glass 860x620 at 530,230. Sidebar rows (Material, x=560): Appearance 335, Wallpaper 385, Desktop 435, Menu bar 485, Lock 535, Notifications 626, Focus 676, Windows 767, Displays 858.
+# Click coordinates inside pages are not known in advance: those steps are MANUAL unless a keyboard path exists. Check in each look.
+ipc panels settings windowrules
+wait 2
+shot wr
+note W1 with no rules: empty state (icon, title, text, Choose app); same sizes and gaps as QML.
+# MANUAL: W2 click Choose app: back button 28x28 (as QML), focused empty search, 'Open now' and 'Applications' with icons; hover back 1.5 s tooltip 'Back to all rules'; typing zzzz: 'No apps match “zzzz”'; foot + Enter opens the edit view
+# MANUAL: W3 app with no icon: generic application icon left of the name in the edit head
+# MANUAL: W4 Edit: Float on, Open on space + twice ('Space 2', detail 'Opens on space 2 and takes you there'); stepper buttons 28 px, 128 wide, tooltips 'Previous space'; Maximized, Always opaque on; Back shows the app with its summary
+# MANUAL: W5 Size: 300 in Width + Tab: 'Enter both a width and a height, or leave both empty.'; 300 x 100: 'Enter whole numbers: ...'; 800 x 600 saved; 'Use current size' with the app open
+# MANUAL: W6 Remove rule: back to list, 'Removed the rule for X' + Undo restores in place; after 9 s the Undo is gone
+# MANUAL: W7 open the picker, switch to another page and back: list view shown

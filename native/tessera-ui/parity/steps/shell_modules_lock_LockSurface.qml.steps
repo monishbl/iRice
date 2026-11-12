@@ -1,0 +1,60 @@
+# LockSurface: entrance, exit, wake rules (Glass and Material; check in each look). Password "mock" (Rust only).
+# Step 1: entrance. Default lockTransition is zoom; fade/none need a config change.
+wait 1
+rec enter-zoom 1.5 ipc lock lock
+note FAILED earlier (Material): Rust showed black frames with the clock already in, then the circle within ~3 frames (50-100 ms); QML: black, then the circle with the clock inside opens over ~0.7 s. PASS: zoom - wallpaper scales 1.05 to 1 over ~450 ms while the content fades in and drops 20 px (Glass) / rises 32 px with the black circle opening (Material); the wallpaper is in the first frame the content starts moving (never black with the clock already in); start within ~800 ms of the surface map, ~450 ms of change.
+# MANUAL: repeat with lock.lockTransition "fade" (only opacity) and "none" (everything there on the first frame): NOT RUN earlier
+wait 1
+# Step 2: exit
+key mock
+wait 0.3
+rec exit 2 key -k Return
+note PASS earlier in Material (lift ~220 ms). PASS: 220 ms out-cubic fade; zoom: content grows 8 % (Glass) / top lifts and bottom drops 5 % of height (Material), wallpaper leans in 5 %. Glass exit NOT measured.
+wait 2
+# Step 3: pointer wakes
+ipc lock lock
+wait 2.5
+ptr move 960 300 sleep 300 glide 960 800 600
+wait 1
+shot pointer-glide
+note A vertical-only pointer glide opens Material's pill (PASS earlier); Glass: no error and the lock still shows. Also check the Rust log for errors (MANUAL).
+# NOTE: click on layer surfaces may not register in the harness (move/glide did work earlier)
+# Step 4: StandBy wake rules
+ipc lock demo standby
+wait 1.5
+ptr move 900 500 sleep 300 glide 910 500 100
+wait 1
+shot glide-10
+note A 10 px glide in StandBy leaves it in StandBy.
+ptr move 900 500 sleep 300 glide 960 500 200
+wait 1.2
+shot glide-60
+note A 60 px glide wakes the lock (morph back ~650 ms); lock visible.
+ipc lock demo standby
+wait 1.5
+key -k Right
+wait 0.8
+shot standby-right
+note The Right key changes StandBy's view (dots show) and stays in StandBy (PASS earlier).
+key a
+wait 1
+shot key-wake
+note A key wakes the lock, the field is focused; the waking key "a" must NOT be typed (no dot) - same as QML.
+ipc lock demo standby
+wait 1.5
+ptr scroll 0 3
+wait 1
+shot scroll-next
+note Scroll down moved to the next StandBy view (NOT RUN earlier; earlier the scroll command did not change QML either - check both).
+# Step 5, 6: config
+# MANUAL: lock.standbyWakeOnMouse false: a 200 px glide in StandBy stays
+# MANUAL: with one screen set lock.standbyScreens ["NOPE"]: StandBy is black but a key still wakes
+# Step 7: morph
+ipc lock demo wake
+wait 1.5
+rec morph 1.5 ipc lock demo standby
+note Morph: the big clock flies into StandBy's clock place (650 ms in-out), no pop at the end. (fade = 400 ms cross-fade, none = instant: MANUAL config variants)
+wait 1
+ipc lock demo off
+ipc lock unlock
+wait 2

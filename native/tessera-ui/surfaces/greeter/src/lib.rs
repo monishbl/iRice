@@ -34,8 +34,9 @@
 //! so the clock's digits are the font's default width; Material Symbols draw
 //! without their FILL axis; the Material spinner is the shared Busy arc,
 //! not the morphing shape; the password's caret is drawn by hand (Slint's
-//! own would sit after its own ● dots, not this style's •); the analog
-//! hands animate the short way round at the hour.
+//! own would sit after its own ● dots, not this style's •).
+//! Parity notes, per QML file, with the tester's steps:
+//! native/tessera-ui/parity/shell_modules_greeter_*.md
 
 pub mod ui {
     slint::include_modules!();
@@ -170,6 +171,21 @@ pub struct Greeter {
     picture_asked: String,
     /// the typed username the fields show (what was typed there, or pushed)
     name_shown: String,
+    /// the analog hands' angles, only ever growing (they turn forward past 12)
+    angles: (f32, f32),
+}
+
+/// An angle that only grows: `a` (0..360) the next turn on from `prev`
+/// (LockClock.qml's RotationAnimation.Clockwise: 354° → 0° is 6° on)
+pub fn forward(prev: f32, a: f32) -> f32 {
+    if prev < 0.0 {
+        return a;
+    }
+    let mut v = prev - prev.rem_euclid(360.0) + a;
+    if v < prev - 0.01 {
+        v += 360.0;
+    }
+    v
 }
 
 impl Greeter {
@@ -207,6 +223,7 @@ impl Greeter {
             pictures: HashMap::new(),
             picture_asked: String::new(),
             name_shown: String::new(),
+            angles: (-1.0, -1.0),
         }
     }
 
@@ -365,6 +382,8 @@ impl Greeter {
             return;
         }
         self.clock = c;
+        self.angles = (forward(self.angles.0, self.clock.hour_angle), forward(self.angles.1, self.clock.minute_angle));
+        let (ah, am) = self.angles;
         let (face, weight, show_date) = view::material_clock(&st.shell.cfg, self.h24);
         for w in &self.wins {
             let g = w.ui.global::<ui::Greet>();
@@ -377,8 +396,8 @@ impl Greeter {
             g.set_hours_short(c.hours_short.clone().into());
             g.set_minutes(c.minutes.clone().into());
             g.set_half(c.half.clone().into());
-            g.set_hour_angle(c.hour_angle);
-            g.set_minute_angle(c.minute_angle);
+            g.set_hour_angle(ah);
+            g.set_minute_angle(am);
             g.set_face(face.clone().into());
             g.set_weight(weight);
             g.set_show_date(show_date);
@@ -424,7 +443,7 @@ impl Greeter {
             power: s("power"),
         });
         let look = &st.shell.look;
-        g.set_m(colors(&crate::theme::material_roles(&look.seed, look.dark, &look.style), look.dark));
+        g.set_m(colors(&crate::theme::look_roles(&look), look.dark));
         g.set_cookie9(crate::surfaces::shapes::outline("cookie9").into());
         g.set_cookie12(crate::surfaces::shapes::outline("cookie12").into());
         let frames: Vec<f32> = view::shake_frames(self.style);
@@ -790,6 +809,14 @@ pub fn run(args: &[String], started: std::time::Instant) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_hands_turn_forward() {
+        assert_eq!(forward(-1.0, 354.0), 354.0);
+        assert_eq!(forward(354.0, 0.0), 360.0);
+        assert_eq!(forward(360.0, 0.0), 360.0);
+        assert_eq!(forward(360.0, 6.0), 366.0);
+    }
 
     fn args(a: &[&str]) -> Vec<String> {
         std::iter::once("tessera-ui").chain(a.iter().copied()).map(String::from).collect()

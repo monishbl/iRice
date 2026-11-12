@@ -1,0 +1,36 @@
+# GreeterNameLabel: hover pill and pencil on the chosen person's name.
+# NOTE: $TESSERA_BIN must point at the Rust binary. Name label position: centre of the screen area under the avatar (compare with the first shot, adjust the pointer path if the name sits elsewhere).
+setup TESSERA_GREETER_MOCK=1 $TESSERA_BIN --greeter --style look --look glass --demo users &
+wait 2
+shot rest
+note Glass greeter at rest: name with no pill and no pencil.
+rec hover 1.2 ptr move 960 400 sleep 200 glide 960 480 300 sleep 800
+note Pointer glided onto the name row: the soft pill fades in (about 150 ms) and a pencil (14 px) appears 6 px right of the name; opacity 0.8. Compare timing and size with QML.
+# NOTE: the name position (960,480) is a guess for Glass; the reviewer should confirm that the pointer ends on the name.
+shot hover
+note Name hovered: pill background plus pencil visible to the right of the name; I-beam cursor not capturable.
+rec leave 1.0 ptr move 960 480 sleep 200 glide 960 900 300 sleep 500
+note Pointer left the name: pill and pencil fade out in about 150 ms.
+# MANUAL: measure the 150 ms fade with anim-timing on the recordings
+ptr move 960 480 sleep 200 click down up
+# NOTE: click on layer surfaces may not register in the harness
+wait 0.6
+shot clicked
+note After a click on the name the username field replaces it with the name selected (same as QML).
+key -k Escape
+wait 0.5
+key -k Escape
+wait 1
+# Material: name above the closed pill is inactive
+setup TESSERA_GREETER_MOCK=1 $TESSERA_BIN --greeter --style look --look material --demo users &
+wait 2
+shot m-closed
+note Material, pill closed: the name above the pill is invisible and cannot be clicked (only the cookie and the closed pill with name show).
+ptr move 960 540 sleep 200 glide 1000 600 300
+wait 1
+shot m-open
+note After the pointer moved the pill opened and the name above it faded in; hover and click on it then work.
+key -k Escape
+wait 1
+key -k Escape
+wait 1

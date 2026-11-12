@@ -1,0 +1,16 @@
+# Start-up (latency.md step 11): the shell restarted five times; the log's
+# `started every part … ms after main`, `first-frame … since-main-ms=…` and
+# `slow start: …` lines collected. PASS: first frame < 1000 ms every time.
+look material
+setup : > /tmp/core-startup.txt
+setup "$TESSERA_ROOT/sandbox/reload-shell.sh"; sleep 12; grep -E "started every part|first-frame|slow start" "$HOME/.local/state/tessera/tessera-ui.log" | tail -30 >> /tmp/core-startup.txt; echo --- >> /tmp/core-startup.txt
+setup "$TESSERA_ROOT/sandbox/reload-shell.sh"; sleep 12; grep -E "started every part|first-frame|slow start" "$HOME/.local/state/tessera/tessera-ui.log" | tail -30 >> /tmp/core-startup.txt; echo --- >> /tmp/core-startup.txt
+setup "$TESSERA_ROOT/sandbox/reload-shell.sh"; sleep 12; grep -E "started every part|first-frame|slow start" "$HOME/.local/state/tessera/tessera-ui.log" | tail -30 >> /tmp/core-startup.txt; echo --- >> /tmp/core-startup.txt
+setup "$TESSERA_ROOT/sandbox/reload-shell.sh"; sleep 12; grep -E "started every part|first-frame|slow start" "$HOME/.local/state/tessera/tessera-ui.log" | tail -30 >> /tmp/core-startup.txt; echo --- >> /tmp/core-startup.txt
+setup "$TESSERA_ROOT/sandbox/reload-shell.sh"; sleep 12; grep -E "started every part|first-frame|slow start" "$HOME/.local/state/tessera/tessera-ui.log" | tail -30 >> /tmp/core-startup.txt
+wait 1
+shot after-five-starts
+note /tmp/core-startup.txt (in the arena): each run's since-main-ms under 1000; list every `slow start` part and its ms (Rust only; the QML pass has no such lines)
+look glass
+setup "$TESSERA_ROOT/sandbox/reload-shell.sh"; sleep 12; grep -E "started every part|first-frame|slow start" "$HOME/.local/state/tessera/tessera-ui.log" | tail -30 > /tmp/core-startup-glass.txt
+note /tmp/core-startup-glass.txt: the same in Glass

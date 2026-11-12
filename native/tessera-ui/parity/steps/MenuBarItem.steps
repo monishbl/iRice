@@ -1,0 +1,17 @@
+# MenuBarItem: steps from parity/shell_modules_menubar_MenuBarItem.qml.md (batches 1-5). Screen IRICE-TEST 1920x1080 scale 1;
+# the island is centred at x 960 (closed y ~14, open ~392 wide); the bar is 30 px tall.
+# Each block runs in both looks: the file runs top to bottom, Material first, then Glass.
+
+look material
+note right-click on the system / app / Window items opens their menus: the runner's pointer has no right button; check by hand
+setup python3 -c 'import json, os;p = os.path.expanduser("~/.config/tessera/config.json"); c = json.load(open(p)); c.setdefault("appearance", {})["menuIcon"] = "distro"; json.dump(c, open(p, "w"), indent=4)'
+wait 3
+static logo 0 0 60 30
+note the logo is the distro's, tinted like the bar's text
+
+look glass
+note right-click on the system / app / Window items opens their menus: the runner's pointer has no right button; check by hand
+setup python3 -c 'import json, os;p = os.path.expanduser("~/.config/tessera/config.json"); c = json.load(open(p)); c.setdefault("appearance", {})["menuIcon"] = "distro"; json.dump(c, open(p, "w"), indent=4)'
+wait 3
+static logo 0 0 60 30
+note the logo is the distro's, tinted like the bar's text

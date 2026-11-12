@@ -149,11 +149,13 @@ pub fn page(cx: &mut Ctx, p: &mut Page) {
             if a.i == 0 {
                 cx.ask("accounts", "calSet", json!([u2, !enabled]));
             } else {
-                cx.local_set("cal.removed", json!({"name": n2, "url": u2}));
-                // (Undo for 8 seconds)
-                cx.spawn("cal.removed", || {
+                // (Undo for 8 seconds: this removal's own, calendar.qml 162–166)
+                let stamp = crate::util::now_ms();
+                cx.local_set("cal.removed", json!({"name": n2, "url": u2, "at": stamp}));
+                cx.local.remove("cal.removedWait.busy");
+                cx.spawn("cal.removedWait", move || {
                     std::thread::sleep(std::time::Duration::from_secs(8));
-                    Value::Null
+                    Value::from(stamp)
                 });
                 cx.ask("accounts", "calRemove", json!([u2]));
             }
@@ -170,7 +172,9 @@ pub fn page(cx: &mut Ctx, p: &mut Page) {
 
     // The last one removed, with Undo (8 s)
     let removed = cx.local.get("cal.removed").cloned().unwrap_or(Value::Null);
-    if removed.is_object() {
+    // (its 8 s are up when its own waiter came back)
+    let over = removed["at"].as_i64().is_some_and(|at| cx.local.get("cal.removedWait").and_then(Value::as_i64) == Some(at));
+    if removed.is_object() && !over {
         let r2 = removed.clone();
         let undo = cx.on(move |cx, _| {
             cx.ask("accounts", "calAdd", json!([s(&r2["name"]), s(&r2["url"])]));

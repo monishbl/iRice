@@ -93,6 +93,31 @@ pub fn device_list<'a>(bt: &'a Bluetooth, which: &str) -> Vec<&'a bluez::Device>
     v
 }
 
+/// A list in the order it had (WifiList.qml/BluetoothList.qml's snapshot):
+/// re-sorted at most every 4 s, and not while the pointer is over it, a menu
+/// is open or `busy` (a password row, a form); what's gone goes at once,
+/// what's new comes at the end until the next sort. `list`: its page-state
+/// key ("wifi", "bt.paired"…); `key`: an item's name.
+pub fn frozen<T: Clone>(cx: &mut Ctx, list: &str, items: Vec<T>, key: impl Fn(&T) -> String, busy: bool) -> Vec<T> {
+    let now = crate::util::now_ms();
+    let at = cx.local.get(&format!("{list}.orderAt")).and_then(Value::as_i64).unwrap_or(0);
+    let held = busy || cx.local_b(&format!("{list}.hover")) || cx.local_b("menu.open");
+    let old: Vec<String> = cx.local.get(&format!("{list}.order")).and_then(Value::as_array).map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect()).unwrap_or_default();
+    if old.is_empty() || (!held && now - at >= 4000) {
+        cx.local_set(&format!("{list}.order"), Value::from(items.iter().map(&key).collect::<Vec<_>>()));
+        cx.local_set(&format!("{list}.orderAt"), Value::from(now));
+        return items;
+    }
+    sort_as(items, &old, key)
+}
+
+/// `items` in `order`'s order (by `key`), the ones it doesn't know after
+pub fn sort_as<T>(items: Vec<T>, order: &[String], key: impl Fn(&T) -> String) -> Vec<T> {
+    let mut v: Vec<(usize, usize, T)> = items.into_iter().enumerate().map(|(i, t)| (order.iter().position(|o| *o == key(&t)).unwrap_or(usize::MAX), i, t)).collect();
+    v.sort_by_key(|x| (x.0, x.1));
+    v.into_iter().map(|x| x.2).collect()
+}
+
 /// "1000" Mbit/s as the Connection row says it
 pub fn ethernet_speed(speed: f64) -> String {
     if speed <= 0.0 {
@@ -209,10 +234,16 @@ fn wifi_menu(n: &Value) -> Vec<(MenuItem, &'static str)> {
     if !b("connected") && b("secured") {
         items.push((MenuItem::new(if b("enterprise") { "Connect with sign-in…" } else { "Connect with password…" }), "password"));
     }
+    // (a line between connecting and the rest, WifiList.openMenu's separator)
+    let line = !items.is_empty();
     if (b("connected") || b("known")) && !b("enterprise") {
         items.push((MenuItem::new("Share network…"), "share"));
     }
     items.push((MenuItem::new("Copy name"), "copy"));
+    if line {
+        let at = items.len() - if (b("connected") || b("known")) && !b("enterprise") { 2 } else { 1 };
+        items[at].0.separator = true;
+    }
     if b("known") {
         items.push((MenuItem::new("Forget network").danger(), "forget"));
     }
@@ -262,6 +293,7 @@ fn wifi_list_rows(cx: &mut Ctx, nets: &[Value], from: usize, to: usize, first: b
     });
     let mut r = Row::custom("devices", "list").id(id).data(data);
     r.step = place(first, last);
+    r.low = "wifi".into();
     r
 }
 
@@ -398,6 +430,9 @@ pub fn network(cx: &mut Ctx, p: &mut Page) {
     let device = st.map_or(wifi["device"].as_bool().unwrap_or(false), |w| w.present) || wifi["device"].as_bool().unwrap_or(false);
     let enabled = st.map_or(wifi["enabled"].as_bool().unwrap_or(false), |w| w.enabled);
     let nets: Vec<Value> = wifi["networks"].as_array().cloned().unwrap_or_default();
+    // (kept in its order while you aim at it, ask for a password or fill in the form)
+    let busy = !cx.local_s("wifi.asking").is_empty() || cx.local.contains_key("wifi.form");
+    let nets = frozen(cx, "wifi", nets, |n| s(&n["name"]), busy);
 
     // A saved enterprise network's settings came back: into the form, once
     if let (Some(saved), true) = (wifi["saved"].as_object(), cx.local.contains_key("wifi.form") && !cx.local_b("wifi.formFilled")) {
@@ -448,6 +483,8 @@ pub fn network(cx: &mut Ctx, p: &mut Page) {
         };
         let id = cx.on(move |cx, a| {
             if a.s == "button" {
+                // (Scan again: sorted afresh)
+                cx.local.remove("wifi.order");
                 ask(cx, "wifiRescan", Value::Null);
             } else {
                 ask(cx, "wifiEnable", json!([!enabled]));
@@ -464,11 +501,12 @@ pub fn network(cx: &mut Ctx, p: &mut Page) {
         let can_start = be["canStartNm"].as_bool().unwrap_or(false);
         let app = s(&be["wifiApp"]);
         let action = if can_start { "Start NetworkManager".to_string() } else if !app.is_empty() { format!("Open {}", s(&be["wifiAppName"])) } else { String::new() };
-        let mut r = Row::new(s(&be["wifiTitle"])).icon("wifi-slash").detail(s(&be["wifiReason"]));
-        if !action.is_empty() {
-            let id = cx.on(move |cx, _| ask(cx, if can_start { "startNm" } else { "openWifiApp" }, Value::Null));
-            r = r.button(action, id).busy(s(&f["healthFixing"]) == "networkmanager");
-        }
+        // (a centred notice, ServiceNotice.qml)
+        let id = cx.on(move |cx, _| ask(cx, if can_start { "startNm" } else { "openWifiApp" }, Value::Null));
+        let mut r = Row::custom("devices", "notice").id(id).icon("wifi-slash").detail(s(&be["wifiReason"]));
+        r.label = s(&be["wifiTitle"]);
+        r.text = action;
+        r.busy = s(&f["healthFixing"]) == "networkmanager";
         rows.push(r);
     } else if enabled {
         if let Some(form) = cx.local.get("wifi.form").cloned() {
@@ -515,6 +553,21 @@ pub fn network(cx: &mut Ctx, p: &mut Page) {
                 let mut r = Row::custom("devices", "list");
                 r.placeholder = if !device { "No Wi-Fi adapter".into() } else { "Looking for networks…".into() };
                 rows.push(r);
+            } else if at.is_none() && nets.iter().any(|n| !s(&n["failedText"]).is_empty()) {
+                // (each join failure under its network: the list in parts)
+                let mut start = 0;
+                for (i, n) in nets.iter().enumerate() {
+                    let t = s(&n["failedText"]);
+                    if t.is_empty() {
+                        continue;
+                    }
+                    rows.push(wifi_list_rows(cx, &nets, start, i + 1, start == 0, false));
+                    rows.push(Row::text(t).tone(2));
+                    start = i + 1;
+                }
+                if start < nets.len() {
+                    rows.push(wifi_list_rows(cx, &nets, start, nets.len(), false, false));
+                }
             } else if let Some(i) = at {
                 rows.push(wifi_list_rows(cx, &nets, 0, i + 1, true, false));
                 // The password row under the network (WifiList's `asking`)
@@ -556,10 +609,13 @@ pub fn network(cx: &mut Ctx, p: &mut Page) {
             } else {
                 rows.push(wifi_list_rows(cx, &nets, 0, nets.len(), true, false));
             }
-            for n in &nets {
-                let t = s(&n["failedText"]);
-                if !t.is_empty() && s(&n["name"]) != asking {
-                    rows.push(Row::text(t).tone(2));
+            // (with a password row open, the failures of the others after the list)
+            if at.is_some() {
+                for n in &nets {
+                    let t = s(&n["failedText"]);
+                    if !t.is_empty() && s(&n["name"]) != asking {
+                        rows.push(Row::text(t).tone(2));
+                    }
                 }
             }
             // Join other network…
@@ -711,7 +767,13 @@ fn bt_menu(d: &bluez::Device, pairing: bool, trusted: bool) -> Vec<(MenuItem, &'
     if d.paired {
         items.push((MenuItem::new(if trusted { "Don't connect automatically" } else { "Connect automatically" }), if trusted { "untrust" } else { "trust" }));
     }
+    // (a line above, BluetoothList.openMenu's separator)
+    let line = !items.is_empty();
     items.push((MenuItem::new("Copy address"), "copy"));
+    if line {
+        let n = items.len() - 1;
+        items[n].0.separator = true;
+    }
     if d.paired {
         items.push((MenuItem::new("Forget device").danger(), "forget"));
     }
@@ -720,6 +782,7 @@ fn bt_menu(d: &bluez::Device, pairing: bool, trusted: bool) -> Vec<(MenuItem, &'
 
 fn bt_list(cx: &mut Ctx, bt: &Bluetooth, which: &str, extras: &Value, empty: String) -> Row {
     let devs: Vec<bluez::Device> = device_list(bt, which).into_iter().cloned().collect();
+    let devs = frozen(cx, &format!("bt.{which}"), devs, |d| d.address.clone(), false);
     let mut data = Vec::new();
     for d in &devs {
         let x = &extras[&d.address];
@@ -766,6 +829,7 @@ fn bt_list(cx: &mut Ctx, bt: &Bluetooth, which: &str, extras: &Value, empty: Str
     let mut r = Row::custom("devices", "list").id(id).data(data);
     r.placeholder = empty;
     r.step = 3.0;
+    r.low = format!("bt.{which}");
     r
 }
 

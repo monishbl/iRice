@@ -18,7 +18,13 @@
 //! panel opening (a `close` command), or the screen locking, cancels it.
 //! Pictures are taken once, when the strip appears, never live.
 //!
-//! Not like the QML yet: nothing found (the QML's GridView momentum aside).
+//! The tiles are one `Rows` (keyed by window address): a Tab step or a
+//! picture arriving changes only the rows that differ, so hovers, presses and
+//! loaded pictures stay. The window is made ahead (a little after start, and
+//! kept), so the first Alt+Tab maps at once (the QML keeps its window 60 s).
+//!
+//! Not like the QML: the GridView's Momentum flick (Slint's Flickable has
+//! its own deceleration).
 
 pub mod ui {
     slint::include_modules!();
@@ -39,7 +45,8 @@ use tessera_core::wm::{self, spaces, AppIcons, IconsDone, Thumbs};
 use tessera_core::theme;
 use tessera_core::wayland::{Spec, State, Surface};
 use slint::platform::Key;
-use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
+use slint::{ComponentHandle, SharedString};
+use tessera_core::rows::Rows;
 use smithay_client_toolkit::shell::wlr_layer::{Anchor, KeyboardInteractivity, Layer};
 use smithay_client_toolkit::shell::WaylandSurface;
 use std::any::Any;
@@ -68,6 +75,7 @@ enum M {
     Faded,
     Hold,
     Focus(String),
+    Prepare,
 }
 
 /// Every window on a regular space, plus minimized (or set aside) ones; not
@@ -143,6 +151,7 @@ struct Win {
     a11y: Option<crate::a11y::A11y>,
     glass_sent: String,
     size: (f32, f32),
+    tiles: Rows<ui::SwTile>,
 }
 
 pub struct Switcher {
@@ -190,6 +199,11 @@ fn is(text: &str, k: Key) -> bool {
     text == SharedString::from(k).as_str()
 }
 
+/// Alt (either), AltGr, Super (either): the keys whose release switches
+fn is_hold_key(text: &str) -> bool {
+    [Key::Alt, Key::AltGr, Key::Meta, Key::MetaR].iter().any(|k| is(text, *k))
+}
+
 impl Switcher {
     fn enabled(st: &State) -> bool {
         st.shell.cfg["switcher"]["enabled"].as_bool().unwrap_or(true)
@@ -221,7 +235,7 @@ impl Switcher {
         {
             let to = to.clone();
             ui.on_key(move |t| {
-                let ok = [Key::Escape, Key::Return, Key::Tab, Key::Backtab, Key::LeftArrow, Key::RightArrow, Key::UpArrow, Key::DownArrow, Key::Alt, Key::Meta].iter().any(|k| is(&t, *k));
+                let ok = is_hold_key(&t) || [Key::Escape, Key::Return, Key::Tab, Key::Backtab, Key::LeftArrow, Key::RightArrow, Key::UpArrow, Key::DownArrow].iter().any(|k| is(&t, *k));
                 if ok {
                     to(Box::new(M::Key(t.to_string())));
                 }
@@ -237,9 +251,11 @@ impl Switcher {
             ui.on_picked(move |i| to(Box::new(M::Picked(i))));
         }
         ui.on_faded(move || to(Box::new(M::Faded)));
+        let tiles = Rows::new();
+        ui.set_tiles(tiles.model());
         ui.show().expect("show switcher");
         let a11y = crate::a11y::A11y::new(&surface, st.tx.clone());
-        self.win = Some(Win { output: output.into(), surface, ui, a11y, glass_sent: String::new(), size: (288.0, 120.0) });
+        self.win = Some(Win { output: output.into(), surface, ui, a11y, glass_sent: String::new(), size: (288.0, 120.0), tiles });
         self.look(st);
         true
     }
@@ -418,7 +434,7 @@ impl Switcher {
         self.icons.flush(send(st));
         let m = st.shell.look.material;
         let w = self.win.as_ref().unwrap();
-        w.ui.set_tiles(ModelRc::new(VecModel::from(tiles)));
+        w.tiles.set_keyed(tiles, |t| t.address.clone());
         w.ui.set_selected(self.selected as i32);
         // keep the selection's row in view
         let per_row = w.ui.get_per_row().max(1) as usize;
@@ -434,7 +450,7 @@ impl Switcher {
     }
 
     fn key(&mut self, st: &mut State, t: &str) {
-        if is(t, Key::Alt) || is(t, Key::Meta) {
+        if is_hold_key(t) {
             self.alt_down = true;
             return;
         }
@@ -467,7 +483,7 @@ impl Switcher {
         let k = 0.97 + 0.03 * p;
         let (cx, cy) = (MARGIN + bw / 2.0, MARGIN + bh / 2.0);
         let shapes = if p > 0.0 { vec![theme::glass_shape(&st.shell.look, cx - bw * k / 2.0, cy - bh * k / 2.0, bw * k, bh * k, 26.0 * k, p, 1.0)] } else { Vec::new() };
-        let key = format!("{shapes:?}");
+        let key = tessera_core::theme::glass_key(&shapes);
         if key != w.glass_sent {
             st.shell.glass.set(&w.output, NS, &shapes);
             w.glass_sent = key;
@@ -476,6 +492,16 @@ impl Switcher {
 }
 
 impl Part for Switcher {
+    // (the window it keeps while closed, made ahead and left unmapped)
+    fn prewarm(&mut self, st: &mut State) {
+        let Some(out) = st.likely_output() else { return };
+        if self.win.is_none() && self.window(st, &out) {
+            if let Some(w) = &self.win {
+                w.surface.hide();
+            }
+        }
+    }
+
     fn name(&self) -> &'static str {
         NAME
     }
@@ -484,6 +510,8 @@ impl Part for Switcher {
         for s in ["clients", "hypr", "apps", "icons"] {
             st.shell.want(s);
         }
+        let to = send(st);
+        self.later.start(slint::TimerMode::SingleShot, Duration::from_millis(1500), move || to(Box::new(M::Prepare)));
     }
 
     fn command(&mut self, st: &mut State, cmd: &Command) {
@@ -563,7 +591,7 @@ impl Part for Switcher {
         match *m {
             M::Key(t) => self.key(st, &t),
             M::Released(t) => {
-                if is(&t, Key::Alt) || is(&t, Key::Meta) {
+                if is_hold_key(&t) {
                     self.alt_down = false;
                     self.commit(st);
                 }
@@ -587,12 +615,21 @@ impl Part for Switcher {
                         w.surface.hide();
                         st.shell.glass.set(&w.output, NS, &[]);
                         w.glass_sent.clear();
-                        w.ui.set_tiles(ModelRc::default());
+                        w.tiles.set(Vec::new());
                     }
                     self.thumbs.clear();
                 }
             }
             M::Focus(a) => self.focus(st, &a),
+            // made ahead, so the first Alt+Tab maps at once
+            M::Prepare => {
+                if self.win.is_none() && self.phase == Phase::Idle {
+                    let wins = st.shell.get::<Windows>().cloned().unwrap_or_default();
+                    if let Some(out) = wins.focused_monitor().map(|m| m.name.clone()).or_else(|| st.outputs_now().first().map(|o| o.1.clone())) {
+                        self.window(st, &out);
+                    }
+                }
+            }
         }
     }
 

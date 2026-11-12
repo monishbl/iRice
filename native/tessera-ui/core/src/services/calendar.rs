@@ -178,6 +178,44 @@ pub fn day_bounds(ms: i64) -> (i64, i64) {
     (make(t.y, t.mo, t.d, 0, 0, 0), make(t.y, t.mo, t.d + 1, 0, 0, 0))
 }
 
+/// The calendar an event belongs to ("Reminders" for your own)
+pub fn name_of(c: &Calendar, e: &Event) -> String {
+    if e.key.starts_with("local:") {
+        return "Reminders".into();
+    }
+    let url = e.key.rsplitn(3, '|').nth(2).unwrap_or("");
+    c.sources.iter().find(|s| s.url == url).map(|s| s.name.clone()).unwrap_or_default()
+}
+
+/// Calendar.seriesOf: the event's series (its key without the instance)
+pub fn series_of(e: &Event) -> String {
+    e.key.rfind('|').map(|i| e.key[..i].to_string()).unwrap_or_default()
+}
+
+/// Calendar.dailyIn: series on at least 80% of the days (a week or more)
+/// -> title (listed once as "Every day" instead of dotting each day)
+pub fn daily_in(list: &[Event], from: i64, to: i64) -> std::collections::BTreeMap<String, String> {
+    let days = ((to - from) as f64 / DAY as f64).round() as i64;
+    let mut out = std::collections::BTreeMap::new();
+    if days < 7 {
+        return out;
+    }
+    let mut seen: std::collections::BTreeMap<String, (String, std::collections::HashSet<i64>)> = std::collections::BTreeMap::new();
+    for e in list {
+        let s = series_of(e);
+        if s.is_empty() {
+            continue;
+        }
+        seen.entry(s).or_insert_with(|| (e.title.clone(), std::collections::HashSet::new())).1.insert(day_bounds(e.start).0);
+    }
+    for (s, (title, d)) in seen {
+        if d.len() as f64 >= days as f64 * 0.8 {
+            out.insert(s, title);
+        }
+    }
+    out
+}
+
 // ── iCalendar ────────────────────────────────────────────────────────────
 
 /// "20261026T090000Z" | "20261026T090000" | "20261026" -> (ms, all day)

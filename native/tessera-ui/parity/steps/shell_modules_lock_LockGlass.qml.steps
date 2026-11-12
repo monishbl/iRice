@@ -1,0 +1,69 @@
+look glass
+# LockGlass. Password "mock".
+# Step 3 first: notifications before locking.
+setup notify-send -a Firefox -i firefox 'Download finished' 'report.pdf'
+setup notify-send -a Files -i org.gnome.Nautilus 'Copied' '3 files'
+wait 2
+ipc lock lock
+wait 2.5
+shot layout
+note Layout: user config is the macOS layout (clock 150 px at 10 %, no widgets row, field 10 % from the bottom); iOS layout (clock 168 px, widgets row with battery capsule, field at the bottom 6 %) needs lock.layout "ios" (MANUAL). PASS earlier; QML Glass reference was NOT captured, capture it now.
+note Notifications: shelf with BOTH real Colloid app icons (Firefox, Files, not blank), newest card "Files" + "Notification" (previews off), time "now". Earlier: shelf and "+N" PASS; cards/previews/column NOT RUN.
+setup notify-send -a Mail -i thunderbird 'New mail' 'hello'
+wait 1.5
+shot third
+note A third notification while locked: the shelf grows and adds an icon at the left WITHOUT the other icons flickering (PASS partly earlier; no-flicker region-changes check NOT RUN - check the first icon region stays unchanged).
+# MANUAL: lock.previews true: card shows "Copied" / "3 files"; lock.notifications "column" (wide screen): cards in a column at 74 % across, up to 3, "N more" beyond; "icons": shelf only; region-changes.py over the first icon: no change
+# Step 4: typing
+key abc
+wait 0.4
+shot typing
+note Three dots, placeholder gone, send arrow at full opacity (PASS earlier).
+key -k BackSpace -k BackSpace -k BackSpace
+wait 0.4
+shot cleared
+note Placeholder is back, arrow at 40 % (PASS earlier).
+# Step 5: wrong password
+key nope
+rec wrong 2 key -k Return
+note Shake ~260 ms (+10, -10, +6, 0) then "Incorrect password. Try again." on one line, centred under the field (text PASS earlier; shake duration NOT measured).
+wait 1.5
+# Step 6: long error
+ipc lock demo lockout
+wait 0.8
+shot lockout
+note "Too many attempts: try again in about 9 minutes." on ONE line, centred, wider than the field. FAIL if it wraps (PASS earlier).
+ipc lock demo off
+# Step 7: busy
+ipc lock demo busy
+wait 0.8
+shot busy
+note Dots plus a spinner turning (one turn per 800 ms; turn rate NOT measured), arrow hidden, field disabled (PASS earlier).
+ipc lock demo off
+# Step 8: fingerprint in field
+ipc lock demo finger
+wait 0.8
+shot finger
+note Placeholder "Fingerprint or Password", glyph in the field pulses once (PASS earlier).
+key a
+wait 0.3
+shot finger-typed
+note After typing a letter the send arrow is back.
+key -k BackSpace
+ipc lock demo miss
+wait 0.4
+shot miss
+note Glyph red and a shake.
+ipc lock demo match
+wait 0.4
+shot match
+note Green check.
+ipc lock demo off
+# Step 9: Now Playing
+# MANUAL: with a player (playerctl-able): plate 84 px above the field (shelf) with art 60 px (radius 12), title/artist, prev/play-pause/next; click play/pause toggles the player; hover shows a light tint (NOT RUN earlier; try fakeplayer in setup if available)
+# Step 10: unlock lifts
+key mock
+rec unlock 2 key -k Return
+note Content fades over 220 ms and grows 8 % (timing NOT RUN earlier). Rust unlock only (QML cannot unlock by password).
+wait 2
+ipc lock unlock

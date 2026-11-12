@@ -7,8 +7,12 @@ use super::feed;
 use serde_json::Value;
 
 /// Whether a program is on the PATH
-fn on_path(name: &str) -> bool {
-    std::env::var_os("PATH").is_some_and(|p| std::env::split_paths(&p).any(|d| d.join(name).is_file()))
+pub fn on_path(name: &str) -> bool {
+    // (looked up once per program: the page is built again after every change)
+    thread_local! {
+        static FOUND: std::cell::RefCell<std::collections::HashMap<String, bool>> = Default::default();
+    }
+    FOUND.with(|m| *m.borrow_mut().entry(name.to_string()).or_insert_with(|| std::env::var_os("PATH").is_some_and(|p| std::env::split_paths(&p).any(|d| d.join(name).is_file()))))
 }
 
 /// The choices a list offers: Automatic, then the installed ones (a

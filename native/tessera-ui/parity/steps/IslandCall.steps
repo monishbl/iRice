@@ -1,0 +1,68 @@
+# IslandCall: steps from parity/shell_modules_menubar_IslandCall.qml.md (batches 1-5). Screen IRICE-TEST 1920x1080 scale 1;
+# the island is centred at x 960 (closed y ~14, open ~392 wide); the bar is 30 px tall.
+# Each block runs in both looks: the file runs top to bottom, Material first, then Glass.
+
+look material
+setup sh -c 'sleep 0.8; notify-send -a Signal -h string:category:call.incoming -A answer=Answer -A decline=Decline Maya "Incoming call"' &
+rec call-in 2 ptr move 1500 600
+note photo grows, then name/app slide in, then buttons fade in (~0.5 s)
+shot call
+note initials or photo with two pulsing rings, "Maya", "Signal · incoming call" (Signal's icon badge, not "i"), Decline (red) and Answer (green; Material primary)
+ptr glide 1070 45 300
+ptr click
+wait 1
+shot answered
+note the card went; the answer action fired
+setup notify-send -a Signal -h string:category:call.incoming -A answer=Answer -A decline=Decline Maya "Incoming call" &
+wait 1
+ptr glide 900 45 300
+ptr scroll 0 -15
+wait 0.5
+shot scroll-kept
+note scrolling did not remove the call
+ptr click
+key -k Escape
+wait 0.6
+shot esc-declined
+note Escape declined it
+setup python3 -c 'import json, os;p = os.path.expanduser("~/.config/tessera/config.json"); c = json.load(open(p)); c.setdefault("appearance", {})["reduceMotion"] = True; json.dump(c, open(p, "w"), indent=4)'
+setup notify-send -a Signal -h string:category:call.incoming -A answer=Answer -A decline=Decline Maya "Incoming call" &
+wait 1
+rec call-still 2 ptr move 1500 600
+note reduce motion: one still ring
+ptr glide 1000 45 300
+ptr click
+
+setup python3 -c 'import json, os;p = os.path.expanduser("~/.config/tessera/config.json"); c = json.load(open(p)); c.setdefault("appearance", {})["reduceMotion"] = False; json.dump(c, open(p, "w"), indent=4)'
+
+look glass
+setup sh -c 'sleep 0.8; notify-send -a Signal -h string:category:call.incoming -A answer=Answer -A decline=Decline Maya "Incoming call"' &
+rec call-in 2 ptr move 1500 600
+note photo grows, then name/app slide in, then buttons fade in (~0.5 s)
+shot call
+note initials or photo with two pulsing rings, "Maya", "Signal · incoming call" (Signal's icon badge, not "i"), Decline (red) and Answer (green; Material primary)
+ptr glide 1070 45 300
+ptr click
+wait 1
+shot answered
+note the card went; the answer action fired
+setup notify-send -a Signal -h string:category:call.incoming -A answer=Answer -A decline=Decline Maya "Incoming call" &
+wait 1
+ptr glide 900 45 300
+ptr scroll 0 -15
+wait 0.5
+shot scroll-kept
+note scrolling did not remove the call
+ptr click
+key -k Escape
+wait 0.6
+shot esc-declined
+note Escape declined it
+setup python3 -c 'import json, os;p = os.path.expanduser("~/.config/tessera/config.json"); c = json.load(open(p)); c.setdefault("appearance", {})["reduceMotion"] = True; json.dump(c, open(p, "w"), indent=4)'
+setup notify-send -a Signal -h string:category:call.incoming -A answer=Answer -A decline=Decline Maya "Incoming call" &
+wait 1
+rec call-still 2 ptr move 1500 600
+note reduce motion: one still ring
+ptr glide 1000 45 300
+ptr click
+setup python3 -c 'import json, os;p = os.path.expanduser("~/.config/tessera/config.json"); c = json.load(open(p)); c.setdefault("appearance", {})["reduceMotion"] = False; json.dump(c, open(p, "w"), indent=4)'

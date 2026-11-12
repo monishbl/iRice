@@ -117,7 +117,7 @@ component MButton inherits Rectangle {
     height: 40px;
     width: label.preferred-width + 2 * round(self.height * 0.6 / 1px) * 1px;
     border-radius: touch.pressed ? min(12px, self.height / 2) : self.height / 2;
-    animate border-radius { duration: 250ms; easing: spring(0.4); }
+    animate border-radius { duration: 222ms; easing: spring(0.4); } // (springFast 12.8 / 0.54: ω 28.3, ζ 0.60)
     background: filled ? Theme.m3-primary : Theme.m3-secondary-container.with-alpha(SLook.ca);
     animate background { duration: 150ms; }
     accessible-role: button;
@@ -360,7 +360,7 @@ component MRow inherits Rectangle {
     callback activate();
     callback look();
     property <float> round: selected ? 1 : 0;
-    animate round { duration: 300ms; easing: spring(0.45); }
+    animate round { duration: 222ms; easing: spring(0.4); } // (springFast)
     property <color> ink: selected ? Theme.m3-on-secondary-container : Theme.m3-on-surface;
     property <length> full: self.height / 2;
     property <length> top-r: max(0, min(full, (r.first ? 20px : 4px) + (full - (r.first ? 20px : 4px)) * round));
@@ -517,7 +517,7 @@ component MHero inherits Rectangle {
     property <color> strong: answer ? Theme.m3-tertiary : Theme.m3-primary;
     property <color> on-strong: answer ? on-tertiary : Theme.m3-on-primary;
     property <float> round: selected ? 1 : 0;
-    animate round { duration: 300ms; easing: spring(0.45); }
+    animate round { duration: 222ms; easing: spring(0.4); } // (springFast)
     border-radius: max(0, min(self.height / 2, 28px + (self.height / 2 - 28px) * round));
     background: container;
     accessible-role: list-item;
@@ -605,7 +605,7 @@ component MHero inherits Rectangle {
         }
         if !r.store: go := Rectangle {
             border-radius: go-touch.pressed ? 16px : self.height / 2;
-            animate border-radius { duration: 250ms; easing: spring(0.4); }
+            animate border-radius { duration: 222ms; easing: spring(0.4); } // (springFast 12.8 / 0.54: ω 28.3, ζ 0.60)
             background: strong;
             transform-scale: go-touch.pressed ? 1.06 : 1;
             animate transform-scale { duration: 300ms; easing: spring(0.35); }
@@ -686,7 +686,8 @@ export component SpotlightPanel inherits Window {
     property <length> m-body: answering ? m-answer-h + 28px : min(content-h, 480px) + 20px;
     property <length> m-answer-h;
     property <length> m-view-h: 56px + (m-open ? m-body : 0);
-    animate m-view-h { duration: 450ms; easing: spring(0.5); }
+    // (springDefault 6.08 / 0.5: ω 19.5, ζ 0.80)
+    animate m-view-h { duration: 322ms; easing: spring(0.2); }
     property <duration> intro-t0;
     property <bool> has-text: field.text != "";
 
@@ -709,8 +710,9 @@ export component SpotlightPanel inherits Window {
     default-font-family: Theme.font;
 
     animate openness {
-        duration: Theme.material ? (shown ? 450ms : 154ms) : 220ms;
-        easing: Theme.material ? (shown ? spring(0.5) : cubic-bezier(0.3, 0, 0.8, 0.15)) : shown ? cubic-bezier(0.2, 0.9, 0.1, 1.0) : cubic-bezier(0.4, 0, 1, 1);
+        // (Material opens on springDefault: ω 19.5, ζ 0.80; closes in popover × 0.7)
+        duration: Theme.material ? (shown ? 322ms : Theme.popover * 0.7) : Theme.popover;
+        easing: Theme.material ? (shown ? spring(0.2) : cubic-bezier(0.3, 0, 0.8, 0.15)) : shown ? cubic-bezier(0.2, 0.9, 0.1, 1.0) : cubic-bezier(0.4, 0, 1, 1);
     }
     changed openness => {
         if !shown && openness <= 0.001 { closed(); }
@@ -901,9 +903,10 @@ export component SpotlightPanel inherits Window {
                     for r in rows: Rectangle {
                         y: r.y;
                         height: r.h;
-                        // (comes in on a small spring, a little after the one above)
-                        property <float> k: introducing && r.index <= 10 ? max(0, min(1, (animation-tick() - intro-t0 - 16ms - r.index * 28ms) / 380ms)) : 1;
-                        property <float> e: 1 - (1 - k) * (1 - k) * (1 - k);
+                        // (comes in on springDefault, 16 + 28·index ms after the list appears:
+                        // ω 19.5, ζ 0.80 → 1 − e^(−15.6 t)(cos 11.7 t + 1.33 sin 11.7 t))
+                        property <float> t: introducing && r.index <= 10 ? max(0, (animation-tick() - intro-t0 - 16ms - r.index * 28ms) / 1s) : 1;
+                        property <float> e: t >= 0.6 ? 1 : 1 - exp(-15.6 * t) * (cos(11.7 * t * 1rad) + 1.333 * sin(11.7 * t * 1rad));
                         opacity: e;
                         Rectangle {
                             y: (1 - e) * 14px;

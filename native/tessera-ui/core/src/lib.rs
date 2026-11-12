@@ -16,12 +16,14 @@ pub mod damage;
 pub mod dnd;
 pub mod egl;
 pub mod env;
+pub mod global_shortcuts; // (Hyprland's global shortcuts, as Quickshell's GlobalShortcut: standalone)
 pub mod host; // (wave 4: the QML shell's side, in Rust; standalone only)
 pub mod icon_theme;
 pub mod idle; // (ext-idle-notify-v1 readings, wayland.rs State::idle_set)
 pub mod icons;
 pub mod picture;
 pub mod rank;
+pub mod perf; // (debug: loop stalls and list/window reloads, TESSERA_DEBUG: perf.rs)
 pub mod rows; // (lists changed in place, not handed a new model: rows.rs)
 pub mod runloop;
 pub mod seed;
@@ -33,6 +35,7 @@ pub mod stats;
 pub mod sysstat; // (the last minute of CPU, memory, network: desktop, resources, overlay)
 pub mod surfaces;
 pub mod theme;
+pub mod touch; // (wl_touch as the pointer: taps, drags, long presses; every surface)
 pub mod util;
 pub mod wallpaper;
 pub mod wayland;

@@ -1,0 +1,10 @@
+# Settings window: Material 1040x700 at 440,205 (page column from x~772); Glass 860x620 at 530,230. Sidebar rows (Material, x=560): Appearance 335, Wallpaper 385, Desktop 435, Menu bar 485, Lock 535, Notifications 626, Focus 676, Windows 767, Displays 858.
+# Click coordinates inside pages are not known in advance: those steps are MANUAL unless a keyboard path exists. Check in each look.
+ipc panels settings mouse
+wait 2
+shot r1
+note R1 Mouse page: row heights, paddings, icon sizes, label/detail fonts and word sliders' places match the QML shot (compare crops).
+ipc panels settings network
+wait 3
+shot r2
+note R2 Network page status rows: secondary / danger status colours as in QML.

@@ -82,7 +82,7 @@ component MButton inherits Rectangle {
     border-radius: touch.pressed ? 8px : self.height / 2;
     animate border-radius { duration: 150ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
     background: touch.pressed ? Theme.m3-on-surface-variant.with-alpha(0.1) : touch.has-hover ? Theme.m3-on-surface-variant.with-alpha(0.08) : transparent;
-    animate background { duration: 150ms; }
+    animate background { duration: Theme.hover; }
     accessible-role: button;
     accessible-label: label;
     accessible-action-default => { clicked(); }

@@ -75,16 +75,28 @@ component IconBtn inherits Rectangle {
     in property <SIc> icon;
     in property <string> label;
     callback clicked();
-    width: Theme.material ? 40px : 28px;
+    width: 28px;
     height: self.width;
-    border-radius: Theme.material ? self.height / 2 : Theme.radius-control - 2px;
+    // (Material: the corners square off as it's pressed, 150 ms)
+    border-radius: Theme.material ? (ta.pressed ? 8px : self.height / 2) : Theme.radius-control - 2px;
+    animate border-radius { duration: 150ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
     background: Theme.material ? Theme.m3-on-surface-variant.with-alpha(ta.pressed ? 0.1 : ta.has-hover ? 0.08 : 0)
         : ta.pressed ? Theme.fill-pressed : ta.has-hover ? Theme.fill : transparent;
     animate background { duration: SM.hover; }
+    transform-scale: ta.pressed ? 0.94 : 1;
+    animate transform-scale { duration: SM.press; }
     accessible-role: AccessibleRole.button;
     accessible-label: label;
     accessible-action-default => { clicked(); }
-    SIcon { g: icon; size: Theme.material ? 20px : 16px; color: Theme.material ? Theme.m3-on-surface-variant : Theme.secondary; }
+    // Keyboard: a Tab stop; Space or Enter press it
+    fs := FocusScope {
+        key-pressed(e) => {
+            if !e.repeat && (e.text == " " || e.text == Key.Return) { root.clicked(); return accept; }
+            reject
+        }
+    }
+    SFocusRing { shown: fs.has-focus; radius: root.border-radius; }
+    SIcon { g: icon; size: 16px; color: Theme.material ? Theme.m3-on-surface-variant : Theme.secondary; }
     ta := TouchArea {
         mouse-cursor: pointer;
         clicked => { root.clicked(); }
@@ -187,6 +199,9 @@ export component AccountsCtl inherits VerticalLayout {
     // its pill (Material), in the group's tile
     if r.sub == "note": Rectangle {
         height: 112px;
+        // (the page cut what was typed: the field shows it)
+        property <float> rev: root.r.step;
+        changed rev => { note.text = root.r.text; }
         // (Material: the group's tile behind it, its corners by its place)
         if Theme.material: Rectangle {
             border-top-left-radius: root.r.num == 1 || root.r.num == 3 ? 24px : 4px;

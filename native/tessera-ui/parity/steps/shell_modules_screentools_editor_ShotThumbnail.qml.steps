@@ -1,0 +1,60 @@
+# Screenshot thumbnail card 212x125 at x 1684..1896, y 931..1056, centre (1790,993); close button (1689,936) Glass / (1690,937) Material; Copy text (1870,957). Check in each look.
+setup (magick -size 1600x900 xc:white -fill black -pointsize 48 -annotate +100+200 "Invoice total 42.00" -annotate +100+320 "https://example.com/pay" /tmp/t.png || convert -size 1600x900 xc:white -fill black -pointsize 48 -annotate +100+200 "Invoice total 42.00" -annotate +100+320 "https://example.com/pay" /tmp/t.png); cp /tmp/t.png /tmp/t2.png
+ptr move 960 400
+rec th-in 6 ipc shotEditor thumbnail /tmp/t.png
+note Slides in over about 300 ms, leaves after 5 s in about 200 ms; compare the card's x per frame QML vs Rust.
+wait 1
+ipc shotEditor thumbnail /tmp/t.png
+wait 1
+ptr glide 1790 993 200
+wait 8
+shot th-hover-hold
+note Pointer on the card for more than 7 s: still there, hint "Click to mark up", close and Copy text buttons shown (QML vs Rust).
+ptr glide 960 400 200
+wait 7
+shot th-left
+note Pointer away: the card leaves about 5 s later (gone now).
+ipc shotEditor thumbnail /tmp/t.png
+wait 1
+rec th-back 0.5 ptr move 1760 993 down glide 1800 993 150 up
+note A 40 px swipe (< 56) glides the card back over about 200 ms (Rust jumped before); swipe 120 px leaves to the right.
+wait 1
+ptr move 1760 993 down glide 1880 993 150 up
+wait 1
+shot th-swiped
+note A 120 px swipe sends the card off to the right (it has left).
+ipc shotEditor thumbnail /tmp/t.png
+wait 1
+ptr move 1790 993 click
+wait 1
+shot th-toast-editor
+note Editor open after clicking the card; trash in the bottom bar then shows the toast "Screenshot deleted" with Undo (click on layer surfaces may not register).
+# MANUAL: Toast hover: click the trash, glide onto the toast (1780,1034), wait 10 s: still there; move away: gone 8 s later, QML and Rust alike
+ipc shotEditor close
+wait 1
+ipc shotEditor thumbnail /tmp/t.png
+wait 1
+rec th-undo-press 0.5 ptr move 1853 1032 down sleep 300 up
+note Undo button press (Material: swells about 6 % with a small overshoot on release; Glass: shrinks to 97 %).
+wait 1
+ipc shotEditor thumbnail /tmp/t.png
+wait 1
+ptr move 1790 993 sleep 200 click
+ptr move 1870 957 click
+wait 1
+shot th-copy-text
+note Copy text click: hint "Reading text..." then "Text copied" for 2.5 s (needs tesseract; the text appears in wl-paste).
+wait 3
+ipc shotEditor thumbnail /tmp/t.png
+wait 1
+rec th-drag 0.6 ptr move 1790 993 down glide 1790 800 200 up
+note Vertical drag from the card starts a file drag (cursor shows it); after release over the desktop Rust fades the card out (QML stays when nothing took the drop).
+wait 1
+ipc shotEditor thumbnail /tmp/t.png
+wait 1
+ptr move 1689 936 sleep 200 click
+wait 1
+shot th-close
+note The close button click makes the card leave to the right.
+# MANUAL: wl-paste after Copy text holds the picture's text
+# MANUAL: drag-out: cursor shows the file drag (not visible in a screenshot)

@@ -1,0 +1,18 @@
+# WindowControls: decorations on, a foot window. Check in each look.
+# MANUAL: decorations must be on (config); the maximise control position depends on the window placement - read it from the shot
+setup foot &
+wait 2
+shot window
+note A foot window with decorations; the maximise control (green/right of the title bar) is where the next pointer paths go. Same as QML.
+# NOTE: positions assumed: foot opens tiled; adjust from the shot.
+ptr move 960 540 sleep 300 glide 1860 20 300 sleep 600
+shot maxgrid
+note Hovering the maximise control and waiting opens the tile grid (snap zones); same as QML.
+ptr glide 960 700 300 sleep 300
+shot maxgrid-away
+note After gliding away the tile grid is closed (same as QML).
+ptr move 960 540 sleep 300 glide 1860 20 300 sleep 2000
+shot maxgrid-timeout
+note Not coming back over it for 1.5 s: the grid closes by itself (same as QML).
+# MANUAL: click the left-half zone of the tile grid -> the window takes the left half
+# MANUAL: Material: press down on close and hold without releasing over it -> corners go to 8 in 150 ms; glide off, then up

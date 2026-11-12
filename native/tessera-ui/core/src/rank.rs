@@ -824,7 +824,10 @@ pub fn query(text: &str, k: &Known) -> (Vec<Row>, Wants) {
         .map(|a| (a, score(&a.name, &q).max(score(&a.generic, &q) * 0.8).max(score(&a.keywords.join(" "), &q) * 0.6).max(score(&a.id, &q) * 0.7)))
         .filter(|x| x.1 >= 30.0)
         .collect();
-    apps.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    // (equal scores by name: the QML's ties follow DesktopEntries' hash order,
+    // which put "Foot Client" before "Foot Server"; a name order does too and
+    // doesn't change from run to run)
+    apps.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal).then_with(|| a.0.name.to_lowercase().cmp(&b.0.name.to_lowercase())));
     apps.truncate(8);
     for (a, s) in &apps {
         let sub = if !a.generic.is_empty() { a.generic.clone() } else { a.comment.clone() };

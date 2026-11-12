@@ -1,0 +1,8 @@
+# microsoft: Microsoft page. Check in each look.
+# Never click "Sign in with Microsoft", "Install"/"Update", "Build It" or "Connect OneDrive".
+ipc panels settings microsoft
+wait 2
+shot ms-top
+note MS1: same rows as the QML for the arena's state; WRITE which of the rows #4/#5/#6 (depends on Needs) each shell shows; they must agree; footer text and "OneDrive folder" group the same in both looks.
+# MANUAL: MS2 glide over the visible primary/Install button and the OneDrive button: same hover/press fill as QML. Esc.
+ipc panels close

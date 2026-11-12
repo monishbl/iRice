@@ -1,0 +1,9 @@
+# Arena IRICE-TEST 1920x1080 scale 1, the user's config (expressive motion, Colloid, their 4 widgets).
+# Each file runs top to bottom from a fresh desktop. `static NAME x y w h`: that region must not change
+# from there until the next `shot`, `rec` or `look` (the no-reload blocks end with their last close).
+# Right-clicks: `ptr ... down up` lines marked (right button) need the runner's right button.
+
+look material
+shot md-idle
+rec md-tooltip 2 ptr move 970 1100 glide 970 1032 200 sleep 1200 glide 1027 1032 200 sleep 300
+note Downloads tooltip after ≈500 ms (150 ms fade, 4 px rise); Trash's at once

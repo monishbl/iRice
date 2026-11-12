@@ -1,0 +1,13 @@
+look material
+setup python3 -I -c "import json,os;p=os.path.expanduser('~/.config/tessera/config.json');c=json.load(open(p));c.setdefault('controlCenter',{})['layout']=['resources:2x1'];json.dump(c,open(p,'w'),indent=4)"
+wait 2
+ipc panels open controlCenter IRICE-TEST
+wait 1
+ptr move 1602 86 sleep 50 down sleep 1100 up
+wait 1
+shot graphs
+note CPU, Memory, Swap, (Temperature), Download/Upload, (GPU) rows each with a graph
+setup sh -c 'timeout 5 sh -c "while :; do :; done"' &
+rec moving 8 ptr sleep 100
+note graphs move once a second; the CPU line climbs
+ipc panels close

@@ -1,0 +1,125 @@
+# IslandView: steps from parity/shell_modules_menubar_IslandView.qml.md (batches 1-5). Screen IRICE-TEST 1920x1080 scale 1;
+# the island is centred at x 960 (closed y ~14, open ~392 wide); the bar is 30 px tall.
+# Each block runs in both looks: the file runs top to bottom, Material first, then Glass.
+
+look material
+setup python3 sandbox/tools/fakeplayer.py &
+wait 3
+shot compact
+note compact pill: art, title, bars, prev/play/next (user's pieces)
+ptr move 960 200
+ptr glide 990 14 600
+wait 0.5
+shot compact-on-controls
+note the island did NOT open while the pointer rests on the pill's controls
+ptr click
+wait 1
+shot compact-paused
+note the fake player paused (pill icon now play)
+ptr click
+wait 1
+ptr glide 930 14 200
+ptr click
+wait 0.6
+shot opened-by-click
+note a click on the pill (not a button) opens the island
+ipc timer toggle
+ipc timer stopwatch
+wait 1
+ptr glide 960 700 300
+wait 1
+ptr move 1500 600
+wait 1
+ptr glide 960 14 400
+wait 1
+shot open-all
+note music card (overlay layout: title, artist · album, seek row, transport), then rows "Focus · 24:5x left" (progress, pause+skip) and "Stopwatch" (lap+pause), then the status line
+rec open 1.5 ptr glide 960 14 300
+note open timing: compare with QML (first frame that moves after the 140 ms hover)
+ptr glide 1137 16 300
+wait 0.5
+shot pin-reachable
+note moving onto the pin (top right) keeps the island open
+ptr click
+ptr glide 960 700 300
+wait 1.5
+shot pinned
+note pinned: still open with the pointer away
+ptr glide 1137 16 300
+ptr click
+ptr glide 960 700 300
+wait 1
+shot unpinned
+note unpinned: closed 260 ms after leaving
+ipc timer reset
+ipc timer stopwatchReset
+ipc recorder screen
+wait 3
+shot recording
+note recording pill: pulsing red dot, time, stop
+ptr glide 990 14 600
+ptr click
+wait 2
+shot recording-stopped
+note one click on stop ends it; "Recording saved" alert (host/desktop recorder)
+
+look glass
+setup python3 sandbox/tools/fakeplayer.py &
+wait 3
+shot compact
+note compact pill: art, title, bars, prev/play/next (user's pieces)
+ptr move 960 200
+ptr glide 990 14 600
+wait 0.5
+shot compact-on-controls
+note the island did NOT open while the pointer rests on the pill's controls
+ptr click
+wait 1
+shot compact-paused
+note the fake player paused (pill icon now play)
+ptr click
+wait 1
+ptr glide 930 14 200
+ptr click
+wait 0.6
+shot opened-by-click
+note a click on the pill (not a button) opens the island
+ipc timer toggle
+ipc timer stopwatch
+wait 1
+ptr glide 960 700 300
+wait 1
+ptr move 1500 600
+wait 1
+ptr glide 960 14 400
+wait 1
+shot open-all
+note music card (overlay layout: title, artist · album, seek row, transport), then rows "Focus · 24:5x left" (progress, pause+skip) and "Stopwatch" (lap+pause), then the status line
+rec open 1.5 ptr glide 960 14 300
+note open timing: compare with QML (first frame that moves after the 140 ms hover)
+ptr glide 1137 16 300
+wait 0.5
+shot pin-reachable
+note moving onto the pin (top right) keeps the island open
+ptr click
+ptr glide 960 700 300
+wait 1.5
+shot pinned
+note pinned: still open with the pointer away
+ptr glide 1137 16 300
+ptr click
+ptr glide 960 700 300
+wait 1
+shot unpinned
+note unpinned: closed 260 ms after leaving
+ipc timer reset
+ipc timer stopwatchReset
+ipc recorder screen
+wait 3
+shot recording
+note recording pill: pulsing red dot, time, stop
+ptr glide 990 14 600
+ptr click
+wait 2
+shot recording-stopped
+note one click on stop ends it; "Recording saved" alert (host/desktop recorder)

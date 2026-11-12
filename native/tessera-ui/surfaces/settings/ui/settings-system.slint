@@ -64,8 +64,21 @@ component FpSheet inherits Rectangle {
 
     // (modal: what's behind is dimmed and takes no clicks)
     border-radius: 16px;
-    background: Theme.dark ? #00000080 : #0000004d;
+    property <float> progress: 0;
+    init => { progress = 1; keys.focus(); }
+    animate progress { duration: 300ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+    background: (Theme.dark ? #000000 : #000000).with-alpha((Theme.dark ? 0.5 : 0.3) * progress);
     TouchArea {}
+    // Esc: Cancel (or Done), the sheet's last button (FingerprintSheet.qml 118–122)
+    keys := FocusScope {
+        key-pressed(e) => {
+            if e.text == Key.Escape {
+                if b.rows.length > 0 { SBus.act(b.rows[b.rows.length - 1].id, 0, 0, ""); }
+                return accept;
+            }
+            reject
+        }
+    }
     VerticalLayout {
         padding: 24px;
         alignment: center;
@@ -73,6 +86,8 @@ component FpSheet inherits Rectangle {
             alignment: center;
             card := Rectangle {
                 width: 420px;
+                opacity: root.progress;
+                transform-scale: 0.96 + 0.04 * root.progress;
                 border-radius: Theme.material ? 28px : 20px;
                 background: root.card-color;
                 border-width: Theme.material ? 0 : 1px;
@@ -124,7 +139,7 @@ component FpSheet inherits Rectangle {
                                     stroke-width: 7px;
                                     stroke-line-cap: round;
                                     stroke: done ? Theme.success : o.on ? Theme.accent : o.off ? (o.style == 1 ? Theme.danger : Theme.accent.with-alpha(0.42)) : root.faint;
-                                    animate stroke { duration: o.style == 1 ? 60ms : 420ms; easing: ease-out; }
+                                    animate stroke { duration: o.style == 1 ? 60ms : o.off ? 380ms : 700ms; easing: o.style == 1 || o.off ? ease-out : ease-in; }
                                 }
                             }
                             // done: a check at the bottom right of the print
@@ -203,6 +218,7 @@ export component SystemCtl inherits VerticalLayout {
                 cid: r.id;
                 opts: r.opts;
                 current: r.index;
+                dropdown: true;
                 enabled: r.enabled;
                 label: r.label;
             }

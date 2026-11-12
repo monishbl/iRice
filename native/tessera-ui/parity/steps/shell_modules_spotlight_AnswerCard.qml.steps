@@ -1,0 +1,36 @@
+look glass
+# NOTE: sandbox accent colour in Glass differed (Rust red-coral vs QML orange) in earlier results; that is a known FAIL, report if still so.
+# NOTE: click on layer surfaces may not register in the harness
+ipc panels open spotlight IRICE-TEST
+wait 1
+key 7*6
+wait 1
+shot ac-76
+note Answer card with orange tile, big "42", caption "Enter copies it"; tile colour must be orange as in QML.
+key -k Return
+wait 1
+setup sh -c 'wl-paste > /tmp/ac-clip.txt; cat /tmp/ac-clip.txt'
+shot ac-closed
+note Search is closed after Return; clipboard holds 42 (checked by the setup line).
+ipc panels open spotlight IRICE-TEST
+wait 1
+key 10 km in miles
+wait 2
+shot ac-conv
+note Card with a green tile once the conversion arrives (needs network/conversion; if only a plain result shows, mark unverifiable).
+# hover card with another row selected
+key -M ctrl -k a -m ctrl
+key -k BackSpace
+key 7*6
+wait 1
+key -k Down
+wait 1
+ptr move 960 322 sleep 300 glide 960 322 300
+wait 1
+shot ac-hover
+note Answer card hovered while another row is selected: fillHover faded in (150 ms), no accent tint.
+key -k Up
+wait 1
+shot ac-selected
+note Card selected: accent tint plus border, same as QML.
+key -k Escape

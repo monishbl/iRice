@@ -24,7 +24,7 @@ use super::config::{self, Cfg};
 use crate::shell::Shell;
 use crate::ui;
 use serde_json::Value;
-use slint::{Color, Image, ModelRc, SharedString, VecModel};
+use slint::{Color, Image, Model, ModelRc, SharedString, VecModel};
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -63,6 +63,8 @@ pub struct Out {
     pub pick: Option<(String, bool, String, String, String)>,
     /// pictures to decode: (key, path, width, height)
     pub pictures: Vec<(String, String, u32, u32)>,
+    /// app icons to draw (AppIcon.qml's styles): (key, path, px, style)
+    pub icons: Vec<(String, std::path::PathBuf, u32, crate::appicon::Style)>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -72,6 +74,8 @@ pub struct MenuItem {
     pub danger: bool,
     pub enabled: bool,
     pub icon: String,
+    /// a line above it (the QML menus' separators)
+    pub separator: bool,
 }
 
 impl MenuItem {
@@ -92,6 +96,11 @@ impl MenuItem {
     }
     pub fn icon(mut self, name: &str) -> Self {
         self.icon = name.into();
+        self
+    }
+    /// A separator above it
+    pub fn after_line(mut self) -> Self {
+        self.separator = true;
         self
     }
 }
@@ -305,6 +314,24 @@ impl<'a> Ctx<'a> {
             }
         }
     }
+    /// An app icon file drawn `px` pixels in `style`, off the UI thread (a
+    /// page of apps drew every icon before it showed): None until it's ready
+    /// (the page is built again then), and None for good when it can't be read
+    pub fn icon(&mut self, path: &std::path::Path, px: u32, style: crate::appicon::Style) -> Option<Image> {
+        let key = format!("icon:{}@{px}:{style:?}", path.display());
+        match self.pictures.get(&key) {
+            Some(i) => i.clone(),
+            None => {
+                self.out.icons.push((key, path.to_path_buf(), px, style));
+                None
+            }
+        }
+    }
+    /// An icon as it is (no tile, no style), off the UI thread: `icon`
+    pub fn plain_icon(&mut self, path: &std::path::Path, px: u32) -> Option<Image> {
+        let style = crate::appicon::Style { mode: 0, tiled: false, dark: self.dark, contrast: 0, tint: [0; 3], tile: None, tile_from: "auto".into(), accent: [0; 3] };
+        self.icon(path, px, style)
+    }
     /// Choose a file for a path row (PathField's Choose…): the row's action
     /// gets the path (`i` 1) when one is chosen
     pub fn choose_file(&mut self, id: &str, folder: bool, title: &str, start: &str, filter: &str) {
@@ -440,7 +467,7 @@ pub fn btn(text: impl Into<String>) -> Opt {
 }
 
 fn opts(v: &[Opt]) -> ModelRc<ui::SOpt> {
-    ModelRc::new(VecModel::from(v.iter().map(Opt::to_ui).collect::<Vec<_>>()))
+    tessera_core::rows::shared(v.iter().map(Opt::to_ui).collect::<Vec<_>>())
 }
 
 // ── Rows ────────────────────────────────────────────────────────────────
@@ -484,6 +511,8 @@ pub struct Row {
     pub busy: bool,
     pub visible: bool,
     pub flash: bool,
+    /// the whole row at half (QML: `opacity: enabled ? 1 : 0.5` on the row)
+    pub faded: bool,
     pub group: String,
     pub sub: String,
     pub data: Vec<Opt>,
@@ -605,11 +634,20 @@ impl Row {
         self
     }
     /// A pop-up list (Choice.qml / Dropdown.qml): it opens the window's menu
+    /// A pop-up button (Dropdown.qml: style 8; closed, Up and Down step
+    /// through the options; its list 36/28 px a row, at most 280 tall). A
+    /// page's Choice.qml (its list in the page's ActionMenu) is `.menu_choice()`
     pub fn choice(mut self, options: &[String], index: i32, id: String) -> Self {
         self.control = "choice";
         self.opts = options.iter().map(|o| Opt::new(o.clone())).collect();
         self.index = index;
         self.id = id;
+        self.style |= 8;
+        self
+    }
+    /// Choice.qml rather than Dropdown.qml (see `choice`)
+    pub fn menu_choice(mut self) -> Self {
+        self.style &= !8;
         self
     }
     pub fn placeholder(mut self, p: impl Into<String>) -> Self {
@@ -633,6 +671,28 @@ impl Row {
     }
     pub fn minor(mut self) -> Self {
         self.style = 3;
+        self
+    }
+    /// A button 26 px tall in Glass (the QML's small inline buttons: the
+    /// dock's Add, Clear all): carried in `secret`, which a button row
+    /// doesn't use otherwise
+    pub fn compact(mut self) -> Self {
+        self.secret = true;
+        self
+    }
+    /// A red text link for a button (focus.qml's Delete)
+    pub fn danger_link(mut self) -> Self {
+        self.style = 5;
+        self
+    }
+    /// The whole row at half when it can't be used
+    pub fn faded(mut self, on: bool) -> Self {
+        self.faded = on;
+        self
+    }
+    /// A text link for a button (no background, the accent's ink)
+    pub fn text_link(mut self) -> Self {
+        self.style = 4;
         self
     }
     pub fn busy(mut self, b: bool) -> Self {
@@ -674,6 +734,33 @@ impl Row {
         self.control = "chips";
         self.opts = chips;
         self.id = id;
+        self
+    }
+    /// Chips that wrap onto more lines within the row's `width` (a QML
+    /// Flow): each chip's line in its `num` (Slint has no flow layout; the
+    /// chips' widths are estimated as SChip draws them)
+    pub fn wrap(mut self, material: bool) -> Self {
+        let room = if self.width > 0.0 { self.width } else { 320.0 };
+        let (mut line, mut x) = (0.0f32, 0.0f32);
+        for o in &mut self.opts {
+            let n = o.text.chars().count() as f32;
+            let w = if material { n * 7.4 + if o.on { 50.0 } else { 32.0 } } else { n * 6.6 + 20.0 };
+            if x > 0.0 && x + w > room {
+                line += 1.0;
+                x = 0.0;
+            }
+            o.num = line;
+            x += w + 6.0;
+        }
+        // (how many lines)
+        self.num = line + 1.0;
+        self.style |= 2;
+        self
+    }
+    /// Chips filled in the accent when on (Chip.qml `solid`); else an
+    /// accent tint with an accent edge (Glass)
+    pub fn solid(mut self) -> Self {
+        self.style |= 1;
         self
     }
     pub fn swatches(mut self, s: Vec<Opt>, id: String) -> Self {
@@ -736,6 +823,7 @@ impl Row {
             style: self.style,
             busy: self.busy,
             flash: self.flash,
+            faded: self.faded,
             group: self.group.as_str().into(),
             sub: self.sub.as_str().into(),
             data: opts(&self.data),
@@ -776,6 +864,9 @@ pub struct Block {
     pub folded: bool,
     /// the space above it, when not the page's own (22)
     pub above: Option<f32>,
+    /// shown in a popover of its own by the control that opened it (a
+    /// QQC.Popup in the QML), not on the page (lib.rs `sync_popover`)
+    pub popover: bool,
 }
 
 impl Block {
@@ -801,6 +892,11 @@ impl Block {
     }
     pub fn num(&mut self, n: f32) -> &mut Self {
         self.num = n;
+        self
+    }
+    /// Shown in a popover by the control that asked (SBus.anchor), not on the page
+    pub fn popover(&mut self) -> &mut Self {
+        self.popover = true;
         self
     }
     pub fn id(&mut self, id: String) -> &mut Self {
@@ -943,7 +1039,7 @@ impl Page {
     pub fn shown(&self, material: bool) -> Vec<&Block> {
         let mut out: Vec<&Block> = Vec::new();
         for b in &self.blocks {
-            if b.folded || (b.kind == BKind::Group && b.rows.is_empty()) {
+            if b.folded || b.popover || (b.kind == BKind::Group && b.rows.is_empty()) {
                 continue;
             }
             out.push(b);
@@ -991,6 +1087,30 @@ pub fn to_ui(page: &Page, material: bool) -> Vec<(ui::SBlock, Vec<ui::SetRow>)> 
     out
 }
 
+/// The page's popover block, if it has one open (Block::popover), as Slint's
+pub fn popover_ui(page: &Page) -> Option<ui::SBlock> {
+    let b = page.blocks.iter().find(|b| b.popover && !b.folded)?;
+    Some(ui::SBlock {
+        kind: "custom".into(),
+        id: b.id.as_str().into(),
+        title: b.title.as_str().into(),
+        text: b.text.as_str().into(),
+        on: b.on,
+        group: b.group.as_str().into(),
+        sub: b.sub.as_str().into(),
+        data: opts(&b.data),
+        num: b.num,
+        image: b.image.clone().unwrap_or_default(),
+        ..Default::default()
+    })
+}
+
+/// The page's choices that are Dropdown.qml's (Row::choice's style 8)
+pub fn dropdowns(page: &Page) -> std::collections::HashSet<String> {
+    // (biometrics' finger Dropdown sits in a custom row of its own: pick-add)
+    page.blocks.iter().flat_map(|b| b.rows.iter()).filter(|r| (r.control == "choice" || r.sub == "pick-add") && r.style & 8 != 0).map(|r| r.id.clone()).collect()
+}
+
 /// The menus of a page's choices (id -> their items), with the ones pages registered
 pub fn menus(page: &Page, extra: &HashMap<String, Vec<MenuItem>>) -> HashMap<String, Vec<MenuItem>> {
     let mut m = extra.clone();
@@ -1004,47 +1124,247 @@ pub fn menus(page: &Page, extra: &HashMap<String, Vec<MenuItem>>) -> HashMap<Str
     m
 }
 
-/// The window's models, kept between builds: rows changed in place, so a
-/// control being dragged or typed in keeps its state
+/// The window's models, kept between builds: blocks and rows changed in
+/// place, so a control being dragged or typed in keeps its state, and a
+/// group appearing or going (a switch that shows more, More options) adds
+/// or removes only its own elements, not the whole page's
 #[derive(Default)]
 pub struct Models {
     pub blocks: Rc<VecModel<ui::SBlock>>,
-    rows: Vec<Rc<VecModel<ui::SetRow>>>,
-    shape: Vec<(SharedString, SharedString, usize)>,
+}
+
+/// What a block is, to find it again among the next build's
+type BlockKey = (SharedString, SharedString, SharedString, SharedString);
+fn block_key(b: &ui::SBlock) -> BlockKey {
+    (b.kind.clone(), b.group.clone(), b.sub.clone(), b.title.clone())
+}
+/// What a row is, to find it again when its group gains or loses rows
+type RowKey = (SharedString, SharedString, SharedString, SharedString);
+fn row_key(r: &ui::SetRow) -> RowKey {
+    (r.kind.clone(), r.label.clone(), r.control.clone(), r.sub.clone())
+}
+
+/// A row as built now, given the one on show: its lists kept (see `keep`)
+fn merge_row(old: &ui::SetRow, mut r: ui::SetRow) -> ui::SetRow {
+    // (a row's options and pictures are lists of their own: made anew on
+    // every build, they'd compare different every time and every segment,
+    // chip and thumbnail would be made again; the old lists are kept,
+    // changed in place)
+    r.opts = keep(&old.opts, r.opts);
+    r.data = keep(&old.data, r.data);
+    r
+}
+
+/// A block's rows as built now, into the rows on show
+fn merge_rows(old: &ModelRc<ui::SetRow>, rows: Vec<ui::SetRow>) -> ModelRc<ui::SetRow> {
+    match old.as_any().downcast_ref::<VecModel<ui::SetRow>>() {
+        Some(vm) => {
+            sync(vm, rows, row_key, merge_row);
+            old.clone()
+        }
+        None => ModelRc::new(VecModel::from(rows)),
+    }
+}
+
+/// `m` brought to `new`: by position when the count is the same (a row
+/// whose label changed stays the same element), else matched by `key`
+/// (what went is removed, what's new inserted where it belongs, what
+/// stayed kept); `merge` gives a kept row's new data from its old
+pub fn sync<T: Clone + PartialEq + 'static, K: PartialEq + Clone>(m: &VecModel<T>, new: Vec<T>, key: impl Fn(&T) -> K, merge: impl Fn(&T, T) -> T) {
+    if m.row_count() == new.len() {
+        for (i, v) in new.into_iter().enumerate() {
+            let Some(old) = m.row_data(i) else { continue };
+            let v = merge(&old, v);
+            if old != v {
+                m.set_row_data(i, v);
+            }
+        }
+        return;
+    }
+    // (the same key twice: told apart by which one it is)
+    let numbered = |ks: Vec<K>| {
+        let mut out: Vec<(K, usize)> = Vec::with_capacity(ks.len());
+        for k in ks {
+            let n = out.iter().filter(|(x, _)| *x == k).count();
+            out.push((k, n));
+        }
+        out
+    };
+    let new_keys = numbered(new.iter().map(&key).collect());
+    let mut old_keys = numbered((0..m.row_count()).filter_map(|i| m.row_data(i)).map(|v| key(&v)).collect());
+    let mut i = 0;
+    while i < old_keys.len() {
+        if new_keys.contains(&old_keys[i]) {
+            i += 1;
+        } else {
+            m.remove(i);
+            old_keys.remove(i);
+        }
+    }
+    for (want, v) in new.into_iter().enumerate() {
+        let k = &new_keys[want];
+        match (want..old_keys.len()).find(|&j| old_keys[j] == *k) {
+            Some(j) => {
+                if j != want {
+                    // (moved: taken out and put back, Slint has no move)
+                    let o = m.row_data(j).unwrap();
+                    m.remove(j);
+                    old_keys.remove(j);
+                    m.insert(want, o);
+                    old_keys.insert(want, k.clone());
+                }
+                let Some(old) = m.row_data(want) else { continue };
+                let v = merge(&old, v);
+                if old != v {
+                    m.set_row_data(want, v);
+                }
+            }
+            None => {
+                m.insert(want, v);
+                old_keys.insert(want, k.clone());
+            }
+        }
+    }
 }
 
 impl Models {
-    /// The new page; `fresh`: another page (everything made anew)
+    /// The page as built now; `fresh`: made anew (a page not on show before)
     pub fn apply(&mut self, new: Vec<(ui::SBlock, Vec<ui::SetRow>)>, fresh: bool) {
-        use slint::Model;
-        let shape: Vec<(SharedString, SharedString, usize)> = new.iter().map(|(b, r)| (b.kind.clone(), b.sub.clone(), r.len())).collect();
-        if fresh || shape.len() != self.shape.len() || shape.iter().zip(&self.shape).any(|(a, b)| a.0 != b.0 || a.1 != b.1) {
-            self.rows = new.iter().map(|(_, r)| Rc::new(VecModel::from(r.clone()))).collect();
-            let blocks: Vec<ui::SBlock> = new.into_iter().zip(&self.rows).map(|((mut b, _), m)| {
-                b.rows = ModelRc::from(m.clone());
-                b
-            }).collect();
+        if fresh || self.blocks.row_count() == 0 {
+            let blocks: Vec<ui::SBlock> = new
+                .into_iter()
+                .map(|(mut b, r)| {
+                    b.rows = ModelRc::new(VecModel::from(r));
+                    b
+                })
+                .collect();
             self.blocks.set_vec(blocks);
-            self.shape = shape;
             return;
         }
-        for (i, (mut b, rows)) in new.into_iter().enumerate() {
-            let m = &self.rows[i];
-            if m.row_count() != rows.len() {
-                m.set_vec(rows);
-            } else {
-                for (j, r) in rows.into_iter().enumerate() {
-                    if m.row_data(j).as_ref() != Some(&r) {
-                        m.set_row_data(j, r);
-                    }
+        // (a new block's rows are a model of their own; a kept block's go
+        // into the model it has, by `merge`)
+        let placed: Vec<ui::SBlock> = new
+            .into_iter()
+            .map(|(mut b, r)| {
+                b.rows = ModelRc::new(VecModel::from(r));
+                b
+            })
+            .collect();
+        sync(&self.blocks, placed, block_key, |old, mut b| {
+            let fresh_rows: Vec<ui::SetRow> = (0..b.rows.row_count()).filter_map(|i| b.rows.row_data(i)).collect();
+            b.rows = merge_rows(&old.rows, fresh_rows);
+            b.data = keep(&old.data, b.data);
+            b
+        });
+    }
+}
+
+/// A list as built now, given the one on show: the one on show when they're
+/// the same (so Slint keeps its elements), changed in place when it's ours
+/// (a VecModel), else the new one
+pub fn keep<T: Clone + PartialEq + 'static>(old: &ModelRc<T>, new: ModelRc<T>) -> ModelRc<T> {
+    let same = old.row_count() == new.row_count() && (0..new.row_count()).all(|i| old.row_data(i) == new.row_data(i));
+    if same {
+        return old.clone();
+    }
+    if let Some(vm) = old.as_any().downcast_ref::<VecModel<T>>() {
+        let n = new.row_count();
+        for i in 0..n {
+            let v = new.row_data(i).unwrap();
+            if i < vm.row_count() {
+                if vm.row_data(i).as_ref() != Some(&v) {
+                    vm.set_row_data(i, v);
                 }
-            }
-            b.rows = ModelRc::from(m.clone());
-            if self.blocks.row_data(i).as_ref() != Some(&b) {
-                self.blocks.set_row_data(i, b);
+            } else {
+                vm.push(v);
             }
         }
-        self.shape = shape;
+        while vm.row_count() > n {
+            vm.remove(vm.row_count() - 1);
+        }
+        return old.clone();
+    }
+    new
+}
+
+/// The pages made so far, each kept with its models. The QML's Loader makes
+/// a page anew on every switch; making Slint's elements for a long page is
+/// the slow part of a switch here, so a page once made is kept, hidden, and
+/// shown again as it is, then brought up to date in place. At most `KEPT`
+/// pages; the one shown least recently goes first.
+pub struct Pages {
+    pub model: Rc<VecModel<ui::SPage>>,
+    /// (page id, its models), in the model's order
+    kept: Vec<(String, Models)>,
+    /// page ids, the most recently shown last
+    recent: Vec<String>,
+    shown: String,
+}
+
+pub const KEPT: usize = 8;
+
+impl Default for Pages {
+    fn default() -> Self {
+        Self { model: Rc::new(VecModel::default()), kept: Vec::new(), recent: Vec::new(), shown: String::new() }
+    }
+}
+
+impl Pages {
+    /// `page` built anew: shown, its rows changed in place when it was made
+    /// before. True when it wasn't the one on show (another page, or new)
+    pub fn show(&mut self, page: &str, new: Vec<(ui::SBlock, Vec<ui::SetRow>)>) -> bool {
+        let switched = self.shown != page;
+        match self.kept.iter().position(|(id, _)| id == page) {
+            Some(i) => self.kept[i].1.apply(new, false),
+            None => {
+                // (room first: the page shown least recently goes)
+                while self.kept.len() >= KEPT {
+                    let Some(old) = self.recent.iter().find(|id| **id != self.shown).cloned() else { break };
+                    self.forget(&old);
+                }
+                let mut m = Models::default();
+                m.apply(new, true);
+                let blocks = ModelRc::from(m.blocks.clone());
+                self.kept.push((page.to_string(), m));
+                self.model.push(ui::SPage { id: page.into(), shown: false, blocks });
+            }
+        }
+        if switched {
+            for i in 0..self.model.row_count() {
+                let Some(mut r) = self.model.row_data(i) else { continue };
+                let want = r.id == page;
+                if r.shown != want {
+                    r.shown = want;
+                    self.model.set_row_data(i, r);
+                }
+            }
+            self.shown = page.to_string();
+        }
+        self.recent.retain(|id| id != page);
+        self.recent.push(page.to_string());
+        switched
+    }
+
+    fn forget(&mut self, page: &str) {
+        if let Some(i) = self.kept.iter().position(|(id, _)| id == page) {
+            self.kept.remove(i);
+            if i < self.model.row_count() {
+                self.model.remove(i);
+            }
+        }
+        self.recent.retain(|id| id != page);
+    }
+
+    /// Every page dropped (the window goes, or the look changes)
+    pub fn clear(&mut self) {
+        self.kept.clear();
+        self.recent.clear();
+        self.shown.clear();
+        self.model.set_vec(Vec::new());
+    }
+
+    pub fn ids(&self) -> Vec<String> {
+        self.kept.iter().map(|(id, _)| id.clone()).collect()
     }
 }
 
@@ -1071,6 +1391,43 @@ mod tests {
         p.group("B").row(Row::new("y")).above(10.0);
         let ui = to_ui(&p, false);
         assert_eq!(ui.iter().map(|b| b.0.above).collect::<Vec<_>>(), [0.0, 22.0, 10.0]);
+    }
+
+    #[test]
+    fn lists_built_again_are_kept_when_the_same() {
+        let old: ModelRc<i32> = ModelRc::new(VecModel::from(vec![1, 2, 3]));
+        let kept = keep(&old, ModelRc::new(VecModel::from(vec![1, 2, 3])));
+        assert!(kept == old);
+        // (changed: the old list changed in place, still the same list)
+        let kept = keep(&old, ModelRc::new(VecModel::from(vec![1, 5])));
+        assert!(kept == old);
+        assert_eq!((0..old.row_count()).filter_map(|i| old.row_data(i)).collect::<Vec<_>>(), [1, 5]);
+    }
+
+    #[test]
+    fn rows_that_stay_keep_their_place_when_others_come_and_go() {
+        let m = VecModel::from(vec!["a", "b", "c"]);
+        sync(&m, vec!["a", "x", "b", "c"], |v| *v, |_, v| v);
+        assert_eq!((0..m.row_count()).filter_map(|i| m.row_data(i)).collect::<Vec<_>>(), ["a", "x", "b", "c"]);
+        sync(&m, vec!["a", "c"], |v| *v, |_, v| v);
+        assert_eq!((0..m.row_count()).filter_map(|i| m.row_data(i)).collect::<Vec<_>>(), ["a", "c"]);
+        // (twice the same key: told apart by which one it is)
+        sync(&m, vec!["a", "a", "c"], |v| *v, |_, v| v);
+        assert_eq!((0..m.row_count()).filter_map(|i| m.row_data(i)).collect::<Vec<_>>(), ["a", "a", "c"]);
+    }
+
+    #[test]
+    fn pages_are_kept_and_the_oldest_goes() {
+        let mut p = Pages::default();
+        assert!(p.show("a", vec![]));
+        assert!(!p.show("a", vec![]));
+        for i in 0..KEPT + 2 {
+            p.show(&format!("p{i}"), vec![]);
+        }
+        assert_eq!(p.ids().len(), KEPT);
+        assert!(!p.ids().contains(&"a".to_string()));
+        let shown: Vec<bool> = (0..p.model.row_count()).filter_map(|i| p.model.row_data(i)).map(|r| r.shown).collect();
+        assert_eq!(shown.iter().filter(|s| **s).count(), 1);
     }
 
     #[test]

@@ -9,9 +9,15 @@
 //! What the QML window keeps doing while this draws (it moves up to the
 //! bottom layer, clear, and stops loading pictures): the desktop's widgets
 //! and icons, the blurred copy of the wallpaper that glass refracts, the
-//! menu bar's light-or-dark sampling, and a live wallpaper's video (Slint has
-//! no video element: this draws the video's poster frame, the same one the
-//! QML makes with ffmpeg, and the QML plays the video over it).
+//! menu bar's light-or-dark sampling, and a live wallpaper's video (this
+//! draws the video's poster frame, the same one the QML makes with ffmpeg,
+//! and the QML plays the video over it).
+//!
+//! Standalone (no QML shell) the live wallpaper's video plays here
+//! (video.rs: ffmpeg's frames, at the video's pace): the poster first, the
+//! video crossfading in over it with its first frame, then frame by frame;
+//! paused as Background.qml pauses it (mostly covered, locked, two minutes
+//! away, on battery if set, Cool-down), its last frame staying up.
 //!
 //! What the shell tells it (RustUi.tell, `{"to": "background", …}` lines):
 //! the day's sunrise and sunset (`sunrise`, `sunset`: minutes; the weather
@@ -33,6 +39,11 @@ use std::any::Any;
 use std::rc::Rc;
 use wallpaper::{Bundled, Context, Day};
 
+pub mod video;
+
+/// (the idle watch's id, from core's one list: two minutes without input pause the video)
+const AWAY: u32 = tessera_core::idle::WALLPAPER;
+
 const NAME: &str = "background";
 /// (not the QML's tessera:wallpaper: that window stays, with the desktop's
 /// widgets and their glass, which the glass plugin finds by namespace)
@@ -45,6 +56,8 @@ enum M {
     Faded(String),
     Tick,
     SettleEnd,
+    /// a live wallpaper's frame for a screen
+    Frame(String, video::Frame),
 }
 
 struct Win {
@@ -143,6 +156,9 @@ struct Screen {
     asked: (String, (u32, u32)),
     pending: bool,
     win: Option<Win>,
+    /// the live wallpaper's video (standalone), and whether its first frame is up
+    player: Option<video::Player>,
+    playing: bool,
 }
 
 #[derive(Default)]
@@ -261,6 +277,10 @@ impl Background {
                 continue;
             }
             self.screens[i].pending = false;
+            // (the video is up: its poster, decoded again, doesn't cover it)
+            if self.screens[i].playing && self.poster.1.as_deref() == Some(d.path.as_str()) {
+                continue;
+            }
             match &image {
                 Some(img) => self.show(st, i, img.clone()),
                 // (unreadable: the picture before stays, as the QML's; with none
@@ -287,26 +307,31 @@ impl Background {
                 margin_left: 0,
             });
             let ui = ui::Background::new().expect("Background");
-            // The first picture is there at once: the QML's own (the same
-            // picture) is still under it when this window appears. A screen
-            // that comes later fades in from black, quickly (Background.qml's
-            // firstFade once Wallpaper.started: 120 ms)
-            let later = self.started;
+            // A screen's first picture fades in from black (Background.qml's
+            // firstFade: 450 ms for the session's first, 120 ms for a screen
+            // plugged in later). With the QML shell running, the session's
+            // first is there at once: the QML's own (the same picture) is
+            // still under this window when it appears.
+            let fade = if self.started { 120 } else if tessera_core::host::standalone() { 450 } else { 0 };
             ui.set_a(img);
-            ui.set_a_from(if later { 0.0 } else { -1.0 });
+            ui.set_a_from(if fade > 0 { 0.0 } else { -1.0 });
             ui.set_b_from(-2.0);
-            ui.set_quick(later);
+            ui.set_first_ms(fade);
             apply_settle(&ui, &self.settle);
-            ui.set_target(if later { 1.0 } else { 0.0 });
+            if fade > 0 {
+                // (from now: the fade's clock starts with this window)
+                slint::platform::update_timers_and_animations();
+            }
+            ui.set_target(if fade > 0 { 1.0 } else { 0.0 });
             let (to, out) = (st.shell.sender(NAME), sc.output.clone());
             ui.on_faded(move || to(Box::new(M::Faded(out.clone()))));
             ui.show().expect("show background");
-            let (a_from, top) = if later { (0.0, 1.0) } else { (-1.0, 0.0) };
+            let (a_from, top) = if fade > 0 { (0.0, 1.0) } else { (-1.0, 0.0) };
             sc.win = Some(Win { surface, ui, a_from, b_from: -2.0, top, settled: false });
             self.started = true;
             return;
         };
-        w.ui.set_quick(false);
+        w.ui.set_first_ms(0);
         // Into the older slot, which then starts fading in from where the fade is
         if w.a_from <= w.b_from {
             w.ui.set_a(img);
@@ -355,6 +380,69 @@ impl Background {
         }
     }
 
+    /// The live wallpaper's video on each screen: started, stopped, paused
+    /// as Background.qml's Loader and `paused` say (standalone only)
+    fn live_sync(&mut self, st: &mut State) {
+        let live = wallpaper::live(&st.shell.cfg).to_string();
+        let on = !live.is_empty() && tessera_core::host::standalone() && std::path::Path::new(&live).is_file();
+        if !on {
+            st.idle_set(AWAY, None);
+            for sc in &mut self.screens {
+                sc.player = None;
+                sc.playing = false;
+            }
+            return;
+        }
+        st.shell.want("clients");
+        st.shell.want("status");
+        st.idle_set(AWAY, Some((120_000, true)));
+        use tessera_core::services::{bridge::ShellState, clients::Windows, status::Battery};
+        let state = st.shell.get::<ShellState>();
+        let locked = state.is_some_and(|s| s.bool("locked"));
+        let cooling = state.is_some_and(|s| s.bool("cooldown.pauseLive"));
+        let away = st.shell.get::<tessera_core::idle::Idle>().is_some_and(|i| i.is(AWAY));
+        let battery = st.shell.cfg["wallpaper"]["livePauseOnBattery"].as_bool().unwrap_or(false) && st.shell.get::<Battery>().is_some_and(|b| b.present && b.state == 2);
+        let windows = st.shell.get::<Windows>().cloned();
+        for sc in &mut self.screens {
+            let why = video::Why { covered: windows.as_ref().is_some_and(|w| video::mostly_covered(w, &sc.output)), locked, away, battery, cooling };
+            let size = video::decode_size(sc.px);
+            if sc.player.as_ref().is_some_and(|p| p.video != live || p.size != size) {
+                sc.player = None;
+            }
+            match &sc.player {
+                Some(p) => p.set_paused(why.paused()),
+                None => {
+                    let (to, out) = (st.shell.sender(NAME), sc.output.clone());
+                    sc.player = Some(video::Player::start(&live, size, why.paused(), move |f| to(Box::new(M::Frame(out.clone(), f)))));
+                }
+            }
+        }
+    }
+
+    /// A video frame: the first crossfades in over the poster, the rest replace it
+    fn frame(&mut self, st: &mut State, output: &str, f: video::Frame) {
+        let Some(i) = self.screens.iter().position(|s| s.output == output) else { return };
+        // (from a player since stopped or remade at another size)
+        if self.screens[i].player.as_ref().is_none_or(|p| p.size != (f.width(), f.height())) {
+            return;
+        }
+        let img = slint::Image::from_rgba8(f.clone());
+        let sc = &mut self.screens[i];
+        if let (true, Some(w)) = (sc.playing, sc.win.as_ref()) {
+            if w.a_from > w.b_from {
+                w.ui.set_a(img);
+            } else {
+                w.ui.set_b(img);
+            }
+        } else {
+            sc.playing = true;
+            self.show(st, i, img);
+        }
+        if let Some(p) = self.screens[i].player.as_mut() {
+            p.shown(f);
+        }
+    }
+
     /// Again on the next minute (the time of day's picture, Auto's light and dark)
     fn tick(&mut self, st: &mut State) {
         self.refresh(st);
@@ -395,6 +483,7 @@ impl Part for Background {
 
     fn start(&mut self, st: &mut State) {
         self.tick(st);
+        self.live_sync(st);
     }
 
     fn output_added(&mut self, st: &mut State, output: &WlOutput, name: &str) {
@@ -402,8 +491,9 @@ impl Part for Background {
             return;
         }
         let px = output_pixels(st, output);
-        self.screens.push(Screen { output: name.to_string(), px, asked: (String::new(), (0, 0)), pending: false, win: None });
+        self.screens.push(Screen { output: name.to_string(), px, asked: (String::new(), (0, 0)), pending: false, win: None, player: None, playing: false });
         self.refresh(st);
+        self.live_sync(st);
     }
 
     fn output_removed(&mut self, st: &mut State, name: &str) {
@@ -417,6 +507,14 @@ impl Part for Background {
 
     fn config_changed(&mut self, st: &mut State, _look: bool) {
         self.refresh(st);
+        self.live_sync(st);
+    }
+
+    /// What pauses the video changed (windows, the battery, idle, the shell's state)
+    fn data(&mut self, st: &mut State, _what: std::any::TypeId) {
+        if self.screens.iter().any(|s| s.player.is_some()) {
+            self.live_sync(st);
+        }
     }
 
     fn message(&mut self, st: &mut State, msg: Box<dyn Any + Send>) {
@@ -452,6 +550,7 @@ impl Part for Background {
             }
             M::Faded(output) => self.faded(&output),
             M::Tick => self.tick(st),
+            M::Frame(output, f) => self.frame(st, &output, f),
             M::SettleEnd => {
                 if self.settle.reveal.is_some_and(|(start, ms)| start.elapsed().as_millis() as i64 >= ms) {
                     self.settle.reveal = None;
@@ -464,9 +563,12 @@ impl Part for Background {
         }
     }
 
+    /// (only its own windows: any part's surface closing reaches every part)
     fn surface_closed(&mut self, st: &mut State, s: &Rc<Surface>) {
-        let name = s.output.clone();
-        self.output_removed(st, &name);
+        if self.screens.iter().any(|sc| sc.win.as_ref().is_some_and(|w| Rc::ptr_eq(&w.surface, s))) {
+            let name = s.output.clone();
+            self.output_removed(st, &name);
+        }
     }
 
     /// The window's own pixels, once the compositor sized it (a fractional
@@ -484,6 +586,7 @@ impl Part for Background {
         }
         if changed {
             self.refresh(st);
+            self.live_sync(st);
         }
     }
 

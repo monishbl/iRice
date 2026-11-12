@@ -58,12 +58,25 @@ pub struct LiveActivities(pub Vec<Value>);
 
 /// A line from the shell, as the reading it carries (None: not for us)
 pub fn parse_line(line: &str) -> Option<Box<dyn Any + Send>> {
-    let v: Value = serde_json::from_str(line.trim()).ok()?;
+    from_value(serde_json::from_str(line.trim()).ok()?).ok()
+}
+
+/// The same from a line already read as JSON (Err: not the shell's state, the value back)
+pub fn from_value(v: Value) -> Result<Box<dyn Any + Send>, Value> {
+    match parse_value(&v) {
+        Some(Some(b)) => Ok(b),
+        Some(None) => Ok(Box::new(ShellState(v))),
+        None => Err(v),
+    }
+}
+
+/// Some(None): the state (taken whole by the caller, not copied)
+fn parse_value(v: &Value) -> Option<Option<Box<dyn Any + Send>>> {
     if v["src"] != "shell" {
         return None;
     }
-    match v["kind"].as_str()? {
-        "state" => Some(Box::new(ShellState(v))),
+    Some(match v["kind"].as_str()? {
+        "state" => None,
         "island" => Some(Box::new(IslandCall {
             op: v["op"].as_str()?.to_string(),
             uid: v["uid"].as_i64().unwrap_or(0),
@@ -72,9 +85,9 @@ pub fn parse_line(line: &str) -> Option<Box<dyn Any + Send>> {
         })),
         "live" => Some(Box::new(LiveActivities(v["activities"].as_array().cloned().unwrap_or_default()))),
         // (the wallpaper's tone and Cool-down's glass: theme.rs's ShellGlass)
-        "glass" => Some(Box::new(crate::theme::shell_glass_from(&v))),
-        _ => None,
-    }
+        "glass" => Some(Box::new(crate::theme::shell_glass_from(v))),
+        _ => return None,
+    })
 }
 
 /// shell-ipc.sh, from the repo the shell runs from (TESSERA_ROOT), else this build's

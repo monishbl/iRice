@@ -255,15 +255,16 @@ export component SpeedTestCard inherits Rectangle {
                 // Material: an extra-small button, filled to start, tonal to
                 // cancel, its corners tightening while pressed (Glass: a pill)
                 border-radius: m3 ? (at.pressed ? 8px : self.height / 2) : 14px;
-                animate border-radius { duration: 200ms; easing: spring(0.3); }
+                animate border-radius { duration: 222ms; easing: spring(0.4); } // (springFast)
                 background: m3 ? base.mix(ink, at.pressed ? 0.9 : at.has-hover ? 0.92 : 1)
                     : s.running ? (at.pressed ? Theme.fill-pressed : at.has-hover ? Theme.fill-hover : Theme.fill)
                     : (at.pressed ? Theme.accent.darker(0.2) : at.has-hover ? Theme.accent.darker(0.1) : Theme.accent);
-                animate background { duration: 150ms; }
+                animate background { duration: Theme.hover; }
                 // (Glass shrinks while pressed; Material swells)
                 transform-origin: { x: self.width / 2, y: self.height / 2 };
-                transform-scale: at.pressed ? (m3 ? 1.06 : 0.97) : 1;
-                animate transform-scale { duration: 100ms; }
+                // (Material: ElasticControl's swell on springPress; Glass: 97 % over the press time)
+                transform-scale: at.pressed ? (m3 ? 1 + min(0.06, 10px / max(1px, self.width)) : 0.97) : 1;
+                animate transform-scale { duration: m3 ? 290ms : 100ms; easing: m3 ? spring(0.57) : linear; }
                 accessible-role: button;
                 accessible-label: s.action;
                 accessible-action-default => { root.act(); }

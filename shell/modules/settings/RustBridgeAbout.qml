@@ -213,7 +213,7 @@ Scope {
                 available: TesseraUpdate.available,
                 error: TesseraUpdate.error,
                 applying: TesseraUpdate.applying,
-                report: TesseraUpdate.report ? { current: TesseraUpdate.report.current ?? "", latest: TesseraUpdate.report.latest ?? "", changelog: TesseraUpdate.report.changelog ?? [], notes: TesseraUpdate.report.notes ?? [] } : null,
+                report: TesseraUpdate.report ? { current: TesseraUpdate.report.current ?? "", latest: TesseraUpdate.report.latest ?? "", ui: TesseraUpdate.report.ui?.label ?? "", changelog: TesseraUpdate.report.changelog ?? [], notes: TesseraUpdate.report.notes ?? [] } : null,
                 result: TesseraUpdate.result ? { backup: root.home(TesseraUpdate.result.backup ?? ""), now: TesseraUpdate.result.now ?? "", changelog: TesseraUpdate.result.changelog ?? [], notes: TesseraUpdate.result.notes ?? [] } : null,
                 conflicts: TesseraUpdate.conflicts.map(c => ({ id: c.id, kind: c.kind, title: c.title ?? "", detail: c.detail ?? "", mine: c.mine ?? "", theirs: c.theirs ?? "", choices: c.choices ?? [], labels: c.labels ?? {}, change: c.change ?? "" })),
                 choices: TesseraUpdate.choices,

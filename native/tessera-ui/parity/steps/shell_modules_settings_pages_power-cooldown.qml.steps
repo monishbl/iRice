@@ -1,0 +1,10 @@
+# power-cooldown: Cool-down and performance (subpage of Battery & Power). Check in each look.
+ipc panels settings power/cooldown
+wait 2
+shot cd-top
+note C1: title "Cool-down and performance" with a back arrow, the three rows (Cool-down switch, "When the CPU is hot" Ask/Off, ...), footer text identical in both shells. If the id power/cooldown does not open it, open power and click the "Cool-down and performance" link (note which).
+# MANUAL: C2 click "Ask" in "When the CPU is hot": detail "The island asks first; ..."; cooling.whenHot true, hotAction "ask"; click "Off": detail "At the island's temperature alert ...", whenHot false, hotAction still "ask". Restore.
+# MANUAL: C3 click the Cool-down switch on, shot, then off: detail "On - <why>" while on (same why text in both), "Off" (or the why) after; Quick Settings' Cool-down tile follows.
+# MANUAL: C4 click "More options": Material shows only Shorter animations, Lower refresh rate, Pause live wallpaper, then "Performance" with Keep panels loaded (no Glass, no Lighter blur); Glass also shows the Glass segmented and Lighter blur first in the group.
+# MANUAL: C5 toggle "Shorter animations" on and off: cooling.shortAnimations flips in both.
+ipc panels close

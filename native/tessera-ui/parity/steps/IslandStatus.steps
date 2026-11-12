@@ -1,0 +1,83 @@
+# IslandStatus: steps from parity/shell_modules_menubar_IslandStatus.qml.md (batches 1-5). Screen IRICE-TEST 1920x1080 scale 1;
+# the island is centred at x 960 (closed y ~14, open ~392 wide); the bar is 30 px tall.
+# Each block runs in both looks: the file runs top to bottom, Material first, then Glass.
+
+look material
+ptr move 1500 600
+wait 1
+ptr glide 960 14 400
+wait 1
+shot status-open
+note the last line: icons (cpu, thermometer, memory; a drawn battery first with a battery), "NN%" / "NN°", centred, dim colour; no words like "CPU"/"Memory"; status line centre at y ~49 (QML), island ~70 px tall with no activities
+ptr glide 960 700 300
+wait 1
+ptr move 1500 600
+wait 1
+rec status-in 1.5 ptr glide 960 14 400
+note the island opens in ~200 ms (QML) and the status line fades in and rises ~8 px over ~280 ms
+ptr glide 925 49 200
+wait 0.3
+shot pop-none
+note no resources popover yet (it opens at 500 ms)
+wait 0.5
+shot pop-cpu
+note a popover hangs under the CPU figure (~14 px below), Processor row highlighted, graphs already filled
+ptr glide 1000 49 200
+wait 0.8
+shot pop-mem
+note the popover moved under memory; the Memory row highlighted
+ptr glide 960 700 300
+wait 1
+shot status-closed
+note popover and island gone
+ptr move 1500 600
+wait 1
+ptr glide 960 14 400
+wait 1
+ipc island hot true
+wait 1
+shot status-hot
+note the temperature figure is red (Material error / Glass light red)
+ipc island hot false
+ptr glide 960 700 300
+wait 1
+
+look glass
+ptr move 1500 600
+wait 1
+ptr glide 960 14 400
+wait 1
+shot status-open
+note the last line: icons (cpu, thermometer, memory; a drawn battery first with a battery), "NN%" / "NN°", centred, dim colour; no words like "CPU"/"Memory"; status line centre at y ~49 (QML), island ~70 px tall with no activities
+ptr glide 960 700 300
+wait 1
+ptr move 1500 600
+wait 1
+rec status-in 1.5 ptr glide 960 14 400
+note the island opens in ~200 ms (QML) and the status line fades in and rises ~8 px over ~280 ms
+ptr glide 925 49 200
+wait 0.3
+shot pop-none
+note no resources popover yet (it opens at 500 ms)
+wait 0.5
+shot pop-cpu
+note a popover hangs under the CPU figure (~14 px below), Processor row highlighted, graphs already filled
+ptr glide 1000 49 200
+wait 0.8
+shot pop-mem
+note the popover moved under memory; the Memory row highlighted
+ptr glide 960 700 300
+wait 1
+shot status-closed
+note popover and island gone
+ptr move 1500 600
+wait 1
+ptr glide 960 14 400
+wait 1
+ipc island hot true
+wait 1
+shot status-hot
+note the temperature figure is red (Material error / Glass light red)
+ipc island hot false
+ptr glide 960 700 300
+wait 1

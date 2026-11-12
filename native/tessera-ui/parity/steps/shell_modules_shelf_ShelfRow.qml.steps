@@ -1,0 +1,10 @@
+# Needs a shelf with at least 2 items (not creatable without a drag source). Rows: Glass row i centre y 162+44i; Material 174+52i. Row x at ~1882.
+# MANUAL: shots of row 1 and the last row in both looks: Material corners 16 outside / 4 inside with 2 px gap; Glass r 10 hover fill
+# MANUAL: ptr glide 1790 162 200 -> hover fill and x appear together; ptr down -> pressed fill; glide to 1790 172 (<10 px) -> no drag; glide to 1790 200 -> drag starts; up on desktop -> row still there
+# MANUAL: long file name: middle cut ("holiday-ph...2026.jpg") with extension kept; a text item cut at the end
+# Smoke check only: open the empty shelf so the harness at least exercises the card.
+ipc shelf open
+wait 1
+shot row-empty
+note No items can be put on the shelf in the sandbox: the card shows its empty state exactly like QML (this file is otherwise manual).
+ipc shelf close

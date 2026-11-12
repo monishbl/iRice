@@ -26,8 +26,8 @@
 //! can't select; user bubbles and code can), tables size their columns
 //! from their text's length (no text measuring), headings are bold (700,
 //! not 600), Material
-//! Symbols draw at their default weight and fill (no variable axes), pictures
-//! can't be dropped on the chat (no drag and drop yet).
+//! Symbols draw at their default weight and fill (no variable axes). Files
+//! dropped on the chat come through core's data device (Part::drag).
 
 pub mod ui {
     slint::include_modules!();
@@ -68,6 +68,7 @@ const NAME: &str = "sidebar";
 /// Its own messages (Msg::Part("sidebar", …)): from its callbacks and threads
 enum M {
     Ai(Event),
+    Minute,
     Close,
     Closed,
     Tab(i32),
@@ -165,6 +166,11 @@ struct Win {
     a11y: Option<crate::a11y::A11y>,
     rows: Rc<VecModel<ui::ChatRow>>,
     glass_sent: String,
+    /// the tabs, the attached pictures, the models, the past chats: in place (rows.rs)
+    tabs: tessera_core::rows::Rows<SharedString>,
+    pictures: tessera_core::rows::Rows<slint::Image>,
+    models: tessera_core::rows::Rows<ui::ModelItem>,
+    chats: tessera_core::rows::Rows<ui::ChatEntry>,
 }
 
 pub struct Sidebar {
@@ -185,9 +191,13 @@ pub struct Sidebar {
     undo_timer: slint::Timer,
     notice_timer: slint::Timer,
     forget_timer: slint::Timer,
+    /// past chats' times ("3 min ago") stay right while it's open (a minute's tick)
+    minute: slint::Timer,
     search_timer: slint::Timer,
     tr_timer: slint::Timer,
     picking: bool,
+    /// a drag over it carries files (its Enter said text/uri-list)
+    drag_files: bool,
 }
 
 impl Default for Sidebar {
@@ -210,9 +220,11 @@ impl Default for Sidebar {
             undo_timer: Default::default(),
             notice_timer: Default::default(),
             forget_timer: Default::default(),
+            minute: Default::default(),
             search_timer: Default::default(),
             tr_timer: Default::default(),
             picking: false,
+            drag_files: false,
         }
     }
 }
@@ -285,20 +297,20 @@ fn md_blocks(text: &str) -> ModelRc<ui::MdBlock> {
                 markdown::Kind::Table => 5,
                 markdown::Kind::Rule => 6,
             },
-            widths: ModelRc::new(VecModel::from(if b.kind == markdown::Kind::Table { markdown::column_widths(&b.rows, 396.0) } else { Vec::new() })),
+            widths: tessera_core::rows::shared(if b.kind == markdown::Kind::Table { markdown::column_widths(&b.rows, 396.0) } else { Vec::new() }),
             level: b.level as i32,
             size: markdown::HEAD[b.level.min(6)],
             text: if b.kind == markdown::Kind::Heading { styled(&format!("**{}**", b.text)) } else { styled(&b.text) },
             code: b.code.into(),
             lang: b.lang.into(),
             open: b.open,
-            items: ModelRc::new(VecModel::from(b.items.iter().map(|i| ui::MdItem { depth: i.depth as i32, marker: i.marker.as_str().into(), text: styled(&i.text) }).collect::<Vec<_>>())),
-            rows: ModelRc::new(VecModel::from(
-                b.rows.iter().map(|(head, cells)| ui::MdRow { head: *head, cells: ModelRc::new(VecModel::from(cells.iter().map(|c| styled(&if *head { format!("**{c}**") } else { c.clone() })).collect::<Vec<_>>())) }).collect::<Vec<_>>(),
-            )),
+            items: tessera_core::rows::shared(b.items.iter().map(|i| ui::MdItem { depth: i.depth as i32, marker: i.marker.as_str().into(), text: styled(&i.text) }).collect::<Vec<_>>()),
+            rows: tessera_core::rows::shared(
+                b.rows.iter().map(|(head, cells)| ui::MdRow { head: *head, cells: tessera_core::rows::shared(cells.iter().map(|c| styled(&if *head { format!("**{c}**") } else { c.clone() })).collect::<Vec<_>>()) }).collect::<Vec<_>>(),
+            ),
         })
         .collect();
-    ModelRc::new(VecModel::from(blocks))
+    tessera_core::rows::shared(blocks)
 }
 
 impl Sidebar {
@@ -328,7 +340,7 @@ impl Sidebar {
             model: r.model.as_str().into(),
             thinking: styled(&markdown::flatten(&r.thinking)),
             has_thinking: !r.thinking.is_empty(),
-            pictures: ModelRc::new(VecModel::from(pictures)),
+            pictures: tessera_core::rows::shared(pictures),
             blocks: if assistant { md_blocks(&r.text) } else { ModelRc::default() },
             search: r.search.as_str().into(),
             lens_busy: lens.busy,
@@ -343,7 +355,25 @@ impl Sidebar {
         let new: Vec<ui::ChatRow> = rows.iter().map(|r| self.chat_row(r)).collect();
         let Some(w) = &self.win else { return };
         let grew = new.len() != w.rows.row_count();
-        w.rows.set_vec(new);
+        // (in place: a row that reads the same keeps its element, its
+        // pictures and its rendered text; only new or changed rows change)
+        // (the thinking, styled text, isn't compared: it changes only while
+        // the last row streams, and the last row is always set)
+        let same = |a: &ui::ChatRow, b: &ui::ChatRow| {
+            a.role == b.role && a.text == b.text && a.status == b.status && a.model == b.model && a.has_thinking == b.has_thinking
+                && a.search == b.search && a.lens_busy == b.lens_busy && a.lens_note == b.lens_note && a.lens_ok == b.lens_ok
+        };
+        let n = new.len();
+        for (i, r) in new.into_iter().enumerate() {
+            match w.rows.row_data(i) {
+                Some(old) if i + 1 < n && same(&old, &r) => {}
+                Some(_) => w.rows.set_row_data(i, r),
+                None => w.rows.push(r),
+            }
+        }
+        while w.rows.row_count() > n {
+            w.rows.remove(w.rows.row_count() - 1);
+        }
         if grew {
             w.ui.invoke_scroll_end();
         }
@@ -369,7 +399,7 @@ impl Sidebar {
         let ui = &w.ui;
         let m = &c.model;
         ui.set_tab(self.tab);
-        ui.set_tabs(ModelRc::new(VecModel::from(settings::tabs(self.anime.enabled).into_iter().map(SharedString::from).collect::<Vec<_>>())));
+        w.tabs.set(settings::tabs(self.anime.enabled).into_iter().map(SharedString::from).collect::<Vec<_>>());
         ui.set_model_name(m.name.as_str().into());
         ui.set_configured(c.configured());
         ui.set_needs_key(c.needs_key());
@@ -377,7 +407,7 @@ impl Sidebar {
         ui.set_credential_label(c.credential_label().to_lowercase().into());
         ui.set_credential_name(c.credential_label().into());
         ui.set_busy(c.busy());
-        ui.set_pictures(ModelRc::new(VecModel::from(pictures)));
+        w.pictures.set(pictures);
         ui.set_can_attach(c.attachments.len() < ai::MAX_IMAGES && !self.picking);
         let n = c.attachments.len();
         ui.set_placeholder(
@@ -419,7 +449,7 @@ impl Sidebar {
         ui.set_history_open(self.history_open);
         let items: Vec<ui::ModelItem> =
             c.models.iter().map(|x| ui::ModelItem { key: x.key.as_str().into(), label: format!("{} · {}", x.name, ai::models::provider_name(&x.provider)).into(), chosen: x.key == m.key }).collect();
-        ui.set_models(ModelRc::new(VecModel::from(items)));
+        w.models.set(items);
         ui.set_undo_message(c.pending_delete.as_ref().map_or(c.notice.clone(), |p| format!("Deleted “{}”", p.entry.title)).into());
         ui.set_can_undo(c.pending_delete.is_some());
         // Translate
@@ -466,7 +496,7 @@ impl Sidebar {
                 }
             })
             .collect();
-        w.ui.set_chats(ModelRc::new(VecModel::from(entries)));
+        w.chats.set(entries);
         w.ui.set_chats_none(self.chat.sessions.is_empty());
         w.ui.set_searching(self.searching);
     }
@@ -518,6 +548,8 @@ impl Sidebar {
             keyboard: KeyboardInteractivity::None,
             margin_left: 0,
         });
+        // (files dropped on the chat: AiChat.qml's DropArea; Part::drag)
+        st.accept_drops(&surface, true);
         let ui = ui::Sidebar::new().expect("Sidebar");
         st.shell.apply_theme(&ui.global::<ui::Theme>());
         let rows = Rc::new(VecModel::default());
@@ -577,9 +609,14 @@ impl Sidebar {
         on!(on_booru_explicit, M::BooruExplicit);
         on!(on_booru_more, M::BooruMore);
         on!(on_booru_open, |p| M::BooruOpen(p.to_string()));
+        let (tabs, pictures, models, chats) = (tessera_core::rows::Rows::new(), tessera_core::rows::Rows::new(), tessera_core::rows::Rows::new(), tessera_core::rows::Rows::new());
+        ui.set_tabs(tabs.model());
+        ui.set_pictures(pictures.model());
+        ui.set_models(models.model());
+        ui.set_chats(chats.model());
         ui.show().expect("show sidebar");
         let a11y = crate::a11y::A11y::new(&surface, st.tx.clone());
-        self.win = Some(Win { output: name.to_string(), surface, ui, a11y, rows, glass_sent: String::new() });
+        self.win = Some(Win { output: name.to_string(), surface, ui, a11y, rows, glass_sent: String::new(), tabs, pictures, models, chats });
         self.images.clear();
         self.sync();
     }
@@ -617,6 +654,10 @@ impl Sidebar {
             self.tab = t.clamp(0, settings::tabs(self.anime.enabled).len() as i32 - 1);
         }
         self.forget_timer.stop();
+        if !self.minute.running() {
+            let s = Self::sender(st);
+            self.minute.start(slint::TimerMode::Repeated, Duration::from_secs(60), move || s(M::Minute));
+        }
         self.chat.reload_sessions();
         self.shown = true;
         self.place(st);
@@ -724,27 +765,34 @@ impl Sidebar {
             if paths.is_empty() {
                 return to(M::Pictures(Vec::new(), Vec::new(), false));
             }
-            // (the first ones that fit: a message carries four)
-            let n = paths.len();
-            let take: Vec<String> = paths.into_iter().take(room).collect();
-            let mut bad = Vec::new();
-            if n > take.len() {
-                bad.push(format!("\u{0}{room}"));
-            }
-            let out = Command::new(script("ai-image.sh")).args(&take).stdin(Stdio::null()).stderr(Stdio::null()).output();
-            let mut pics = Vec::new();
-            if let Ok(out) = out {
-                for line in String::from_utf8_lossy(&out.stdout).lines() {
-                    let Some((file, data)) = line.split_once('\t') else { continue };
-                    if file == "!" {
-                        bad.push(data.to_string());
-                    } else {
-                        pics.push(Picture { path: file.into(), data: data.into(), media_type: "image/jpeg".into(), lens: false });
-                    }
+            Self::load_pictures(&to, paths, room);
+        });
+    }
+
+    /// Pictures from files (the + button's picks, a drop): the first that
+    /// fit (a message carries four), each read and sized by ai-image.sh; on
+    /// a thread, the result back as M::Pictures
+    fn load_pictures(to: &impl Fn(M), paths: Vec<String>, room: usize) {
+        // (the first ones that fit: a message carries four)
+        let n = paths.len();
+        let take: Vec<String> = paths.into_iter().take(room).collect();
+        let mut bad = Vec::new();
+        if n > take.len() {
+            bad.push(format!("\u{0}{room}"));
+        }
+        let out = Command::new(script("ai-image.sh")).args(&take).stdin(Stdio::null()).stderr(Stdio::null()).output();
+        let mut pics = Vec::new();
+        if let Ok(out) = out {
+            for line in String::from_utf8_lossy(&out.stdout).lines() {
+                let Some((file, data)) = line.split_once('\t') else { continue };
+                if file == "!" {
+                    bad.push(data.to_string());
+                } else {
+                    pics.push(Picture { path: file.into(), data: data.into(), media_type: "image/jpeg".into(), lens: false });
                 }
             }
-            to(M::Pictures(pics, bad, false));
-        });
+        }
+        to(M::Pictures(pics, bad, false));
     }
 
     /// Circle to search's "Search the web": the picture goes to Lens only on
@@ -1188,6 +1236,11 @@ impl Part for Sidebar {
             }
             M::UndoOver => self.chat.finish_delete(),
             M::NoticeOver => self.chat.notice.clear(),
+            M::Minute => {
+                if self.shown && self.history_open {
+                    self.sync_history();
+                }
+            }
             M::Forget => {
                 if !self.shown && !self.chat.keep_history() && !self.chat.rows.is_empty() && !self.chat.busy() {
                     self.chat.new_chat();
@@ -1285,6 +1338,70 @@ impl Part for Sidebar {
 
     fn keyboard_left(&mut self, _: &mut State, _: &Rc<Surface>) {}
 
+    /// Files dragged over the sidebar (AiChat.qml's DropArea, keys
+    /// text/uri-list): only on the chat (tab 0, not past chats) and only
+    /// files; let go, the pictures among them are added as the + button's are
+    fn drag(&mut self, st: &mut State, _: &Rc<Surface>, ev: &tessera_core::dnd::Drag) {
+        use tessera_core::dnd::Drag;
+        // (on the panel: AiChat fills it below the tabs)
+        let inside = |x: f32, y: f32| {
+            self.win.as_ref().is_some_and(|w| {
+                let (px, py, ph) = (w.ui.get_panel_x(), w.ui.get_panel_y(), w.ui.get_panel_h());
+                x >= px && x <= px + 420.0 && y >= py && y <= py + ph
+            })
+        };
+        let at = match ev {
+            Drag::Enter { x, y, .. } | Drag::Motion { x, y } | Drag::Drop { x, y, .. } => inside(*x, *y),
+            Drag::Leave => false,
+        };
+        let on_chat = at && self.win.as_ref().is_some_and(|w| w.ui.get_tab() == 0) && !self.history_open;
+        let over = match ev {
+            Drag::Enter { mimes, ours, .. } => {
+                self.drag_files = !ours && mimes.iter().any(|m| m == "text/uri-list");
+                let ok = on_chat && self.drag_files;
+                if !ok {
+                    st.refuse_drop();
+                }
+                ok
+            }
+            Drag::Motion { .. } => {
+                let ok = on_chat && self.drag_files;
+                if !ok {
+                    st.refuse_drop();
+                }
+                ok
+            }
+            Drag::Leave => {
+                self.drag_files = false;
+                false
+            }
+            Drag::Drop { uris, .. } => {
+                self.drag_files = false;
+                let files: Vec<String> = uris
+                    .iter()
+                    .filter_map(|u| u.strip_prefix("file://"))
+                    .map(|p| tessera_core::services::mpris::percent_decode(p.trim_start_matches("localhost")))
+                    .collect();
+                if !on_chat || files.is_empty() {
+                    st.refuse_drop();
+                } else {
+                    let room = ai::MAX_IMAGES - self.chat.attachments.len().min(ai::MAX_IMAGES);
+                    if room == 0 {
+                        self.chat.note_full();
+                        self.sync();
+                    } else {
+                        let to = Self::thread_sender(st);
+                        std::thread::spawn(move || Self::load_pictures(&to, files, room));
+                    }
+                }
+                false
+            }
+        };
+        if let Some(w) = &self.win {
+            w.ui.set_drop_over(over);
+        }
+    }
+
     fn surface_closed(&mut self, st: &mut State, s: &Rc<Surface>) {
         if self.win.as_ref().is_some_and(|w| Rc::ptr_eq(&w.surface, s)) {
             self.close(st, true);
@@ -1307,7 +1424,7 @@ impl Part for Sidebar {
         let ui = &w.ui;
         let p = ui.get_progress();
         let shapes: Vec<[f32; 19]> = if p > 0.002 { vec![theme::glass_shape(&st.shell.look, ui.get_slide_x(), ui.get_panel_y(), settings::PANEL_W, ui.get_panel_h(), 26.0, p, 1.0)] } else { Vec::new() };
-        let key = format!("{shapes:?}");
+        let key = tessera_core::theme::glass_key(&shapes);
         if key != w.glass_sent {
             st.shell.glass.set(&w.output, NS, &shapes);
             w.glass_sent = key;

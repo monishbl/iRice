@@ -1,0 +1,22 @@
+# Import/Export block at the end of the Shortcuts page. Never press Apply changes. Export only into /tmp.
+ipc panels settings shortcuts
+wait 2
+ptr move 1100 600 sleep 200 scroll 0 60
+wait 1
+shot ie
+note IE1 same rows and footer as QML (footer depends on whether zenity/kdialog are installed). Read y of buttons from this shot.
+ptr move 1100 600 sleep 200 glide 1100 600 100 click
+wait 1
+shot ie-import
+note IE2 Import from end4: a preview group or an error in both shells; "Show all N" / "See skipped" when there are more. Click position is a guess. Cancel/Close afterwards.
+# Gestures page
+ipc panels settings mouse/gestures
+wait 2
+ptr move 1100 600 sleep 200 scroll 0 60
+wait 1
+shot ie-gestures
+note Gestures page: the same block but only one section and no "Everything" row.
+# MANUAL: IE2 press Cancel/Close in the preview
+# MANUAL: IE3 (only when footer says to install zenity/kdialog) click Import... on Your shortcuts and type at once; QML: the text lands in the field (batch 3: the path field takes the caret as it appears)
+# MANUAL: IE4 type /nonexistent.json + Enter in the path field: "Couldn't import or export" with "Couldn't read /nonexistent.json"; hover the x 1 s for tooltip "Dismiss"; click it and it goes
+ipc panels close

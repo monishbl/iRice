@@ -1,0 +1,100 @@
+# Overview, macos style (the user's). Both looks. 5 spaces assumed; tile centres (572,74) (766,74) (960,74) (1154,74) (1348,74), titles y 128, + at (1874,74), field 560x52 at (680,389).
+# Earlier results (build 9539fdc): accent ring red vs QML orange; tile row ~11 px (Glass) / ~6 px (Material) lower than QML with the ring over "Desktop N" title; search field no caret on open; "fo" ranking Foot, Foot Server vs QML Foot, Foot Client. Round 2 fixed these: re-check them.
+setup foot -T A & sleep 1; foot -T B & sleep 1; foot -T C & sleep 1; hyprctl dispatch 'hl.dsp.workspace(2)'; sleep 1; foot -T D & sleep 1; hyprctl dispatch 'hl.dsp.workspace(1)'
+wait 6
+ptr move 100 900
+rec ov-open 1.5 ipc panels open overview IRICE-TEST
+note Open: first moving frame not later than QML, duration to settle same, content scale overshoot (Glass about 8 %: the bar slides past and back a little); bar y over the first 400 ms within 2 frames of QML.
+wait 1
+shot open
+note Overview open: tiles 170x96 at y 26..122 (top edge y 26, not 37), titles y about 128 and clear of the selection ring; field 560x52 at (680,389) with a caret already blinking; selected tile ring orange like QML (not red); bar height 166.
+rec ov-close 1 ipc panels close
+note Close fades in about 154 ms; same as QML.
+wait 1
+ipc panels open overview IRICE-TEST
+wait 1
+# NOTE: click on layer surfaces may not register in the harness
+ptr move 766 74 sleep 200 glide 766 74 300 sleep 400
+shot tile-hover
+note Hovered tile 2 grows to 1.03 over 150 ms (shot); same as QML.
+rec ov-tile-press 0.6 ptr move 766 74 sleep 100 down sleep 300 up
+note Press: tile 2 shrinks to 0.97; release goes to space 2 and the overview closes. Compare QML.
+wait 1
+shot after-tile
+note Space 2 is shown (window D) and the overview is closed.
+setup hyprctl dispatch 'hl.dsp.workspace(1)'
+ipc panels open overview IRICE-TEST
+wait 1
+ptr move 572 74 sleep 200 click
+wait 1
+shot miniature
+note Click on a miniature in tile 1 (inside x 487..657, y 26..122; its exact centre is read from the shot): that window is focused and the overview closed. (The click above lands on the tile centre.)
+ipc panels open overview IRICE-TEST
+wait 1
+ptr move 572 74 sleep 200 down glide 1154 74 600 sleep 200
+shot drag-window
+note Dragging a miniature: a 48 px icon chip follows the pointer from more than 8 px; the target tile (space 4) shows a 3 px ring while under it. Same as QML.
+ptr move 572 74 sleep 200 down glide 1154 74 600 sleep 200 up
+wait 1
+setup hyprctl clients | grep -E 'workspace: |title: ' | head -20
+shot drag-window-drop
+note After releasing over tile 4 the window moved to space 4 (miniature now in tile 4); QML and Rust same result.
+ipc panels open overview IRICE-TEST
+wait 1
+ptr move 1154 74 sleep 200 down glide 766 74 600 sleep 200
+shot drag-space
+note Dragging tile 4 over tile 2: dragged tile follows at 85 % opacity, tile 2 ringed. Same as QML.
+ptr move 1154 74 sleep 200 down glide 766 74 600 sleep 200 up
+wait 1
+shot drag-space-drop
+note Space order changed after the drop (QML and Rust same result). Dragging by the title at (1154, 128) works the same.
+# MANUAL: right-click a tile at (960, 74): menu at the pointer ("Only one display is connected" with one display); Down / Escape close it and typing works again (ptr has no right button)
+ipc panels open overview IRICE-TEST
+wait 1
+ptr move 1874 74 sleep 200 glide 1874 74 300 sleep 400
+shot plus-hover
+note Hover on the + button: Glass fill / Material 8 % layer. Same as QML.
+rec ov-plus 0.6 ptr move 1874 74 sleep 100 down sleep 200 up
+note Material: pressing + squares it to radius 12 over 100 ms; release closes the overview and makes a new empty space. Compare QML.
+wait 1
+ipc panels open overview IRICE-TEST
+wait 1
+key fo
+wait 1
+shot search
+note Typing "fo": results panel under the field, first row Foot then Foot Client (same order as QML, not Foot Server); app icons are coloured Colloid icons, not flat glyphs. No file/conversion rows in Rust (known).
+key -k Down
+wait 1
+shot search-down
+note Down moves the selection to the second result.
+key -k Escape
+wait 1
+shot search-clear
+note Escape clears the typed text (field empty, tiles/grid visible again); overview still open.
+key -k Escape
+wait 1
+shot search-closed
+note Second Escape closes the overview.
+ipc panels open overview IRICE-TEST
+wait 1
+ptr move 960 800 sleep 200 click
+wait 1
+shot bg-click
+note Click on the background (960, 800) closes the overview.
+ipc panels open overview IRICE-TEST
+wait 1
+ptr move 960 150 sleep 200 click
+wait 1
+shot bar-click
+note Click on the bar (960, 150) keeps the overview open.
+ipc panels close
+# MANUAL (grid style, needs config overview.style = "grid"): hover a cell at (636, 528) -> accent ring (2 px Glass / 3 px Material) and grows to 1.02 on a spring; record 1 s and compare scale curve (Glass overshoots slightly, settles ~0.4 s; Material ~0.3 s)
+# MANUAL (grid): Right Right -> cell 3 picked; Left x5 stops at cell 1 (no wrap); Return -> space 1, closed. Cells 300x168.75 at x 312/636/960/1284/1608, y 528
+# MANUAL (grid): glide onto a miniature in cell 1 -> its outline turns accent (2 px Glass / 3 px Material); click focuses it
+# MANUAL (grid): drag a miniature in cell 1 to cell 4 (1284, 528) over 700 ms -> lifts 1.04, cell 4 ringed; release moves it to space 4 (hidden in between)
+# MANUAL (grid): open, wait 1 s, start `foot -T E` -> existing miniatures in cell 1 glide to new places over about 200 ms (change within 400 ms of opening must jump)
+# MANUAL (grid, previews = live): hover cell 2 and hold still 2 s while recording: ring and scale steady, no flicker; region 1458..1758 x 444..612 has no changes
+# MANUAL (grid): type f -> grid gone, results shown; Backspace -> grid back with pictures already there
+# MANUAL (grid): drag cell 4's empty area / title (1284, 621) to (636, 528) -> reordered
+# MANUAL (each / zones, two displays): zone pill on the edge facing the other display; drag a window onto it and hold 600 ms -> space chips; over a chip it turns accent; release -> window on that space
+# MANUAL (tile re-tile and live previews): record region-changes.py measurements are not in the DSL

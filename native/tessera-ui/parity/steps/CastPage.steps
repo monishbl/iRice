@@ -1,0 +1,13 @@
+look material
+setup python3 -I -c "import json,os;p=os.path.expanduser('~/.config/tessera/config.json');c=json.load(open(p));c.setdefault('controlCenter',{})['layout']=['nowPlaying:2x2'];json.dump(c,open(p,'w'),indent=4)"
+wait 2
+setup sh -c 'while :; do pw-play --volume 0.05 /usr/share/sounds/freedesktop/stereo/complete.oga; done' >/dev/null 2>&1 &
+wait 2
+ipc panels open controlCenter IRICE-TEST
+wait 1
+note the Now Playing cast button opens the Cast page (top-right of the card)
+ptr move 1660 66 sleep 50 click
+wait 0.6
+shot cast-page
+note row icons TV or speaker
+ipc panels close

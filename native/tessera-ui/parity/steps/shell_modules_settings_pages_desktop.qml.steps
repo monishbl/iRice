@@ -1,0 +1,18 @@
+# desktop: Desktop & Widgets page. Check in each look.
+ipc panels settings desktop
+wait 2
+shot dk-top
+note D1: Widgets detail counts the widgets in the arena's config ("1 widget"/"N widgets"); Files app row shows "Automatic (Nautilus)" or similar with detail "Opens folders, Downloads and the Trash" when a manager is installed; same texts in both shells.
+wait 10
+shot dk-weather
+note D2: after the weather loads (10 s) the footer reads "Showing <place>: NN deg, <condition>." in both shells (Rust takes it from the weather service).
+ptr move 1100 600 scroll 0 5
+wait 1
+shot dk-bottom
+note D3/D4: lower groups (Hot corners with 4 corner controls, More options) match the QML in rows and labels; Show Shelf button reads "Show Shelf" with the shelf closed.
+# MANUAL: D1 open the Files app dropdown (x about 1340, y from a shot), shot: "Automatic (Nautilus)" or similar, then each installed manager.
+# MANUAL: D2 type "Paris" in Location, Return: footer changes to Paris once loaded; Units Fahrenheit changes the temp; restore afterwards.
+# MANUAL: D3 open "Top left": 9 actions in the order of #7; choose "Overview": the dropdown shows it; set back.
+# MANUAL: D4 More options: the 3 switches toggle; click "Show Shelf": the shelf opens and the button reads "Hide Shelf"; with an item on it detail "1 item on it"; click "Hide Shelf": it closes.
+# MANUAL: D5 click "Edit..." (last, closes Settings): Settings closes and widget editing starts on the first screen.
+ipc panels close

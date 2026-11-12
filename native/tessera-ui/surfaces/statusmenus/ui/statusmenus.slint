@@ -46,6 +46,8 @@ export struct SmPlayer {
     identity: string,
     art: image,
     has-art: bool,
+    // Material: the art cut into a nine-sided cookie (masked in Rust), shown while it plays
+    cookie: image,
     playing: bool,
     prev: bool,
     next: bool,
@@ -202,7 +204,9 @@ component GlassSeek {
     in property <float> value;
     callback moved(float);
     height: 22px;
-    property <float> v: max(0, min(1, value));
+    property <bool> dragging;
+    property <float> drag-v;
+    property <float> v: max(0, min(1, dragging ? drag-v : value));
     Rectangle {
         y: (parent.height - 4px) / 2;
         height: 4px;
@@ -229,8 +233,10 @@ component GlassSeek {
     TouchArea {
         mouse-cursor: pointer;
         pointer-event(e) => {
-            if e.kind == PointerEventKind.up && e.button == PointerEventButton.left { moved(max(0, min(1, self.mouse-x / self.width))); }
+            if e.kind == PointerEventKind.down && e.button == PointerEventButton.left { drag-v = max(0, min(1, self.mouse-x / self.width)); dragging = true; }
+            if e.kind == PointerEventKind.up && e.button == PointerEventButton.left { dragging = false; moved(max(0, min(1, self.mouse-x / self.width))); }
         }
+        moved => { if self.pressed { drag-v = max(0, min(1, self.mouse-x / self.width)); } }
     }
 }
 
@@ -307,6 +313,7 @@ export component StatusMenus inherits Window {
     callback key(string, bool) -> bool;
     callback hovered(bool);
     callback dismissed();
+    callback bar-click(length, length);
     callback closed(); // the close animation ended
     callback page-toggled();
     callback page-refreshed();
@@ -344,10 +351,13 @@ export component StatusMenus inherits Window {
         keys.focus();
     }
 
-    // A click outside closes it
+    // A click outside closes it; on the bar's strip it goes on to the bar
+    // (Popover's catcher: the item there is clicked, another menu opens)
     TouchArea {
         enabled: shown;
-        clicked => { dismissed(); }
+        clicked => {
+            if self.mouse-y < 30px { root.bar-click(self.mouse-x, self.mouse-y); } else { dismissed(); }
+        }
     }
 
     keys := FocusScope {
@@ -713,10 +723,21 @@ export component StatusMenus inherits Window {
                             Rectangle {
                                 width: 72px;
                                 height: 72px;
-                                border-radius: m3 ? (np.playing ? 36px : 16px) : 12px;
-                                animate border-radius { duration: 300ms; easing: spring(0.5); }
-                                background: m3 ? Theme.m3-surface-container-highest : Theme.fill;
+                                // (Material: a square paused, a cookie while it plays: ShapedArt)
+                                property <float> cookie-o: m3 && np.has-art && np.playing ? 1 : 0;
+                                animate cookie-o { duration: 300ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+                                if m3 && np.has-art: Image {
+                                    width: 100%;
+                                    height: 100%;
+                                    source: np.cookie;
+                                    image-fit: fill;
+                                    opacity: parent.cookie-o;
+                                }
+                                Rectangle {
+                                border-radius: m3 ? 16px : 12px;
+                                background: np.has-art && m3 ? transparent : m3 ? Theme.m3-surface-container-highest : Theme.fill;
                                 clip: true;
+                                opacity: 1 - parent.cookie-o;
                                 if np.has-art: Image {
                                     width: 100%;
                                     height: 100%;
@@ -728,6 +749,7 @@ export component StatusMenus inherits Window {
                                     fill: true;
                                     font-size: 28px;
                                     color: m3 ? Theme.m3-on-surface-variant : Theme.tertiary;
+                                }
                                 }
                             }
                             VerticalLayout {

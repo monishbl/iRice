@@ -172,6 +172,30 @@ impl Hub {
                     todos::restore(&u);
                 }
             }
+            // the calendar's editor (CalendarWidget.qml): new / edit, delete
+            // with Undo, drag to another date
+            "cal.save" | "cal.remove" | "cal.move" | "cal.restore" => {
+                let done = match e["act"].as_str().unwrap_or("") {
+                    "cal.save" => calendar::nc_save(h, e),
+                    "cal.remove" => calendar::nc_remove(&s("key")).map(|u| {
+                        self.notif.cal_undo = Some(u);
+                        self.notif.cal_undo_at = now;
+                    }),
+                    "cal.move" => calendar::nc_move(&s("key"), &s("day")),
+                    _ => {
+                        if let Some(u) = self.notif.cal_undo.take() {
+                            calendar::nc_restore(&u);
+                        }
+                        Ok(())
+                    }
+                };
+                if let Err(text) = done {
+                    h.tell("notifications", json!({"do": "calendarError", "text": text}));
+                }
+                // (shown at once: the calendar reads events.json itself a moment)
+                self.notif.cal_fresh_until = now + 5000;
+                self.notif.last_calendar.clear();
+            }
             "timer.toggle" => self.timers.toggle(now),
             "timer.skip" => self.timers.advance(h, now),
             "timer.reset" => self.timers.reset(now),

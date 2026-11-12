@@ -100,17 +100,18 @@ pub fn menubar(cx: &mut Ctx, p: &mut Page) {
         // The screens it's on (every screen: an empty list)
         let all: Vec<String> = cx.screens.clone();
         let chosen = cx.list("menubar.screens");
-        let chips: Vec<Opt> = all.iter().map(|n| Opt::new(n.clone()).on(chosen.is_empty() || chosen.contains(n))).collect();
+        // (right to left, as the QML's layoutDirection: the first screen at the right edge)
+        let chips: Vec<Opt> = all.iter().rev().map(|n| Opt::new(n.clone()).on(chosen.is_empty() || chosen.contains(n))).collect();
         let names = all.clone();
         let pick = cx.on(move |cx, a| {
-            let Some(name) = names.get(a.i as usize) else { return };
+            let Some(name) = names.len().checked_sub(1 + a.i.max(0) as usize).and_then(|i| names.get(i)) else { return };
             let cur = cx.list("menubar.screens");
             let cur = if cur.is_empty() { names.clone() } else { cur };
             let next = toggle_in(&cur, name);
             let v: Vec<Value> = if next.len() == names.len() { Vec::new() } else { next.into_iter().map(Value::from).collect() };
             cx.set("menubar.screens", Value::Array(v));
         });
-        p.group("Behaviour").row(Row::new("Screens").detail("Show the menu bar on these screens.").chips(chips, pick).width(260.0));
+        p.group("Behaviour").row(Row::new("Screens").detail("Show the menu bar on these screens.").chips(chips, pick).solid().width(260.0));
 
         let spaces_on = cx.s("menubar.workspaces") != "off";
         let count = cx.i("menubar.workspaceCount");
@@ -241,7 +242,7 @@ pub fn dock(cx: &mut Ctx, p: &mut Page) {
                     next.push(Value::from(id.clone()));
                     cx.set("dock.pinned", Value::Array(next));
                 });
-                rows.push(Row::new(name).button("Add", add).primary());
+                rows.push(Row::new(name).button("Add", add).primary().compact());
             }
         }
     }
@@ -308,7 +309,7 @@ pub fn controlcenter(cx: &mut Ctx, p: &mut Page) {
             .detail(if solid { "Always on with Solid glass" } else if bg { "Controls sit on one glass panel" } else { "Each control is its own glass chip" })
             .switch(bg || solid, bt)
             .enabled(!solid))
-        .row(Row::new("Reset to the default layout").visible(n > 0).button("Reset", reset).minor());
+        .row(Row::new("Reset to the default layout").visible(n > 0).button("Reset", reset).text_link());
 }
 
 #[cfg(test)]

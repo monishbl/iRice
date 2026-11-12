@@ -1,0 +1,125 @@
+# BarMenu: steps from parity/shell_modules_menubar_BarMenu.qml.md (batches 1-5). Screen IRICE-TEST 1920x1080 scale 1;
+# the island is centred at x 960 (closed y ~14, open ~392 wide); the bar is 30 px tall.
+# Each block runs in both looks: the file runs top to bottom, Material first, then Glass.
+
+look material
+setup foot &
+wait 2
+ptr glide 18 15 300
+ptr click
+wait 0.6
+shot system-open
+note the system menu under the logo
+ptr glide 1300 700 300
+ptr click
+wait 0.5
+shot outside-closed
+note a click on the desktop closed it
+ptr glide 70 15 300
+ptr click
+wait 0.6
+ptr glide 960 540 300
+ptr click
+wait 0.5
+shot window-click
+note a click inside the foot window closed the app menu
+ptr glide 18 15 300
+ptr click
+wait 0.6
+ptr glide 70 15 200
+ptr click
+wait 0.6
+shot switched
+note one click on the app name closed the system menu AND opened the app menu
+ptr click
+wait 0.5
+shot toggled
+note a second click on the app name closed it
+ptr glide 18 15 300
+ptr click
+wait 0.6
+ptr glide 600 15 200
+ptr click
+wait 0.5
+shot empty-bar
+note a click on the bar's empty strip closed it
+ptr glide 18 15 300
+ptr click
+ptr glide 1300 700 300
+wait 4.5
+shot auto-4s
+note still open at 4.5 s
+wait 1
+shot auto-6s
+note closed by itself after 5 s without the pointer
+ptr glide 18 15 300
+ptr click
+ptr glide 60 60 200
+wait 8
+shot rest
+note resting on the menu keeps it open
+key -k Down -k Down -k Return
+wait 0.5
+shot keys
+note the keyboard works at once (the highlighted item ran)
+
+look glass
+setup foot &
+wait 2
+ptr glide 18 15 300
+ptr click
+wait 0.6
+shot system-open
+note the system menu under the logo
+ptr glide 1300 700 300
+ptr click
+wait 0.5
+shot outside-closed
+note a click on the desktop closed it
+ptr glide 70 15 300
+ptr click
+wait 0.6
+ptr glide 960 540 300
+ptr click
+wait 0.5
+shot window-click
+note a click inside the foot window closed the app menu
+ptr glide 18 15 300
+ptr click
+wait 0.6
+ptr glide 70 15 200
+ptr click
+wait 0.6
+shot switched
+note one click on the app name closed the system menu AND opened the app menu
+ptr click
+wait 0.5
+shot toggled
+note a second click on the app name closed it
+ptr glide 18 15 300
+ptr click
+wait 0.6
+ptr glide 600 15 200
+ptr click
+wait 0.5
+shot empty-bar
+note a click on the bar's empty strip closed it
+ptr glide 18 15 300
+ptr click
+ptr glide 1300 700 300
+wait 4.5
+shot auto-4s
+note still open at 4.5 s
+wait 1
+shot auto-6s
+note closed by itself after 5 s without the pointer
+ptr glide 18 15 300
+ptr click
+ptr glide 60 60 200
+wait 8
+shot rest
+note resting on the menu keeps it open
+key -k Down -k Down -k Return
+wait 0.5
+shot keys
+note the keyboard works at once (the highlighted item ran)

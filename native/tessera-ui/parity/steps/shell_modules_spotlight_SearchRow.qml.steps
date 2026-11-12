@@ -1,0 +1,21 @@
+look material
+# NOTE: click on layer surfaces may not register in the harness
+ipc panels open spotlight IRICE-TEST
+wait 1
+key fi
+wait 1
+shot sr-fi
+note Group with 3+ app rows: first row top corners 20, middle rows 4, last row bottom corners 20; 2 px gaps. Row order is Bulk Rename, Thunar Preferences, Calculator, Foot Client in QML (ties by name now).
+rec sp-row-sel 0.6 key -k Down
+note New selected row's corners round in about 0.22 s with a slight overshoot, the old one returns; compare to QML within 1 frame (133 ms both earlier).
+wait 1
+ptr move 960 540 sleep 100 glide 960 400 200
+wait 1
+shot sr-hover
+note Unselected row under the pointer: 8 percent layer.
+rec sr-press 0.3 ptr move 960 400 down
+note Pressed row shows 10 percent layer.
+ptr move 960 400 up
+wait 1
+# MANUAL: /.bash file rows: eye on hover/selection; the title does not shift when it appears (no files in sandbox)
+key -k Escape

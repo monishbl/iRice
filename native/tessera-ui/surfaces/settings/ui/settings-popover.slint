@@ -1,0 +1,49 @@
+// A Settings popover as its own popup window (a page's QQC.Popup in the
+// QML: Glass › Appearance's Advanced…). Rust opens it next to the control
+// that asked (SBus.anchor), with the page's popover block (model.rs
+// Block::popover), keeps it up to date in place while it's open, and closes
+// it on Esc, a click elsewhere (the popup's grab), or another page.
+// The panel: GlassPopupBackground (menu background, hairline, radius
+// control + 16); taller than it has room for, it scrolls.
+
+import { Theme } from "@tessera/theme.slint";
+import { SBlock, SBus } from "settings-kit.slint";
+import { Advanced } from "settings-look.slint";
+
+export component SettingsPopover inherits Window {
+    in property <SBlock> b;
+    callback dismiss();
+    background: transparent;
+    default-font-family: Theme.font;
+    default-font-size: Theme.body;
+    forward-focus: keys;
+    keys := FocusScope {
+        key-pressed(e) => {
+            if e.text == Key.Escape { root.dismiss(); return accept; }
+            reject
+        }
+        Rectangle {
+            border-radius: Theme.radius-control + 16px;
+            background: Theme.menu-bg;
+            border-width: 1px;
+            border-color: Theme.separator;
+            clip: true;
+            scroll := Flickable {
+                content-height: body.preferred-height;
+                body := VerticalLayout {
+                    alignment: start;
+                    if b.sub == "glass-advanced": Advanced { b: b; bare: true; }
+                }
+            }
+            // (scrolls: a thin indicator)
+            if body.preferred-height > scroll.height + 1px: Rectangle {
+                x: parent.width - 7px;
+                width: 4px;
+                border-radius: 2px;
+                height: max(24px, scroll.height * scroll.height / body.preferred-height);
+                y: 8px + (-scroll.content-y / max(1px, body.preferred-height - scroll.height)) * (parent.height - 16px - self.height);
+                background: Theme.label.with-alpha(0.25);
+            }
+        }
+    }
+}

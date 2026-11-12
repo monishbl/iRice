@@ -1,0 +1,81 @@
+# ClipboardPanel: dialog body x 664..1256, y 244..756. Both looks (runner does both; plan items 1/2 are per look).
+# MANUAL: skip the whole file if cliphist is missing in the sandbox (not testable)
+setup for n in 1 2 3 4 5 6 7 8 9 10 11 12 13; do printf "item $n" | wl-copy; sleep 0.4; done
+setup for n in 1 2 3; do convert -size $((200+n*20))x$((120+n*10)) xc:'#'$((n*3))$((n*2))ff$((n*4)) /tmp/clip-pic$n.png 2>/dev/null && wl-copy < /tmp/clip-pic$n.png; sleep 0.5; done
+wait 8
+rec cb-open 1 ipc panels open clipboard IRICE-TEST
+note Open: body settles in about 0.3 s (Material) / 0.4 s (Glass); overshoot at most 1 % (Material) / about 3 % (Glass); body x 664..1256, y 244..756; compare QML within 1 frame.
+wait 1
+shot list
+note Clipboard list: search field x 680..1018 y 260..296; segments All/Text/Images at y 278; list rows start y 326 (Glass) / 332 (Material), rows 46 apart; footer "Clear history" about (1195, 726). Same as QML.
+rec cb-close 0.4 key -k Escape
+note Close in 192 ms with a slow start (exit curve 0.3,0,0.8,0.15 Material; 0.4,0,1,1 Glass); same as QML.
+wait 1
+ipc panels open clipboard IRICE-TEST
+wait 1
+# NOTE: click on layer surfaces may not register in the harness
+rec cb-seg 0.6 ptr move 1135 278 sleep 100 click
+note Glass: pill slides to Text in 220 ms with a fast start (emphasized). Material: chosen segment corners round on a ~0.22 s spring. Compare frames with QML.
+wait 1
+shot seg-text
+note Text segment chosen (only text entries listed), same as QML.
+rec cb-seg-hold 0.8 ptr move 1135 278 sleep 200 down sleep 500 up
+note Material: while held the Text segment widens about 10 px (neighbours shrink) and its corners go 8 -> 4; on release it springs back past its width once and settles (~0.3 s). Glass: no widening.
+wait 1
+ptr move 1067 278 sleep 100 click
+wait 1
+rec cb-rows 0.5 key -k Down
+note Material: the chosen row's corners round (16) on a ~0.22 s spring, the previous row squares back; colour fades in 150 ms. Glass: selection moves with fade only.
+wait 1
+key -k Down
+wait 1
+shot rows
+note The chosen row is the third row; same as QML.
+# hover reveals: last visible row cut by the list's bottom (y about 700)
+ptr move 900 698 sleep 100 glide 900 698 200 sleep 600
+shot hover-reveal
+note Hovering the row cut by the list bottom (y about 700) chooses it and the list scrolls just enough to show it (Material: above the 76 px toolbar). Same as QML.
+rec cb-scroll 1.5 ptr move 900 500 sleep 100 scroll 0 3
+note Scrolling the wheel over (900, 500): thin scroll bar at x about 1240 appears and fades out about 0.9 s after scrolling stops (400 ms fade). Same as QML.
+shot scrollbar
+note Scroll indicator at x 1234..1246 (visible only while scrolling; may already have faded).
+ptr move 900 500 sleep 100 scroll 0 3 glide 1240 400 200 sleep 300
+shot scrollbar-wide
+note Pointer on the scroll bar: it widens to 8 px (same as QML).
+ptr move 900 500 sleep 100 scroll 0 3 glide 1240 400 200 down glide 1240 600 300 up
+shot scrollbar-drag
+note After dragging the thumb down from y 400 to 600 the list followed (scrolled further); same as QML.
+ptr move 900 500 sleep 100 scroll 0 3 glide 1240 400 200 click
+wait 1
+ptr move 1240 690 sleep 100 click
+wait 1
+shot scrollbar-track
+note Clicking the track near the end (1240, 690) jumps toward the end of the list.
+# rows kept
+ptr move 900 394 sleep 300
+setup printf new | wl-copy
+wait 1
+shot rows-kept
+note A new item copied from outside while open: the list updates without a flash and the hover on row 2 stays.
+key -k Tab -k Tab
+wait 1
+shot images
+note Images tab (Tab twice): grid of two columns of tiles 276x199; chosen tile has a 3 px (Material) / 2 px (Glass) accent ring and the pin/trash chip at its top-right. Arrows move across/down.
+key -k Right
+key -k Down
+wait 1
+shot images-nav
+note Arrow keys moved the ring across/down the image grid, same as QML.
+key -k Escape -k Escape
+wait 1
+ipc panels open clipboard IRICE-TEST
+wait 1
+# Clear history: first click only, never twice
+ptr move 1195 726 sleep 200 click
+wait 1
+shot clear-armed
+note After one click on "Clear history" it reads "Clear N items" filled red (destructive). Do not click again.
+ptr move 1195 726 sleep 200 click glide 900 600 100 sleep 400
+shot clear-disarmed
+note Gliding away makes it return to "Clear history" (same as QML).
+ipc panels close

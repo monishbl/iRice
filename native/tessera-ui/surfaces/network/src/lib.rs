@@ -102,6 +102,11 @@ struct Win {
     a11y: Option<crate::a11y::A11y>,
     glass_sent: String,
     region: (u32, u32),
+    /// the speed test's figures, changed in place on every tick (a new model
+    /// per tick made the three stats again while the test ran)
+    stats: tessera_core::rows::Rows<ui::SpeedStat>,
+    /// the menu's items, changed in place (rows.rs)
+    menu_items: tessera_core::rows::Rows<ui::NetMenuItem>,
 }
 
 #[derive(Default)]
@@ -191,9 +196,11 @@ impl Network {
         on!(on_closed, | | M::Closed);
         ui.set_g(glyphs());
         ui.set_rows(ModelRc::from(self.rows.clone()));
+        let menu_items = tessera_core::rows::Rows::new();
+        ui.set_menu_items(menu_items.model());
         ui.show().expect("show wifi menu");
         let a11y = crate::a11y::A11y::new(&surface, st.tx.clone());
-        self.win = Some(Win { output: output.into(), surface, ui, a11y, glass_sent: String::new(), region: (0, 0) });
+        self.win = Some(Win { output: output.into(), surface, ui, a11y, glass_sent: String::new(), region: (0, 0), stats: tessera_core::rows::Rows::new(), menu_items });
         true
     }
 
@@ -369,7 +376,7 @@ impl Network {
             live: sp.live.as_str().into(),
             progress: sp.progress,
             show_stats: sp.show_stats,
-            stats: ModelRc::new(VecModel::from(stats)),
+            stats: { w.stats.set(stats); w.stats.model() },
             resp: sp.resp.as_str().into(),
             resp_h: model::wrap_height(&sp.resp, CARD_W, 12.0),
             verdict: sp.verdict.as_str().into(),
@@ -425,7 +432,7 @@ impl Network {
                 None => ui::NetMenuItem { text: SharedString::new(), sep: true, danger: false },
             })
             .collect();
-        w.ui.set_menu_items(ModelRc::new(VecModel::from(items)));
+        w.menu_items.set(items);
         let (sw, sh) = w.surface.logical_size();
         let (mw, mh) = (w.ui.get_menu_w(), w.ui.get_menu_h());
         let mx = x.min(sw as f32 - mw - 8.0).max(8.0);
@@ -712,7 +719,7 @@ impl Part for Network {
                 shapes.push(theme::glass_shape(&st.shell.look, ui.get_menu_x(), ui.get_menu_y(), ui.get_menu_w(), ui.get_menu_h(), 14.0, o, 0.35));
             }
         }
-        let key = format!("{shapes:?}");
+        let key = tessera_core::theme::glass_key(&shapes);
         if key != w.glass_sent {
             st.shell.glass.set(&w.output, NS, &shapes);
             w.glass_sent = key;

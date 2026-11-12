@@ -1,0 +1,21 @@
+# notifications-startup: Notifications > Startup sound. Check in each look.
+ipc panels settings notifications/startup
+wait 2
+shot su-top
+note S1: "Original" first, then the 7 style groups in the same order with the same 4 names each, "In use" (check icon, greyed) on the current one; title with a Back arrow.
+ptr move 1100 600 scroll 0 10
+wait 1
+shot su-scroll
+note S1 cont.: the later style groups (names and order) same as QML.
+ptr move 1100 600 scroll 0 20
+wait 1
+shot su-bottom
+note S1 cont.: last style groups; same names and "Use"/"Play" buttons as QML.
+# MANUAL: S2 click "Use" on "Glass > Prism": turns "In use", the old one "Use"; config sounds.startupSound "glass-hello", startupFile ""; the log shows a startup play (note the delay in each shell).
+# MANUAL: S3 click Play on "Keys > Lounge": a play of keys-hello logged, nothing saved.
+# MANUAL: S4 Back arrow / Esc returns to Notifications & Island with "Sound when you log in" detail "Prism - Glass".
+key -k Escape
+wait 1
+shot su-back
+note S4: Esc leaves the startup sound page and returns to Notifications & Island (page title Notifications, not Startup sound) in both shells.
+ipc panels close

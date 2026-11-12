@@ -1,0 +1,28 @@
+# Arena IRICE-TEST 1920x1080 scale 1, the user's config (expressive motion, Colloid, their 4 widgets).
+# Each file runs top to bottom from a fresh desktop. `static NAME x y w h`: that region must not change
+# from there until the next `shot`, `rec` or `look` (the no-reload blocks end with their last close).
+# Right-clicks: `ptr ... down up` lines marked (right button) need the runner's right button.
+
+look glass
+setup sh -c 'cd ~/Downloads && touch report.pdf photos.zip shot.png notes.txt clip.mp4 .x && mkdir -p dir'
+ptr move 970 1038 click
+wait 1
+shot df-open
+note 5 files newest first; no .x, no dir
+setup sh -c 'echo y > ~/Downloads/new.txt'
+wait 2.5
+shot df-live
+note new.txt first; others moved, not flashed
+key -k Escape
+
+look material
+setup sh -c 'cd ~/Downloads && touch report.pdf photos.zip shot.png notes.txt clip.mp4 .x && mkdir -p dir'
+ptr move 970 1032 click
+wait 1
+shot df-open
+note 5 files newest first; no .x, no dir
+setup sh -c 'echo y > ~/Downloads/new.txt'
+wait 2.5
+shot df-live
+note new.txt first; others moved, not flashed
+key -k Escape

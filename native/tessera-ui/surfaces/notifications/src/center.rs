@@ -213,6 +213,48 @@ pub fn day_title(d: Day, today: Day) -> String {
     }
 }
 
+/// The editor's "New on Fri 13 Nov" (Qt's "ddd d MMM")
+pub fn short_date(d: Day) -> String {
+    format!("{} {} {}", &WEEKDAYS[weekday(d) as usize][..3], d.2, &MONTHS[d.1 as usize - 1][..3])
+}
+
+/// "y-mm-dd" -> the day
+pub fn parse_key(k: &str) -> Option<Day> {
+    let mut it = k.split('-').filter_map(|x| x.parse::<i64>().ok());
+    match (it.next(), it.next(), it.next()) {
+        (Some(y), Some(m), Some(d)) if (1..=12).contains(&m) && (1..=31).contains(&d) => Some((y as i32, m as u32, d as u32)),
+        _ => None,
+    }
+}
+
+/// The editor's times (CalendarWidget's editor.minutes): "9", "9:30",
+/// "5pm", "17:00", "5.30 pm" -> minutes since midnight, or -1
+pub fn minutes(s: &str) -> i32 {
+    let t = s.trim().to_lowercase();
+    let digits = |x: &str| !x.is_empty() && x.chars().all(|c| c.is_ascii_digit());
+    // the am/pm suffix (am, pm, a, p), spaces before it allowed
+    let (body, ampm) = if let Some(b) = t.strip_suffix("am").or_else(|| t.strip_suffix('a')) {
+        (b.trim_end(), Some(false))
+    } else if let Some(b) = t.strip_suffix("pm").or_else(|| t.strip_suffix('p')) {
+        (b.trim_end(), Some(true))
+    } else {
+        (t.as_str(), None)
+    };
+    let (h, m) = match body.find([':', '.']) {
+        Some(i) => (&body[..i], &body[i + 1..]),
+        None => (body, "0"),
+    };
+    let m_ok = if body.contains([':', '.']) { m.len() == 2 && digits(m) } else { true };
+    if !(1..=2).contains(&h.len()) || !digits(h) || !m_ok {
+        return -1;
+    }
+    let (mut h, min) = (h.parse::<i32>().unwrap_or(99), m.parse::<i32>().unwrap_or(99));
+    if let Some(pm) = ampm {
+        h = h % 12 + if pm { 12 } else { 0 };
+    }
+    if h > 23 || min > 59 { -1 } else { h * 60 + min }
+}
+
 /// Material's big date under the time ("Thursday, 5 November")
 pub fn long_date(d: Day) -> String {
     format!("{}, {} {}", WEEKDAYS[weekday(d) as usize], d.2, MONTHS[d.1 as usize - 1])
@@ -257,6 +299,26 @@ pub fn ring(p: f64, material: bool) -> (String, String) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_editor_reads_times() {
+        assert_eq!(minutes("9"), 540);
+        assert_eq!(minutes("9:30"), 570);
+        assert_eq!(minutes("5pm"), 1020);
+        assert_eq!(minutes("5.30 pm"), 1050);
+        assert_eq!(minutes("17:00"), 1020);
+        assert_eq!(minutes("12 am"), 0);
+        assert_eq!(minutes(" 9:00 AM "), 540);
+        assert_eq!(minutes("10:00 AM"), 600);
+        assert_eq!(minutes("24:00"), -1);
+        assert_eq!(minutes("9:5"), -1);
+        assert_eq!(minutes("soon"), -1);
+        assert_eq!(minutes(""), -1);
+        assert_eq!(minutes("pm"), -1);
+        assert_eq!(short_date((2026, 11, 13)), "Fri 13 Nov");
+        assert_eq!(parse_key("2026-11-13"), Some((2026, 11, 13)));
+        assert_eq!(parse_key("x"), None);
+    }
 
     fn note(id: u32, app: &str, at: i64) -> Note {
         Note { id, app_name: app.into(), at, ..Default::default() }

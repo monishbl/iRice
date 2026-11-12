@@ -61,7 +61,8 @@ use tessera_core::theme;
 use tessera_core::wayland::{Spec, State, Surface};
 use logic::{Feed, Item, Target};
 use serde_json::{json, Value};
-use slint::{ComponentHandle, ModelRc, Rgba8Pixel, SharedPixelBuffer, SharedString, VecModel};
+use slint::{ComponentHandle, Rgba8Pixel, SharedPixelBuffer, SharedString};
+use tessera_core::rows::Rows;
 use smithay_client_toolkit::shell::wlr_layer::{Anchor, KeyboardInteractivity, Layer};
 use smithay_client_toolkit::shell::WaylandSurface;
 use std::any::Any;
@@ -98,6 +99,9 @@ struct CardWin {
     glass_sent: String,
     /// drawn again once mapped (a first frame can be the 1×1 one, stretched)
     settled: bool,
+    /// the rows, handed to the window once and changed in place (a thumbnail
+    /// arriving or an item added redraws that row, not the list)
+    rows: Rows<ui::ShelfItem>,
 }
 
 struct ZoneWin {
@@ -194,10 +198,12 @@ impl Shelf {
         let empty_w = logic::CARD_W - 24.0;
         ui.set_dashes_rest(logic::dashes(empty_w, 160.0, 16.0, 1.5).into());
         ui.set_dashes_drop(logic::dashes(empty_w, 160.0, 16.0, 2.0).into());
+        let rows = Rows::new();
+        ui.set_rows(rows.model());
         ui.show().expect("show shelf");
         st.accept_drops(&surface, true);
         let a11y = crate::a11y::A11y::new(&surface, st.tx.clone());
-        self.card = Some(CardWin { output: output.into(), surface, ui, a11y, left: None, region: Vec::new(), glass_sent: String::new(), settled: false });
+        self.card = Some(CardWin { output: output.into(), surface, ui, a11y, left: None, region: Vec::new(), glass_sent: String::new(), settled: false, rows });
         true
     }
 
@@ -230,7 +236,7 @@ impl Shelf {
                 }
             })
             .collect();
-        w.ui.set_rows(ModelRc::new(VecModel::from(rows)));
+        w.rows.set(rows);
         w.ui.set_all_row(ui::ShelfItem {
             label: format!("All {n} items").into(),
             detail: "Drag to take them together".into(),
@@ -662,7 +668,7 @@ impl Part for Shelf {
         let ui = &w.ui;
         let o = ui.get_fade();
         let shape = theme::glass_shape(&st.shell.look, logic::M + ui.get_slide(), ui.get_card_y(), logic::CARD_W, ui.get_card_h(), 20.0, o, 1.0);
-        let key = if o > 0.002 { format!("{shape:?}") } else { String::new() };
+        let key = if o > 0.002 { tessera_core::theme::glass_key(&shape) } else { String::new() };
         if key != w.glass_sent {
             st.shell.glass.set(&w.output, NS, if o > 0.002 { std::slice::from_ref(&shape) } else { &[] });
             w.glass_sent = key;

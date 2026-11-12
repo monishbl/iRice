@@ -1,0 +1,42 @@
+# Arena IRICE-TEST 1920x1080 scale 1, the user's config (expressive motion, Colloid, their 4 widgets).
+# Each file runs top to bottom from a fresh desktop. `static NAME x y w h`: that region must not change
+# from there until the next `shot`, `rec` or `look` (the no-reload blocks end with their last close).
+# Right-clicks: `ptr ... down up` lines marked (right button) need the runner's right button.
+
+look glass
+shot dk-idle
+static dk-dock 820 940 280 140
+ipc panels open controlCenter IRICE-TEST
+wait 1
+ipc panels close
+wait 1
+ipc panels open launchpad IRICE-TEST
+wait 1
+ipc panels close
+wait 1
+note the dock never vanishes or redraws from blank when other surfaces close
+setup python3 -c "import json,os;p=os.path.expanduser('~/.config/tessera/config.json');c=json.load(open(p));c.setdefault('dock',{})['enabled']=json.loads('false');json.dump(c,open(p,'w'),indent=4)"
+wait 1.5
+shot dk-off
+setup python3 -c "import json,os;p=os.path.expanduser('~/.config/tessera/config.json');c=json.load(open(p));c.setdefault('dock',{})['enabled']=json.loads('true');json.dump(c,open(p,'w'),indent=4)"
+wait 1.5
+shot dk-on
+
+look material
+shot dk-idle
+static dk-dock 820 940 280 140
+ipc panels open controlCenter IRICE-TEST
+wait 1
+ipc panels close
+wait 1
+ipc panels open launchpad IRICE-TEST
+wait 1
+ipc panels close
+wait 1
+note the dock never vanishes or redraws from blank when other surfaces close
+setup python3 -c "import json,os;p=os.path.expanduser('~/.config/tessera/config.json');c=json.load(open(p));c.setdefault('dock',{})['enabled']=json.loads('false');json.dump(c,open(p,'w'),indent=4)"
+wait 1.5
+shot dk-off
+setup python3 -c "import json,os;p=os.path.expanduser('~/.config/tessera/config.json');c=json.load(open(p));c.setdefault('dock',{})['enabled']=json.loads('true');json.dump(c,open(p,'w'),indent=4)"
+wait 1.5
+shot dk-on

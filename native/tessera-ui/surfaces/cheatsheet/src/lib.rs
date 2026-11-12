@@ -46,6 +46,9 @@ struct Win {
     shown: bool,
     glass_sent: String,
     settled: bool,
+    /// the shortcut rows and the elements, changed in place (rows.rs)
+    rows: tessera_core::rows::Rows<ui::CsRow>,
+    elements: tessera_core::rows::Rows<ui::CsElement>,
 }
 
 #[derive(Default)]
@@ -82,19 +85,19 @@ impl Cheatsheet {
             .iter()
             .map(|g| ui::CsGroup {
                 name: g.name.clone().into(),
-                binds: ModelRc::new(VecModel::from(
+                binds: tessera_core::rows::shared(
                     g.binds
                         .iter()
                         .map(|b| ui::CsBind {
                             description: b.description.clone().into(),
-                            keys: ModelRc::new(VecModel::from(binds::keys(style, &b.keys).into_iter().map(Into::into).collect::<Vec<slint::SharedString>>())),
+                            keys: tessera_core::rows::shared(binds::keys(style, &b.keys).into_iter().map(Into::into).collect::<Vec<slint::SharedString>>()),
                         })
                         .collect::<Vec<_>>(),
-                )),
+                ),
             })
             .collect();
-        let rows: Vec<ui::CsRow> = in_rows(&groups, 3).into_iter().map(|r| ui::CsRow { groups: ModelRc::new(VecModel::from(r)) }).collect();
-        w.ui.set_rows(ModelRc::new(VecModel::from(rows)));
+        let rows: Vec<ui::CsRow> = in_rows(&groups, 3).into_iter().map(|r| ui::CsRow { groups: tessera_core::rows::shared(r) }).collect();
+        w.rows.set(rows);
     }
 
     fn set_elements(&self, st: &State) {
@@ -117,7 +120,7 @@ impl Cheatsheet {
                 }
             })
             .collect();
-        w.ui.set_elements(ModelRc::new(VecModel::from(els)));
+        w.elements.set(els);
     }
 
     fn open(&mut self, st: &mut State, screen: Option<String>) {
@@ -147,9 +150,12 @@ impl Cheatsheet {
             let (t1, t2) = (to.clone(), to);
             ui.on_dismissed(move || t1(Box::new(Msg::Dismissed)));
             ui.on_closed(move || t2(Box::new(Msg::Closed)));
+            let (rows, elements) = (tessera_core::rows::Rows::new(), tessera_core::rows::Rows::new());
+            ui.set_rows(rows.model());
+            ui.set_elements(elements.model());
             ui.show().expect("show cheatsheet");
             let a11y = crate::a11y::A11y::new(&surface, st.tx.clone());
-            self.win = Some(Win { output: output.clone(), surface, ui, a11y, shown: false, glass_sent: String::new(), settled: false });
+            self.win = Some(Win { output: output.clone(), surface, ui, a11y, shown: false, glass_sent: String::new(), settled: false, rows, elements });
             self.set_groups(st);
             self.set_elements(st);
         }
@@ -273,7 +279,7 @@ impl Part for Cheatsheet {
         let (bx, by, bw, bh) = (ui.get_body_x(), ui.get_body_y(), ui.get_body_w(), ui.get_body_h());
         let (sw, sh) = (bw * s, bh * s);
         let shape = theme::glass_shape(&st.shell.look, bx + (bw - sw) / 2.0, by + (bh - sh) / 2.0, sw, sh, 28.0 * s, p, 1.0);
-        let key = format!("{shape:?}");
+        let key = tessera_core::theme::glass_key(&shape);
         if key != w.glass_sent {
             st.shell.glass.set(&w.output, NS, if p > 0.002 { std::slice::from_ref(&shape) } else { &[] });
             w.glass_sent = key;

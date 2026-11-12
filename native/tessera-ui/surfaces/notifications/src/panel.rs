@@ -11,9 +11,15 @@
 //! while the panel is open, and the calendar's days on request
 //! ({"do":"calendar",…}).
 //!
-//! Not like the QML yet: the calendar's editor (its + button, double-clicking
-//! a date, clicking an item, and dragging events or to-dos to another day),
-//! a swipe's fling speed (only how far it went counts), Esc while a field has
+//! The calendar's editor (+, double-clicking a date, clicking an item,
+//! dragging one to another date, Delete with Undo) is the shared CalendarTab
+//! (core/ui/calendar.slint): this checks what it saves (CalendarWidget's
+//! editor.save: a title, times it can read), asks "this or all?" for a
+//! repeating event, and sends the writes as acts (cal.save, cal.remove,
+//! cal.restore, cal.move); a write the host can't do comes back as
+//! {"do":"calendarError","text":…} and reopens the editor with it.
+//!
+//! Not like the QML yet: a swipe's fling speed (only how far it went counts), Esc while a field has
 //! the keys (it leaves the field first), and Material's Phosphor icons where
 //! the QML draws Material Symbols.
 
@@ -25,12 +31,13 @@ use crate::theme;
 use crate::ui;
 use crate::wayland::{Spec, State, Surface};
 use serde_json::{json, Value};
-use slint::{ComponentHandle, Model, ModelRc, VecModel};
+use slint::{ComponentHandle, Model};
 use smithay_client_toolkit::shell::wlr_layer::{Anchor, KeyboardInteractivity, Layer};
 use smithay_client_toolkit::shell::WaylandSurface;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::time::Duration;
+use tessera_core::rows::Rows;
 
 const NS: &str = "tessera:notification-center";
 
@@ -59,6 +66,10 @@ pub enum C {
     TodoRemove(String),
     TodoRestore,
     TodoRename(String, String),
+    CalSave(ui::NcDraft, i32),
+    CalRemove(String, i32),
+    CalMove(String, String, i32),
+    CalRestore,
     FocusMode(i32),
     Act(String),
     Card(i32, [f32; 4]),
@@ -69,9 +80,16 @@ struct Win {
     output: String,
     surface: Rc<Surface>,
     ui: ui::Center,
-    /// the list, updated in place (a card keeps its hover, its composer's
-    /// focus and its swipe while the widgets tick)
-    rows: Rc<VecModel<ui::NcRow>>,
+    /// the list, updated in place and matched by card (a card keeps its
+    /// hover, its composer's focus and its swipe while the widgets tick,
+    /// and while others arrive or leave)
+    rows: Rows<ui::NcRow>,
+    /// the widgets' lists, in place too (a to-do being renamed keeps its field)
+    days: Rows<ui::NcDay>,
+    day_items: Rows<ui::NcItem>,
+    todos: Rows<ui::NcTodo>,
+    laps: Rows<ui::NcLap>,
+    targets: Rows<ui::NcTarget>,
     a11y: Option<crate::a11y::A11y>,
     glass_sent: String,
 }
@@ -94,6 +112,10 @@ pub struct Panel {
     /// each row's card as laid out (y in the list, height, width, edges)
     cards: HashMap<i32, [f32; 4]>,
     minute: slint::Timer,
+    /// small lists inside rows, the same model while the same (stable.rs)
+    alert_buttons: super::stable::Stable<ui::NoteButton>,
+    day_colors: super::stable::Stable<slint::Color>,
+    day_lines: super::stable::Stable<ui::NcItem>,
 }
 
 impl Default for Panel {
@@ -115,11 +137,18 @@ impl Default for Panel {
             calendar: Value::Null,
             cards: HashMap::new(),
             minute: slint::Timer::default(),
+            alert_buttons: Default::default(),
+            day_colors: Default::default(),
+            day_lines: Default::default(),
         }
     }
 }
 
 impl Panel {
+    pub(super) fn output(&self) -> Option<String> {
+        self.win.as_ref().map(|w| w.output.clone())
+    }
+
     pub(super) fn win_a11y(&mut self) -> Option<&mut crate::a11y::A11y> {
         self.win.as_mut().and_then(|w| w.a11y.as_mut())
     }
@@ -194,6 +223,16 @@ impl Notifications {
         }
     }
 
+    /// The Notification Center's window, made ahead and left unmapped (Part::prewarm)
+    pub(crate) fn nc_prewarm(&mut self, st: &mut State) {
+        let Some(out) = st.likely_output() else { return };
+        if self.nc.win.is_none() && self.nc_window(st, &out) {
+            if let Some(w) = &self.nc.win {
+                w.surface.hide();
+            }
+        }
+    }
+
     fn nc_window(&mut self, st: &mut State, output: &str) -> bool {
         if self.nc.win.as_ref().is_some_and(|w| w.output != output) {
             let w = self.nc.win.take().unwrap();
@@ -247,15 +286,24 @@ impl Notifications {
         on!(on_todo_remove, |k| C::TodoRemove(k.to_string()));
         on!(on_todo_restore, | | C::TodoRestore);
         on!(on_todo_rename, |k, t| C::TodoRename(k.to_string(), t.to_string()));
+        on!(on_cal_save, |d, every| C::CalSave(d, every));
+        on!(on_cal_remove, |k, every| C::CalRemove(k.to_string(), every));
+        on!(on_cal_move, |k, d, every| C::CalMove(k.to_string(), d.to_string(), every));
+        on!(on_cal_restore, | | C::CalRestore);
         on!(on_focus_mode_set, |i| C::FocusMode(i));
         on!(on_act, |a| C::Act(a.to_string()));
         on!(on_card, |i, y, h, w, e| C::Card(i, [y, h, w, e]));
         ui.set_outline(crate::surfaces::shapes::outline("cookie9").into());
-        let rows = Rc::new(VecModel::<ui::NcRow>::default());
-        ui.set_rows(ModelRc::from(rows.clone()));
+        let (rows, days, day_items, todos, laps, targets) = (Rows::new(), Rows::new(), Rows::new(), Rows::new(), Rows::new(), Rows::new());
+        ui.set_rows(rows.model());
+        ui.set_days(days.model());
+        ui.set_day_items(day_items.model());
+        ui.set_todos(todos.model());
+        ui.set_laps(laps.model());
+        ui.set_cal_targets(targets.model());
         ui.show().expect("show notification center");
         let a11y = crate::a11y::A11y::new(&surface, st.tx.clone());
-        self.nc.win = Some(Win { output: output.into(), surface, ui, rows, a11y, glass_sent: String::new() });
+        self.nc.win = Some(Win { output: output.into(), surface, ui, rows, days, day_items, todos, laps, targets, a11y, glass_sent: String::new() });
         true
     }
 
@@ -274,6 +322,9 @@ impl Notifications {
             self.nc.shown = (t.0, t.1);
             self.nc.groups_open.clear();
             self.nc.cards.clear();
+            // (the QML widgets are made anew: month view, the Focus timer)
+            self.nc.week = false;
+            self.nc.focus_mode = 0;
             self.nc_ask_calendar();
         }
         let w = self.nc.win.as_ref().unwrap();
@@ -354,7 +405,7 @@ impl Notifications {
                 has_icon: pic.is_some(),
                 icon: pic.unwrap_or_default(),
                 picture: !a.picture.is_empty(),
-                buttons: ModelRc::new(VecModel::from(if a.act.is_empty() { vec![] } else { vec![ui::NoteButton { key: "act".into(), text: a.act.clone().into() }] })),
+                buttons: self.nc.alert_buttons.get(&format!("a{}", a.hid), if a.act.is_empty() { vec![] } else { vec![ui::NoteButton { key: "act".into(), text: a.act.clone().into() }] }),
                 progress: -1.0,
                 alert: true,
                 glyph: a.glyph.clone().into(),
@@ -385,6 +436,7 @@ impl Notifications {
                 (_, false) => if same { 6.0 } else { 8.0 },
             };
             let app = self.nc.groups[e.group].app.clone();
+            let gkey = self.nc.groups[e.group].key();
             let b = self.nc_banner(st, e);
             rows.push(ui::NcRow {
                 kind: match e.kind {
@@ -393,6 +445,7 @@ impl Notifications {
                     Kind::Header => 2,
                 },
                 group: app.into(),
+                gkey: gkey.into(),
                 count: e.count as i32,
                 open: e.open,
                 edges: e.edges as i32,
@@ -419,18 +472,23 @@ impl Notifications {
                 let lines: Vec<ui::NcItem> = m["lines"].as_array().map(|a| a.iter().map(item).collect()).unwrap_or_default();
                 ui::NcDay {
                     label: d.2.to_string().into(),
-                    key: k.into(),
+                    key: k.as_str().into(),
                     today: d == today,
                     selected: d == p.selected,
                     in_month: p.week || d.1 == p.shown.1,
-                    colors: ModelRc::new(VecModel::from(m["colors"].as_array().map(|a| a.iter().take(3).map(|c| color(c.as_str().unwrap_or(""))).collect()).unwrap_or_else(Vec::<slint::Color>::new))),
+                    colors: p.day_colors.get(&k, m["colors"].as_array().map(|a| a.iter().take(3).map(|c| color(c.as_str().unwrap_or(""))).collect()).unwrap_or_else(Vec::<slint::Color>::new)),
                     todos: m["todos"].as_i64().unwrap_or(0) > 0,
                     name: center::WEEKDAYS[center::weekday(d) as usize][..3].to_string().into(),
-                    lines: ModelRc::new(VecModel::from(lines)),
+                    lines: p.day_lines.get(&k, lines),
                     more: m["more"].as_i64().unwrap_or(0) as i32,
+                    long: center::short_date(d).into(),
                 }
             })
             .collect();
+        let targets: Vec<ui::NcTarget> = p.calendar["targets"]
+            .as_array()
+            .map(|a| a.iter().map(|t| ui::NcTarget { value: s(&t["value"]).into(), label: s(&t["label"]).into() }).collect())
+            .unwrap_or_else(|| vec![ui::NcTarget { value: "".into(), label: "This computer".into() }]);
         let day_items: Vec<ui::NcItem> = p.calendar["items"].as_array().map(|a| a.iter().take(8).map(item).collect()).unwrap_or_default();
         let todos: Vec<ui::NcTodo> = w["todos"]
             .as_array()
@@ -445,13 +503,8 @@ impl Notifications {
         let completed = w["timer"]["completed"].as_i64().unwrap_or(0);
         let win = self.nc.win.as_ref().unwrap();
         let ui = &win.ui;
-        if win.rows.row_count() == rows.len() {
-            for (i, r) in rows.into_iter().enumerate() {
-                win.rows.set_row_data(i, r);
-            }
-        } else {
-            win.rows.set_vec(rows);
-        }
+        // (by card: a header by its group, a card by its note or alert)
+        win.rows.set_keyed(rows, |r| format!("{}:{}:{}", r.kind, r.gkey, if r.kind == 2 { 0 } else { r.b.id }));
         ui.set_anything(anything);
         ui.set_bare(bare(&st.shell.cfg, material, st.shell.look.transparency));
         ui.set_glass_plugin(st.shell.plugin);
@@ -461,11 +514,19 @@ impl Notifications {
         ui.set_tab(p.tab);
         ui.set_cal_title(center::title(p.shown, if p.week { Some(&days) } else { None }).into());
         ui.set_cal_week(p.week);
-        ui.set_days(ModelRc::new(VecModel::from(cal_days)));
+        win.days.set(cal_days);
         ui.set_day_title(center::day_title(p.selected, today).into());
-        ui.set_day_items(ModelRc::new(VecModel::from(day_items)));
+        win.day_items.set(day_items);
         ui.set_every_day(s(&p.calendar["everyDay"]).into());
-        ui.set_todos(ModelRc::new(VecModel::from(todos)));
+        ui.set_day_key(center::key(p.selected).into());
+        ui.set_day_short(center::short_date(p.selected).into());
+        win.targets.set(targets);
+        ui.set_cal_target(s(&p.calendar["target"]).into());
+        ui.set_cal_target_label(p.calendar["targetLabel"].as_str().unwrap_or("This computer").into());
+        ui.set_cal_default_alert(p.calendar["defaultAlert"].as_i64().unwrap_or(10) as i32);
+        ui.set_cal_h24(h24);
+        ui.set_cal_undo(s(&p.calendar["undo"]).into());
+        win.todos.set_keyed(todos, |t| t.key.clone());
         ui.set_todo_undo(s(&w["undo"]).into());
         ui.set_focus_mode(p.focus_mode);
         ui.set_remaining(s(&w["timer"]["remaining"]).into());
@@ -476,7 +537,7 @@ impl Notifications {
         ui.set_ring_progress(progress.into());
         ui.set_sw(s(&w["sw"]["elapsed"]).into());
         ui.set_sw_running(w["sw"]["running"].as_bool().unwrap_or(false));
-        ui.set_laps(ModelRc::new(VecModel::from(laps)));
+        win.laps.set(laps);
         // (an accent that doesn't read on white: near-black, as macOS)
         let accent = ui.global::<ui::Theme>().get_accent();
         ui.set_accent_ink(if theme::contrast_ratio(accent, slint::Color::from_rgb_u8(255, 255, 255)) >= 3.0 { accent } else { slint::Color::from_rgb_u8(0x1d, 0x1d, 0x1f) });
@@ -494,9 +555,25 @@ impl Notifications {
                 self.nc.widgets = v.clone();
             }
             "calendar" => self.nc.calendar = v.clone(),
+            // (a write the host couldn't do: the editor again, saying why)
+            "calendarError" => {
+                if let Some(w) = &self.nc.win {
+                    w.ui.invoke_cal_fail(s(&v["text"]).into());
+                }
+                return;
+            }
             _ => return,
         }
         self.nc_refresh(st);
+    }
+
+    /// "Sent" is over: Reply shows again; replies to gone notes forgotten
+    pub(super) fn nc_sent_done(&mut self, id: u32) {
+        if self.nc.replies.get(&id).is_some_and(|r| !r.replying) {
+            self.nc.replies.remove(&id);
+        }
+        let store = &self.store;
+        self.nc.replies.retain(|k, _| store.get(*k).is_some());
     }
 
     pub(super) fn nc_message(&mut self, st: &mut State, c: C) {
@@ -520,15 +597,14 @@ impl Notifications {
                 None if i >= 0 => self.dismiss(st, i as u32, super::notify::DISMISSED),
                 None => {}
             },
-            C::Toggle(g) => {
-                let key = self.nc.groups.iter().find(|x| x.app == g).map(|x| x.key()).unwrap_or(g);
+            C::Toggle(key) => {
                 if !self.nc.groups_open.remove(&key) {
                     self.nc.groups_open.insert(key);
                 }
                 self.nc_refresh(st);
             }
             C::ClearGroup(g) => {
-                let Some(group) = self.nc.groups.iter().find(|x| x.app == g).cloned() else { return };
+                let Some(group) = self.nc.groups.iter().find(|x| x.key() == g).cloned() else { return };
                 self.nc.groups_open.remove(&group.key());
                 if group.island {
                     nc("island.clear", json!({}));
@@ -551,16 +627,28 @@ impl Notifications {
             C::ReplyCancel(i) => {
                 self.nc.replies.remove(&(i.max(0) as u32));
                 self.nc_refresh(st);
+                // (the panel's keys again: Escape closes it)
+                if let Some(w) = &self.nc.win {
+                    w.ui.invoke_take_keys();
+                }
             }
             C::ReplySend(i, t) if i >= 0 => {
                 let id = i as u32;
                 let err = self.reply(st, id, &t);
+                let ok = err.is_empty();
                 if let Some(r) = self.nc.replies.get_mut(&id) {
-                    r.replying = !err.is_empty();
-                    r.sent = err.is_empty();
+                    r.replying = !ok;
+                    r.sent = ok;
                     r.error = err;
                 }
                 self.nc_refresh(st);
+                if ok {
+                    // ("Sent" for 2.5 s, then Reply again: NotificationReply)
+                    self.send_later(st, 2500, super::M::SentDone(id));
+                    if let Some(w) = &self.nc.win {
+                        w.ui.invoke_take_keys();
+                    }
+                }
             }
             C::Draft(i, t) if i >= 0 => {
                 if t.is_empty() {
@@ -612,11 +700,45 @@ impl Notifications {
                     self.nc_refresh(st);
                 }
             }
-            C::TodoAdd(t) => nc("todo.add", json!({"text": t})),
+            // (TodoWidget: blanks aren't added)
+            C::TodoAdd(t) if t.trim().is_empty() => {}
+            C::TodoAdd(t) => nc("todo.add", json!({"text": t.trim()})),
             C::TodoToggle(k) => nc("todo.toggle", json!({"key": k})),
             C::TodoRemove(k) => nc("todo.remove", json!({"key": k})),
             C::TodoRestore => nc("todo.restore", json!({})),
             C::TodoRename(k, t) => nc("todo.rename", json!({"key": k, "text": t})),
+            C::CalSave(d, every) => self.nc_cal_save(st, d, every),
+            C::CalRemove(key, every) => {
+                if self.nc_recurring(&key) && every < 0 {
+                    if let Some(w) = &self.nc.win {
+                        w.ui.invoke_cal_ask(2, "".into());
+                    }
+                    return;
+                }
+                nc("cal.remove", json!({"key": key, "every": every == 1}));
+                if let Some(w) = &self.nc.win {
+                    w.ui.invoke_cal_close();
+                }
+            }
+            C::CalMove(key, day, every) => {
+                let Some(to) = center::parse_key(&day) else { return };
+                if self.nc_recurring(&key) && every < 0 {
+                    // (this one, or every one? asked in its editor)
+                    if let (Some(w), Some(it)) = (&self.nc.win, self.nc_item(&key)) {
+                        w.ui.invoke_cal_edit(item(&it));
+                        w.ui.invoke_cal_ask(3, day.as_str().into());
+                    }
+                    return;
+                }
+                nc("cal.move", json!({"key": key, "day": day, "every": every == 1}));
+                if let Some(w) = &self.nc.win {
+                    w.ui.invoke_cal_close();
+                }
+                self.nc.selected = to;
+                self.nc_ask_calendar();
+                self.nc_refresh(st);
+            }
+            C::CalRestore => nc("cal.restore", json!({})),
             C::FocusMode(i) => {
                 self.nc.focus_mode = i;
                 self.nc_fine();
@@ -629,6 +751,61 @@ impl Notifications {
             C::Minute => self.nc_refresh(st),
             _ => {}
         }
+    }
+
+    /// An item of the chosen day, as the host sent it
+    fn nc_item(&self, key: &str) -> Option<Value> {
+        self.nc.calendar["items"].as_array()?.iter().find(|i| i["key"].as_str() == Some(key)).cloned()
+    }
+
+    fn nc_recurring(&self, key: &str) -> bool {
+        self.nc_item(key).is_some_and(|i| i["recurring"].as_bool().unwrap_or(false))
+    }
+
+    /// The editor's Save (CalendarWidget editor.save): a title, times it can
+    /// read; a repeating event asks "this or all?" first
+    fn nc_cal_save(&mut self, st: &mut State, d: ui::NcDraft, every: i32) {
+        let Some(w) = &self.nc.win else { return };
+        let fail = |t: &str| w.ui.set_cal_error(t.into());
+        let name = d.title.trim().to_string();
+        if name.is_empty() {
+            return fail("Give it a title.");
+        }
+        let Some(day) = center::parse_key(&d.day) else { return };
+        let (start, end) = if d.todo {
+            let blank = d.start.trim().is_empty();
+            let t = if blank { -1 } else { center::minutes(&d.start) };
+            if !blank && t < 0 {
+                return fail("Use a time like 9:30 or 5pm, or leave it empty.");
+            }
+            (t, -1)
+        } else if d.all_day {
+            (0, 0)
+        } else {
+            let (a, b) = (center::minutes(&d.start), center::minutes(&d.end));
+            if a < 0 || b < 0 {
+                return fail("Use times like 9:30 or 5pm.");
+            }
+            (a, b.max(a))
+        };
+        if !d.todo && !d.key.is_empty() && self.nc_recurring(&d.key) && every < 0 {
+            w.ui.invoke_cal_ask(1, "".into());
+            return;
+        }
+        w.ui.set_cal_error("".into());
+        nc(
+            "cal.save",
+            json!({"key": d.key.as_str(), "todo": d.todo, "day": d.day.as_str(), "title": name, "allDay": d.all_day, "start": start, "end": end,
+                   "alert": d.alert, "notes": d.notes.as_str(), "location": d.location.as_str(), "target": d.target.as_str(), "every": every == 1}),
+        );
+        w.ui.invoke_cal_close();
+        // (the day it's on is the chosen one)
+        self.nc.selected = day;
+        if !self.nc.week {
+            self.nc.shown = (day.0, day.1);
+        }
+        self.nc_ask_calendar();
+        self.nc_refresh(st);
     }
 
     /// The glass under it (Glass): the panel's, or (no panel) each card's
@@ -684,7 +861,7 @@ impl Notifications {
                 }
             }
         }
-        let key = format!("{shapes:?}");
+        let key = tessera_core::theme::glass_key(&shapes);
         if key != w.glass_sent {
             st.shell.glass.set(&w.output, NS, &shapes);
             w.glass_sent = key;
@@ -729,13 +906,27 @@ impl Notifications {
 
 /// A calendar line from the shell: an event or a to-do
 fn item(v: &Value) -> ui::NcItem {
+    let b = |k: &str| v[k].as_bool().unwrap_or(false);
     ui::NcItem {
         event: v["kind"].as_str() != Some("todo"),
         title: s(&v["title"]).into(),
         sub: s(&v["sub"]).into(),
         color: color(v["color"].as_str().unwrap_or("#0a84ff")),
-        done: v["done"].as_bool().unwrap_or(false),
+        done: b("done"),
         key: s(&v["key"]).into(),
+        day: s(&v["day"]).into(),
+        all_day: b("allDay"),
+        start: s(&v["start"]).into(),
+        end: s(&v["end"]).into(),
+        location: s(&v["location"]).into(),
+        notes: s(&v["notes"]).into(),
+        alert: v["alert"].as_i64().unwrap_or(10) as i32,
+        editable: b("editable"),
+        movable: b("movable"),
+        recurring: b("recurring"),
+        account: b("account"),
+        info: s(&v["info"]).into(),
+        cal_line: s(&v["calLine"]).into(),
     }
 }
 

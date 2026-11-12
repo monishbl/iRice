@@ -23,12 +23,14 @@ use crate::wayland::{Spec, State, Surface};
 use crate::Msg;
 use serde_json::{json, Value};
 use slint::platform::Key;
-use slint::{ComponentHandle, ModelRc, SharedPixelBuffer, SharedString, VecModel};
+use slint::{ComponentHandle, SharedPixelBuffer, SharedString};
+use tessera_core::rows::Rows;
 use smithay_client_toolkit::reexports::calloop::channel::Sender;
 use smithay_client_toolkit::shell::wlr_layer::{Anchor, KeyboardInteractivity, Layer};
 use smithay_client_toolkit::shell::WaylandSurface;
 use std::any::Any;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::process::{Child, Stdio};
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
@@ -128,7 +130,10 @@ enum Q {
     Probed(String, String, u64, String),
     Picture(String, Option<(Px, f32, f32)>),
     Text(String, String),
-    Folder(String, Vec<(String, Option<Px>)>),
+    /// a folder's entries (name, its icon's theme name), at once
+    Folder(String, Vec<(String, &'static str)>),
+    /// then their icons, once each
+    FolderIcons(String, Vec<(&'static str, Option<Px>)>),
     Icon(String, Option<Px>),
     Media(String, f32),
     Frame,
@@ -145,6 +150,8 @@ enum Q {
     LtCopyAll,
     LtRetry,
     SaidGone,
+    /// make the window ahead, so the first Space draws at once
+    Prepare,
 }
 
 fn send(tx: &Sender<Msg>, q: Q) {
@@ -236,6 +243,8 @@ struct Win {
     a11y: Option<crate::a11y::A11y>,
     glass_sent: String,
     input_on: Option<bool>,
+    /// a folder's entries, handed to the window once (changed in place)
+    rows: Rows<ui::QlRow>,
 }
 
 pub struct QuickLook {
@@ -258,7 +267,11 @@ pub struct QuickLook {
     tick: slint::Timer,
     glow: slint::Timer,
     said: slint::Timer,
+    prep: slint::Timer,
     tx: Option<Sender<Msg>>,
+    /// the folder shown: its entries and their icons
+    folder: Vec<(String, &'static str)>,
+    folder_icons: HashMap<&'static str, slint::Image>,
 }
 
 impl Default for QuickLook {
@@ -283,7 +296,10 @@ impl Default for QuickLook {
             tick: slint::Timer::default(),
             glow: slint::Timer::default(),
             said: slint::Timer::default(),
+            prep: slint::Timer::default(),
             tx: None,
+            folder: Vec::new(),
+            folder_icons: HashMap::new(),
         }
     }
 }
@@ -382,19 +398,24 @@ impl QuickLook {
                 push_live(&live.borrow(), &ocr.borrow(), &ui);
             });
         }
-        let m = st.shell.look.material;
-        ui.set_ic_text(ic("text-aa", m));
-        ui.set_ic_copy(ic("copy", m));
-        ui.set_ic_download(ic("download-simple", m));
-        ui.set_ic_play(ic("play", m));
-        ui.set_ic_pause(ic("pause", m));
+        icons(&ui, st.shell.look.material);
         ui.set_no_icon(ui::StIc::default());
         ui.set_glyph_x(crate::icons::glyph("x").into());
         ui.set_glyph_share(crate::icons::glyph("share-network").into());
+        ui.set_press_shape(crate::surfaces::shapes::outline("cookie9").into());
+        let rows = Rows::new();
+        ui.set_rows(rows.model());
         ui.show().expect("show quick look");
         let a11y = crate::a11y::A11y::new(&surface, st.tx.clone());
-        self.win = Some(Win { output: output.into(), surface, ui, a11y, glass_sent: String::new(), input_on: None });
+        self.win = Some(Win { output: output.into(), surface, ui, a11y, glass_sent: String::new(), input_on: None, rows });
         true
+    }
+
+    /// The folder's rows: names at once, each icon once it's drawn
+    fn folder_rows(&self) {
+        if let Some(w) = &self.win {
+            w.rows.set(self.folder.iter().map(|(n, i)| ui::QlRow { icon: self.folder_icons.get(i).cloned().unwrap_or_default(), name: n.as_str().into() }).collect());
+        }
     }
 
     fn open(&mut self, st: &mut State, path: &str, query: &str, screen: Option<String>) {
@@ -414,6 +435,8 @@ impl QuickLook {
         self.size = 0;
         self.modified.clear();
         self.count = 0;
+        self.folder.clear();
+        self.folder_icons.clear();
         self.picture_ready = false;
         self.kind = kind_of("", &self.ext);
         {
@@ -425,7 +448,7 @@ impl QuickLook {
         w.ui.set_file_name(name.into());
         w.ui.set_picture(slint::Image::default());
         w.ui.set_text_body("".into());
-        w.ui.set_rows(ModelRc::new(VecModel::from(Vec::<ui::QlRow>::new())));
+        w.rows.set(Vec::new());
         w.ui.set_file_icon(slint::Image::default());
         w.ui.set_playing(false);
         w.ui.set_position(0.0);
@@ -512,11 +535,18 @@ impl QuickLook {
             }
             "folder" => {
                 std::thread::spawn(move || {
-                    let rows = entries(&p).into_iter().map(|(n, dir)| {
-                        let icon = icon_px(icon_name(&n, dir), 40);
-                        (n, icon)
+                    // (the names first, as the QML's list shows them; then
+                    // each kind of icon drawn once)
+                    let rows: Vec<(String, &'static str)> = entries(&p).into_iter().map(|(n, dir)| {
+                        let i = icon_name(&n, dir);
+                        (n, i)
                     }).collect();
-                    send(&tx, Q::Folder(p, rows));
+                    let mut names: Vec<&'static str> = rows.iter().map(|r| r.1).collect();
+                    names.sort_unstable();
+                    names.dedup();
+                    send(&tx, Q::Folder(p.clone(), rows));
+                    let icons = names.into_iter().map(|n| (n, icon_px(n, 40))).collect();
+                    send(&tx, Q::FolderIcons(p, icons));
                 });
             }
             "video" | "audio" => {
@@ -746,9 +776,23 @@ fn push_live(live: &Live, ocr: &Ocr, ui: &ui::QuickLook) {
     ui.set_lt(ltui::bar(live, ocr, ui.global::<ui::Theme>().get_material(), ui.get_card_w() - 24.0));
 }
 
+/// The look's icons (again when the look changes: the window is kept)
+fn icons(ui: &ui::QuickLook, m: bool) {
+    ui.set_ic_text(ic("text-aa", m));
+    ui.set_ic_copy(ic("copy", m));
+    ui.set_ic_download(ic("download-simple", m));
+    ui.set_ic_play(ic("play", m));
+    ui.set_ic_pause(ic("pause", m));
+}
+
 impl Part for QuickLook {
     fn name(&self) -> &'static str {
         NAME
+    }
+
+    fn start(&mut self, st: &mut State) {
+        let tx = st.tx.clone();
+        self.prep.start(slint::TimerMode::SingleShot, Duration::from_millis(1500), move || send(&tx, Q::Prepare));
     }
 
     fn command(&mut self, st: &mut State, cmd: &Command) {
@@ -772,11 +816,7 @@ impl Part for QuickLook {
             if let Some(w) = &mut self.win {
                 st.shell.apply_theme(&w.ui.global::<ui::Theme>());
                 w.glass_sent.clear();
-                let m = st.shell.look.material;
-                w.ui.set_ic_text(ic("text-aa", m));
-                w.ui.set_ic_copy(ic("copy", m));
-                w.ui.set_ic_play(ic("play", m));
-                w.ui.set_ic_pause(ic("pause", m));
+                icons(&w.ui, st.shell.look.material);
             }
         }
     }
@@ -826,9 +866,6 @@ impl Part for QuickLook {
                 self.size = size;
                 self.modified = modified;
                 self.kind = kind_of(&self.mime, &self.ext);
-                if self.kind == "folder" {
-                    self.count = entries(&self.path).len();
-                }
                 self.push();
                 self.load(st);
             }
@@ -851,11 +888,28 @@ impl Part for QuickLook {
                 }
             }
             Q::Folder(p, rows) => {
-                if let (true, Some(w)) = (p == self.path, &self.win) {
+                if p == self.path && self.win.is_some() {
                     self.count = rows.len();
-                    let v: Vec<ui::QlRow> = rows.iter().map(|(n, i)| ui::QlRow { icon: i.as_ref().map(image_of).unwrap_or_default(), name: n.as_str().into() }).collect();
-                    w.ui.set_rows(ModelRc::new(VecModel::from(v)));
+                    self.folder = rows;
+                    self.folder_rows();
                     self.push();
+                }
+            }
+            Q::FolderIcons(p, icons) => {
+                if p == self.path && self.win.is_some() {
+                    for (n, px) in icons {
+                        if let Some(px) = px {
+                            self.folder_icons.insert(n, image_of(&px));
+                        }
+                    }
+                    self.folder_rows();
+                }
+            }
+            Q::Prepare => {
+                if self.win.is_none() {
+                    if let Some(o) = st.outputs_now().first().map(|o| o.1.clone()) {
+                        self.window(st, &o);
+                    }
                 }
             }
             Q::Icon(p, i) => {
@@ -992,7 +1046,7 @@ impl Part for QuickLook {
         let (cw, ch) = (ui.get_card_w(), ui.get_card_h());
         let (x, y) = (ui.get_card_x() + cw * (1.0 - s) / 2.0, ui.get_card_y() + ch * (1.0 - s) / 2.0);
         let shapes = if p > 0.002 { vec![theme::glass_shape(&st.shell.look, x, y, cw * s, ch * s, 20.0 * s, p, 1.0)] } else { Vec::new() };
-        let key = format!("{shapes:?}");
+        let key = tessera_core::theme::glass_key(&shapes);
         if key != w.glass_sent {
             st.shell.glass.set(&w.output, NS, &shapes);
             w.glass_sent = key;

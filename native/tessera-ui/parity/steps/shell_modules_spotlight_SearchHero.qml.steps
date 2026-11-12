@@ -1,0 +1,38 @@
+look material
+# NOTE: click on layer surfaces may not register in the harness
+# NOTE: earlier result: Material tertiary/primary container palette differed (Rust peach vs QML light yellow); fixed? report if still different.
+ipc panels open spotlight IRICE-TEST
+wait 1
+key 9*9
+wait 1
+shot sh-99
+note Tertiary hero with "81", caption "Enter copies it", copy icon; selected hero is fully round (corners 50 percent).
+rec sh-down 0.6 key -k Down
+note Hero corners go back to 28 in about 0.22 s (about 6 frames at 30 fps); compare with QML within 1 frame.
+wait 1
+shot sh-down-end
+note Hero not selected: corners 28, not round.
+rec sh-up 0.6 key -k Up
+note Hero round again when selected; same timing as QML.
+wait 1
+ptr move 960 540 sleep 100 glide 1272 328 300
+wait 1
+shot sh-go-hover
+note Go button hovered: 8 percent layer.
+rec sh-go-press 0.4 ptr move 1272 328 down
+note Press on the go button: corners to 16 with a slight swell.
+ptr move 1272 328 up
+wait 1
+shot sh-go-copied
+note Release copies 81 and closes Search.
+ipc panels open spotlight IRICE-TEST
+wait 1
+key foot
+wait 1
+shot sh-foot
+note Top Hit hero in primaryContainer, foot icon on a cookie12 shape, arrow-up-right icon; palette as QML.
+key -k Return
+wait 2
+shot sh-foot-launched
+note Return launched foot (a terminal window is visible) and Search closed.
+setup pkill -x foot || true

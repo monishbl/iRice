@@ -1,0 +1,7 @@
+# Settings window: Material 1040x700 at 440,205 (page column from x~772); Glass 860x620 at 530,230. Sidebar rows (Material, x=560): Appearance 335, Wallpaper 385, Desktop 435, Menu bar 485, Lock 535, Notifications 626, Focus 676, Windows 767, Displays 858.
+# Click coordinates inside pages are not known in advance: those steps are MANUAL unless a keyboard path exists. Check in each look.
+ipc panels settings mouse
+wait 2
+shot w1
+note W1 Tracking/Scroll speed sliders are 240 wide with 'Slow'/'Fast' words 2 px under the ends, as QML.
+# MANUAL: W2 drag the Tracking speed knob 30 px and back (read knob from w1): the value follows; restore the original

@@ -326,6 +326,7 @@ impl ScreenSvc {
         let msg = take!(Tick, msg, |t: Tick| self.tick(h, t.0));
         let msg = take!(StartRec, msg, |s: StartRec| self.launch(h, s.0, false, false));
         let msg = take!(DropNow, msg, |d: DropNow| self.drop_now(d.0));
+        let msg = take!(RecEscalate, msg, |e: RecEscalate| self.rec_escalate(h, e.0, e.1));
         let msg = take!(ReadDone, msg, |r: ReadDone| self.lt_finished(h, r.0, r.1, r.2));
         let msg = take!(TelHandler, msg, |t: TelHandler| self.tel_handler = t.0);
         let msg = take!(IndexNow, msg, |_| self.index_now(h));

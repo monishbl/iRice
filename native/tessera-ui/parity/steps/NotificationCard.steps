@@ -1,0 +1,9 @@
+# Notification Center: panel at the right under the bar (x≈1530..1912 Material, 1544..1912 Glass); read rows from the first shot
+look glass
+wait 2
+setup notify-send -a App -A yes=Yes -A no=No 'Choose' 'one of these'
+wait 0.5
+shot banner
+note hover a button of the banner (top-right, from shot) for 30 s: hover remains
+wait 30
+shot hover-30s

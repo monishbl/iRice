@@ -1,0 +1,12 @@
+# MaterialMenu: steps from parity/shell_modules_menubar_MaterialMenu.qml.md (batches 1-5). Screen IRICE-TEST 1920x1080 scale 1;
+# the island is centred at x 960 (closed y ~14, open ~392 wide); the bar is 30 px tall.
+# Each block runs in both looks: the file runs top to bottom, Material first, then Glass.
+
+look material
+ptr glide 18 15 300
+ptr click
+wait 0.6
+shot system-menu
+note Material: grouped rows (40 px), surface pills
+key -k Escape
+note the space menu (right-click a chip by hand) is plain 28 px rows, centred, scaling 0.94 to 1

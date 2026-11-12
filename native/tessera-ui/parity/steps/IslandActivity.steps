@@ -1,0 +1,41 @@
+# IslandActivity: steps from parity/shell_modules_menubar_IslandActivity.qml.md (batches 1-5). Screen IRICE-TEST 1920x1080 scale 1;
+# the island is centred at x 960 (closed y ~14, open ~392 wide); the bar is 30 px tall.
+# Each block runs in both looks: the file runs top to bottom, Material first, then Glass.
+
+look material
+ipc timer toggle
+ipc timer stopwatch
+wait 1
+ptr move 1500 600
+rec rows-in 1.5 ptr glide 960 14 300
+note rows fade and rise 8 px in, 45 ms apart (280 ms OutCubic each)
+shot rows
+note timer row: "Focus", "24:5x left", progress line, pause + skip (no reset); stopwatch row: lap + pause
+ptr glide 1150 90 300
+ptr click
+wait 2
+shot timer-paused
+note the timer row's icon is now play and its time stopped
+ipc timer reset
+ipc timer stopwatchReset
+ptr glide 960 700 300
+wait 1
+
+look glass
+ipc timer toggle
+ipc timer stopwatch
+wait 1
+ptr move 1500 600
+rec rows-in 1.5 ptr glide 960 14 300
+note rows fade and rise 8 px in, 45 ms apart (280 ms OutCubic each)
+shot rows
+note timer row: "Focus", "24:5x left", progress line, pause + skip (no reset); stopwatch row: lap + pause
+ptr glide 1150 90 300
+ptr click
+wait 2
+shot timer-paused
+note the timer row's icon is now play and its time stopped
+ipc timer reset
+ipc timer stopwatchReset
+ptr glide 960 700 300
+wait 1

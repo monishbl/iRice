@@ -246,6 +246,10 @@ impl Translation {
     pub fn look(&mut self, st: &mut State) {
         if let Some(w) = &mut self.win {
             st.shell.apply_theme(&w.ui.global::<ui::Theme>());
+            // (the window is kept: its icons follow the look)
+            let m = st.shell.look.material;
+            w.ui.set_ic_copy(ic("copy", m));
+            w.ui.set_ic_close(ic("x", m));
             w.glass_sent.clear();
         }
     }

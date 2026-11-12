@@ -36,8 +36,7 @@ use wayland::State;
 
 /// A line from the shell on stdin (RustUi.tell): `{"to": "<surface>", …}`
 /// reaches that part's `message` as the serde_json::Value
-fn shell_said(state: &mut State, line: &[u8]) {
-    let Ok(v) = serde_json::from_slice::<serde_json::Value>(line) else { return };
+fn shell_said(state: &mut State, v: serde_json::Value) {
     let Some(to) = v["to"].as_str().and_then(|t| surfaces::KNOWN.iter().find(|k| **k == t)) else { return };
     let mut v = Some(v);
     state.part(to, |p, st| p.message(st, Box::new(v.take().unwrap())));
@@ -46,12 +45,14 @@ fn shell_said(state: &mut State, line: &[u8]) {
 /// One line from the shell (stdin), or from the host standalone (Msg::Line):
 /// a command, the shell's state for the surfaces, or a message for one part
 fn shell_line(state: &mut State, l: &str) {
-    match shell::Command::parse(l) {
-        Some(c) => state.command(c),
-        None => match services::bridge::parse_line(l) {
+    // (read once: a command, the shell's state, or a part's message)
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(l.trim()) else { return };
+    match shell::Command::from_value(v) {
+        Ok(c) => state.command(c),
+        Err(v) => match services::bridge::from_value(v) {
             // (the shell's state for the menu bar: services::bridge)
-            Some(v) => handle(state, Msg::Data(v)),
-            None => shell_said(state, l.as_bytes()),
+            Ok(d) => handle(state, Msg::Data(d)),
+            Err(v) => shell_said(state, v),
         },
     }
 }
@@ -165,7 +166,11 @@ fn main() {
     let signals = Signals::new(&[Signal::SIGTERM, Signal::SIGINT, Signal::SIGUSR1]).expect("signalfd");
     lh
         .insert_source(signals, |ev, _, state: &mut State| match ev.signal() {
-            Signal::SIGUSR1 => state.parts.iter().for_each(|p| p.stats()),
+            Signal::SIGUSR1 => {
+                state.parts.iter().for_each(|p| p.stats());
+                let (reloads, stalls) = tessera_core::perf::counts();
+                eprintln!("{{\"reloads\":{reloads},\"stalls\":{stalls}}}");
+            }
             _ => state.exit = true,
         })
         .unwrap();
@@ -180,7 +185,7 @@ fn main() {
         .insert_source(rx, |ev, _, state: &mut State| {
             if let calloop::channel::Event::Msg(m) = ev {
                 match m {
-                    Msg::Line(l) => shell_line(state, &l),
+                    Msg::Line(l) => tessera_core::perf::time(|| format!("line {}", l.chars().take(60).collect::<String>()), || shell_line(state, &l)),
                     m => handle(state, m),
                 }
             }
@@ -239,13 +244,15 @@ fn main() {
     }
     let shell = shell::Shell::new(tx.clone(), glass, surfaces);
     let mut state = State::new(&globals, qh, egl, lh.clone(), tx.clone(), shell, parts, started);
+    // (this loop drains held-back readings: runloop::drain_deferred below)
+    state.shell.defer_data = true;
     watch_config(tx.clone());
     state.each_part(|p, st| {
         // (a slow start holds up the first frame: say which, and how long)
         let t = std::time::Instant::now();
         p.start(st);
         let ms = t.elapsed().as_millis();
-        if ms >= 200 {
+        if ms >= 25 {
             eprintln!("tessera-ui: slow start: {} {ms} ms", p.name());
         }
     });
@@ -256,11 +263,22 @@ fn main() {
         surfaces::announce(&state.shell.surfaces);
     }
 
+    // (the windows parts keep while closed, made ahead: Part::prewarm, one
+    // part per turn of the loop, from 2 s after the first frame)
+    let mut prewarm: Option<usize> = Some(0);
+    let mut first_frame_at: Option<Instant> = None;
     while !state.exit {
-        let timeout = if state.wants_frame_soon() {
+        if first_frame_at.is_none() && state.first_frame_logged {
+            first_frame_at = Some(Instant::now());
+        }
+        let prewarm_due = prewarm.is_some() && first_frame_at.is_some_and(|t| t.elapsed() >= Duration::from_secs(2));
+        let timeout = if state.wants_frame_soon() || !state.shell.deferred.is_empty() {
             Some(Duration::ZERO)
         } else if state.animating_unpaced() {
             Some(Duration::from_millis(16))
+        } else if prewarm.is_some() && first_frame_at.is_some() {
+            // (wake for the next prewarm even when nothing else happens)
+            Some(slint::platform::duration_until_next_timer_update().map_or(Duration::from_millis(100), |d| d.min(Duration::from_millis(100))))
         } else {
             slint::platform::duration_until_next_timer_update()
         };
@@ -268,9 +286,16 @@ fn main() {
             eprintln!("tessera-ui: event loop: {e}");
             break;
         }
-        slint::platform::update_timers_and_animations();
-        state.render_all();
-        state.each_part(|p, st| p.after_frame(st));
+        tessera_core::perf::time(|| "slint timers".into(), slint::platform::update_timers_and_animations);
+        tessera_core::perf::time(|| "render".into(), || state.render_all());
+        tessera_core::perf::time(|| "after_frame".into(), || state.each_part(|p, st| p.after_frame(st)));
+        // (readings held back while a window animated: a few each turn, ~4 ms)
+        tessera_core::runloop::drain_deferred(&mut state, Duration::from_millis(4));
+        // (only on a quiet turn: nothing animating, no frame waiting)
+        if prewarm_due && !state.wants_frame_soon() && !state.surfaces.iter().any(|s| s.window().has_active_animations()) {
+            let i = prewarm.unwrap();
+            prewarm = state.prewarm_part(i).then_some(i + 1);
+        }
     }
     state.each_part(|p, st| p.quit(st));
     eprintln!("tessera-ui: bye");

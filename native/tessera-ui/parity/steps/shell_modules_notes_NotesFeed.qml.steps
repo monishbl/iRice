@@ -1,0 +1,18 @@
+# NotesFeed: quick note footer and save. Folder is the sandbox's notes folder.
+ipc panels open quickNote IRICE-TEST
+wait 1
+shot footer
+note Footer shows the notes folder with the home directory written as "~" (e.g. "~/Notes"); same as QML.
+key hello from the test
+key -M ctrl -k Return -m ctrl
+wait 1
+shot saved
+note Ctrl+Enter saved: a new file in the notes folder and the dialog closed (no quick note visible).
+setup ls -t ~/Notes ~/Documents/Notes 2>/dev/null | head -3
+ipc panels open quickNote IRICE-TEST
+wait 1
+# NOTE: click on layer surfaces may not register in the harness; the folder line is at the bottom of the card, position from the shot
+ptr move 840 700 sleep 200 click
+wait 1
+shot folder-click
+note Clicking the folder line opens the folder in the file manager and closes the dialog (a file manager may not exist in the sandbox: then only the dialog closing can be checked).

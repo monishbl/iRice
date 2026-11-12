@@ -1,0 +1,21 @@
+# Settings window: Material 1040x700 at 440,205 (page column from x~772); Glass 860x620 at 530,230. Sidebar rows (Material, x=560): Appearance 335, Wallpaper 385, Desktop 435, Menu bar 485, Lock 535, Notifications 626, Focus 676, Windows 767, Displays 858.
+# Click coordinates inside pages are not known in advance: those steps are MANUAL unless a keyboard path exists. Check in each look.
+ipc panels settings accounts
+wait 2
+shot a1
+note A1 Google/iCloud/Microsoft rows, synced times, drive rows as QML; no 'Install secret-tool / keyring' prompt unless QML shows it.
+ipc panels settings calendar
+wait 2
+shot a2
+note A2 same calendar subscriptions and default alert as QML.
+ipc panels settings ai
+wait 2
+shot a4
+note A4 AI page: models, 'key set' marks, chat count as QML.
+ipc panels settings defaultapps
+wait 2
+shot a6
+note A6 Default Apps: same terminal/browser/editor choices as QML.
+# MANUAL: A3 switch one calendar subscription off then on: switch follows, calendars.json back to the original
+# MANUAL: A5 add throwaway model Test (Ollama, no key), save, Remove ('Test removed' toast), Undo brings it back, remove again and let it expire
+# MANUAL: never sign in/out, disconnect, install or aiDeleteAll

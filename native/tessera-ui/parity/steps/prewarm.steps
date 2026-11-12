@@ -1,0 +1,39 @@
+# Panels made ahead (latency.md step 5): nothing shows and nothing swallows
+# clicks before they're opened; their first open is as quick as the next.
+# Run right after the shell starts (a fresh desktop).
+look material
+wait 6
+shot after-start-nothing-new
+note after-start-nothing-new: only the desktop, menu bar, dock (no panel, no veil)
+# a click in the middle of the screen reaches the desktop: right-click the wallpaper
+ptr move 960 600 sleep 100 click
+wait 1
+shot desktop-left-click
+ptr move 960 600
+setup sleep 0.2
+key -k Escape
+note a full-screen panel made ahead must not take this click: no panel opens, a desktop hover/selection shows as in the QML
+# first opens (cold) and second (warm)
+rec cc-first 1.6 key -M alt -k c -m alt
+rec cc-first-close 1.4 key -M alt -k c -m alt
+rec cc-second 1.6 key -M alt -k c -m alt
+rec cc-second-close 1.4 key -M alt -k c -m alt
+rec spotlight-first 1.6 key -M alt -k space -m alt
+rec spotlight-first-close 1.4 key -k Escape
+rec spotlight-second 1.6 key -M alt -k space -m alt
+rec spotlight-second-close 1.4 key -k Escape
+rec nc-first 1.6 key -M alt -k n -m alt
+rec nc-first-close 1.4 ipc panels close
+rec nc-second 1.6 key -M alt -k n -m alt
+rec nc-second-close 1.4 ipc panels close
+rec overview-first 1.6 key -M alt -k Tab -m alt
+rec overview-first-close 1.4 key -k Escape
+rec overview-second 1.6 key -M alt -k Tab -m alt
+rec overview-second-close 1.4 key -k Escape
+rec mc-first 1.6 key -M alt -M shift -k Tab -m shift -m alt
+rec mc-first-close 1.4 key -k Escape
+rec mc-second 1.6 key -M alt -M shift -k Tab -m shift -m alt
+rec mc-second-close 1.4 key -k Escape
+rec session-first 1.6 key -M ctrl -M alt -k Delete -m alt -m ctrl
+rec session-first-close 1.4 key -k Escape
+note each *-first start ≤ its *-second start + 17 ms (Rust); with TESSERA_PERF the log has one `debug: prewarm <part>` line per part, none over 50 ms

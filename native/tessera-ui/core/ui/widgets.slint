@@ -221,7 +221,12 @@ export component TextButton inherits Rectangle {
     width: label.preferred-width + (Theme.material ? 40px : 32px);
     height: Theme.material ? 40px : 36px;
     border-radius: Theme.material ? (touch.pressed ? 12px : self.height / 2) : Theme.radius-control;
-    animate border-radius { duration: 200ms; easing: spring(0.3); }
+    // (PickerButton.qml: Material's corners on the fast spatial spring; a
+    // press swells it (Theme.motion.pressGrow: ~6%, at most 10 px) on the
+    // press spring, Glass presses in to 97%)
+    animate border-radius { duration: 222ms; easing: spring(0.4); }
+    transform-scale: touch.pressed ? (Theme.material ? (Theme.press-bounce ? 1 + min(0.06, 10px / max(1px, self.width)) : 1) : 0.97) : 1;
+    animate transform-scale { duration: Theme.material ? 290ms : 100ms; easing: Theme.material ? spring(0.57) : ease-out; }
     background: Theme.material ? (primary ? Theme.m3-primary : Theme.m3-secondary-container).mix(ink, touch.pressed ? 0.9 : touch.has-hover ? 0.92 : 1)
         : primary ? (touch.pressed ? Theme.accent.darker(0.2) : touch.has-hover ? Theme.accent.darker(0.1) : Theme.accent) : touch.pressed ? Theme.fill-pressed : touch.has-hover ? Theme.fill-hover : Theme.fill;
     animate background { duration: 150ms; }

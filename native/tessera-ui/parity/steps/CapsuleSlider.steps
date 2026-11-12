@@ -1,0 +1,53 @@
+# Right-clicks are press-and-hold here (the DSL's click is the left button).
+# Coordinates: IRICE-TEST 1920x1080, scale 1, the default Control Center layout
+# (setup below resets it). Material grid: x0 1512, y0 50, columns 94 apart
+# (86 wide), rows 80 apart (72 tall). Glass grid: x0 1560, y0 50, columns
+# and rows 82.5 apart (72.5). Default layout rows: 0 Wi-Fi 2x1 + Now Playing
+# 2x2; 1 Bluetooth, Night Light; 2 Focus 2x1, Stages, Dark Mode; 3 Display;
+# 4 Sound; 5 Screenshot, Record, Caffeine, Clipboard; 6 Mirroring 2x1.
+look glass
+setup python3 -I -c "import json,os;p=os.path.expanduser('~/.config/tessera/config.json');c=json.load(open(p));c.setdefault('controlCenter',{})['layout']=[];json.dump(c,open(p,'w'),indent=4)"
+wait 2
+ipc panels open controlCenter IRICE-TEST
+wait 1
+shot cc-open
+note Sound capsule: row 4, x 1560..1880, y 380..452
+setup wpctl set-volume @DEFAULT_AUDIO_SINK@ 0.5
+wait 1
+ptr move 1640 416 sleep 100 click
+wait 1
+setup wpctl get-volume @DEFAULT_AUDIO_SINK@
+note wpctl ~0.25; the white fill reaches 25% within one frame
+shot click-25
+rec drag-20-80 2 ptr move 1624 416 sleep 50 down sleep 50 glide 1816 416 600 sleep 50 up
+setup wpctl get-volume @DEFAULT_AUDIO_SINK@
+note wpctl ~0.80; in the recording the fill never moves back while the pointer moves right
+ptr move 1720 416 sleep 100 scroll 0 -15 sleep 100 scroll 0 -15 sleep 100 scroll 0 -15
+wait 1
+setup wpctl get-volume @DEFAULT_AUDIO_SINK@
+note +15% after three notches up
+ptr move 1720 416 sleep 50 down sleep 1100 up
+wait 1
+shot hold-page
+note level back to before the press; the Sound page popover opens beside the panel
+key -k Escape
+wait 1
+ptr move 1720 416 sleep 50 click
+key -k Tab
+key -k Right -k Right -k Right -k Right -k Right
+wait 1
+setup wpctl get-volume @DEFAULT_AUDIO_SINK@
+note the five Right presses add +25% (not +5%) — focus may need extra Tabs to reach Sound; shot to check the ring
+shot keys
+ptr move 1720 333 sleep 100 click
+wait 1
+shot display-click
+note Display fill jumps to ~50%
+setup sh -c 'while :; do pw-play --volume 0.05 /usr/share/sounds/freedesktop/stereo/complete.oga; done' >/dev/null 2>&1 &
+wait 2
+ptr move 1720 416 sleep 50 down sleep 1100 up
+wait 1
+shot sound-page
+note on the Sound page find the app's slider (Applications) and the Microphone slider in the shot; drag each 10%->90%: the drag holds to the end
+static sound-page 1182 50 352 600
+ipc panels close

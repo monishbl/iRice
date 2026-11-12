@@ -1,0 +1,35 @@
+# Live Text bar. Check in each look. Needs tesseract in the sandbox (else only the missing state can be checked). Bottom bar y: Glass 953, Material 947; bar starts x Glass 280, Material 301.
+setup (magick -size 1600x900 xc:white -fill black -pointsize 48 -annotate +100+200 "Invoice total 42.00" -annotate +100+320 "https://example.com/pay" /tmp/t.png || convert -size 1600x900 xc:white -fill black -pointsize 48 -annotate +100+200 "Invoice total 42.00" -annotate +100+320 "https://example.com/pay" /tmp/t.png); cp /tmp/t.png /tmp/t2.png
+ipc shotEditor edit /tmp/t.png
+wait 1
+rec lt-read 3 key -k s
+note "Finding text..." with a spinner (Material 20 px primary indicator, Glass 16 px), then "Drag across text to select it" with a chip "example.com/pay"; compare the time of the first ready frame QML vs Rust.
+wait 1
+shot lt-ready
+note Bar shows message "Drag across text to select it" and the link chip right after it (about x 560 Glass); if tesseract is missing: "Text recognition needs Tesseract" plus an Install Tesseract button.
+ptr glide 560 953 200
+wait 1
+shot lt-chip-hover
+note Chip hovered with the tooltip "Open in your browser" after about 800 ms.
+key -M ctrl -k a -m ctrl
+wait 1
+shot lt-chip-after-selectall
+note After Ctrl+A the message changes to "N words selected" and the chip hover/tooltip must STAY (Rust lost them before the fix; QML keeps them).
+ptr move 800 953 sleep 200
+wait 1
+shot lt-copy
+note Click "Copy text" (the pointer click may not register on layer surfaces): message "Text copied" with a check for 2 s then "N words selected"; wl-paste then shows the text.
+key -k Escape
+wait 1
+shot lt-copy-all
+note Selection cleared; the bar offers "Copy all text"; clicking it shows "All text copied".
+# NOTE: click on layer surfaces may not register in the harness
+setup magick -size 800x600 xc:gray /tmp/blank.png
+ipc shotEditor edit /tmp/blank.png
+wait 1
+key -k s
+wait 3
+shot lt-none
+note Plain picture: "No text found in this picture" with no chips.
+# MANUAL: Copy text then wl-paste in the sandbox shows the picture's text
+# MANUAL: Missing state: "Text recognition needs Tesseract" + Install Tesseract (only if tesseract can be hidden in the sandbox)

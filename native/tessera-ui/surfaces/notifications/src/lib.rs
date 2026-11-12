@@ -32,7 +32,7 @@
 //!       {"to":"notifications","do":"reply","id":N,"text":"…"}
 //!       {"to":"notifications","do":"clear"}
 //!       {"to":"notifications","do":"banner","id":N}    the island couldn't take it
-//!       {"to":"notifications","do":"widgets"|"calendar",…}  Notification
+//!       {"to":"notifications","do":"widgets"|"calendar"|"calendarError",…}  Notification
 //!                    Center's widgets (panel.rs)
 //!       {"to":"notifications","do":"shell","covered":bool,"osd":bool}
 //!                    Notification Center or Control Center is open on the
@@ -60,6 +60,7 @@ pub mod center;
 /// (in tessera-core: the notification server, services::notify, keeps them)
 pub use tessera_core::services::notify::{markup, model};
 mod panel;
+mod stable;
 
 use tessera_core::services::hypr::{Glass, Snapshot};
 use tessera_core::services::notify::{self, Event};
@@ -155,6 +156,10 @@ pub struct Notifications {
     // Notification Center (panel.rs)
     nc: panel::Panel,
     nc_open: bool,
+    /// cards' buttons, the same model while the same (stable.rs)
+    buttons: stable::Stable<ui::NoteButton>,
+    /// the pills last set (count, expanded): set again only when they change
+    pills_sent: Option<(usize, bool)>,
 }
 
 fn now_ms() -> i64 {
@@ -229,7 +234,18 @@ fn icon_theme(cache: &std::path::Path) -> String {
 /// (IconLookup.qml: ~/.cache/tessera/icon-index-<theme>.tsv), then the usual
 /// folders of that theme and the common ones, then pixmaps
 fn theme_icon(name: &str) -> Option<String> {
-    let cache = std::env::var_os("XDG_CACHE_HOME").map(std::path::PathBuf::from).unwrap_or_else(|| std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".cache"));
+    // (core's lookup: the shell's own index of its theme and the themes it
+    // inherits — Colloid's kind/size folders, symlinked ones too — as the
+    // QML's IconLookup; the walk below only read size/kind folders and an
+    // index file only the QML shell writes)
+    if let Some(p) = crate::icon_theme::find(name, None) {
+        return Some(p.to_string_lossy().into_owned());
+    }
+    theme_icon_walk(name)
+}
+
+fn theme_icon_walk(name: &str) -> Option<String> {
+    let cache =std::env::var_os("XDG_CACHE_HOME").map(std::path::PathBuf::from).unwrap_or_else(|| std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".cache"));
     let folder = crate::theme::config_path().parent().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "tessera".into());
     let cache = cache.join(folder);
     let theme = icon_theme(&cache);
@@ -328,6 +344,11 @@ fn pills(count: usize, expanded: bool) -> Vec<ui::StackPill> {
 
 impl Notifications {
     /// One of its messages, a while from now
+    /// The screen Notification Center is on (made)
+    fn nc_output(&self) -> Option<String> {
+        self.nc.output()
+    }
+
     fn send_later(&self, st: &State, ms: u64, m: M) {
         let tx = st.tx.clone();
         slint::Timer::single_shot(Duration::from_millis(ms), move || {
@@ -564,7 +585,18 @@ impl Notifications {
     fn card(&mut self, st: &State, n: &Note, s: Option<&Shown>) -> ui::Banner {
         let n = n.clone();
         let icons = &mut self.icons;
-        let mut lookup = |name: &str| icons.entry(name.to_string()).or_insert_with(|| theme_icon(name)).clone();
+        // (a miss is kept only once the shell's index is there: before, it's asked again)
+        let indexed = tessera_core::services::icons::shared().is_some();
+        let mut lookup = |name: &str| match icons.get(name) {
+            Some(hit) => hit.clone(),
+            None => {
+                let f = theme_icon(name);
+                if f.is_some() || indexed {
+                    icons.insert(name.to_string(), f.clone());
+                }
+                f
+            }
+        };
         let src = icon_source(&n, &mut lookup);
         let (icon, picture) = match src {
             Some((f, pic)) => (self.image(&f), pic),
@@ -584,7 +616,7 @@ impl Notifications {
             has_icon: icon.is_some(),
             icon: icon.unwrap_or_default(),
             picture,
-            buttons: ModelRc::new(VecModel::from(n.buttons().iter().map(|a| ui::NoteButton { key: a.id.clone().into(), text: a.text.clone().into() }).collect::<Vec<_>>())),
+            buttons: self.buttons.get(&n.id.to_string(), n.buttons().iter().map(|a| ui::NoteButton { key: a.id.clone().into(), text: a.text.clone().into() }).collect::<Vec<_>>()),
             can_reply: n.has_inline_reply,
             placeholder: n.inline_reply_placeholder.clone().into(),
             replying: s.is_some_and(|s| s.replying),
@@ -607,7 +639,18 @@ impl Notifications {
         let default_h = if material { 96.0 } else { 90.0 };
         let heights: Vec<f32> = self.banners.iter().map(|s| self.heights.get(&s.id).copied().unwrap_or(default_h)).collect();
         let (places, content) = stack(&heights, self.expanded, material);
-        let want = count > 0 && !self.covered && !self.nc_open;
+        // (hidden while Notification Center or Control Center is open on its
+        // screen, NotificationPopups' visible)
+        let nc_here = self.nc_open && match (self.win.as_ref(), self.nc_output()) {
+            (Some(w), Some(o)) => w.output == o,
+            _ => true,
+        };
+        let want = count > 0 && !self.covered && !nc_here;
+        // (hidden: the stack folds back, so its timers run again: QML's
+        // onVisibleChanged collapse)
+        if !want {
+            self.expanded = false;
+        }
         if want && self.win.is_none() {
             self.make_window(st);
         }
@@ -638,7 +681,10 @@ impl Notifications {
         }
         w.ui.set_expanded(self.expanded);
         w.ui.set_content_height(content);
-        w.ui.set_pills(ModelRc::new(VecModel::from(pills(count, self.expanded))));
+        if self.pills_sent != Some((count, self.expanded)) {
+            self.pills_sent = Some((count, self.expanded));
+            w.ui.set_pills(ModelRc::new(VecModel::from(pills(count, self.expanded))));
+        }
         w.ui.set_glass_plugin(st.shell.plugin);
         // The window: the cards plus their room and the pills
         let pill_room = if count > 1 { if material { 48.0 } else { 36.0 } } else { 0.0 };
@@ -652,7 +698,7 @@ impl Notifications {
         let reach = if material { 0.0 } else { 8.0 };
         let pills_h = if count > 1 { 8.0 + if material { 32.0 } else { 26.0 } } else { 0.0 };
         let region = (MARGIN - reach, MARGIN - reach, CARD_W + reach, content + reach + pills_h);
-        let key = format!("{region:?}");
+        let key = tessera_core::theme::glass_key(&region);
         if key != w.region {
             st.set_input_region(&w.surface, Some(&[(region.0 as i32, region.1 as i32, region.2.ceil() as i32, region.3.ceil() as i32)]));
             w.region = key;
@@ -730,6 +776,7 @@ impl Notifications {
         ui.show().expect("show banners");
         let a11y = crate::a11y::A11y::new(&surface, st.tx.clone());
         self.moved.clear();
+        self.pills_sent = None;
         self.win = Some(Win { output: name, surface, ui, model, a11y, size: (0, 0), keyboard: false, shown: false, glass_sent: String::new(), region: String::new() });
     }
 
@@ -761,7 +808,7 @@ impl Notifications {
             }
             // Notification Center's widgets and calendar (panel.rs)
             "widgets" => self.nc_shell(st, c),
-            "calendar" => self.nc_shell(st, c),
+            "calendar" | "calendarError" => self.nc_shell(st, c),
             "shell" => {
                 self.covered = c["covered"].as_bool().unwrap_or(false);
                 self.osd = c["osd"].as_bool().unwrap_or(false);
@@ -807,6 +854,10 @@ thread_local! {
 }
 
 impl Part for Notifications {
+    fn prewarm(&mut self, st: &mut State) {
+        self.nc_prewarm(st);
+    }
+
     fn name(&self) -> &'static str {
         NAME
     }
@@ -816,6 +867,8 @@ impl Part for Notifications {
         st.shell.surfaces.hold(NAME);
         st.shell.want("hypr");
         st.shell.want("notify");
+        // (app icons: the shell's index of its icon theme, core/src/icon_theme.rs)
+        st.shell.want("icons");
     }
 
     /// Notification Center: opened and closed through the shell's Panels
@@ -1032,6 +1085,8 @@ impl Part for Notifications {
                 for s in self.banners.iter_mut().filter(|s| s.id == id) {
                     s.sent = false;
                 }
+                // (Notification Center's composer too: Reply shows again)
+                self.nc_sent_done(id);
                 self.refresh(st);
             }
             M::DismissAfterReply(id) => self.dismiss(st, id, notify::DISMISSED),
@@ -1073,7 +1128,7 @@ impl Part for Notifications {
                 let (sw, sh) = (cw * s, ch * s);
                 shapes.push(theme::glass_shape(look, x + (cw - sw) / 2.0, y + (ch - sh), sw, sh, 22.0 * s, op, 1.0));
             }
-            let key = format!("{shapes:?}");
+            let key = tessera_core::theme::glass_key(&shapes);
             if key != w.glass_sent {
                 st.shell.glass.set(&w.output, NS, &shapes);
                 w.glass_sent = key;

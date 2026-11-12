@@ -1,0 +1,67 @@
+# Island: steps from parity/shell_services_Island.qml.md (batches 1-5). Screen IRICE-TEST 1920x1080 scale 1;
+# the island is centred at x 960 (closed y ~14, open ~392 wide); the bar is 30 px tall.
+# Each block runs in both looks: the file runs top to bottom, Material first, then Glass.
+
+look material
+setup python3 -c 'import json, os;p = os.path.expanduser("~/.config/tessera/config.json"); c = json.load(open(p));c.setdefault("cooling", {}).update({"whenHot": True, "hotAction": "ask"}); i = c.setdefault("island", {}); i["hotTemp"] = 40;ev = i.setdefault("events", []); "temperature" in ev or ev.append("temperature"); json.dump(c, open(p, "w"), indent=4)'
+wait 35
+shot hot
+note "Running hot · CPU NN °C", red ring, Not now (outlined) and Cool down (filled)
+ptr glide 1120 50 300
+ptr click
+wait 1
+shot not-now
+note Not now removed it; Cool-down stays off
+wait 60
+shot still-away
+note it stays away for the rest of the spell
+ipc island hot false
+ipc timer toggle
+wait 2
+shot timer
+note standalone: the timer is a live activity (pill: icon, Focus, time counting down)
+ptr glide 990 14 600
+ptr click
+wait 2
+shot timer-paused
+note the pill's pause worked (time stopped)
+ipc timer stopwatch
+wait 1
+ipc island next
+wait 0.6
+shot next
+note ipc island next moved the focus (one-at-a-time mode)
+ipc timer reset
+ipc timer stopwatchReset
+
+look glass
+setup python3 -c 'import json, os;p = os.path.expanduser("~/.config/tessera/config.json"); c = json.load(open(p));c.setdefault("cooling", {}).update({"whenHot": True, "hotAction": "ask"}); i = c.setdefault("island", {}); i["hotTemp"] = 40;ev = i.setdefault("events", []); "temperature" in ev or ev.append("temperature"); json.dump(c, open(p, "w"), indent=4)'
+wait 35
+shot hot
+note "Running hot · CPU NN °C", red ring, Not now (outlined) and Cool down (filled)
+ptr glide 1120 50 300
+ptr click
+wait 1
+shot not-now
+note Not now removed it; Cool-down stays off
+wait 60
+shot still-away
+note it stays away for the rest of the spell
+ipc island hot false
+ipc timer toggle
+wait 2
+shot timer
+note standalone: the timer is a live activity (pill: icon, Focus, time counting down)
+ptr glide 990 14 600
+ptr click
+wait 2
+shot timer-paused
+note the pill's pause worked (time stopped)
+ipc timer stopwatch
+wait 1
+ipc island next
+wait 0.6
+shot next
+note ipc island next moved the focus (one-at-a-time mode)
+ipc timer reset
+ipc timer stopwatchReset

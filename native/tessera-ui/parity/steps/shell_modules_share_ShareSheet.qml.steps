@@ -1,0 +1,88 @@
+# ShareSheet: check each step in both looks. Glass card x750..1170 top~352, x (1139,382), avatars y~486 x 812/908/1004/1100, ways y 602/646/690.
+# Material card x744..1176 top~330, x (1132,374), avatars y~460 x 814/910/1006/1102, ways y 592/646/700. Take exact y from the first shot.
+# NOTE: click on layer surfaces may not register in the harness
+ipc sharingdemo peers
+wait 1
+# 1 open/close
+rec sh-open 0.6 ipc panels shareFiles /usr/share/pixmaps/archlinux-logo.png
+note Open: fade plus scale 0.94 to 1 over 220 ms (OutCubic); QML vs Rust within 1 frame, check in each look.
+wait 1
+shot sh-opened
+note Card centred (Glass 420 wide, Material 432), 4 devices with avatars, header thumbnail of the picture, title, kind line, x button, ways list below; scrim black 25 percent.
+rec sh-close 0.4 key -k Escape
+note Close: fade out over 150 ms (InCubic), then unmapped; QML vs Rust within 1 frame.
+wait 1
+# 2 progress keeps the rows
+ipc panels shareFiles /usr/share/pixmaps/archlinux-logo.png
+wait 1
+ptr move 1004 486 sleep 200 glide 1004 486 200
+shot sh-hover3
+note Device 3 hovered: Glass fill 88 percent, Material cookie shape 12; same as QML.
+ipc sharingdemo sending 10
+shot sh-send10
+note Device 1 shows ring/wave and "Sending... 10 %"; device 3 STILL hovered (fix 10: hover must not drop on each progress tick).
+ipc sharingdemo sending 40
+ipc sharingdemo sending 80
+shot sh-send80
+note Device 1 "Sending... 80 %" and device 3 still hovered after three ticks; compare to QML.
+rec sh-tick 1 ipc sharingdemo sending 60
+note No frame where every avatar blinks or is rebuilt (rows kept across progress ticks).
+# 3 sent
+ipc sharingdemo sent
+wait 1
+shot sh-sent
+note Device 1 badge is a check mark, label "Sent" in success colour (Material: primary).
+key -k Escape
+wait 1
+# 4 press (pointer path: move then press, drag away, release)
+ipc panels shareFiles /usr/share/pixmaps/archlinux-logo.png
+wait 1
+ptr move 908 486
+rec sh-press 0.3 ptr move 908 486 down
+note Press on device 2: Glass shrinks to 0.94 linearly over 100 ms; Material swells to 1.06 (springPress). QML vs Rust same.
+ptr move 908 486 down glide 960 950 100 up
+wait 1
+shot sh-release-off
+note Released off the device: no send started (no progress on device 2); Material settles in about 0.29 s with a visible overshoot on release.
+# 5 x press (Material)
+ptr move 1132 374
+rec sh-x 0.3 ptr move 1132 374 down
+note Material only: x button corners jump to 12 at once (no tween) while it swells 1.06; Glass x has no scale. Material x is at (1132,374), Glass at (1139,382).
+ptr move 1132 374 down glide 960 950 100 up
+wait 1
+# 6 keys
+key -k Tab
+shot sh-key-x
+note Focus ring on the x button.
+key -k Tab
+shot sh-key-dev1
+note Focus ring on device 1.
+key -k Right -k Right -k Right
+shot sh-key-dev4
+note Focus ring on device 4.
+key -k Tab -k Tab
+shot sh-key-ways
+note Focus on the "Show in Files" way row.
+key -k Escape
+wait 1
+shot sh-key-closed
+note Sheet closed after Escape.
+# 7 looking
+ipc sharingdemo none
+ipc panels shareFiles /usr/share/pixmaps/archlinux-logo.png
+wait 1
+shot sh-looking
+note Glass: three pulsing circles; Material: spinner; text "Looking for nearby devices...".
+key -k Escape
+wait 1
+# 8 text
+setup sh -c 'echo "hello share text" | wl-copy'
+ipc sharingdemo peers
+ipc panels shareSelection
+wait 1
+shot sh-text
+note Title is the text in quotes, kind line "Text - sent as a text file", exactly one way (Copy).
+key -k Escape
+wait 1
+# MANUAL: real devices / real sends (no peer in the sandbox); afterwards run `ipc sharingdemo real`
+ipc sharingdemo real

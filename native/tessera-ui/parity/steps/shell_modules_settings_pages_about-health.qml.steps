@@ -1,0 +1,20 @@
+# System health page. Never press Run fix / Run with password / Fix.
+ipc panels settings about/health
+wait 5
+shot health
+note H1 same top label/detail, groups, rows, dots and words as QML (check in each look).
+ptr move 1100 600 sleep 200 scroll 0 30
+wait 1
+shot health-end
+note H1 end of the page: same groups, rows and footer as QML.
+ptr move 1100 600 sleep 200 scroll 0 -30
+wait 1
+ptr move 1330 400 sleep 300 glide 1330 400 100 click
+shot health-checking
+note H2 straight after clicking Check again: "Checking..." busy button, then the footer time updates. Button position is a guess: read from the health shot.
+wait 3
+shot health-checked
+note H2 the checking is done and the footer time updated.
+# MANUAL: H3 click Copy report then wl-paste | head -3: a report in the clipboard in both shells
+# MANUAL: H4 if shown, "Don't show again" then "Show alerts"; click again to put it back
+ipc panels close

@@ -60,7 +60,8 @@ use tessera_core::wayland::{Spec, State, Surface};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use slint::platform::Key;
-use slint::{ComponentHandle, Model, ModelRc, Rgba8Pixel, SharedPixelBuffer, SharedString, VecModel};
+use slint::{ComponentHandle, Model, Rgba8Pixel, SharedPixelBuffer, SharedString};
+use tessera_core::rows::Rows;
 use smithay_client_toolkit::shell::wlr_layer::{Anchor, KeyboardInteractivity, Layer};
 use smithay_client_toolkit::shell::WaylandSurface;
 use std::any::Any;
@@ -578,6 +579,12 @@ pub struct Share {
     thumb: Option<(String, Option<slint::Image>)>,
     icons: HashMap<String, Option<slint::Image>>,
     qr: Option<(String, Option<slint::Image>)>,
+    /// the sheet's devices, its other ways and the card's buttons: handed to
+    /// their window once, changed in place (a progress tick changes one
+    /// device's row, not every avatar: hovers and presses stay)
+    devs: Rows<ui::ShareDev>,
+    way_rows: Rows<ui::ShareWay>,
+    btns: Rows<ui::ShareBtn>,
 }
 
 /// Fill a window's globals: the look, and Material Symbols for Phosphor names
@@ -659,6 +666,8 @@ impl Share {
         ui.set_circle_shape(outline("circle").into());
         ui.set_quiet_shape(outline("cookie9").into());
         ui.set_fallback_glyph(glyph("file"));
+        ui.set_devices(self.devs.model());
+        ui.set_ways(self.way_rows.model());
         ui.show().expect("show share sheet");
         let a11y = crate::a11y::A11y::new(&surface, st.tx.clone());
         self.sheet = Some(Win { output: output.into(), surface, ui, a11y, glass_sent: String::new(), size: (0, 0), up: false });
@@ -790,11 +799,11 @@ impl Share {
         ui.set_thumb(thumb.unwrap_or_default());
         ui.set_has_icon(icon.is_some());
         ui.set_file_icon(icon.unwrap_or_default());
-        ui.set_devices(ModelRc::new(VecModel::from(devices)));
+        self.devs.set_keyed(devices, |d| d.key.clone());
         ui.set_available(s.available);
         ui.set_help(help.into());
         ui.set_errors(s.errors.as_str().into());
-        ui.set_ways(ModelRc::new(VecModel::from(ways)));
+        self.way_rows.set(ways);
         // (the keyboard's place, kept within what's there now)
         if self.focus >= (1 + ndev + nways) as i32 {
             self.focus = -1;
@@ -910,6 +919,7 @@ impl Share {
                 let to = to.clone();
                 ui.on_pressed_button(move |i| to(Box::new(M::CardButton(i))));
             }
+            ui.set_buttons(self.btns.model());
             ui.show().expect("show share card");
             let a11y = crate::a11y::A11y::new(&surface, st.tx.clone());
             self.card = Some(Win { output: output.clone(), surface, ui, a11y, glass_sent: String::new(), size: (0, 0), up: false });
@@ -931,7 +941,7 @@ impl Share {
         ui.set_tablet(r.kind == "tablet");
         ui.set_kind_glyph(glyph(kind_icon(&r.kind)));
         ui.set_link_glyph(glyph(link_icon(r.item.as_ref().map_or("", |i| i.transport.as_str()))));
-        ui.set_buttons(ModelRc::new(VecModel::from(buttons.iter().map(|(l, p, _)| ui::ShareBtn { label: (*l).into(), primary: *p }).collect::<Vec<_>>())));
+        self.btns.set(buttons.iter().map(|(l, p, _)| ui::ShareBtn { label: (*l).into(), primary: *p }).collect());
         ui.set_shape(outline(state_shape(&r.state)).into());
         ui.set_motion(motion);
         ui.set_focus_at(self.card_focus);
@@ -1143,7 +1153,7 @@ fn card_glass<T: ComponentHandle + CardSize>(st: &mut State, w: &mut Win<T>, ns:
     let radius = w.ui.radius();
     let o = shown.clamp(0.0, 1.0);
     let shape = theme::glass_shape(&st.shell.look, x, y, cw * s, ch * s, radius * s, o, 1.0);
-    let key = if o > 0.002 { format!("{shape:?}") } else { String::new() };
+    let key = if o > 0.002 { tessera_core::theme::glass_key(&shape) } else { String::new() };
     if key != w.glass_sent {
         st.shell.glass.set(&w.output, ns, if o > 0.002 { std::slice::from_ref(&shape) } else { &[] });
         w.glass_sent = key;
@@ -1296,7 +1306,7 @@ impl Part for Share {
                 let o = ui.get_card_opacity();
                 let radius = ui.global::<ui::Theme>().get_radius_panel();
                 let shape = theme::glass_shape(&st.shell.look, x, y, bw * s, bh * s, radius * s, o, 1.0);
-                let key = if o > 0.002 { format!("{shape:?}") } else { String::new() };
+                let key = if o > 0.002 { tessera_core::theme::glass_key(&shape) } else { String::new() };
                 if key != w.glass_sent {
                     st.shell.glass.set(&w.output, NS_SHEET, if o > 0.002 { std::slice::from_ref(&shape) } else { &[] });
                     w.glass_sent = key;

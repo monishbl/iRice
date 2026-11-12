@@ -1,0 +1,14 @@
+# HotCorners: needs topLeft = missionControl, delay 200.
+# MANUAL: set config hotCorners topLeft "missionControl", delay 200 (use_config)
+ptr move 0 0 sleep 600
+shot corner-rest
+note Pointer rested 600 ms in the top-left corner: Mission Control opens (if topLeft is configured to it).
+ipc panels close
+wait 1
+ptr move 300 300 sleep 200 glide 0 0 50 glide 300 300 50 sleep 500
+shot corner-brief
+note Gliding in and out within 100 ms: nothing opens (no Mission Control).
+ptr move 300 300 sleep 200 glide 0 0 100 down sleep 600 up
+shot corner-press
+note Pressing a button in the corner and resting: nothing opens.
+# MANUAL: a fullscreen window on that monitor -> resting in the corner does nothing

@@ -1,0 +1,15 @@
+# biometrics: Fingerprint and Face groups (Privacy & Security). Check in each look.
+# Only meaningful on a host with a fingerprint reader; if no reader, both shells must show nothing (write "no reader").
+# Never press Add, Remove, Install, Set Up, PAM switches or the Face buttons.
+ipc panels settings security
+wait 2
+shot bio-top
+note B1: Fingerprint group (reader row or finger rows, footer "Password prompts, sudo..."), then Face group; same rows, texts and order in both shells; with no reader and no IR camera neither group shows (write "no reader").
+ptr move 1100 600 scroll 0 3
+wait 1
+shot bio-scroll
+note B1 cont.: after a small scroll the Fingerprint/Face groups look the same in both shells (same rows/texts/order).
+# MANUAL: B2 click the finger Dropdown (y read from a shot), shot the list, Esc. QML: item height 36 Material / 28 Glass, list at least 200 wide, right edge on the control's, 4 px under it; write Rust's sizes.
+# MANUAL: B3 click the Dropdown, Esc, key Down: the next finger is chosen without the list opening (Rust must do the same).
+# MANUAL: B4 click Remove on a finger row (only asks): detail "It's deleted from the reader..." with Keep and "Remove <name>"; click Keep: back to Remove, nothing removed.
+ipc panels close

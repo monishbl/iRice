@@ -11,9 +11,12 @@
 //! closes it. Glass is on the plugin's glass, Material a tonal popover with a
 //! title; both spring up out of the dock.
 //!
-//! Differences from the QML: a file's name is shortened in the middle before
-//! it is drawn (Slint only elides at the end); the files are listed once, as
-//! it opens (the QML's list model stays live); Material draws Phosphor icons.
+//! The files are listed again every two seconds while it's open (the QML's
+//! FolderListModel is live), changed in place (Rows, by path). File icons
+//! come from the shell's icon theme index (IconLookup.path, as the QML),
+//! Material's glyphs are Material Symbols. Difference from the QML: a file's
+//! name is shortened in the middle before it is drawn (Slint only elides at
+//! the end).
 
 use super::*;
 use tessera_core::services::bridge::ShellState;
@@ -28,6 +31,7 @@ enum S {
     Quick(i32),
     Folder,
     Dismissed,
+    Refresh,
 }
 
 enum StackUi {
@@ -40,6 +44,10 @@ struct StackWin {
     surface: Rc<Surface>,
     ui: StackUi,
     files: Vec<String>,
+    rows: Rows<ui::StackFile>,
+    material: bool,
+    /// (kept: dropping it stops the listing)
+    _refresh: slint::Timer,
     /// the panel open when it came up: another one opening closes it
     open_was: String,
     glass_sent: String,
@@ -83,6 +91,24 @@ fn file_name(path: &str) -> String {
     path.rsplit('/').next().unwrap_or(path).to_string()
 }
 
+/// The files' rows: name and icon (IconLookup.path(Search.iconForFile(path),
+/// "text-x-generic") in the shell's icon theme, unstyled)
+fn file_rows(st: &State, files: &[String], material: bool) -> Vec<ui::StackFile> {
+    let icons = st.shell.get::<Icons>();
+    files
+        .iter()
+        .map(|p| {
+            let name: slint::SharedString = middle(&file_name(p), if material { 14 } else { 13 }).into();
+            let path = match icons {
+                Some(i) => i.path(&[tessera_core::rank::icon_for_file(p)], &["text-x-generic"]),
+                None => tessera_core::icon_theme::find(tessera_core::rank::icon_for_file(p), None).or_else(|| tessera_core::icon_theme::find("text-x-generic", None)),
+            };
+            let icon = path.and_then(|path| slint::Image::load_from_path(&path).ok());
+            ui::StackFile { key: p.as_str().into(), name, has_icon: icon.is_some(), icon: icon.unwrap_or_default() }
+        })
+        .collect()
+}
+
 impl DownloadsStack {
     fn open(&mut self, st: &mut State, output: &str, x: f32, bar_h: f32, gap: f32) {
         self.close(st, false);
@@ -90,22 +116,15 @@ impl DownloadsStack {
         let material = st.shell.look.material;
         let surface = overlay_surface(st, &wl, output);
         let files = newest(&downloads_dir(), 12);
-        let model: Vec<ui::StackFile> = files
-            .iter()
-            .map(|p| {
-                let name: slint::SharedString = middle(&file_name(p), if material { 14 } else { 13 }).into();
-                let icon = tessera_core::icon_theme::find(tessera_core::rank::icon_for_file(p), None)
-                    .or_else(|| tessera_core::icon_theme::find("text-x-generic", None))
-                    .and_then(|path| slint::Image::load_from_path(&path).ok());
-                ui::StackFile { name, has_icon: icon.is_some(), icon: icon.unwrap_or_default() }
-            })
-            .collect();
+        let rows = Rows::new();
+        rows.set_keyed(file_rows(st, &files, material), |f| f.key.clone());
         let to = st.shell.sender(STACK_NAME);
         let open_was = st.shell.get::<ShellState>().map(|s| s.str("open").to_string()).unwrap_or_default();
         let ui = if material {
             let u = ui::StackMaterial::new().expect("StackMaterial");
             st.shell.apply_theme(&u.global::<ui::Theme>());
-            u.set_files(ModelRc::new(VecModel::from(model)));
+            u.global::<ui::Symbols>().on_of(|g| tessera_core::icons::symbol(&g).into());
+            u.set_files(rows.model());
             u.set_stack_x(x);
             u.set_bar_height(bar_h);
             u.set_bottom_gap(gap);
@@ -122,7 +141,7 @@ impl DownloadsStack {
         } else {
             let u = ui::StackGlass::new().expect("StackGlass");
             st.shell.apply_theme(&u.global::<ui::Theme>());
-            u.set_files(ModelRc::new(VecModel::from(model)));
+            u.set_files(rows.model());
             u.set_stack_x(x);
             u.set_bar_height(bar_h);
             u.set_bottom_gap(gap);
@@ -137,7 +156,10 @@ impl DownloadsStack {
             u.invoke_focus_keys();
             StackUi::Glass(u)
         };
-        self.win = Some(StackWin { output: output.to_string(), surface, ui, files, open_was, glass_sent: String::new(), settled: false });
+        let refresh = slint::Timer::default();
+        let to = st.shell.sender(STACK_NAME);
+        refresh.start(slint::TimerMode::Repeated, Duration::from_secs(2), move || to(Box::new(S::Refresh)));
+        self.win = Some(StackWin { output: output.to_string(), surface, ui, files, rows, material, _refresh: refresh, open_was, glass_sent: String::new(), settled: false });
     }
 
     /// Close it (instantly, as the QML's Loader), and tell the dock
@@ -226,6 +248,16 @@ impl Part for DownloadsStack {
                 open_folder(&cfg, &downloads_dir());
             }
             S::Dismissed => self.close(st, true),
+            S::Refresh => {
+                let files = newest(&downloads_dir(), 12);
+                let Some(w) = self.win.as_ref() else { return };
+                if files != w.files {
+                    let rows = file_rows(st, &files, w.material);
+                    let w = self.win.as_mut().unwrap();
+                    w.rows.set_keyed(rows, |f| f.key.clone());
+                    w.files = files;
+                }
+            }
         }
     }
 

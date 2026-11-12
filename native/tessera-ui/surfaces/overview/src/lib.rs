@@ -26,9 +26,13 @@
 //! QML's ScreencopyView uses), once per open (snapshot), or about 30 times a
 //! second for every window (live) or the current spaces' (hybrid).
 //!
+//! Every list (spaces, their windows, the strip's tiles and miniatures, the
+//! zones and their chips, results, menu rows) is a `Rows`, handed to the
+//! window once: a refresh (a picture arriving, a live frame, a re-tile)
+//! changes only the rows that differ, so nothing is made again and a window
+//! that moves glides there (200 ms OutCubic, once settled, as the QML).
+//!
 //! Not like the QML yet:
-//! - a window's miniature doesn't glide to a new place when the windows
-//!   re-tile while it's open (it's placed again at once);
 //! - search: apps, actions, emoji and sums from spotlight::rank; the rows
 //!   only the QML shell knows (files, conversions, the calendar, contacts,
 //!   the App Store…) aren't asked for here (Search in Rust has them);
@@ -59,7 +63,8 @@ use tessera_core::theme;
 use tessera_core::wayland::{Spec, State, Surface};
 use layout::{CellBox, Rect, ZoneBox};
 use slint::platform::Key;
-use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
+use slint::{ComponentHandle, ModelRc, SharedString};
+use tessera_core::rows::Rows;
 use smithay_client_toolkit::shell::wlr_layer::{Anchor, KeyboardInteractivity, Layer};
 use smithay_client_toolkit::shell::WaylandSurface;
 use spaces::{Geo, Zone};
@@ -212,12 +217,41 @@ struct Win {
     pointer: (f32, f32),
     menu: Option<Menu>,
     timers: [slint::Timer; 2],
+    // The lists, handed to the window once (changed in place)
+    l_cells: Rows<ui::OvCell>,
+    l_cell_wins: HashMap<i32, Rows<ui::OvWin>>,
+    l_tiles: Rows<ui::OvTile>,
+    l_tile_minis: HashMap<i32, Rows<ui::OvMini>>,
+    l_labels: Rows<ui::OvLabel>,
+    l_pluses: Rows<ui::OvPlus>,
+    l_zones: Rows<ui::OvZone>,
+    l_zone_chips: HashMap<String, Rows<ui::OvChip>>,
+    l_results: Rows<ui::OvResult>,
+    l_menu: Rows<ui::WMenuRow>,
+}
+
+/// One list per key (a space's windows, a zone's chips), kept across refreshes:
+/// its rows set, the ones no longer there dropped
+fn keyed_lists<K: std::hash::Hash + Eq + Clone, T: Clone + PartialEq + 'static>(map: &mut HashMap<K, Rows<T>>, now: Vec<(K, Vec<T>)>, key: impl Fn(&T) -> SharedString + Copy) -> HashMap<K, ModelRc<T>> {
+    let keep: Vec<K> = now.iter().map(|(k, _)| k.clone()).collect();
+    map.retain(|k, _| keep.contains(k));
+    now.into_iter()
+        .map(|(k, v)| {
+            let rows = map.entry(k.clone()).or_default();
+            rows.set_keyed(v, key);
+            (k, rows.model())
+        })
+        .collect()
 }
 
 #[derive(Default)]
 pub struct Overview {
     wins: Vec<Win>,
     open: bool,
+    /// focus the field again once the keyboard is on the window: focused
+    /// before the window was active, the caret stayed hidden until typing
+    /// (the QML shows it at once)
+    refocus: bool,
     key_out: String,
     text: String,
     results: Vec<Row>,
@@ -348,6 +382,14 @@ impl Overview {
             let o = o.clone();
             on!(on_closed, | | M::Closed(o.clone()));
         }
+        let (l_cells, l_tiles, l_labels, l_pluses, l_zones, l_results, l_menu) = (Rows::new(), Rows::new(), Rows::new(), Rows::new(), Rows::new(), Rows::new(), Rows::new());
+        ui.set_cells(l_cells.model());
+        ui.set_tiles(l_tiles.model());
+        ui.set_labels(l_labels.model());
+        ui.set_pluses(l_pluses.model());
+        ui.set_zones(l_zones.model());
+        ui.set_results(l_results.model());
+        ui.set_menu_rows(l_menu.model());
         ui.show().expect("show overview");
         let a11y = crate::a11y::A11y::new(&surface, st.tx.clone());
         self.wins.push(Win {
@@ -384,6 +426,16 @@ impl Overview {
             pointer: (-1.0, -1.0),
             menu: None,
             timers: Default::default(),
+            l_cells,
+            l_cell_wins: HashMap::new(),
+            l_tiles,
+            l_tile_minis: HashMap::new(),
+            l_labels,
+            l_pluses,
+            l_zones,
+            l_zone_chips: HashMap::new(),
+            l_results,
+            l_menu,
         });
         let i = self.wins.len() - 1;
         self.look(st, i);
@@ -413,6 +465,7 @@ impl Overview {
         }
         self.capturing = true;
         self.open = true;
+        self.refocus = true;
         self.key_out = screen.clone();
         self.text.clear();
         self.results.clear();
@@ -434,7 +487,7 @@ impl Overview {
             w.menu = None;
             w.press = Press::None;
             Self::reset_drag(w);
-            w.ui.set_results(ModelRc::default());
+            w.l_results.set(Vec::new());
             w.ui.invoke_open();
             w.ui.set_shown(true);
             let key = *o == screen;
@@ -538,12 +591,15 @@ impl Overview {
             let side = if zone_defs.iter().any(|z| z.side.vertical()) { 160.0 } else { 0.0 };
             let cell_w = layout::cell_w(ww, wh, cols, rows_mode, side, &rows.iter().map(|r| (r.1.len(), r.2)).collect::<Vec<_>>());
             let mut minis: HashMap<i32, Vec<Mini>> = HashMap::new();
-            let mut cells_ui = Vec::new();
-            let mut tiles_ui = Vec::new();
+            let mut cells_ui: Vec<ui::OvCell> = Vec::new();
+            let mut tiles_ui: Vec<ui::OvTile> = Vec::new();
             let mut labels = Vec::new();
             let mut cells: Vec<CellBox> = Vec::new();
             let mut plus = Vec::new();
             let mut bar_h = 0.0;
+            // each space's windows (grid) or miniatures (strip), set into its kept list below
+            let mut cell_wins: Vec<(i32, Vec<ui::OvWin>)> = Vec::new();
+            let mut tile_minis: Vec<(i32, Vec<ui::OvMini>)> = Vec::new();
             let place = |id: i32, row: &str, scale_to: f32| -> (Vec<Mini>, Geo) {
                 let g = geo_of(&wins, host.get(&id).map(String::as_str).unwrap_or(row), (ww, wh));
                 let k = scale_to / g.w.max(1.0);
@@ -578,6 +634,7 @@ impl Overview {
                             })
                             .collect();
                         minis.insert(t.id, list);
+                        tile_minis.push((t.id, ms));
                         let current = snap.active.get(host.get(&t.id).map(String::as_str).unwrap_or("")) == Some(&t.id);
                         tiles_ui.push(ui::OvTile {
                             id: t.id,
@@ -588,7 +645,7 @@ impl Overview {
                             title: self.info.title(t.id, &r.name, "Desktop").into(),
                             title_y: t.title.y,
                             current,
-                            minis: ModelRc::new(VecModel::from(ms)),
+                            minis: ModelRc::default(),
                         });
                         cells.push(t.clone());
                     }
@@ -646,6 +703,7 @@ impl Overview {
                             .collect();
                         let n = list.len();
                         minis.insert(c.id, list);
+                        cell_wins.push((c.id, ws));
                         let current = snap.active.get(host.get(&c.id).map(String::as_str).unwrap_or("")) == Some(&c.id);
                         let title = self.info.title(c.id, &r.name, "Space") + &if n > 0 { format!(" · {n} {}", if n == 1 { "window" } else { "windows" }) } else { String::new() };
                         cells_ui.push(ui::OvCell {
@@ -658,7 +716,7 @@ impl Overview {
                             title_y: c.title.y,
                             current,
                             guest: self.info.guest(c.id),
-                            wins: ModelRc::new(VecModel::from(ws)),
+                            wins: ModelRc::default(),
                         });
                         cells.push(c.clone());
                     }
@@ -679,10 +737,18 @@ impl Overview {
             ui.set_rows_mode(rows_mode);
             ui.set_wallpapers(cfg.wallpapers);
             ui.set_wallpaper(self.wall.image.clone().unwrap_or_default());
-            ui.set_cells(ModelRc::new(VecModel::from(cells_ui)));
-            ui.set_tiles(ModelRc::new(VecModel::from(tiles_ui)));
-            ui.set_labels(ModelRc::new(VecModel::from(labels)));
-            ui.set_pluses(ModelRc::new(VecModel::from(w.plus.iter().map(|p| ui::OvPlus { x: p.x, y: p.y, size: p.w }).collect::<Vec<_>>())));
+            let wl = keyed_lists(&mut w.l_cell_wins, cell_wins, |x: &ui::OvWin| x.address.clone());
+            let ml = keyed_lists(&mut w.l_tile_minis, tile_minis, |x: &ui::OvMini| x.address.clone());
+            for c in &mut cells_ui {
+                c.wins = wl.get(&c.id).cloned().unwrap_or_default();
+            }
+            for t in &mut tiles_ui {
+                t.minis = ml.get(&t.id).cloned().unwrap_or_default();
+            }
+            w.l_cells.set_keyed(cells_ui, |c| c.id);
+            w.l_tiles.set_keyed(tiles_ui, |t| t.id);
+            w.l_labels.set(labels);
+            w.l_pluses.set(w.plus.iter().map(|p| ui::OvPlus { x: p.x, y: p.y, size: p.w }).collect());
             ui.set_bar_h(bar_h);
             Self::zones_into(&self.info, &snap, w, mac, m);
             Self::push_state(w, &self.gone_win, self.space_gone, &snap);
@@ -701,13 +767,21 @@ impl Overview {
         let open: Option<(String, Vec<i32>)> = w.expanded.as_ref().map(|n| (n.clone(), ids_of(n)));
         let label = |n: &str| info.label_for_name(n).chars().count() as f32 * 7.5;
         w.zones = layout::zones(w.w, w.h, top, &w.zone_defs, label, open.as_ref().map(|(n, ids)| (n.as_str(), ids.as_slice())));
+        let chips: Vec<(String, Vec<ui::OvChip>)> = w
+            .zones
+            .iter()
+            .map(|z| {
+                let current = snap.active.get(&z.name).copied().unwrap_or(0);
+                (z.name.clone(), z.chips.iter().map(|(id, r)| ui::OvChip { id: *id, x: r.x, y: r.y, n: spaces::number_of(*id).to_string().into(), current: *id == current }).collect())
+            })
+            .collect();
+        let chip_lists = keyed_lists(&mut w.l_zone_chips, chips, |c: &ui::OvChip| c.id.to_string().into());
         let zs: Vec<ui::OvZone> = w
             .zones
             .iter()
             .map(|z| {
                 let expanded = !z.chips.is_empty();
                 let vertical = z.side.vertical();
-                let current = snap.active.get(&z.name).copied().unwrap_or(0);
                 ui::OvZone {
                     name: z.name.as_str().into(),
                     x: z.rect.x,
@@ -718,11 +792,11 @@ impl Overview {
                     vertical,
                     label: info.label_for_name(&z.name).into(),
                     radius: if material { if expanded || vertical { 28.0 } else { z.rect.h / 2.0 } } else if expanded || vertical { 18.0 } else { 22.0 },
-                    chips: ModelRc::new(VecModel::from(z.chips.iter().map(|(id, r)| ui::OvChip { id: *id, x: r.x, y: r.y, n: spaces::number_of(*id).to_string().into(), current: *id == current }).collect::<Vec<_>>())),
+                    chips: chip_lists.get(&z.name).cloned().unwrap_or_default(),
                 }
             })
             .collect();
-        w.ui.set_zones(ModelRc::new(VecModel::from(zs)));
+        w.l_zones.set_keyed(zs, |z| z.name.clone());
     }
 
     /// The pointer's state into a window
@@ -768,7 +842,7 @@ impl Overview {
         match &w.menu {
             Some(mn) => {
                 let rows: Vec<ui::WMenuRow> = mn.items.iter().map(|i| ui::WMenuRow { text: i.text.as_str().into(), header: i.header, separator: i.separator, enabled: i.enabled }).collect();
-                ui.set_menu_rows(ModelRc::new(VecModel::from(rows)));
+                w.l_menu.set(rows);
                 ui.set_menu_x(mn.x + mn.width() / 2.0);
                 ui.set_menu_y(mn.y);
                 ui.set_menu_w(mn.width());
@@ -828,9 +902,9 @@ impl Overview {
             })
             .collect();
         self.icons.flush(send(st));
-        let ui = &self.wins[i].ui;
-        ui.set_results(ModelRc::new(VecModel::from(rows)));
-        ui.set_selected(self.selected as i32);
+        let w = &self.wins[i];
+        w.l_results.set(rows);
+        w.ui.set_selected(self.selected as i32);
     }
 
     fn select(&mut self, i: usize) {
@@ -1464,7 +1538,7 @@ impl Overview {
                 let r = mn.rect(w.w, w.h);
                 shapes.push(theme::glass_shape(&look, r.x, r.y, r.w, r.h, 14.0, o, 0.35));
             }
-            let key = format!("{shapes:?}");
+            let key = tessera_core::theme::glass_key(&shapes);
             if key != w.glass_sent {
                 st.shell.glass.set(&w.output, NS, &shapes);
                 w.glass_sent = key;
@@ -1474,6 +1548,16 @@ impl Overview {
 }
 
 impl Part for Overview {
+    // (the window it keeps while closed, made ahead and left unmapped)
+    fn prewarm(&mut self, st: &mut State) {
+        let Some(out) = st.likely_output() else { return };
+        if self.wins.is_empty() {
+            if let Some(i) = self.window(st, &out) {
+                self.wins[i].surface.hide();
+            }
+        }
+    }
+
     fn name(&self) -> &'static str {
         NAME
     }
@@ -1675,6 +1759,13 @@ impl Part for Overview {
             if let Some(a) = w.a11y.as_mut() {
                 a.update(false, f);
             }
+            if f && self.refocus && self.open && w.output == self.key_out {
+                self.refocus = false;
+                w.ui.invoke_refocus();
+            }
+        }
+        if !self.open {
+            self.refocus = false;
         }
         self.glass(st);
     }

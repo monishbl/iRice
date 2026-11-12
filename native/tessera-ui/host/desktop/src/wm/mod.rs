@@ -34,6 +34,7 @@ mod focushist;
 mod focusmodes;
 pub mod hx;
 mod rules;
+mod screentime;
 mod spacemap;
 mod spaces;
 mod spaceswitch;
@@ -138,7 +139,10 @@ pub struct Wm {
     modes: focusmodes::FocusModes,
     findp: findptr::FindPointer,
     feed: feed::Feed,
+    screentime: screentime::ScreenTime,
     locked_sent: Option<bool>,
+    /// what Settings' "notify" group was last told (`settings.feed`)
+    settings_sent: String,
 }
 
 /// Every service of this module
@@ -164,7 +168,9 @@ impl Wm {
             modes: Default::default(),
             findp: Default::default(),
             feed: Default::default(),
+            screentime: Default::default(),
             locked_sent: None,
+            settings_sent: String::new(),
         }
     }
 
@@ -199,7 +205,11 @@ impl Wm {
             "focus.tick" => self.modes.tick(h, io),
             "focus.save" => self.modes.save(),
             "findptr.done" => self.findp.tick_done(h),
-            "feed.send" => self.feed.send(h, false),
+            "feed.send" => {
+                self.screentime.tick(h);
+                self.feed.screen_time = self.screentime.feed(h);
+                self.feed.send(h, false);
+            }
             "wm.sendall" => {
                 self.spaces.resend(h);
                 self.stage.resend(h);
@@ -220,6 +230,18 @@ impl Wm {
             for n in ["switcher", "stagemanager"] {
                 h.tell(n, json!({"locked": locked}));
             }
+        }
+    }
+
+    /// Settings → Focus, Windows (RustBridgeNotify.qml): the modes, the
+    /// title-bar plugin, a rules error; told when they change
+    fn settings_feed(&mut self, h: &mut Host) {
+        let (plugin, controls) = self.deco.settings_feed(h);
+        let f = json!({"focus": self.modes.settings_feed(), "decorationsPlugin": plugin, "pluginControls": controls, "rulesError": self.rules.error});
+        let text = f.to_string();
+        if text != self.settings_sent {
+            self.settings_sent = text;
+            h.ask("settings.feed", json!(["notify", f]));
         }
     }
 
@@ -305,7 +327,7 @@ impl Service for Wm {
     }
 
     fn start(&mut self, h: &mut Host) {
-        for s in ["hypr", "clients", "apps", "calendar", "todos", "weather", "mpris", "status"] {
+        for s in ["hypr", "clients", "apps", "calendar", "todos", "weather", "mpris", "status", "bluez"] {
             h.st.shell.want(s);
         }
         let send = h.sender("Wm");
@@ -359,6 +381,7 @@ impl Service for Wm {
             }
             other => self.wm_call(h, other, &list),
         }
+        self.settings_feed(h);
     }
 
     fn ipc(&mut self, h: &mut Host, target: &str, func: &str, args: &[String]) -> Option<String> {
@@ -368,6 +391,7 @@ impl Service for Wm {
                 let mut io = self.io.take();
                 let r = self.modes.ipc(h, &mut io, func, args);
                 self.io.restore(io);
+                self.settings_feed(h);
                 r
             }
             // qs ipc call findpointer find (to try it)
@@ -401,6 +425,7 @@ impl Service for Wm {
         spaceswitch::config_changed(h);
         self.io.restore(io);
         self.spaces.resend(h); // (the always-shown count may have changed)
+        self.settings_feed(h);
     }
 
     fn outputs_changed(&mut self, _h: &mut Host) {
@@ -418,6 +443,7 @@ impl Service for Wm {
                 self.io.restore(io);
             }
         }
+        self.settings_feed(h);
     }
 
     fn quit(&mut self, h: &mut Host) {

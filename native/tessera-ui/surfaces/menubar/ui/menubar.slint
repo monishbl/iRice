@@ -6,10 +6,10 @@
 // outlined instead of cut out of the fill.)
 
 import { Theme, Icons } from "@tessera/theme.slint";
-import { Spaces, Chip, Island, Live, Ctl, AlertRow, Ring } from "island.slint";
+import { Spaces, Chip, Island, Live, Ctl, AlertRow, Ring, IslandStats, BatteryGlyph, ActRow, RecentRow, LevelRow } from "island.slint";
 import { Symbols, SymIcon } from "@tessera/symbols.slint";
 
-export { Chip, Live, Ctl, AlertRow, Ring, Symbols }
+export { Chip, Live, Ctl, AlertRow, Ring, IslandStats, ActRow, RecentRow, LevelRow, Symbols }
 
 // One item on the right (items.rs: Entry)
 export struct Entry {
@@ -40,88 +40,16 @@ export struct Entry {
     unread: int,
 }
 
-// The drawn battery (BatteryGlyph): a capsule, its fill, the nub; a bolt or
-// plug when on power; the number inside when asked
-component BatteryGlyph inherits Rectangle {
-    in property <float> level;
-    in property <bool> charging;
-    in property <bool> plugged;
-    in property <bool> low-power;
-    in property <bool> show-percent;
-    in property <color> ink;
-    in property <bool> ink-dark;
-    property <length> size: 12px;
-    property <length> cap-w: round(size * (show-percent ? 2.3 : Theme.material ? 1.9 : 2.05) / 1px) * 1px;
-    property <length> nub-w: max(2px, round(size * (Theme.material ? 0.16 : 0.17) / 1px) * 1px);
-    property <string> mark: charging ? "\u{e2de}" : plugged ? "\u{e946}" : ""; // lightning | plug
-    property <length> mark-size: round(size * (Theme.material ? 1.15 : 1.3) / 1px) * 1px;
-    property <bool> beside: mark != "" && (show-percent || Theme.material);
-    property <length> beside-size: Theme.material ? mark-size : round(size * 0.95 / 1px) * 1px;
-    property <color> green: Theme.dark ? #6DD58C : #1E8E3E;
-    property <color> fill-color: low-power ? Theme.yellow : Theme.material && (charging || plugged) ? green : !charging && !plugged && level <= 0.2 ? Theme.danger : ink;
-    property <color> faint: ink.with-alpha(Theme.material ? 0.3 : 0.35);
-    width: cap-w + 1px + nub-w + (beside ? 2px + beside-size : 0);
-    height: 16px;
-    background: transparent;
-    capsule := Rectangle {
-        x: 0;
-        width: cap-w;
-        height: size;
-        border-radius: round(size * (Theme.material ? 0.36 : 0.32) / 1px) * 1px;
-        clip: true;
-        background: faint;
-        Rectangle {
-            x: 0;
-            width: round(parent.width * max(0, min(1, level)) / 1px) * 1px;
-            background: fill-color;
-        }
-        if show-percent: Text {
-            text: round(level * 100);
-            color: ink-dark ? #ffffffd9 : #000000c0;
-            font-size: round(size * (Theme.material ? 0.78 : 0.82) / 1px) * 1px;
-            font-weight: 700;
-            horizontal-alignment: center;
-            vertical-alignment: center;
-        }
-    }
-    Rectangle {
-        x: cap-w + 1px;
-        width: nub-w;
-        height: round(size * (Theme.material ? 0.42 : 0.38) / 1px) * 1px;
-        border-radius: nub-w / 2;
-        background: faint;
-    }
-    // Glass: the bolt over the capsule with a gap round it (BatteryGlyph
-    // cuts it out; Slint can't, so the gap is the bolt drawn eight times a
-    // pixel off each way, in a shade that reads as the wallpaper's)
-    for o in [{x: -1.25, y: 0}, {x: 1.25, y: 0}, {x: 0, y: -1.25}, {x: 0, y: 1.25}, {x: -1, y: -1}, {x: 1, y: -1}, {x: -1, y: 1}, {x: 1, y: 1}]: SymIcon {
-        visible: mark != "" && !beside;
-        x: (cap-w - mark-size) / 2 + o.x * 1px;
-        y: o.y * 1px;
-        width: mark-size;
-        height: parent.height;
-        text: mark;
-        fill: true;
-        font-size: mark-size;
-        color: ink-dark ? #ffffff80 : #00000040;
-    }
-    if mark != "" && !beside: SymIcon {
-        x: (cap-w - mark-size) / 2;
-        width: mark-size;
-        text: mark;
-        fill: true;
-        font-size: mark-size;
-        color: ink;
-    }
-    if beside: SymIcon {
-        x: cap-w + 1px + nub-w + 2px;
-        width: beside-size;
-        text: mark;
-        fill: true;
-        // (Material: the symbol at the mark's own size, not SymIcon's 1.2x)
-        font-size: Theme.material ? beside-size / 1.2 : beside-size;
-        color: Theme.material && (charging || plugged) ? fill-color : ink;
-    }
+// A privacy dot: pops in (PrivacyDots: scale 0 → 1, 200 ms OutBack)
+component Dot inherits Rectangle {
+    in property <color> c;
+    width: 7px;
+    border-radius: 3.5px;
+    background: c;
+    property <bool> in-view;
+    init => { in-view = true; }
+    transform-scale: in-view ? 1 : 0;
+    animate transform-scale { duration: 200ms; easing: ease-out-back; }
 }
 
 // One bar item (MenuBarItem): its icon or drawing, its text, a rounded
@@ -130,8 +58,14 @@ component Item inherits Rectangle {
     in property <Entry> e;
     in property <color> ink;
     in property <bool> ink-dark;
+    // a drag of files over the bar (the shelf item takes it: MenuBar.qml's DropArea)
+    in property <bool> drag-over;
+    in property <length> drag-x;
     callback clicked(PointerEventButton, length);
     callback hovered(bool, length, string);
+    callback drop-hot(bool);
+    property <bool> hot: e.id == "shelf" && drag-over && drag-x >= self.absolute-position.x && drag-x < self.absolute-position.x + self.width;
+    changed hot => { root.drop-hot(hot); }
     property <color> tone: e.danger ? Theme.danger : ink;
     height: 24px;
     width: (e.glyph == 3 && Theme.material ? chip.width : row.preferred-width) + (e.glyph == 3 ? 16px : 18px);
@@ -246,12 +180,30 @@ component Item inherits Rectangle {
                 color: root.tone;
             }
         }
-        if e.icon != "": SymIcon {
+        // (the shelf's in a fixed slot: it fills while files are over it, and
+        // the filled glyph's width doesn't reach the bar's layout)
+        if e.icon != "" && e.id == "shelf": Rectangle {
+            min-width: 15px;
+            max-width: 15px;
+            preferred-width: 15px;
+            SymIcon {
+                x: 0;
+                y: 0;
+                width: 15px;
+                height: parent.height;
+                text: e.icon;
+                fill: e.fill || hot;
+                bold: e.bold;
+                font-size: 15px;
+                color: hot ? Theme.accent : root.tone;
+            }
+        }
+        if e.icon != "" && e.id != "shelf": SymIcon {
             text: e.icon;
             fill: e.fill;
             bold: e.bold;
             font-size: 15px;
-            color: root.tone;
+            color: hot ? Theme.accent : root.tone;
         }
         if e.text != "": Text {
             text: e.text;
@@ -268,10 +220,10 @@ component Item inherits Rectangle {
         spacing: 4px;
         padding-top: 8.5px;
         padding-bottom: 8.5px;
-        if e.camera: Rectangle { width: 7px; border-radius: 3.5px; background: #30D158; }
-        if e.mic: Rectangle { width: 7px; border-radius: 3.5px; background: #FF9F0A; }
-        if e.location: Rectangle { width: 7px; border-radius: 3.5px; background: #0A84FF; }
-        if e.share: Rectangle { width: 7px; border-radius: 3.5px; background: #BF5AF2; }
+        if e.camera: Dot { c: #30D158; }
+        if e.mic: Dot { c: #FF9F0A; }
+        if e.location: Dot { c: #0A84FF; }
+        if e.share: Dot { c: #BF5AF2; }
     }
     chip := Rectangle {
         visible: e.glyph == 3 && Theme.material;
@@ -310,6 +262,8 @@ component Item inherits Rectangle {
 // A left-side item: the system menu's icon, the app's name, "Window"
 component LeftItem inherits Rectangle {
     in property <string> icon;
+    in property <image> image;
+    in property <bool> has-image;
     in property <string> text;
     in property <bool> bold;
     in property <bool> active;
@@ -328,10 +282,23 @@ component LeftItem inherits Rectangle {
     accessible-action-default => { root.clicked(self.absolute-position.x); }
     t := TouchArea {
         clicked => { root.clicked(root.absolute-position.x); }
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.up && e.button == PointerEventButton.right && self.has-hover { root.clicked(root.absolute-position.x); }
+        }
     }
     row := HorizontalLayout {
         alignment: center;
-        if icon != "": SymIcon {
+        if has-image: VerticalLayout {
+            alignment: center;
+            Image {
+                width: 16px;
+                height: 16px;
+                source: root.image;
+                colorize: ink;
+                image-fit: contain;
+            }
+        }
+        if icon != "" && !has-image: SymIcon {
             text: icon;
             fill: true;
             font-size: 16px;
@@ -375,6 +342,9 @@ export component Bar inherits Window {
     in property <bool> chrome: true; // false over a fullscreen app
     // left
     in property <string> logo: "\u{e604}";
+    in property <image> logo-image; // the distro's logo (menuIcon "distro")
+    in property <bool> has-logo-image;
+    in property <bool> island-art;
     in property <bool> app-menu: true;
     in property <string> app-name: "Desktop";
     in property <bool> window-menu: true;
@@ -401,12 +371,20 @@ export component Bar inherits Window {
     in property <string> layout: "replace";
     in property <Live> live;
     in property <int> live-count;
+    in property <Live> card;
+    in property <bool> card-on;
+    in property <bool> all-mode;
+    in property <[ActRow]> act-rows;
+    in property <[RecentRow]> recent;
+    in property <int> recent-n;
+    out property <bool> island-keys: island.wants-keys;
     in property <int> live-index;
     in property <[AlertRow]> alerts;
     in property <string> pill-text;
     in property <string> pill-icon;
     in property <color> pill-tint;
-    in property <string> status;
+    in property <IslandStats> stats;
+    in property <string> battery-tip; // the island's battery figure: its tip
     in property <bool> playing;
     // right
     in property <[Entry]> entries;
@@ -422,7 +400,7 @@ export component Bar inherits Window {
     out property <length> tip-w: tip.width;
     out property <length> tip-h: tip.height;
     out property <float> tip-o: tip.opacity;
-    out property <bool> hovered: reveal.has-hover;
+    out property <bool> hovered: reveal.has-hover || (island-on && island.island-hovered);
     callback menu(string, length); // system | app | window, at x
     callback clicked(string, PointerEventButton, length); // an entry: its id
     callback go(int);
@@ -433,12 +411,38 @@ export component Bar inherits Window {
     callback island-hover(bool);
     callback island-pill();
     callback island-cycle(length, length);
-    callback island-control(int);
+    callback island-control(string, int, bool);
     callback island-act(int, string);
     callback island-dismiss(int);
     callback island-level(float);
     callback island-pin();
     callback island-hold(bool);
+    callback empty-click();
+    // files dragged over the bar: where, and whether the shelf item is under them
+    in property <bool> drag-over;
+    in property <length> drag-x;
+    callback shelf-hot(bool);
+    in property <bool> reduce-motion;
+    in property <[LevelRow]> levels;
+    in property <bool> levels-open;
+    in property <bool> alerts-below;
+    callback level-pick(string);
+    callback level-set(string, float);
+    out property <length> below-x: island.x + island.below-x;
+    out property <length> below-y: island.y + island.below-y;
+    out property <length> below-w: island.below-w;
+    out property <length> below-h: island.below-h;
+    out property <float> below-o: island.below-o;
+    callback recent-run(int);
+    callback recent-forget(int);
+    callback recent-clear();
+    callback music-seek(float);
+    callback music-volume(float);
+    callback music-mute();
+    callback open-player();
+    callback island-escape();
+    // ResourceHover: the popover under a figure (its key) opens or closes, at x (centre), y (top)
+    callback res-popover(string, bool, length, length);
 
     background: transparent;
     no-frame: true;
@@ -454,24 +458,82 @@ export component Bar inherits Window {
     }
 
     // the hover tip (HoverTip): after half a second on an item, under it
-    property <bool> tip-want;
-    property <bool> tip-open;
+    // (as if each item had its own HoverTip: the one pointed at is `tip-want`,
+    // the one shown `tip-key`; a new item restarts the 500 ms, the old one
+    // closes 120 ms after the pointer left it)
+    property <bool> tip-want: tip-want-key != "";
+    property <bool> tip-open: tip-key != "";
+    property <string> tip-want-key;
+    property <string> tip-key;
+    property <string> tip-want-text;
+    property <length> tip-want-at;
+    property <length> tip-want-top: 35px;
     property <string> tip-text;
     property <length> tip-at;
-    Timer {
+    property <length> tip-top: 35px; // (under a bar item; the island's battery: under it)
+    // ResourceHover: half a second's rest on a figure opens its popover,
+    // 120 ms after leaving it closes
+    property <string> res-want;
+    property <string> res-open;
+    property <length> res-x;
+    property <length> res-y;
+    res-open-timer := Timer {
         interval: 500ms;
-        running: tip-want && !tip-open;
-        triggered => { tip-open = true; }
+        running: res-want != "" && res-want != res-open;
+        triggered => {
+            if res-open != "" { root.res-popover(res-open, false, 0, 0); }
+            res-open = res-want;
+            root.res-popover(res-open, true, res-x, res-y);
+        }
     }
     Timer {
         interval: 120ms;
-        running: !tip-want && tip-open;
-        triggered => { tip-open = false; }
+        running: res-open != "" && res-want != res-open;
+        triggered => {
+            root.res-popover(res-open, false, 0, 0);
+            res-open = "";
+        }
+    }
+    function res-hover(key: string, on: bool, x: length, y: length) {
+        if on {
+            res-x = x;
+            res-y = y;
+            if res-want != key { res-want = key; res-open-timer.restart(); }
+        } else if res-want == key {
+            res-want = "";
+        }
+    }
+    tip-open-timer := Timer {
+        interval: 500ms;
+        running: tip-want-key != "" && tip-want-key != tip-key;
+        triggered => {
+            tip-key = tip-want-key;
+            tip-text = tip-want-text;
+            tip-at = tip-want-at;
+            tip-top = tip-want-top;
+        }
+    }
+    Timer {
+        interval: 120ms;
+        running: tip-key != "" && tip-want-key != tip-key;
+        triggered => { tip-key = ""; }
+    }
+    function tip-hover(key: string, on: bool, text: string, x: length, top: length) {
+        if on && text != "" {
+            tip-want-text = text;
+            tip-want-at = x;
+            tip-want-top = top;
+            if tip-want-key != key { tip-want-key = key; tip-open-timer.restart(); }
+        } else if tip-want-key == key {
+            tip-want-key = "";
+        }
     }
 
     reveal := TouchArea {
         height: 30px;
         y: 0;
+        // a click on the bar's empty strip closes an open menu (Popover's catcher: no item there)
+        clicked => { root.empty-click(); }
         scroll-event(e) => {
             if e.delta-y == 0 { return reject; }
             root.scrolled(self.mouse-x < self.width / 2, e.delta-y);
@@ -535,6 +597,8 @@ export component Bar inherits Window {
                 spacing: 0;
                 LeftItem {
                     icon: root.logo;
+                    image: root.logo-image;
+                    has-image: root.has-logo-image;
                     ink: root.ink;
                     label: "System menu";
                     active: open-menu == "system";
@@ -597,14 +661,16 @@ export component Bar inherits Window {
                     e: e;
                     ink: root.ink;
                     ink-dark: root.ink-dark;
-                    clicked(b, x) => { tip-want = false; tip-open = false; root.clicked(e.id, b, x); }
+                    drag-over: root.drag-over;
+                    drag-x: root.drag-x;
+                    drop-hot(on) => { root.shelf-hot(on); }
+                    clicked(b, x) => { tip-want-key = ""; tip-key = ""; root.res-hover("cpu", false, 0, 0); root.clicked(e.id, b, x); }
                     hovered(on, x, text) => {
-                        if on && !e.active && text != "" {
-                            tip-text = text;
-                            tip-at = x;
-                            tip-want = true;
+                        // the resources item: the last minute's popover (not while its menu is open)
+                        if e.id == "resources" {
+                            root.res-hover("cpu", on && !e.active, x, 30px + 8px);
                         } else {
-                            tip-want = false;
+                            root.tip-hover(e.id, on && !e.active, text, x, 35px);
                         }
                     }
                 }
@@ -639,12 +705,34 @@ export component Bar inherits Window {
         right-hot: root.right-hot;
         live: root.live;
         live-count: root.live-count;
+        card: root.card;
+        card-on: root.card-on;
+        all-mode: root.all-mode;
+        island-art: root.island-art;
+        reduce-motion: root.reduce-motion;
+        levels: root.levels;
+        levels-open: root.levels-open;
+        alerts-below: root.alerts-below;
+        level-pick(id) => { root.level-pick(id); }
+        level-set(id, v) => { root.level-set(id, v); }
+        act-rows: root.act-rows;
+        recent: root.recent;
+        recent-n: root.recent-n;
+        recent-run(h) => { root.recent-run(h); }
+        recent-forget(h) => { root.recent-forget(h); }
+        recent-clear => { root.recent-clear(); }
+        seek(f) => { root.music-seek(f); }
+        set-volume(v) => { root.music-volume(v); }
+        mute => { root.music-mute(); }
+        open-player => { root.open-player(); }
+        escape => { root.island-escape(); }
         live-index: root.live-index;
         alerts: root.alerts;
         pill-text: root.pill-text;
         pill-icon: root.pill-icon;
         pill-tint: root.pill-tint;
-        status: root.status;
+        stats: root.stats;
+        act-n: root.live-count;
         tick: root.tick;
         go(id) => { root.go(id); }
         space-menu(id, x) => { root.space-menu(id, x); }
@@ -653,12 +741,23 @@ export component Bar inherits Window {
         hover(on) => { root.island-hover(on); }
         open-pill => { root.island-pill(); }
         cycle(dx, dy) => { root.island-cycle(dx, dy); }
-        control(i) => { root.island-control(i); }
+        control(k, i, all) => { root.island-control(k, i, all); }
         act(u, w) => { root.island-act(u, w); }
         dismiss(u) => { root.island-dismiss(u); }
         set-level(v) => { root.island-level(v); }
         pin => { root.island-pin(); }
         holding(on) => { root.island-hold(on); }
+        stat-hover(k, on, x, y) => {
+            if k == "*" {
+                // (it closed under the pointer)
+                root.tip-hover("island:battery", false, "", 0, 0);
+                res-want = "";
+            } else if k == "battery" {
+                root.tip-hover("island:battery", on, battery-tip, x, y + 14px);
+            } else {
+                root.res-hover(k, on, x, y + 14px);
+            }
+        }
     }
 
     // The tip: no input (outside the input region), on glass (Glass) or
@@ -669,10 +768,10 @@ export component Bar inherits Window {
         width: tip-label.preferred-width + 2 * pad-x;
         height: tip-label.preferred-height + 2 * pad-y;
         x: max(0px, min(root.width - self.width, tip-at - self.width / 2));
-        y: 35px + (tip-open ? 0 : -4px);
+        y: tip-top + (tip-open ? 0 : -4px);
         opacity: tip-open && revealed ? 1 : 0;
         visible: self.opacity > 0.01;
-        animate opacity, y { duration: Theme.popover; easing: ease-out; }
+        animate opacity, y { duration: tip-open ? Theme.popover : 0ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
         border-radius: Theme.material ? 4px : Theme.radius-control;
         background: Theme.material ? Theme.m3-inverse-surface : Theme.panel;
         tip-label := Text {
@@ -731,9 +830,12 @@ component TileGlyph inherits Rectangle {
 export component Menu inherits Window {
     in property <[MenuRow]> rows;
     in property <length> menu-w: 220px;
-    in property <length> panel-left: 16px; // (under its item: less near the screen's edge)
+    in property <length> panel-left: 16px; // (under its item, screen x: less near the screen's edge)
     in property <bool> any-checks;
     in property <bool> shown; // drives the open/close animation
+    in property <bool> context; // a space's context menu (ContextMenu: centred, 0.94 → 1)
+    // (a context menu draws the same rows in either look: ContextMenu.qml has no Material twin)
+    property <bool> m3: Theme.material && !context;
     in-out property <int> current: -1;
     out property <float> openness: shown ? 1 : 0; // (Rust follows it for the glass shape)
     out property <length> panel-x: panel.x;
@@ -741,19 +843,19 @@ export component Menu inherits Window {
     out property <length> panel-width: panel.width;
     out property <length> panel-height: panel.height;
     out property <float> panel-scale: panel.transform-scale;
-    property <length> pad: Theme.material ? 4px : 5px;
+    property <length> pad: m3 ? 4px : 5px;
     callback activated(int);
     callback tile(int, int);
     callback step(int); // arrow keys: Rust picks the next row (menus.rs: step)
     callback dismissed();
     callback closed(); // the close animation ended
+    callback hovered(bool); // the pointer over the panel (autoClose waits)
+    callback bar-click(length, length); // a click on the bar's strip: it goes on to the bar
 
     background: transparent;
     no-frame: true;
     title: "Menu";
     default-font-family: Theme.font;
-    preferred-width: menu-w + 2 * pad + 2 * 16px;
-    preferred-height: 34px + content.preferred-height + 2 * pad + 16px;
 
     animate openness {
         duration: shown ? 420ms : 140ms;
@@ -766,6 +868,15 @@ export component Menu inherits Window {
     public function open() {
         current = -1;
         keys.focus();
+    }
+
+    // The whole screen while open (Popover.qml's catcher): a click outside
+    // the panel closes it
+    TouchArea {
+        enabled: shown;
+        clicked => {
+            if self.mouse-y < 30px { root.bar-click(self.mouse-x, self.mouse-y); } else { dismissed(); }
+        }
     }
 
     keys := FocusScope {
@@ -782,12 +893,12 @@ export component Menu inherits Window {
             y: 34px + (1 - openness) * -8px;
             width: menu-w + 2 * pad;
             height: content.preferred-height + 2 * pad;
-            transform-origin: { x: 18px, y: 0px };
-            transform-scale: 0.92 + 0.08 * openness;
+            transform-origin: { x: context ? self.width / 2 : 18px, y: 0px };
+            transform-scale: context ? 0.94 + 0.06 * openness : 0.92 + 0.08 * openness;
             opacity: min(1, openness * 1.6);
-            border-radius: Theme.material ? 16px : Theme.menu-radius + 2px;
+            border-radius: m3 ? 16px : Theme.menu-radius + 2px;
             background: Theme.menu-bg;
-            border-width: Theme.material ? 0 : 0.5px;
+            border-width: m3 ? 0 : 0.5px;
             border-color: Theme.separator;
             drop-shadow-blur: 16px;
             drop-shadow-offset-y: 4px;
@@ -795,6 +906,9 @@ export component Menu inherits Window {
             accessible-role: list;
             accessible-label: "Menu";
 
+            // (over the rows too: autoClose waits while it's pointed at)
+            hover := TouchArea {
+                changed has-hover => { root.hovered(self.has-hover); }
             content := VerticalLayout {
                 x: pad;
                 y: pad;
@@ -802,12 +916,12 @@ export component Menu inherits Window {
                 spacing: 0;
                 for r[i] in rows: Rectangle {
                     property <bool> hot: current == i && r.enabled && !r.separator && !r.header && r.tiles.length == 0;
-                    height: r.separator ? (Theme.material ? 2px : 11px) : (r.header ? (Theme.material ? 32px : 22px) : r.tiles.length > 0 ? 36px : (Theme.material ? 40px : 26px)) + (Theme.material && r.first ? 4px : 0) + (Theme.material && r.last ? 4px : 0);
+                    height: r.separator ? (m3 ? 2px : 11px) : (r.header ? (m3 ? 32px : context ? 26px : 22px) : r.tiles.length > 0 ? 36px : (m3 ? 40px : context ? 28px : 26px)) + (m3 && r.first ? 4px : 0) + (m3 && r.last ? 4px : 0);
                     // Material: the group's surface (corners 12 outside, 4 where groups meet)
-                    background: Theme.material && !r.separator ? Theme.m3-surface-container-low : transparent;
-                    border-top-left-radius: Theme.material ? (r.first ? (i == 0 ? 12px : 4px) : 0) : 0;
+                    background: m3 && !r.separator ? Theme.m3-surface-container-low : transparent;
+                    border-top-left-radius: m3 ? (r.first ? (i == 0 ? 12px : 4px) : 0) : 0;
                     border-top-right-radius: self.border-top-left-radius;
-                    border-bottom-left-radius: Theme.material ? (r.last ? (i == rows.length - 1 ? 12px : 4px) : 0) : 0;
+                    border-bottom-left-radius: m3 ? (r.last ? (i == rows.length - 1 ? 12px : 4px) : 0) : 0;
                     border-bottom-right-radius: self.border-bottom-left-radius;
                     accessible-role: list-item;
                     accessible-label: r.text;
@@ -817,28 +931,28 @@ export component Menu inherits Window {
                     accessible-checked: r.checked;
                     accessible-action-default => { activated(i); }
 
-                    if r.separator && !Theme.material: Rectangle {
+                    if r.separator && !m3: Rectangle {
                         width: parent.width - 18px;
                         height: 1px;
                         background: Theme.separator;
                     }
                     if r.header: Text {
-                        x: Theme.material ? 12px : 10px;
-                        y: parent.height - self.height - (Theme.material ? 6px : 3px);
+                        x: m3 ? 12px : 10px;
+                        y: parent.height - self.height - (m3 ? 6px : 3px);
                         text: r.text;
-                        color: Theme.material ? Theme.m3-on-surface-variant : Theme.tertiary;
-                        font-size: Theme.material ? 12px : Theme.caption;
-                        font-weight: Theme.material ? 500 : 600;
+                        color: m3 ? Theme.m3-on-surface-variant : Theme.tertiary;
+                        font-size: m3 ? 12px : Theme.caption;
+                        font-weight: m3 ? 500 : 600;
                     }
                     if r.tiles.length > 0: HorizontalLayout {
-                        x: Theme.material ? 4px : 6px;
+                        x: m3 ? 4px : 6px;
                         y: (parent.height - 32px) / 2;
                         height: 32px;
                         width: self.preferred-width;
                         spacing: 4px;
                         for t[j] in r.tiles: Rectangle {
                             width: 44px;
-                            border-radius: Theme.material ? 8px : Theme.radius-item + 2px;
+                            border-radius: m3 ? 8px : Theme.radius-item + 2px;
                             background: tt.has-hover ? Theme.highlight : transparent;
                             accessible-role: button;
                             accessible-label: t.label;
@@ -853,44 +967,44 @@ export component Menu inherits Window {
                         }
                     }
                     if !r.separator && !r.header && r.tiles.length == 0: Rectangle {
-                        x: Theme.material ? 4px : 0;
-                        y: Theme.material && r.first ? 4px : 0;
+                        x: m3 ? 4px : 0;
+                        y: m3 && r.first ? 4px : 0;
                         width: parent.width - 2 * self.x;
-                        height: Theme.material ? 40px : 26px;
-                        border-radius: Theme.material ? (r.checked ? self.height / 2 : 8px) : Theme.radius-item + 2px;
-                        background: Theme.material
+                        height: m3 ? 40px : context ? 28px : 26px;
+                        border-radius: m3 ? (r.checked ? self.height / 2 : 8px) : Theme.radius-item + 2px;
+                        background: m3
                             ? (r.checked ? (hot ? Theme.m3-tertiary-container.mix(Theme.m3-on-tertiary-container, 0.92) : Theme.m3-tertiary-container) : hot ? Theme.m3-on-surface.with-alpha(0.08) : transparent)
                             : (hot ? Theme.highlight : transparent);
                         animate background { duration: 100ms; }
                         if r.checked: SymIcon {
-                            x: Theme.material ? 12px : 6px;
+                            x: m3 ? 12px : 6px;
                             width: 16px;
                             text: "\u{e182}"; // check
                             bold: true;
-                            font-size: Theme.material ? 16px : 12px;
-                            color: Theme.material ? Theme.m3-on-tertiary-container : hot ? Theme.on-highlight : Theme.label;
+                            font-size: m3 ? 16px : 12px;
+                            color: m3 ? Theme.m3-on-tertiary-container : hot ? Theme.on-highlight : Theme.label;
                         }
                         Text {
-                            x: Theme.material ? (any-checks ? 40px : 12px) : 22px;
+                            x: m3 ? (any-checks ? 40px : 12px) : 22px;
                             width: parent.width - self.x - (r.shortcut != "" ? sc.preferred-width + 24px : 12px);
                             height: parent.height;
                             text: r.text;
-                            color: Theme.material
+                            color: m3
                                 ? (!r.enabled ? Theme.m3-on-surface.with-alpha(0.38) : r.checked ? Theme.m3-on-tertiary-container : Theme.m3-on-surface)
                                 : (hot ? Theme.on-highlight : r.enabled ? Theme.label : Theme.tertiary);
-                            font-size: Theme.material ? 14px : Theme.body;
-                            font-weight: Theme.material ? 500 : 400;
+                            font-size: m3 ? 14px : Theme.body;
+                            font-weight: m3 ? 500 : 400;
                             overflow: elide;
                             vertical-alignment: center;
                             accessible-role: none;
                         }
                         sc := Text {
-                            x: parent.width - self.width - (Theme.material ? 12px : 10px);
+                            x: parent.width - self.width - (m3 ? 12px : 10px);
                             width: self.preferred-width;
                             height: parent.height;
                             text: r.shortcut;
-                            color: Theme.material ? (!r.enabled ? Theme.m3-on-surface.with-alpha(0.38) : Theme.m3-on-surface-variant) : hot ? Theme.on-highlight.with-alpha(0.8) : Theme.tertiary;
-                            font-size: Theme.material ? 13px : Theme.body;
+                            color: m3 ? (!r.enabled ? Theme.m3-on-surface.with-alpha(0.38) : Theme.m3-on-surface-variant) : hot ? Theme.on-highlight.with-alpha(0.8) : Theme.tertiary;
+                            font-size: m3 ? 13px : Theme.body;
                             vertical-alignment: center;
                             accessible-role: none;
                         }
@@ -904,6 +1018,7 @@ export component Menu inherits Window {
                         }
                     }
                 }
+            }
             }
         }
     }

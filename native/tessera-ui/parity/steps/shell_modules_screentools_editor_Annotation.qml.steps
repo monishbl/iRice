@@ -1,0 +1,54 @@
+# Test picture /tmp/t.png (1600x900, text 'Invoice total 42.00' and a link). Check in each look. Glass canvas x 280..1640, y 157..923; Material canvas x 301..1619, y 169..911.
+setup (magick -size 1600x900 xc:white -fill black -pointsize 48 -annotate +100+200 "Invoice total 42.00" -annotate +100+320 "https://example.com/pay" /tmp/t.png || convert -size 1600x900 xc:white -fill black -pointsize 48 -annotate +100+200 "Invoice total 42.00" -annotate +100+320 "https://example.com/pay" /tmp/t.png); cp /tmp/t.png /tmp/t2.png
+ipc shotEditor edit /tmp/t.png
+wait 1
+key -k p
+ptr move 500 400 down glide 800 500 300 up
+ptr click 900 400
+wait 1
+shot pen
+note Pen stroke and dot: same width and colour (Vermilion #D05F43) in both shells, round ends, the dot round.
+key -k h
+ptr move 500 600 down glide 900 600 200 glide 700 550 200 up
+wait 1
+shot highlighter
+note Highlighter crossing itself: the crossing must NOT be darker in either shell; flat ends.
+key -k a
+ptr move 600 700 down glide 1000 700 200 up
+wait 1
+shot arrow
+note Arrow 600,700 to 1000,700: same head size and shape as QML, the shaft must not poke past the tip.
+key -k r
+ptr move 1100 300 down glide 1400 500 200 up
+key -k o
+ptr move 1100 550 down glide 1400 750 200 up
+wait 1
+shot rect-ellipse
+note Rectangle and ellipse: the border sits inside the box (zoom: outer edge at the drag corners 1100,300-1400,500 and 1100,550-1400,750), same in both shells.
+key -k t
+ptr click 400 820
+key Hello
+key -k Return
+wait 1
+shot text
+note Text label "Hello" in the ink colour, weight 600, same baseline in both shells.
+key -k b
+ptr move 360 320 down glide 700 370 200 up
+wait 1
+shot redact
+note Redaction blocks cover "Invoice total" and stay after release (block colours may differ slightly between QML and Rust: known).
+key -k p
+ptr move 500 250 down glide 900 260 200 up
+wait 1
+shot redact-keep
+note The redaction must not flicker or change when another stroke is drawn (compare with the previous shot over the redaction box: identical).
+rec undo 1 key -M ctrl -k z -m ctrl
+note Undo: only the last mark (the pen stroke) disappears; the other marks do not blink or move.
+wait 1
+rec redo 1 key -M ctrl -M shift -k z -m shift -m ctrl
+note Redo brings the last mark back; the others do not blink.
+wait 1
+key -M ctrl -k s -m ctrl
+wait 2
+# MANUAL: Saved output: copy the picture per shell first (cp /tmp/t.png /tmp/t-qml.png and t-rust.png), draw steps 1-6, Ctrl+S, then magick compare -metric AE -fuzz 10% the two files: differences only on antialiased edges, text rendering and redaction block colours
+# MANUAL: Arrow with Shift held snaps to 45 degrees (needs a held key across a drag)

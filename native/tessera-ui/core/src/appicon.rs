@@ -40,11 +40,13 @@ impl Style {
         let a = &cfg["appearance"];
         let s = a["iconStyle"].as_str().unwrap_or("look");
         let style = match s {
-            "look" | "default" => if material { "themed" } else { "clear" },
+            // ("default" is each app's own logo: Config.qml moved the old
+            // "default" to "look" once, at defaultsVersion 3; a "default" now was
+            // picked, and AppIcon.qml draws it as mode 0)
+            "look" => if material { "themed" } else { "clear" },
             "auto" => if dark { "dark" } else { "default" },
             s => s,
         };
-        // ("default" was renamed "look": Config.qml moves it on load)
         let mode = match style {
             "dark" => 1,
             "clear" => 2,
@@ -557,7 +559,7 @@ mod tests {
         let m = Style::from_settings(&json!({}), true, true, ACCENT, THEMED);
         assert_eq!((m.mode, m.tiled, m.tint, m.tile), (4, true, THEMED.1, Some(THEMED.0))); // Material: Themed
         let plain = Style::from_settings(&json!({"appearance": {"iconStyle": "default", "iconShape": "original"}}), false, true, ACCENT, THEMED);
-        assert_eq!(plain.mode, 2); // ("default" is the old name of "look")
+        assert_eq!(plain.mode, 0); // ("default": each app's own logo, as AppIcon.qml)
         let plain = Style::from_settings(&json!({"appearance": {"iconStyle": "auto", "iconShape": "original"}}), false, false, ACCENT, THEMED);
         assert!(plain.plain());
         // themed means nothing in Glass (no Material colours there)

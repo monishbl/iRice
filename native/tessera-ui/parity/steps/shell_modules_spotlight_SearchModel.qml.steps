@@ -1,0 +1,60 @@
+# Check in each look. Known earlier results: store (Software) rows were missing in Rust, ranking tie-order for "fi"; re-check both.
+# NOTE: click on layer surfaces may not register in the harness
+ipc panels open spotlight IRICE-TEST
+wait 1
+rec sp-type 1 key fir
+note Results appear within one frame of the last key; first changed frame after the last key: Rust not later than QML. Selection on row 0.
+wait 2
+shot sp-fir
+note Results for "fir": Applications plus (after 1.5 s) a Software group / Top Hit with "Get - Flathub" rows as in QML; selection on row 0.
+key -k Down -k Down
+shot sp-down2
+note Selection on row 2 (third row).
+key -k Up -k Up -k Up -k Up -k Up
+shot sp-up5
+note Up x5 stops at row 0 (no wrap).
+key -k Tab -k Tab -k Tab -k Tab -k Tab -k Tab -k Tab -k Tab
+shot sp-tab-wrap
+note Repeated Tab wraps to row 0 after the last row (selection index visible; compare with QML).
+key -M ctrl -k a -m ctrl
+key -k BackSpace
+key 2+2
+wait 1
+shot sp-22
+note Answer card "4" first.
+key -k Return
+wait 1
+setup sh -c 'wl-paste'
+shot sp-22-closed
+note Search closed; clipboard holds 4 (wl-paste in the setup line).
+# MANUAL: /.bash file rows arrive later; keep selection on the 2nd file title while more arrive (no files in sandbox)
+# MANUAL: file row: Shift+Space and Ctrl+Y open Quick Look (no files in sandbox)
+ipc panels open spotlight IRICE-TEST
+wait 1
+key ?hello
+key -k Return
+wait 2
+shot sp-ask
+note With no AI set up, "?hello" + Return opens Settings on the AI page and closes Search.
+key -k Escape
+setup ipc panels close
+ipc panels open spotlight IRICE-TEST
+wait 1
+# Ask button with an empty field (Glass (1280,244) / Material (1280,244) approx.)
+ptr move 960 540 sleep 100 glide 1280 244 200 sleep 100 click
+wait 2
+shot sp-ask-empty
+note Ask (sparkle) with empty field opens the sidebar (or Settings AI if no AI); compare with QML. Click may not register on layer surfaces.
+ipc panels close
+# reopen after typing
+ipc panels open spotlight IRICE-TEST
+wait 1
+key hello
+wait 1
+key -k Escape
+wait 1
+ipc panels open spotlight IRICE-TEST
+wait 1
+shot sp-reopen
+note Reopened Search: field empty, no results.
+key -k Escape

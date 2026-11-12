@@ -8,6 +8,11 @@
 /// "softBurst" (ten soft points), "sunny" (eight) or "cookie12" (twelve
 /// scallops); anything else a circle
 pub fn outline(name: &str) -> String {
+    // "clover8" (eight round leaves): MaterialShapes.js's star, exactly:
+    // r = R(1 - a·((1 - cos nθ)/2)^b), n 8, a 0.2, b 2.6
+    if name == "clover8" {
+        return star(8.0, 0.2, 2.6, 48.0);
+    }
     let (n, a, r) = match name {
         "cookie9" => (9.0, 0.07, 46.0),
         "clover4" => (4.0, 0.2, 41.0),
@@ -29,13 +34,26 @@ pub fn outline(name: &str) -> String {
     d + "Z"
 }
 
+/// MaterialShapes.js's star kind in a 0..100 box (radius `r`)
+fn star(n: f64, a: f64, b: f64, r: f64) -> String {
+    let steps = 240;
+    let mut d = String::new();
+    for i in 0..=steps {
+        let t = i as f64 / steps as f64 * std::f64::consts::TAU;
+        let rr = r * (1.0 - a * ((1.0 - (n * t).cos()) / 2.0).powf(b));
+        let (x, y) = (50.0 + rr * (t - std::f64::consts::FRAC_PI_2).cos(), 50.0 + rr * (t - std::f64::consts::FRAC_PI_2).sin());
+        d += &format!("{}{x:.2} {y:.2} ", if i == 0 { "M " } else { "L " });
+    }
+    d + "Z"
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn outlines_stay_in_their_box() {
-        for name in ["cookie9", "clover4", "softBurst", "sunny", "cookie12", "circle"] {
+        for name in ["cookie9", "clover4", "clover8", "softBurst", "sunny", "cookie12", "circle"] {
             let d = outline(name);
             assert!(d.starts_with("M ") && d.ends_with('Z'));
             let nums: Vec<f64> = d.split(|c: char| c == ' ' || c.is_ascii_alphabetic()).filter_map(|s| s.parse().ok()).collect();

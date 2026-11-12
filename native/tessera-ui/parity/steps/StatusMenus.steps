@@ -1,0 +1,105 @@
+# StatusMenus: steps from parity/shell_modules_menubar_StatusMenus.qml.md (batches 1-5). Screen IRICE-TEST 1920x1080 scale 1;
+# the island is centred at x 960 (closed y ~14, open ~392 wide); the bar is 30 px tall.
+# Each block runs in both looks: the file runs top to bottom, Material first, then Glass.
+
+look material
+setup foot &
+wait 2
+shot bar
+note find the Sound and Battery items' x (guesses below: sound 1790, battery 1730)
+ptr glide 1790 15 300
+ptr click
+wait 0.6
+shot sound-open
+note the Sound menu under its item
+ptr glide 1300 700 300
+ptr click
+wait 0.5
+shot outside
+note closed by a click on the desktop
+ptr glide 1790 15 300
+ptr click
+wait 0.6
+ptr glide 1730 15 200
+ptr click
+wait 0.6
+shot switched
+note one click on Battery closed Sound and opened Battery
+ptr glide 600 15 200
+ptr click
+wait 0.5
+shot empty-bar
+note the empty bar strip closed it
+ptr glide 1790 15 300
+ptr click
+ptr glide 1300 700 300
+wait 4.5
+shot auto-4s
+note still open
+wait 1
+shot auto-6s
+note closed after 5 s without the pointer
+ptr glide 1790 15 300
+ptr click
+wait 3
+ptr glide 1730 15 200
+ptr click
+ptr glide 1300 700 300
+wait 4.5
+shot own-timer
+note Battery (opened 3 s into Sound) is still open 4.5 s after its own click
+key -k Escape
+wait 0.5
+shot esc
+note Escape closed it
+
+look glass
+setup foot &
+wait 2
+shot bar
+note find the Sound and Battery items' x (guesses below: sound 1790, battery 1730)
+ptr glide 1790 15 300
+ptr click
+wait 0.6
+shot sound-open
+note the Sound menu under its item
+ptr glide 1300 700 300
+ptr click
+wait 0.5
+shot outside
+note closed by a click on the desktop
+ptr glide 1790 15 300
+ptr click
+wait 0.6
+ptr glide 1730 15 200
+ptr click
+wait 0.6
+shot switched
+note one click on Battery closed Sound and opened Battery
+ptr glide 600 15 200
+ptr click
+wait 0.5
+shot empty-bar
+note the empty bar strip closed it
+ptr glide 1790 15 300
+ptr click
+ptr glide 1300 700 300
+wait 4.5
+shot auto-4s
+note still open
+wait 1
+shot auto-6s
+note closed after 5 s without the pointer
+ptr glide 1790 15 300
+ptr click
+wait 3
+ptr glide 1730 15 200
+ptr click
+ptr glide 1300 700 300
+wait 4.5
+shot own-timer
+note Battery (opened 3 s into Sound) is still open 4.5 s after its own click
+key -k Escape
+wait 0.5
+shot esc
+note Escape closed it

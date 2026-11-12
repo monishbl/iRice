@@ -1,0 +1,4 @@
+look material
+# Needs AI answer buttons (AI set up) or a store row's "Get"; the sandbox has neither for Rust.
+# Store rows now come from the store lookup (no network in the sandbox).
+# MANUAL: hover each button -> 8 percent layer over 150 ms; press -> corners square to 12 in about 0.22 s; release -> it acts ("Copy answer" copies and closes)

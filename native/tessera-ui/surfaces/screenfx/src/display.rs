@@ -366,7 +366,7 @@ impl Part for DisplayOverlay {
                 continue;
             }
             let shape = theme::glass_shape(&st.shell.look, u.get_card_x(), u.get_card_y(), u.get_card_w(), u.get_card_h(), 26.0, 1.0, 1.0);
-            let key = format!("{shape:?}");
+            let key = tessera_core::theme::glass_key(&shape);
             if key != w.glass_sent {
                 st.shell.glass.set(&w.output, ID_NS, std::slice::from_ref(&shape));
                 w.glass_sent = key;
@@ -382,7 +382,7 @@ impl Part for DisplayOverlay {
                         continue;
                     }
                     let shape = theme::glass_shape(&st.shell.look, u.get_card_x(), u.get_card_y(), u.get_card_w(), u.get_card_h(), 22.0, 1.0, 1.0);
-                    let key = format!("{shape:?}");
+                    let key = tessera_core::theme::glass_key(&shape);
                     if key != w.glass_sent {
                         st.shell.glass.set(&w.output, CF_NS, std::slice::from_ref(&shape));
                         w.glass_sent = key;

@@ -1,0 +1,69 @@
+# MissionControl: 3 foot windows on space 1 (A,B,C), one on space 2 (D). Both looks.
+# Earlier results: Glass open/close in Rust was slower than QML (0.50-1.15 s vs 0.34 s open; 0.55-0.79 s vs 0.20 s close), card bar about 6 px lower (fixed in round 2), accent red vs orange, dock icons monochrome.
+setup foot -T A & sleep 1; foot -T B & sleep 1; foot -T C & sleep 1; hyprctl dispatch 'hl.dsp.workspace(2)'; sleep 1; foot -T D & sleep 1; hyprctl dispatch 'hl.dsp.workspace(1)'
+wait 6
+ptr move 100 900
+rec mc-open 1.2 ipc panels open missionControl IRICE-TEST
+note Open takes 320 ms (emphasized in): bar slides 30 px down while fading, stage scales 0.96 -> 1. Rust Glass was slower than QML before: first change and duration must match QML within 1-2 frames.
+wait 1
+shot open
+note Mission Control: space cards 150x84 centred at y 86 (x 628, 794, 960, 1126, 1292 with 5 spaces), titles y about 134, window tiles side by side below (stage from y 189). Card bar not 6 px lower than QML; accent ring colour same as QML (orange, not red); dock icons coloured (not monochrome).
+ptr move 960 560 sleep 200 glide 960 560 400 sleep 400
+shot hover-window
+note Hovered window: card grows 1.02 over 150 ms with a 3 px accent border; Glass: title pill appears under it; Material: the chip turns secondaryContainer. Same as QML.
+ptr move 960 560 sleep 200 glide 1600 900 300 sleep 400
+shot hover-off
+note Pointer moved off: hover state back to normal (no border, no pill).
+rec mc-close 1.2 ipc panels close
+note Close takes 320 ms (exit curve); compare with QML (Glass QML was about 0.20 s first change).
+wait 1
+ipc panels open missionControl IRICE-TEST
+wait 1
+# NOTE: click on layer surfaces may not register in the harness
+ptr move 960 560 sleep 200 click
+wait 1
+shot click-window
+note Clicking a window focuses it and closes Mission Control.
+ipc panels open missionControl IRICE-TEST
+wait 1
+ptr move 794 86 sleep 200 click
+wait 1
+shot click-card
+note Click on card 2: space 2 shown, Mission Control STAYS open showing only window D.
+ptr move 794 134 sleep 200 click
+wait 1
+shot click-title
+note Click on the title under card 2 (794, 134): Mission Control CLOSES (title is not part of the card's click area), same as QML.
+ipc panels open missionControl IRICE-TEST
+wait 1
+ptr move 1126 86 sleep 200 down glide 794 86 600 sleep 200
+shot drag-card
+note While dragging card 4 over card 2: dragged card follows the pointer at 85 % opacity and card 2 is marked as drop target. Same as QML.
+ptr move 1126 86 sleep 200 down glide 794 86 600 sleep 200 up
+wait 1
+shot drag-drop
+note After the drop the cards are reordered (titles swap order); a small move under 8 px then release counts as a click instead. Same as QML.
+key -k Escape
+wait 1
+shot esc
+note Escape closes Mission Control.
+ipc panels open missionControl IRICE-TEST
+wait 1
+ptr move 960 1060 sleep 200 click
+wait 1
+shot bg-click
+note Clicking the background at (960, 1060) closes Mission Control.
+ipc panels exposeApp foot
+wait 1
+shot expose
+note Expose: header "foot" + "4 windows" and all four foot windows (D from space 2 too). Earlier run: NEITHER shell showed the header; if the header is missing in both it is not a Rust difference.
+ipc panels close
+wait 1
+setup hyprctl dispatch workspace 3
+wait 1
+ipc panels open missionControl IRICE-TEST
+wait 1
+shot empty
+note Empty space 3: "No windows on this desktop" centred in the stage, same as QML; dock icons coloured on Rust too.
+ipc panels close
+# MANUAL: record 2 s with the pointer still over a window: no flicker of hover border / title pill, picture never blanks; region-changes.py over a card in the bar shows no change (tool not in the DSL)

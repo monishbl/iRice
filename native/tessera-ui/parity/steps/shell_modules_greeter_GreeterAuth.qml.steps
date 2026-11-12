@@ -1,0 +1,38 @@
+# GreeterAuth: login logic in the preview mock (password "tessera"; Esc quits).
+# NOTE: the greeter is a separate client; $TESSERA_BIN must point at the Rust binary (QML greeter: qs -p shell/greeter.qml with TESSERA_GREETER_MOCK=1).
+# NOTE: the typing speed matters; keys run with a 30 ms delay.
+setup TESSERA_GREETER_MOCK=1 $TESSERA_BIN --greeter --style look --look glass --demo users 2>/tmp/greeter-auth.log &
+wait 2
+shot start
+note Glass login screen with 3 made-up people, field empty and focused, same layout as QML.
+# Step 1: wrong password
+key nope
+key -k Return
+wait 0.3
+shot logging-in
+note About 600 ms after Return the placeholder reads "Logging in..." (field read-only); compare with QML.
+wait 1
+shot wrong
+note Field cleared, shaken, line under it reads "Incorrect password. Try again." (red); same as QML.
+# Step 2: right password
+key tessera
+key -k Return
+wait 0.8
+shot ok-logging-in
+note Busy ("Logging in...") for about 600 ms, then the window quits about 1.2 s after the login (screen back to the desktop).
+wait 2
+shot after-login
+note Greeter window is gone (preview quit); stderr should say "would launch" (see /tmp/greeter-auth.log, MANUAL check).
+# MANUAL: stderr of the greeter says "would launch" after step 2
+# Step 3: Esc with an empty field quits
+setup TESSERA_GREETER_MOCK=1 $TESSERA_BIN --greeter --style look --look glass --demo users &
+wait 2
+key -k Escape
+wait 1
+shot esc-quit
+note Esc with an empty field and no power choice quits the preview: desktop visible, no greeter window.
+# Step 4: fake-greetd path
+# MANUAL: run python3 native/tessera-ui/tools/fake-greetd.py, start the greeter with GREETD_SOCK=<sock> --demo users, press Down; a CreateSession must appear in fake-greetd's log ~300 ms later (before Enter)
+# MANUAL: --demo finger shows the fingerprint glyph and "Place your finger..."
+# Step 5: remember
+# MANUAL: after a successful login run the greeter again; the same person and session are preselected (cache file ~/.cache/tessera-greeter.json in the arena)

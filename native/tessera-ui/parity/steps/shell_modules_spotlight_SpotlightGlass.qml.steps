@@ -1,0 +1,68 @@
+look glass
+# Field x620..1300 y216..272 (centre 960,244); Clear ~(1252,244), Ask ~(1280,244) (Ask alone ~1272); results from y280, rows 40 px, first row centre ~(960,310) under a heading.
+# NOTE: click on layer surfaces may not register in the harness
+# NOTE: earlier result: Glass accent was red-coral in Rust vs orange in QML (FAIL 1), icons monochrome (FAIL 2); re-check both.
+rec sp-g-open 1 ipc panels open spotlight IRICE-TEST
+note Opens in 220 ms, slides 10 px down while fading; QML/Rust frame counts within 1.
+wait 1
+rec sp-g-close 1 key -k Escape
+note Closes in 220 ms (exit curve); QML/Rust frame counts within 1.
+wait 1
+ipc panels open spotlight IRICE-TEST
+wait 1
+key foot
+wait 1
+shot sp-g-foot
+note Results glass below the field; headings in caption type; selected row accent-filled in ORANGE as QML (not red).
+ptr move 960 540 sleep 100 glide 1280 244 300
+wait 1
+shot sp-g-ask-hover
+note Ask turns secondary (hover).
+ptr move 960 540 sleep 100 glide 1252 244 300
+wait 1
+shot sp-g-clear-hover
+note Clear turns secondary (hover).
+ptr move 1252 244 click
+wait 1
+shot sp-g-cleared
+note After clicking Clear the field is empty; typing goes to the field.
+key foo
+wait 1
+shot sp-g-typed-after-clear
+note "foo" typed into the field (focus returned).
+# keys: with >=2 results Tab moves selection
+key -k Tab
+shot sp-g-tab-sel
+note With 2+ results Tab moves the selection to the next row.
+key -M ctrl -k a -m ctrl
+key -k BackSpace
+key fo
+wait 1
+key -M shift -k Tab -m shift
+shot sp-g-shifttab
+note Shift+Tab from the field puts the focus ring on Ask (then Clear, then field with more presses).
+key -M shift -k Tab -m shift
+shot sp-g-shifttab2
+note Focus ring now on Clear.
+key -k space
+wait 1
+shot sp-g-space-clear
+note Space on Clear clears the field.
+# MANUAL: with exactly 1 result Tab -> Clear ringed, again -> Ask, again -> field (the web row always exists, earlier NOT TESTABLE)
+ptr move 960 900 click
+wait 1
+shot sp-g-outside-click
+note Click at (960,900) closes Search.
+ipc panels open spotlight IRICE-TEST
+wait 1
+ptr move 960 244 click
+wait 1
+shot sp-g-inside-click
+note Click at (960,244) in the field keeps Search open.
+key -M ctrl -k a -m ctrl
+key -k BackSpace
+key 12*3
+wait 1
+shot sp-g-answer
+note Answer card with orange 52 px tile, "36", "Enter copies it".
+key -k Escape

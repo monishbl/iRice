@@ -1,0 +1,29 @@
+# Motion settings and TextButton's press (latency.md steps 14 and 16):
+# appearance.motion subtle / snappy / expressive in Glass, Material always
+# expressive; the empty Clipboard's button presses as the QML's.
+look glass
+setup cliphist wipe 2>/dev/null; true
+ipc panels open clipboard IRICE-TEST
+wait 1.5
+shot clipboard-empty
+note find the empty state's button in clipboard-empty; adjust the ptr steps
+rec textbutton-press-glass 1.0 ptr move 960 600 down sleep 400 up
+ipc panels close
+setup python3 -I -c "import json,os;p=os.path.expanduser('~/.config/tessera/config.json');c=json.load(open(p));c['appearance']['motion']='expressive';json.dump(c,open(p,'w'),indent=4)"
+wait 3
+rec cc-expressive 1.6 key -M alt -k c -m alt
+rec cc-expressive-close 1.4 key -M alt -k c -m alt
+setup python3 -I -c "import json,os;p=os.path.expanduser('~/.config/tessera/config.json');c=json.load(open(p));c['appearance']['motion']='snappy';json.dump(c,open(p,'w'),indent=4)"
+wait 3
+rec cc-snappy 1.6 key -M alt -k c -m alt
+rec cc-snappy-close 1.4 key -M alt -k c -m alt
+setup python3 -I -c "import json,os;p=os.path.expanduser('~/.config/tessera/config.json');c=json.load(open(p));c['appearance']['motion']='subtle';json.dump(c,open(p,'w'),indent=4)"
+wait 3
+rec cc-subtle 1.6 key -M alt -k c -m alt
+rec cc-subtle-close 1.4 key -M alt -k c -m alt
+look material
+ipc panels open clipboard IRICE-TEST
+wait 1.5
+rec textbutton-press-material 1.0 ptr move 960 600 down sleep 400 up
+ipc panels close
+note Glass: the button presses in to 97 %; Material: it swells and its corners square off, then springs back; each motion's open/close lasts as the QML's (±10 %)

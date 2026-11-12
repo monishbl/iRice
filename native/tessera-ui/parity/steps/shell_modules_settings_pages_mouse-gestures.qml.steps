@@ -1,0 +1,16 @@
+# mouse-gestures: Mouse & Trackpad > Gestures. Check in each look.
+ipc panels settings mouse/gestures
+wait 2
+shot g-top
+note G1: line + "Add gesture" button, group "Gestures" with every default gesture, footer, "Import and export"; same order and texts in both shells. Each row has a fingers choice, direction choice, action choice and a "..." menu.
+ptr move 1100 600 scroll 0 5
+wait 1
+shot g-scroll
+note G1 cont.: rest of the gesture list and Import/export match the QML.
+# MANUAL: G2 click a row's fingers choice, shot the open menu, pick "5 fingers": gesture config changes, row shows "Changed - was 3 fingers, ..." (or a clash line in warning colour). Repeat for direction and action; for direction "Long press" the action menu has only Tessera actions.
+# MANUAL: G3 click "..." on a default gesture: "Turn off" (power) and "Reset to default" (disabled unless changed). Turn off: choices at half opacity, line "Off", Undo row "Turned off ..." appears; gone after 9 s; again and Undo within 8 s: gesture back on.
+# MANUAL: G4 hover the "..." for 1.5 s, shot: tooltip "Options for this gesture" (QML); Rust must show it.
+# MANUAL: G5 click "Add gesture": group "New gesture" with a free spot and "Mission Control"-type action, top bar Add gesture greyed. Gap between the choices and the Cancel/Add buttons: QML 8 px, Rust must match. A clashing fingers/direction: clash line in warning colour, Add disabled. Cancel: draft gone.
+# MANUAL: G6 draft with a free spot, Add gesture: row appears in the list, Undo "Added N fingers, up"; Undo removes it.
+# MANUAL: G7 Add gesture (draft open), click the sidebar's Mouse & Trackpad, then the Gestures link: no draft (Rust must match).
+ipc panels close

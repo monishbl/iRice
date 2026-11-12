@@ -1,0 +1,25 @@
+# EmojiPicker: with no focused window the panel opens centred x 750..1170, y 326..754.
+rec em-ipc 1 ipc emoji toggle
+note Picker opens centred (x 750..1170, y 326..754), same place and same spring as QML.
+wait 1
+shot open
+note Picker open and settled, same as QML.
+rec em-toggle-close 1 ipc emoji toggle
+note Second toggle closes the picker (same as QML).
+wait 1
+ipc emoji close
+wait 1
+shot closed-noop
+note emoji close when already closed does nothing: no picker visible.
+ipc panels open emoji IRICE-TEST
+wait 1
+shot panels-open
+note Picker opened via panels open; same as QML.
+key -k Escape
+wait 1
+ipc emoji toggle
+wait 1
+shot reopen
+note After Escape, Panels forgot it: a second toggle OPENS the picker again (does not close it).
+ipc emoji close
+# MANUAL: the shortcut (tessera:emoji) - only if the sandbox compositor binds it

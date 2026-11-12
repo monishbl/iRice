@@ -160,8 +160,15 @@ pub enum BlockKind {
     App,
     /// room
     Gap,
-    /// a text field (Sharing's name): its text in `title`, placeholder in `status`
+    /// a text field (Sharing's name): its text in `title`, placeholder in
+    /// `status`; `flag`: a secret (masked)
     Field,
+    /// a reading and its last minute (ResourcesPage): `graph` the line
+    Graph,
+    /// a picture on white (WifiShareCard's QR code): `picture`
+    Picture,
+    /// buttons in a row (`options`), `current` the primary one
+    Buttons,
 }
 
 impl BlockKind {
@@ -180,6 +187,9 @@ impl BlockKind {
             "app" => Self::App,
             "gap" => Self::Gap,
             "field" => Self::Field,
+            "graph" => Self::Graph,
+            "picture" => Self::Picture,
+            "buttons" => Self::Buttons,
             _ => return None,
         })
     }
@@ -225,6 +235,25 @@ pub struct Block {
     pub flag: bool,
     /// Gap: its height; Head: room above (1 small, 2 more)
     pub height: f32,
+    /// Graph: its line as Path commands in a 60 × 100 box
+    pub graph: String,
+}
+
+/// A graph's line from its readings (oldest first, the last 60) scaled to
+/// `max` (0: to the largest reading): Path commands in a 60 × 100 box
+pub fn graph_path(values: &[f64], max: f64) -> String {
+    if values.len() < 2 {
+        return String::new();
+    }
+    let v = &values[values.len().saturating_sub(60)..];
+    let top = if max > 0.0 { max } else { v.iter().cloned().fold(0.0, f64::max).max(1e-9) };
+    let x0 = 60.0 - (v.len() - 1) as f64;
+    let mut out = String::new();
+    for (i, x) in v.iter().enumerate() {
+        let y = 100.0 - (x / top).clamp(0.0, 1.0) * 96.0 - 2.0;
+        out.push_str(&format!("{} {:.1} {:.1} ", if i == 0 { "M" } else { "L" }, x0 + i as f64, y));
+    }
+    out.trim_end().to_string()
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -270,6 +299,7 @@ impl Page {
                             menu: menu(&x["menu"]),
                             flag: b(x, "flag"),
                             height: x["h"].as_f64().unwrap_or(if kind == BlockKind::Gap { 8.0 } else { 0.0 }) as f32,
+                            graph: x["values"].as_array().map(|a| graph_path(&a.iter().filter_map(Value::as_f64).collect::<Vec<_>>(), x["max"].as_f64().unwrap_or(1.0))).unwrap_or_default(),
                         })
                     })
                     .collect()

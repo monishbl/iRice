@@ -15,6 +15,10 @@
 //! Overview → Window previews: Snapshot), or about 30 times a second while
 //! it's open (Live and Hybrid: all of them are on the current space).
 //!
+//! The cards, their miniatures and the windows are `Rows` handed to the
+//! window once: a refresh (a picture arriving, a live frame) changes only the
+//! rows that differ, so the pictures and hovers stay.
+//!
 //! Not like the QML yet: the glass is the plugin's full-screen glass at the
 //! user's Glass settings only as far as theme::glass_shape follows them (see
 //! docs/rust-ui-glass-compare.md); a space's drag doesn't lift it out of the
@@ -43,7 +47,8 @@ use tessera_core::theme;
 use tessera_core::wayland::{Spec, State, Surface};
 use layout::Rect;
 use slint::platform::Key;
-use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
+use slint::{ComponentHandle, ModelRc, SharedString};
+use tessera_core::rows::Rows;
 use smithay_client_toolkit::shell::wlr_layer::{Anchor, KeyboardInteractivity, Layer};
 use smithay_client_toolkit::shell::WaylandSurface;
 use std::any::Any;
@@ -82,6 +87,9 @@ struct Win {
     press: Press,
     drag_space: i32,
     drop_on: i32,
+    l_cards: Rows<ui::McCard>,
+    l_minis: HashMap<i32, Rows<ui::McMini>>,
+    l_tiles: Rows<ui::McTile>,
 }
 
 #[derive(Default)]
@@ -167,9 +175,12 @@ impl MissionControl {
             let (to, o) = (to.clone(), o.clone());
             ui.on_closed(move || to(Box::new(M::Closed(o.clone()))));
         }
+        let (l_cards, l_tiles) = (Rows::new(), Rows::new());
+        ui.set_cards(l_cards.model());
+        ui.set_tiles(l_tiles.model());
         ui.show().expect("show mission control");
         let a11y = crate::a11y::A11y::new(&surface, st.tx.clone());
-        self.wins.push(Win { output: output.into(), surface, ui, a11y, glass_sent: String::new(), size: (1920.0, 1080.0), cards: Vec::new(), tiles: Vec::new(), press: Press::None, drag_space: 0, drop_on: 0 });
+        self.wins.push(Win { output: output.into(), surface, ui, a11y, glass_sent: String::new(), size: (1920.0, 1080.0), cards: Vec::new(), tiles: Vec::new(), press: Press::None, drag_space: 0, drop_on: 0, l_cards, l_minis: HashMap::new(), l_tiles });
         let i = self.wins.len() - 1;
         self.look(st, i);
         Some(i)
@@ -257,7 +268,8 @@ impl MissionControl {
         let ids: Vec<i32> = order.iter().copied().filter(|id| snap.workspaces.iter().any(|w| w.id == *id)).collect();
         let cards = layout::cards(ids.len(), size);
         let s = layout::CARD_W / size.0.max(1.0);
-        let card_ui: Vec<ui::McCard> = ids
+        let mut card_minis: Vec<(i32, Vec<ui::McMini>)> = Vec::new();
+        let mut card_ui: Vec<ui::McCard> = ids
             .iter()
             .zip(&cards)
             .map(|(&id, r)| {
@@ -271,7 +283,8 @@ impl MissionControl {
                         ui::McMini { x: (c.at.0 - mon.x) as f32 * s, y: (c.at.1 - mon.y) as f32 * s, w: c.size.0 as f32 * s, h, has_icon: icon.is_some(), icon: icon.unwrap_or_default() }
                     })
                     .collect();
-                ui::McCard { id, x: r.x, w: r.w, h: r.h, title: self.info.title(id, &out, "Desktop").into(), current: id == active, minis: ModelRc::new(VecModel::from(minis)) }
+                card_minis.push((id, minis));
+                ui::McCard { id, x: r.x, w: r.w, h: r.h, title: self.info.title(id, &out, "Desktop").into(), current: id == active, minis: ModelRc::default() }
             })
             .collect();
         let list = windows_for(&wins, apps, &self.expose, active);
@@ -316,9 +329,17 @@ impl MissionControl {
         w.size = size;
         w.cards = ids.iter().copied().zip(cards.iter().copied()).collect();
         w.tiles = list.iter().map(|c| c.address.clone()).zip(rects.iter().copied()).collect();
+        w.l_minis.retain(|id, _| ids.contains(id));
+        for (id, m) in card_minis {
+            let rows = w.l_minis.entry(id).or_default();
+            rows.set(m);
+            if let Some(c) = card_ui.iter_mut().find(|c| c.id == id) {
+                c.minis = rows.model();
+            }
+        }
+        w.l_cards.set_keyed(card_ui, |c| c.id);
+        w.l_tiles.set_keyed(tiles, |t| t.address.clone());
         let ui = &w.ui;
-        ui.set_cards(ModelRc::new(VecModel::from(card_ui)));
-        ui.set_tiles(ModelRc::new(VecModel::from(tiles)));
         ui.set_stage_x(stage.x);
         ui.set_stage_y(stage.y);
         ui.set_stage_w(stage.w);
@@ -344,7 +365,8 @@ impl MissionControl {
         if expose {
             return None;
         }
-        w.cards.iter().find(|(_, r)| Rect { h: r.h + 6.0 + layout::TITLE_H, ..*r }.has(x, y)).map(|(id, _)| *id)
+        // (the card only, as the QML's MouseArea: a click on its title is the background's)
+        w.cards.iter().find(|(_, r)| r.has(x, y)).map(|(id, _)| *id)
     }
 
     fn tile_at(w: &Win, x: f32, y: f32) -> Option<String> {
@@ -451,7 +473,7 @@ impl MissionControl {
             let mut s = theme::glass_shape(&look, 0.0, 0.0, w.size.0, w.size.1, 0.0, p, 0.0);
             s[11] = 0.0;
             let shapes = [s];
-            let key = format!("{shapes:?}");
+            let key = tessera_core::theme::glass_key(&shapes);
             if key != w.glass_sent {
                 st.shell.glass.set(&w.output, NS, &shapes);
                 w.glass_sent = key;
@@ -461,6 +483,16 @@ impl MissionControl {
 }
 
 impl Part for MissionControl {
+    // (the window it keeps while closed, made ahead and left unmapped)
+    fn prewarm(&mut self, st: &mut State) {
+        let Some(out) = st.likely_output() else { return };
+        if self.wins.is_empty() {
+            if let Some(i) = self.window(st, &out) {
+                self.wins[i].surface.hide();
+            }
+        }
+    }
+
     fn name(&self) -> &'static str {
         NAME
     }

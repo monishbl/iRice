@@ -1,0 +1,53 @@
+# Live Text layer. Check in each look. Needs tesseract. Glass: 'Invoice' at screen approx (365..510, 293..336); Material approx (383..523, 301..342).
+setup (magick -size 1600x900 xc:white -fill black -pointsize 48 -annotate +100+200 "Invoice total 42.00" -annotate +100+320 "https://example.com/pay" /tmp/t.png || convert -size 1600x900 xc:white -fill black -pointsize 48 -annotate +100+200 "Invoice total 42.00" -annotate +100+320 "https://example.com/pay" /tmp/t.png); cp /tmp/t.png /tmp/t2.png
+ipc shotEditor edit /tmp/t.png
+wait 1
+key -k p
+wait 1
+rec lt-glow 2 key -k s
+note Every word box glows in over about 150 ms, holds, fades over about 450 ms (compare curve QML vs Rust); after 1.1 s no more frames from the editor (Rust repainted every 16 ms forever before: the recording must be static after the glow).
+wait 1
+ptr click 430 315
+wait 1
+shot lt-click-word
+note "Invoice" selected with an accent band; the bar says "1 word selected".
+ptr move 380 315 down glide 900 440 400 up
+wait 1
+shot lt-drag
+note Selection covers words from Invoice to the end of the drag, word by word, no box flicker.
+rec lt-drag-rec 0.6 ptr move 380 315 down glide 900 440 400 up
+note No word box flickers during the drag (before the fix each step rebuilt all boxes); compare with QML.
+wait 1
+key -k Escape
+ptr click 430 315
+ptr click 900 440
+wait 1
+shot lt-shift-click
+note Shift+click should select from Invoice to the link line; this run only clicks without Shift (held shift across ptr is not supported): record what a plain second click does vs QML.
+# MANUAL: Shift+click: click Invoice, hold wtype -M shift, click at (900,440): selection runs from Invoice to the link line
+ptr move 430 315 click click
+wait 1
+shot lt-double
+note Double-click on a word of the first line selects the whole line (QML vs Rust).
+ptr move 430 315 sleep 200 glide 430 315 100
+shot lt-cursor-text
+note Pointer over a word is an I-beam; (cursor shape is not visible in grim shots unless composited: mark not testable if absent).
+key -k Escape
+wait 1
+shot lt-esc1
+note First Escape clears the selection; the editor stays open.
+key -k Escape
+wait 1
+shot lt-esc2
+note Second Escape closes the editor.
+ipc shotEditor edit /tmp/t.png
+wait 1
+key -k c
+ptr move 1000 300 down glide 1640 900 200 up
+key -k Return
+wait 1
+key -k s
+wait 3
+shot lt-crop
+note After cropping to the right half (C, drag, Enter) and S: boxes only for the words inside the crop, positioned on them.
+# MANUAL: hover cursor I-beam over words / arrow elsewhere (dev cursor) if the harness cannot see the cursor

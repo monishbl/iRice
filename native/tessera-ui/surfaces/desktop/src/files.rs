@@ -26,7 +26,7 @@ pub fn list(dir: &std::path::Path) -> Vec<Entry> {
                         return None;
                     }
                     let md = std::fs::metadata(e.path()).ok();
-                    let modified = md.as_ref().and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_secs() as i64);
+                    let modified = md.as_ref().and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_millis() as i64); // (ms, as FolderListModel: files made the same second keep their order)
                     Some(Entry { name, path: e.path().to_string_lossy().into_owned(), dir: md.is_some_and(|m| m.is_dir()), modified })
                 })
                 .collect()
@@ -88,6 +88,19 @@ pub fn cover(path: &str, w: u32, h: u32) -> Option<slint::SharedPixelBuffer<slin
     Some(slint::SharedPixelBuffer::clone_from_slice(out.as_raw(), w, h))
 }
 
+/// A square picture cut to a Material shape (MaterialShape's `source`: Now
+/// Playing's cookie, a small photo's clover), its edge smoothed over a pixel
+/// (Slint can't clip to a path: the shape is cut into the pixels, by core's
+/// polar shapes, the same radii the QML's MaterialShape draws)
+pub fn cut_to_shape(px: &mut slint::SharedPixelBuffer<slint::Rgba8Pixel>, name: &str) {
+    let side = px.width().min(px.height());
+    if px.width() != px.height() || side == 0 {
+        return;
+    }
+    let out = tessera_core::surfaces::polar::cut(px.as_bytes(), side, name);
+    *px = slint::SharedPixelBuffer::clone_from_slice(&out, side, side);
+}
+
 /// Pictures in the Photos widget's folder
 pub fn pictures(dir: &str) -> Vec<String> {
     let mut v: Vec<String> = std::fs::read_dir(dir)
@@ -121,6 +134,27 @@ mod tests {
         assert_eq!(icon_name(&e("a.pdf", false)), "application-pdf");
         assert_eq!(icon_name(&e("a.rs", false)), "text-x-generic");
         assert!(is_picture(&e("a.png", false)) && !is_picture(&e("a.svg", false)) && !is_picture(&e("a.png", true)));
+    }
+
+    #[test]
+    fn a_cookie_keeps_its_middle_and_drops_its_corners() {
+        let mut px = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(100, 100);
+        for p in px.make_mut_slice() {
+            *p = slint::Rgba8Pixel { r: 255, g: 0, b: 0, a: 255 };
+        }
+        cut_to_shape(&mut px, "cookie9");
+        let at = |x: usize, y: usize| px.as_slice()[y * 100 + x].a;
+        assert_eq!(at(50, 50), 255);
+        assert_eq!(at(1, 1), 0);
+        assert_eq!(at(98, 98), 0);
+        let mut px = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(100, 100);
+        for p in px.make_mut_slice() {
+            *p = slint::Rgba8Pixel { r: 255, g: 0, b: 0, a: 255 };
+        }
+        cut_to_shape(&mut px, "clover4");
+        // (a pinch between two leaves is inside the box but outside the clover)
+        assert_eq!(px.as_slice()[12 * 100 + 66].a, 0);
+        assert_eq!(px.as_slice()[50 * 100 + 50].a, 255);
     }
 
     #[test]

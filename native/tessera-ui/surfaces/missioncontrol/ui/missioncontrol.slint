@@ -150,7 +150,9 @@ export component MissionControlPanel inherits Window {
             opacity: dragged ? 0.85 : 1;
             accessible-role: button;
             accessible-label: c.title;
+            // (at the top: without y it was centred, half the title's room too low)
             Rectangle {
+                y: 0;
                 height: c.h;
                 border-radius: Theme.material ? 16px : 8px;
                 background: Theme.material ? (c.current ? Theme.m3-secondary-container : Theme.m3-surface-container-highest) : Theme.dark ? #1A1A1D : #F4F4F5;

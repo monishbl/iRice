@@ -1,0 +1,11 @@
+# Settings window: Material 1040x700 at 440,205 (page column from x~772); Glass 860x620 at 530,230. Sidebar rows (Material, x=560): Appearance 335, Wallpaper 385, Desktop 435, Menu bar 485, Lock 535, Notifications 626, Focus 676, Windows 767, Displays 858.
+# Click coordinates inside pages are not known in advance: those steps are MANUAL unless a keyboard path exists. Check in each look.
+ipc panels settings about/loginitems
+wait 2
+# NOTE: toggling a switch needs its position (read from the shot): MANUAL
+shot t1-before
+note Login items page, before toggling a switch (starting point for the Toast tests).
+# MANUAL: T1 toggle one login item's switch, shot within 1 s: toast centred 24 px above the bottom, same width as QML for the same text, Undo at the right
+# MANUAL: T2 record the toast region from toggle to end: fades in 200 ms OutCubic (Material rises 8 px), stays ~8 s, fades out 140 ms InCubic without moving
+# MANUAL: T3 toggle again, Ctrl+Z (key -M ctrl -k z -m ctrl): toast goes, switch flips back; clicking Undo: hover fades ~150 ms, button swells (Material) / shrinks to 0.97 (Glass) while pressed
+# MANUAL: T4 toast without Undo: 5 s (skip if none is safe; never Restore defaults)

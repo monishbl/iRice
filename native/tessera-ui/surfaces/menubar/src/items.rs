@@ -330,7 +330,7 @@ pub fn entries(i: &Inputs) -> Vec<Entry> {
         out.push(Entry { bold: true, tip: "Search".into(), ..e("search", "spotlight", "magnifying-glass") });
     }
     if s.bool("privacy.any") {
-        out.push(Entry { glyph: Glyph::Privacy([s.bool("privacy.camera"), s.bool("privacy.mic"), s.bool("privacy.location"), s.bool("privacy.share")]), tip: "In use".into(), ..e("privacy", "privacyMenu", "") });
+        out.push(Entry { glyph: Glyph::Privacy([s.bool("privacy.camera"), s.bool("privacy.mic"), s.bool("privacy.location"), s.bool("privacy.share")]), ..e("privacy", "privacyMenu", "") }); // (PrivacyDots has no tip)
     }
     if bar.control_center {
         out.push(Entry { bold: true, tip: "Quick Settings".into(), ..e("controlCenter", "controlCenter", "sliders-horizontal") });

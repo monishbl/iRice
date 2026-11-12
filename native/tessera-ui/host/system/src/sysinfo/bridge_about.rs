@@ -12,18 +12,18 @@
 //! asked of the keymap service with a `reply`) and forwarding to Health,
 //! Conflicts, Report a Bug, BootSnapshots, Needs, CloudDrives.
 //!
-//! Bus keys read (QML property names): "bootsnapshots", "needs"
-//! {installing}, "health" {checks, groups, checking, fixing, error,
-//! checkedAt(ms), attention}, "conflicts" {found, muted}, "bugreport"
-//! {title, happened, steps, expected, hasShot, shot, shotVersion,
-//! includeShot, includeLog, includeInfo, gathering, log, sysinfo{}, state_,
-//! error, waitSeconds, issueUrl}, "today" {accountName}, "clouddrives"
+//! Read: the host states host-shell's probes publish, "needs"
+//! {installing}, "health" {checks, checking, fixing, error, checkedAt(ms)},
+//! "conflicts" {found, muted}, "bugreport" {title, happened, steps,
+//! expected, hasShot, shot, shotVersion, includeShot, includeLog,
+//! includeInfo, gathering, log, sysinfo{}, state_, error, waitSeconds,
+//! issueUrl}; bus keys "bootsnapshots", "account" {name}, "clouddrives"
 //! {hasRclone, installing, installError, busy, errors, names,
 //! drives:{gdrive,onedrive}}, "keymap" {ready, hasZenity, hasKdialog, home}.
 //! Asks sent: bootsnapshots.{refresh,openAssistant,setMenu}, health.{check,
 //! copyReport,fix}, conflicts.{mute,unmute}, bugreport.{gather,set,editShot,
 //! copy,openGithub,send}, needs.install, clouddrives.{install,open,act,
-//! cancel}, focus.reload, welcome.request, launch.open, panels.openSettings,
+//! cancel}, focus.reload, welcome.request, launch.open, open, panels.openSettings,
 //! keymap.{exportTo,previewFile,previewEnd4,applyPreview,restore}.
 //! Keymap answers (calls to us): about.ieExported {key,path,ok,err},
 //! about.iePreview {key,preview|error}, about.ieApplied {key,snapshot}.
@@ -78,6 +78,20 @@ fn obj(name: &str) -> Value {
         json!({})
     }
 }
+
+/// Another crate's host state (host-shell's probes: health, conflicts,
+/// bugreport, needs), {} when not published yet
+fn st(h: &Host, name: &str) -> Value {
+    let v = h.state(name).clone();
+    if v.is_object() {
+        v
+    } else {
+        json!({})
+    }
+}
+
+/// Health.groups (the order System health shows them in)
+const HEALTH_GROUPS: &[&str] = &["Sound", "Network & sharing", "Power", "Desktop", "Tessera itself"];
 
 fn pkgs(l: &[Value]) -> Vec<Value> {
     l.iter().map(|x| json!({"name": x["name"].as_str().unwrap_or(""), "from": x["from"].as_str().unwrap_or(""), "to": x["to"].as_str().unwrap_or("")})).collect()
@@ -138,7 +152,7 @@ impl About {
             } else if new == "about/health" {
                 h.ask("health.check", json!([]));
             } else if new == "about/bugreport" {
-                let b = obj("bugreport");
+                let b = st(h, "bugreport");
                 if b["log"].as_str().unwrap_or("").is_empty() && b["gathering"] != true {
                     h.ask("bugreport.gather", json!([]));
                 }
@@ -153,7 +167,7 @@ impl About {
         }
     }
 
-    fn feed(&self) -> Value {
+    fn feed(&self, h: &Host) -> Value {
         let (tu, up, su) = (&self.tu, &self.up, &self.su);
         let plan = su.plan(tu, up);
         let n = |k: &str| plan[k].as_array().map(|a| a.len()).unwrap_or(0);
@@ -164,7 +178,7 @@ impl About {
         };
         let at = su.undo["at"].as_f64().unwrap_or(0.0);
         let sk: Vec<Value> = su.skipped_all(up).iter().map(|p| json!({"name": p["name"], "to": p["to"]})).collect();
-        let report = tu.report.as_ref().map(|r| json!({"current": s(&r["current"]), "latest": s(&r["latest"]), "changelog": r["changelog"].as_array().cloned().map(Value::from).unwrap_or(json!([])), "notes": r["notes"].as_array().cloned().map(Value::from).unwrap_or(json!([]))}));
+        let report = tu.report.as_ref().map(|r| json!({"current": s(&r["current"]), "latest": s(&r["latest"]), "ui": s(&r["ui"]["label"]), "changelog": r["changelog"].as_array().cloned().map(Value::from).unwrap_or(json!([])), "notes": r["notes"].as_array().cloned().map(Value::from).unwrap_or(json!([]))}));
         let result = tu.result.as_ref().map(|r| json!({"backup": helpers::home_tilde(r["backup"].as_str().unwrap_or("")), "now": s(&r["now"]), "changelog": r["changelog"].as_array().cloned().map(Value::from).unwrap_or(json!([])), "notes": r["notes"].as_array().cloned().map(Value::from).unwrap_or(json!([]))}));
         let conflicts: Vec<Value> = tu.conflicts().iter().map(|c| json!({"id": c["id"], "kind": c["kind"], "title": s(&c["title"]), "detail": s(&c["detail"]), "mine": s(&c["mine"]), "theirs": s(&c["theirs"]), "choices": c["choices"].as_array().cloned().map(Value::from).unwrap_or(json!([])), "labels": if c["labels"].is_object() { c["labels"].clone() } else { json!({}) }, "change": s(&c["change"])})).collect();
         let job = up.job.as_ref().map(|j| json!({
@@ -172,13 +186,13 @@ impl About {
             "restart": j["restart"] == true, "upgraded": j["upgraded"].as_array().map(|a| a.len()).unwrap_or(0),
             "aur": j["steps"].as_array().is_some_and(|a| a.iter().any(|x| x == "aur")),
         }));
-        let health = obj("health");
+        let health = st(h, "health");
         let checks: Vec<Value> = health["checks"].as_array().map(|a| a.iter().map(|c| json!({"id": c["id"], "name": s(&c["name"]), "group": s(&c["group"]), "status": s(&c["status"]), "detail": s(&c["detail"]), "fix": s(&c["fix"]), "canFix": c["canFix"] == true, "fixRoot": c["fixRoot"] == true, "fixPassword": c["fixPassword"] == true, "fixCommand": s(&c["fixCommand"])})).collect()).unwrap_or_default();
         let checked_at = health["checkedAt"].as_f64().unwrap_or(0.0);
-        let conf = obj("conflicts");
+        let conf = st(h, "conflicts");
         let muted = conf["muted"].as_array().cloned().unwrap_or_default();
         let found: Vec<Value> = conf["found"].as_array().map(|a| a.iter().map(|c| json!({"id": c["id"], "name": s(&c["name"]), "what": s(&c["what"]), "fix": s(&c["fix"]), "muted": muted.contains(&c["id"])})).collect()).unwrap_or_default();
-        let bug = obj("bugreport");
+        let bug = st(h, "bugreport");
         let info: String = bug["sysinfo"].as_object().map(|m| m.iter().map(|(k, v)| format!("{k}: {}", v.as_str().map(str::to_string).unwrap_or_else(|| v.to_string()))).collect::<Vec<_>>().join("\n")).unwrap_or_default();
         let b = |v: &Value| v.as_bool().unwrap_or(false);
         let drives = obj("clouddrives");
@@ -213,9 +227,9 @@ impl About {
                 "log": if self.log_shown { strip_steps(&up.log) } else { String::new() },
             },
             "bs": {"booted": bs["booted"], "assistant": bs["assistant"], "canMenu": bs["canMenu"], "grubBtrfs": bs["grubBtrfs"], "menuOn": bs["menuOn"], "error": bs["error"], "busy": bs["busy"]},
-            "needsInstalling": obj("needs")["installing"].clone(),
+            "needsInstalling": st(h, "needs")["installing"].as_bool().unwrap_or(false),
             "health": {
-                "checks": checks, "groups": health["groups"].clone(), "checking": b(&health["checking"]), "fixing": health["fixing"].clone(), "error": s(&health["error"]),
+                "checks": checks, "groups": HEALTH_GROUPS, "checking": b(&health["checking"]), "fixing": health["fixing"].clone(), "error": s(&health["error"]),
                 "checkedAt": if checked_at > 0.0 { helpers::fmt_hm((checked_at / 1000.0) as i64, false) } else { String::new() },
             },
             "conflicts": found,
@@ -225,9 +239,9 @@ impl About {
                 "includeLog": b(&bug["includeLog"]), "includeInfo": b(&bug["includeInfo"]), "gathering": b(&bug["gathering"]), "log": s(&bug["log"]),
                 "info": info, "state": s(&bug["state_"]), "error": s(&bug["error"]), "waitSeconds": bug["waitSeconds"].clone(), "issueUrl": s(&bug["issueUrl"]),
             },
-            "welcomeName": s(&obj("today")["accountName"]),
+            "welcomeName": s(&obj("account")["name"]),
             "healthChecks": health["checks"].as_array().map(|a| a.len()).unwrap_or(0),
-            "healthAttention": health["attention"].as_array().map(|a| a.len()).unwrap_or(0),
+            "healthAttention": health["checks"].as_array().map(|a| a.iter().filter(|c| c["status"] == "fail" || c["status"] == "warn").count()).unwrap_or(0),
             "drives": {
                 "hasRclone": b(&drives["hasRclone"]), "installing": b(&drives["installing"]), "installError": s(&drives["installError"]), "busy": drives["busy"].clone(),
                 "errors": drives["errors"].clone(), "names": drives["names"].clone(), "gdrive": drives["drives"]["gdrive"].clone(), "onedrive": drives["drives"]["onedrive"].clone(),
@@ -242,7 +256,7 @@ impl About {
         if !self.live {
             return;
         }
-        let f = self.feed();
+        let f = self.feed(h);
         if f != self.last_feed {
             self.last_feed = f.clone();
             h.tell("settings", json!({"feed": {"about": f}}));
@@ -437,7 +451,7 @@ impl About {
             "bug.openGithub" => h.ask("bugreport.openGithub", json!([])),
             "bug.send" => h.ask("bugreport.send", json!([])),
             "bug.openIssue" => {
-                let u = obj("bugreport")["issueUrl"].as_str().unwrap_or("").to_string();
+                let u = st(h, "bugreport")["issueUrl"].as_str().unwrap_or("").to_string();
                 if u.starts_with("https://") {
                     h.ask("launch.open", json!([u]));
                 }
@@ -448,7 +462,7 @@ impl About {
             "openFile" => {
                 // (a folder or file of yours, in Files)
                 if a0s.starts_with('/') {
-                    h.ask("launch.open", json!([format!("file://{a0s}")]));
+                    h.ask("open", json!([a0s]));
                 }
             }
             // Cloud drive folders

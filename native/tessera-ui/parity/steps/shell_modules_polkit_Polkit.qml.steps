@@ -1,0 +1,25 @@
+# Polkit dialog preview. Check in each look.
+rec pk-open 1 ipc polkit preview
+note Dialog 340 wide centred with a scrim; body fades/slides in over 320 ms on the emphasized curve; frame timing within +-1 frame of QML. If the ipc target polkit is not accepted, report not testable.
+wait 1
+shot pk-empty
+note Allow is dimmed while the field is empty (Material 38 % ink on 12 % base; Glass 50 % opacity); Cancel and Allow in the bottom row; Material buttons 40 high, Glass 34 high.
+ptr move 870 640 sleep 300 glide 870 640 100 down
+shot pk-press
+ptr up
+note Material only: pressed Cancel has corners 8 after about 0.22 s with a slight overshoot and a swell of about 6 %; Glass: 34 high, no swell. NOTE: click on layer surfaces may not register in the harness.
+wait 1
+key wrong
+rec pk-shake 0.6 key -k Return
+note Wrong password ("wrong" is answered wrong in preview): body shakes +10, -10, +6, 0 px over 50/80/70/60 ms (about 260 ms total); compare frames with QML; Material leading shape goes cookie9 -> softBurst.
+wait 1
+key -k Escape
+wait 1
+rec pk-close 0.6 key -k Escape
+note Escape closes the dialog on the exit curve (faster than the open, no stuck scrim).
+wait 1
+ipc polkit previewFinger
+wait 1
+shot pk-finger
+note Fingerprint step: finger glyph and Cancel only (no password field, no Allow); Material shape is clover (Rust draws clover4, a known difference).
+key -k Escape

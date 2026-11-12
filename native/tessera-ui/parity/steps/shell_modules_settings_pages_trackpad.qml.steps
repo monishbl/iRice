@@ -1,0 +1,13 @@
+# Settings window: Material 1040x700 at 440,205 (page column from x~772); Glass 860x620 at 530,230. Sidebar rows (Material, x=560): Appearance 335, Wallpaper 385, Desktop 435, Menu bar 485, Lock 535, Notifications 626, Focus 676, Windows 767, Displays 858.
+# Click coordinates inside pages are not known in advance: those steps are MANUAL unless a keyboard path exists. Check in each look.
+ipc panels settings mouse
+wait 2
+ptr move 1100 600 scroll 0 15
+wait 1
+shot tp
+note T1 Trackpad heading: groups Point and click (footer 'No trackpad found...' in the sandbox), Scrolling, Three-finger drag, Gestures link with its icon; same as QML.
+# MANUAL: T2 Tap to click 'Off': detail 'Press the trackpad down to click'; 'Click and drag': detail 'Tap with one finger to click; tap, then keep the finger down...', config tapToClick true, tapAndDrag true
+# MANUAL: T3 Tap to click 'Click', More options: Drag lock row label, detail and switch all at half strength, switch not clickable; with 'Click and drag' full strength (fixed batch 3: whole row faded)
+# MANUAL: T4 Secondary click 'Bottom right': detail 'Click in the bottom-right corner'; More > Middle click detail 'Click both bottom corners together'
+# MANUAL: T5 Three-finger drag toggle: switch and detail follow, log shows Keymap.setThreeFingerDrag; toggle back
+# MANUAL: T6 click the Gestures link: Gestures page (title 'Gestures')

@@ -1,0 +1,29 @@
+# Arena IRICE-TEST 1920x1080 scale 1, the user's config (expressive motion, Colloid, their 4 widgets).
+# Each file runs top to bottom from a fresh desktop. `static NAME x y w h`: that region must not change
+# from there until the next `shot`, `rec` or `look` (the no-reload blocks end with their last close).
+# Right-clicks: `ptr ... down up` lines marked (right button) need the runner's right button.
+
+look material
+ptr move 1700 900
+rec ad-open 1.2 ipc panels open launchpad IRICE-TEST
+note sheet rises 96 px from 0.94, settles ≈270 ms, no overshoot; cells come in one after another (14 ms apart)
+rec ad-hover 1.2 ptr move 531 346 glide 1387 346 600
+note each card turns secondaryContainer, corner 28→64 on a quick spring; no other card flickers
+rec ad-press 1.2 ptr move 531 346 down sleep 300 up
+key -k Tab
+rec ad-keys 1.2 key -d 100 -k Down -k Down -k Down -k Down
+note selection moves a row each; grid scrolls on a spring, settles ≈460 ms after the last key
+key fire
+wait 0.5
+shot ad-search
+key -k Escape
+rec ad-close 0.8 key -k Escape
+note close 192 ms on the exit curve
+ipc panels open launchpad IRICE-TEST
+wait 0.8
+key -k Tab
+rec ad-fling 2.5 ptr move 900 500 scroll 0 30 sleep 10 scroll 0 30 sleep 10 scroll 0 30 sleep 10 scroll 0 30 sleep 10 scroll 0 30 sleep 10 scroll 0 30 sleep 10 scroll 0 30 sleep 10 scroll 0 30
+note keeps gliding after the last step, slowing steadily; glide length within ±15 % of QML
+rec ad-onestep 1.5 ptr scroll 0 30
+note a lone step moves 30 px and stops dead
+key -k Escape

@@ -1,0 +1,25 @@
+# OverlayWidget. Both looks.
+ipc panels open overlay IRICE-TEST
+wait 1
+# First toggle (e.g. Resources) assumed at (800, 44); read from the shot
+ptr move 800 44 sleep 200 click
+wait 1
+shot widget
+note A widget (e.g. Resources) is on, with a title bar and a pin button. Same as QML.
+# Title bar position assumed near (960, 300); read from the shot
+ptr move 960 300 sleep 200 down glide 960 500 400 up
+wait 1
+shot dragged
+note Dragged 200 px down by its title bar; the widget is now 200 px lower.
+ipc panels close
+wait 1
+ipc panels open overlay IRICE-TEST
+wait 1
+shot reopened
+note After closing and reopening the overlay the widget stays where it was dropped (same as QML).
+# Pin button assumed at the widget title bar's right (position from the shot)
+rec ow-pin 0.5 ptr move 1100 500 sleep 100 click
+note Material: clicking the pin button turns it accent and its corners go from 12 to 8 in about 0.22 s; compare with QML. Glass: accent only.
+wait 1
+# MANUAL: click-through on, close the overlay -> the widget stays at 55 % opacity (fade over 150 ms); needs the click-through control position
+ipc panels close

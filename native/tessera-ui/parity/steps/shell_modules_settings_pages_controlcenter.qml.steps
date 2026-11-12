@@ -1,0 +1,9 @@
+# controlcenter: Layout group. Check in each look (Glass shows "Panel background", Material does not).
+ipc panels settings controlcenter
+wait 2
+shot cc-top
+note Q1: Layout group; Glass shows a "Panel background" row, Material does not; "Edit..." is an accent pill; same texts in both shells. Glass tier Solid (Q4): switch on and greyed, detail "Always on with Solid glass", label not greyed.
+# MANUAL: Q2 click "Edit...": Settings closes and Quick Settings opens in its edit mode (shot), both shells alike; Esc / Done there.
+# MANUAL: Q3 set controlCenter.layout to ["wifi","bluetooth"] (jq on the config) and reopen: detail "2 controls, arranged by you"; row "Reset to the default layout" with "Reset" as accent text (no fill) in both looks; click it: the row goes, detail "The default arrangement".
+# MANUAL: Q4 (Glass) set glass tier Solid in Appearance, come back to this page.
+ipc panels close

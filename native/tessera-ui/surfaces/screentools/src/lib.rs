@@ -140,11 +140,14 @@ pub(crate) enum M {
     TranslationCopy,
     TranslationClose,
     Shots(shots::Sm),
+    /// make the toolbar's and the region selector's windows ahead, so the
+    /// first ⇧⌘5 / ⇧⌘4 draws at once
+    Prepare,
 }
 
 /// The glass under one window's shapes, sent when they change
 pub(crate) fn send_glass(st: &mut State, output: &str, ns: &str, shapes: &[[f32; 19]], sent: &mut String) {
-    let key = format!("{shapes:?}");
+    let key = tessera_core::theme::glass_key(&shapes);
     if key != *sent {
         st.shell.glass.set(output, ns, shapes);
         *sent = key;
@@ -170,6 +173,7 @@ pub struct ScreenTools {
     countdown: cards::Countdown,
     translation: cards::Translation,
     shots: shots::Shots,
+    prep: slint::Timer,
 }
 
 impl ScreenTools {
@@ -198,6 +202,8 @@ impl Part for ScreenTools {
 
     fn start(&mut self, st: &mut State) {
         self.shots.start(st);
+        let to = st.shell.sender(NAME);
+        self.prep.start(slint::TimerMode::SingleShot, std::time::Duration::from_millis(1500), move || to(Box::new(M::Prepare)));
     }
 
     fn command(&mut self, st: &mut State, cmd: &Command) {
@@ -264,6 +270,12 @@ impl Part for ScreenTools {
             M::TranslationCopy => self.translation.copy(),
             M::TranslationClose => crate::shell::ask("screen.do", serde_json::json!(["translationClose"])),
             M::Shots(m) => self.shots.message(st, m, &self.bridge),
+            M::Prepare => {
+                if let Some(o) = focused_output(st, &self.bridge) {
+                    self.toolbar.make_ahead(st, &o);
+                    self.region.make_ahead(st, &o);
+                }
+            }
         }
     }
 

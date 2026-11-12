@@ -1,0 +1,10 @@
+# PagePart headings.
+ipc panels settings accounts
+wait 2
+shot p1
+note P1 part headings (Google, iCloud, Microsoft 365) have the same size, weight and spacing as the QML.
+ipc panels settings trackpad
+wait 2
+shot p2
+note P2 trackpad is merged into Mouse: Mouse opens scrolled to the "Trackpad" heading, which flashes, as the QML.
+ipc panels close

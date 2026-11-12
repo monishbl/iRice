@@ -1,0 +1,30 @@
+# Arena IRICE-TEST 1920x1080 scale 1, the user's config (expressive motion, Colloid, their 4 widgets).
+# Each file runs top to bottom from a fresh desktop. `static NAME x y w h`: that region must not change
+# from there until the next `shot`, `rec` or `look` (the no-reload blocks end with their last close).
+# Right-clicks: `ptr ... down up` lines marked (right button) need the runner's right button.
+
+look glass
+rec ts-bloom 1.6 ipc today preview bloom
+note frost 380 ms, panel condenses from 106 % from 140 ms (520 ms OutCubic), rows rise one after another; ≈880 ms
+static ts-panel 530 230 860 620
+wait 3
+note nothing reloads while open
+rec ts-close 0.8 key -k Escape
+rec ts-shrink 1.2 ipc today preview shrink
+key -k Escape
+wait 0.6
+rec ts-drop 1.2 ipc today preview drop
+key -k Escape
+
+look material
+rec ts-bloom 1.6 ipc today preview bloom
+note frost 380 ms, panel condenses from 106 % from 140 ms (520 ms OutCubic), rows rise one after another; ≈880 ms
+static ts-panel 530 230 860 620
+wait 3
+note nothing reloads while open
+rec ts-close 0.8 key -k Escape
+rec ts-shrink 1.2 ipc today preview shrink
+key -k Escape
+wait 0.6
+rec ts-drop 1.2 ipc today preview drop
+key -k Escape

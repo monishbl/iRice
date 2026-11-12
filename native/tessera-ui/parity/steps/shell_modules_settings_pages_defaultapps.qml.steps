@@ -1,0 +1,14 @@
+# defaultapps: Default Apps. Check in each look.
+ipc panels settings defaultapps
+wait 2
+shot da-top
+note D1: same rows, details and current values as the QML (Terminal, Browser, etc. the arena's installed tools; "Automatic" values).
+ptr move 1100 600 scroll 0 5
+wait 1
+shot da-bottom
+note D1 cont.: remaining rows and "More options" (if shown) match the QML in rows, details and values.
+# MANUAL: D1 open More options, shot: same rows as the QML.
+# MANUAL: D2 click each Dropdown (control at x about 1330, y from a shot), shot the list, Esc: same entries in the same order in both shells; rows 36 Material / 28 Glass, list at least 220 wide, right edges lined up.
+# MANUAL: D3 pick Terminal -> second entry: jq .defaultApps.terminal on the config shows it and the closed control shows it; set back to Automatic.
+# MANUAL: D4 focus the Terminal control (click, Esc), key Down: steps to the next option without opening (Dropdown), both shells. Restore.
+ipc panels close

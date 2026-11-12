@@ -1,0 +1,17 @@
+# CaptionLines: video placement lines. Placement must be "video" (config captions placement video).
+# MANUAL: set config captions placement "video" (use_config); without it the default placement is shown (check which)
+setup foot &
+wait 2
+ipc captions on
+wait 1
+ipc captions demo "The sentence before." "What is being said now, long enough to wrap onto more than one line of the subtitles"
+wait 1
+shot lines-demo
+note Captions over the focused window's bottom (video placement): first sentence dimmer (60 % ink), second sentence white; never more than 3 lines; newest words always shown, bottom-anchored and clipped; centred text, word wrap. Known difference: Rust has regular weight and font line height (QML medium, 1.35).
+ipc captions off
+wait 1
+ipc captions on
+wait 1
+shot lines-hint
+note With no captions model in the sandbox the setup hint at 60 % ink ("Live captions need setting up: Settings -> Accessibility" or "Captions appear here when something speaks"); same text and dimness as QML.
+ipc captions off

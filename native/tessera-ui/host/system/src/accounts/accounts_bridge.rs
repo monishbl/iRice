@@ -14,11 +14,11 @@
 //! live, and live starts true) and accounts.updatesFinished [job] (the
 //! Updates service tells every service that installs through it).
 //!
-//! Reads from other groups (bus keys, owners): "needs" (host-shell:
-//! checked, secretTool, keyring, goa, goaMicrosoft, goaSignin, installing,
-//! building, buildError), "calendar" (desktop: sources, lastError,
-//! defaultAlert), "ai" (desktop: providers, models [{key,name}], hasKey
-//! {modelKey: bool}, sessions, pinned), "updates" (sysinfo: running).
+//! Reads from elsewhere: the host state "needs" (host-shell's probes:
+//! checked, secretTool, keyring, goa, goaMicrosoft, goaSignin), calendars.json
+//! (desktop's calendar.* calls write it: sources, defaultAlert), the AI
+//! models in cfg ai.models, the shell's cached credentials (Keys) and the
+//! chat index (sessions, pinned), the bus "updates" (sysinfo: running).
 //! Asks it makes: launch.open [url], launch.run [argv], needs.install [list],
 //! needs.buildNative, calendar.setSource [url, {enabled}], calendar.removeSource
 //! [url], calendar.addSource [name, url], calendar.setDefaultAlert [n],
@@ -44,11 +44,14 @@ pub struct AccountsBridge {
     undo_t: slint::Timer,
     poll: slint::Timer,
     tx: Option<Tx>,
+    /// models whose credential was saved here since the keys were read (the
+    /// shell's cached Keys don't hear of it)
+    saved_keys: std::collections::HashSet<String>,
 }
 
 impl Default for AccountsBridge {
     fn default() -> Self {
-        Self { live: true, sent: String::new(), ai_undo: String::new(), undo_t: slint::Timer::default(), poll: slint::Timer::default(), tx: None }
+        Self { live: true, sent: String::new(), ai_undo: String::new(), undo_t: slint::Timer::default(), poll: slint::Timer::default(), tx: None, saved_keys: Default::default() }
     }
 }
 
@@ -88,17 +91,51 @@ fn s_(v: &Value, k: &str) -> Value {
     json!(v[k].as_str().unwrap_or(""))
 }
 
+/// Calendar's subscriptions and default alert: calendars.json, which the
+/// desktop's calendar.* calls write (host/desktop today/calendar.rs)
+fn calendar_doc() -> Value {
+    let p = tessera_core::theme::config_path().parent().map(|p| p.join("calendars.json")).unwrap_or_default();
+    std::fs::read_to_string(p).ok().and_then(|s| serde_json::from_str::<Value>(&s).ok()).filter(Value::is_object).unwrap_or_else(|| json!({}))
+}
+
+/// Ai.sessions.length and the pinned ones: the chat index the sidebar writes
+fn ai_sessions() -> (usize, usize) {
+    use tessera_core::services::ai::chats::Store;
+    let idx = Store::new(Store::default_dir()).read_index();
+    (idx.chats.len(), idx.chats.iter().filter(|c| c.pinned).count())
+}
+
 impl AccountsBridge {
-    fn feed(&self) -> Value {
+    fn feed(&self, h: &Host) -> Value {
+        use tessera_core::services::ai::{keys::Keys, models};
         let g = crate::bus::get("google");
         let c = crate::bus::get("cloudaccounts");
         let d = crate::bus::get("clouddrives");
-        let n = crate::bus::get("needs");
-        let cal = crate::bus::get("calendar");
-        let ai = crate::bus::get("ai");
+        // (host-shell's probes publish it; a flag not checked yet is left out: the page then assumes it's there)
+        let n = h.state("needs").clone();
+        let mut needs = json!({
+            "checked": n["checked"].as_bool().unwrap_or(false),
+            "installing": n["installing"].as_bool().unwrap_or(false),
+            "building": n["building"].as_bool().unwrap_or(false),
+            "buildError": n["buildError"].as_str().unwrap_or(""),
+            "updatesRunning": updates_running(),
+        });
+        for k in ["secretTool", "keyring", "goa", "goaMicrosoft", "goaSignin"] {
+            if let Some(b) = n[k].as_bool() {
+                needs[k] = json!(b);
+            }
+        }
+        let cal = calendar_doc();
+        // AI: whether each model has a credential (Ai.hasCredential), the chats
+        let keys = h.st.shell.get::<Keys>();
+        let mut has_key = serde_json::Map::new();
+        for m in models::read(&h.cfg()["ai"]["models"]) {
+            let has = m.auth == "none" || self.saved_keys.contains(&m.key) || keys.is_some_and(|k| k.has(&models::credential_provider(&m), &m.key));
+            has_key.insert(m.key.clone(), json!(has));
+        }
+        let (sessions, pinned) = ai_sessions();
         let acct = &g["account"];
         let contacts = c["contacts"].as_array().cloned().unwrap_or_default();
-        let sessions = ai["sessions"].as_i64().unwrap_or(0);
         json!({
             "signingIn": g["signingIn"].as_bool().unwrap_or(false),
             "google": {
@@ -127,18 +164,7 @@ impl AccountsBridge {
                 "calendars": map_rows(&c["calendars"], |x| json!({"account": s_(x, "account"), "id": s_(x, "id"), "title": s_(x, "title"), "writable": x["writable"].as_bool().unwrap_or(false)})),
                 "taskLists": map_rows(&c["taskLists"], |x| json!({"account": s_(x, "account"), "id": s_(x, "id"), "title": s_(x, "title")})),
             },
-            "needs": {
-                "checked": n["checked"].as_bool().unwrap_or(false),
-                "secretTool": n["secretTool"].as_bool().unwrap_or(false),
-                "keyring": n["keyring"].as_bool().unwrap_or(false),
-                "goa": n["goa"].as_bool().unwrap_or(false),
-                "goaMicrosoft": n["goaMicrosoft"].as_bool().unwrap_or(false),
-                "goaSignin": n["goaSignin"].as_bool().unwrap_or(false),
-                "installing": n["installing"].as_bool().unwrap_or(false),
-                "building": n["building"].as_bool().unwrap_or(false),
-                "buildError": n["buildError"].as_str().unwrap_or(""),
-                "updatesRunning": updates_running(),
-            },
+            "needs": needs,
             "drives": {
                 "hasRclone": d["hasRclone"].as_bool().unwrap_or(false),
                 "busy": d["busy"].as_str().unwrap_or(""),
@@ -154,11 +180,11 @@ impl AccountsBridge {
                 "defaultAlert": cal["defaultAlert"].as_i64().unwrap_or(10),
             },
             "ai": {
-                "providers": if ai["providers"].is_null() { json!([]) } else { ai["providers"].clone() },
-                "hasKey": if ai["hasKey"].is_object() { ai["hasKey"].clone() } else { json!({}) },
+                "providers": json!([]),
+                "hasKey": Value::Object(has_key),
                 "envKeys": env_keys(|v| std::env::var_os(v).is_some_and(|x| !x.is_empty())),
                 "sessions": sessions,
-                "pinned": ai["pinned"].as_i64().unwrap_or(0),
+                "pinned": pinned,
                 "undo": self.ai_undo,
             },
             "tools": TOOLS.iter().filter(|t| has_tool(t)).collect::<Vec<_>>(),
@@ -237,14 +263,22 @@ impl AccountsBridge {
             // AI
             "aiSetModel" => h.ask("ai.setModel", json!([s(0)])),
             // [draft, old key, credential] (checked by the page first; the credential goes to the keyring, never back)
-            "aiSave" => h.ask("ai.accountsSave", json!([arg(0), s(1), s(2)])),
+            "aiSave" => {
+                if !s(2).trim().is_empty() {
+                    let raw = match arg(0) {
+                        Value::String(t) => serde_json::from_str(&t).unwrap_or(Value::Null),
+                        v => v,
+                    };
+                    self.saved_keys.insert(tessera_core::services::ai::models::normalize(&raw).key);
+                }
+                h.ask("ai.accountsSave", json!([arg(0), s(1), s(2)]))
+            }
             "aiRemove" => {
                 self.finish_ai_undo(h); // (an earlier removal is final now)
                 let key = s(0);
-                let ai = crate::bus::get("ai");
-                let Some(m) = ai["models"].as_array().and_then(|ms| ms.iter().find(|m| m["key"].as_str() == Some(key.as_str()))).cloned() else { return };
+                let Some(m) = tessera_core::services::ai::models::read(&h.cfg()["ai"]["models"]).into_iter().find(|m| m.key == key) else { return };
                 h.ask("ai.removeModel", json!([key]));
-                self.ai_undo = format!("{} removed", m["name"].as_str().unwrap_or(""));
+                self.ai_undo = format!("{} removed", m.name);
                 if let Some(tx) = self.tx.clone() {
                     self.undo_t.start(slint::TimerMode::SingleShot, Duration::from_millis(8000), move || tx.send(M::AiUndoDone));
                 }
@@ -265,7 +299,7 @@ impl AccountsBridge {
         if !self.live {
             return;
         }
-        let f = self.feed();
+        let f = self.feed(h);
         let text = f.to_string();
         if text == self.sent {
             return;
@@ -283,6 +317,7 @@ impl Service for AccountsBridge {
         &["accounts"]
     }
     fn start(&mut self, h: &mut Host) {
+        h.st.shell.want("ai"); // (the saved credentials, for hasKey)
         let tx = Tx::new(h.sender("AccountsBridge"));
         self.tx = Some(tx.clone());
         self.poll.start(slint::TimerMode::Repeated, Duration::from_secs(1), move || tx.send(M::Poll));

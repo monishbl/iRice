@@ -1,0 +1,17 @@
+# Notification Center: panel at the right under the bar (x≈1530..1912 Material, 1544..1912 Glass); read rows from the first shot
+look glass
+wait 2
+setup notify-send -a Firefox -i firefox 'Download finished' 'report.pdf'
+setup notify-send -a Firefox -i firefox 'Download finished' 'slides.pdf'
+setup notify-send -a Files -i org.gnome.Nautilus -A open=Open 'Copied' '3 files'
+wait 1
+ipc panels open notificationCenter IRICE-TEST
+wait 1
+shot nc-open
+note expand the Firefox group (click the stack), hover a card (close badge), then:
+setup notify-send -a Other 'Another' 'one'
+wait 1
+shot hover-kept
+note the hovered card keeps its badge (no flicker)
+note start the Focus timer (Focus tab), hover a card's action button 5 s: hover stays
+ipc panels close

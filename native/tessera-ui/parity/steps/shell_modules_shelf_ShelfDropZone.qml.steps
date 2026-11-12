@@ -1,0 +1,25 @@
+# Zone x700..1220, y4..188; x button (1190,31); Keep target (834,114); Send (1082,114).
+# NOTE: click on layer surfaces may not register in the harness
+rec zone-in 0.6 ipc shelf zone
+note Zone scales 0.72 to 1 from the top centre: about 5 percent over by 0.18 s, settled at 0.32 s; compare the scale curve with QML (fix 2).
+wait 1
+shot zone-open
+note Drop zone under the menu bar x700..1220 y4..188 with Keep and Send targets and an x button; same look as QML.
+rec zone-out 0.5 ptr click 960 30
+note Click on the zone dismisses it: out in 180 ms.
+wait 1
+# 2 x hover
+ipc shelf zone
+wait 1
+ptr glide 1190 31 200
+wait 1
+shot zone-x-hover
+note x fill faded in over 150 ms: Glass 10 to 20 percent white; Material 8 percent state layer (fix 5).
+ptr click 1190 31
+wait 1
+shot zone-x-gone
+note After clicking x the zone is gone.
+# 3 targets under a drag
+# MANUAL: shelf needs an item (drag from a file manager) ; with a shelf row: ipc shelf zone, ptr down on a row, glide 834 114 600 -> Keep lights (Material corners round to 28 in 0.22 s with slight overshoot, primary outline; Glass accent 38 percent) and grows to 1.03 over 150 ms
+# MANUAL: glide to Send (1082,114) over 300 ms -> Send lights, Keep returns; release over Send opens the share sheet (sendOn)
+# MANUAL: release between the targets at (958,114) -> nothing happens, the zone stays until the drag ends

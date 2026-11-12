@@ -1,0 +1,29 @@
+# IslandGlyph: steps from parity/shell_modules_menubar_IslandGlyph.qml.md (batches 1-5). Screen IRICE-TEST 1920x1080 scale 1;
+# the island is centred at x 960 (closed y ~14, open ~392 wide); the bar is 30 px tall.
+# Each block runs in both looks: the file runs top to bottom, Material first, then Glass.
+
+look material
+ipc island demo battery
+wait 1
+shot battery
+note a red ring/disc (colour named "danger" read); Material: the icon on-error
+ipc island dismissNewest
+ipc recorder screen
+wait 2
+ipc recorder stop
+wait 2
+shot recording-saved
+note the "Recording saved" alert's glyph is red, not the accent
+
+look glass
+ipc island demo battery
+wait 1
+shot battery
+note a red ring/disc (colour named "danger" read); Material: the icon on-error
+ipc island dismissNewest
+ipc recorder screen
+wait 2
+ipc recorder stop
+wait 2
+shot recording-saved
+note the "Recording saved" alert's glyph is red, not the accent

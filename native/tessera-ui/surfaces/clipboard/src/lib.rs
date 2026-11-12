@@ -32,7 +32,8 @@ use tessera_core::shell::{Command, Part};
 use tessera_core::theme;
 use tessera_core::wayland::{Spec, State, Surface};
 use slint::platform::Key;
-use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
+use slint::{ComponentHandle, SharedString};
+use tessera_core::rows::Rows;
 use smithay_client_toolkit::shell::wlr_layer::{Anchor, KeyboardInteractivity, Layer};
 use smithay_client_toolkit::shell::WaylandSurface;
 use std::any::{Any, TypeId};
@@ -60,6 +61,8 @@ enum M {
     ClearClicked,
     ClearLeft,
     Scrolled(f32),
+    /// 900 ms without the list moving: the scroll indicator may go
+    ScrollIdle,
     /// closed long enough (its opening's number): the window goes
     Retire(u32),
     Dismissed,
@@ -218,6 +221,8 @@ struct Win {
     ui: ui::ClipboardPanel,
     a11y: Option<crate::a11y::A11y>,
     glass_sent: String,
+    /// the list's items, handed to the window once (changed in place)
+    items: Rows<ui::CItem>,
 }
 
 #[derive(Default)]
@@ -248,6 +253,9 @@ pub struct Clipboard {
     /// textures stay uploaded)
     images: std::collections::HashMap<std::path::PathBuf, slint::Image>,
     retire_timer: slint::Timer,
+    /// the scroll indicator shows for 900 ms after the list moves
+    /// (ScrollIndicator.qml's idle timer)
+    scroll_timer: slint::Timer,
 }
 
 impl Clipboard {
@@ -307,9 +315,11 @@ impl Clipboard {
         on!(on_dismissed, | | M::Dismissed);
         on!(on_closed, | | M::Closed);
         ui.set_empty_outline(crate::surfaces::shapes::outline("cookie9").into());
+        let items = Rows::new();
+        ui.set_items(items.model());
         ui.show().expect("show clipboard");
         let a11y = crate::a11y::A11y::new(&surface, st.tx.clone());
-        self.win = Some(Win { output: output.into(), surface, ui, a11y, glass_sent: String::new() });
+        self.win = Some(Win { output: output.into(), surface, ui, a11y, glass_sent: String::new(), items });
         true
     }
 
@@ -471,7 +481,7 @@ impl Clipboard {
                 }
             })
             .collect();
-        w.ui.set_items(ModelRc::new(VecModel::from(items)));
+        w.items.set(items);
         w.ui.set_items_height(self.total);
     }
 
@@ -728,9 +738,11 @@ impl Part for Clipboard {
                 self.rebuild(st);
             }
             M::Hovered(i) => {
+                // (the QML's ListView follows its currentIndex and the grid
+                // reveals its chosen tile, so a row half under an edge that
+                // the pointer chooses scrolls into view)
                 if i >= 0 && i as usize != self.sel {
-                    self.sel = i as usize;
-                    self.push(st);
+                    self.select(st, i as usize);
                 }
             }
             M::Activate(i, p, c) => self.activate(i.max(0) as usize, p, c),
@@ -751,7 +763,19 @@ impl Part for Clipboard {
                     self.push(st);
                 }
             }
-            M::Scrolled(y) => self.scroll = -y,
+            M::Scrolled(y) => {
+                self.scroll = -y;
+                if let Some(w) = &self.win {
+                    w.ui.set_scrolling(true);
+                }
+                let to = st.shell.sender(NAME);
+                self.scroll_timer.start(slint::TimerMode::SingleShot, Duration::from_millis(900), move || to(Box::new(M::ScrollIdle)));
+            }
+            M::ScrollIdle => {
+                if let Some(w) = &self.win {
+                    w.ui.set_scrolling(false);
+                }
+            }
             M::Retire(n) => self.retire(st, n),
             M::Dismissed => self.close(true),
             M::Closed => self.closed(st),
@@ -807,7 +831,7 @@ impl Part for Clipboard {
         let y = ui.get_body_y() + bh * (1.0 - s) / 2.0;
         let o = ui.get_body_opacity();
         let shape = theme::glass_shape(&st.shell.look, x, y, bw * s, bh * s, 28.0 * s, o, 1.0);
-        let key = format!("{shape:?}");
+        let key = tessera_core::theme::glass_key(&shape);
         if key != w.glass_sent {
             st.shell.glass.set(&w.output, NS, if o > 0.002 { std::slice::from_ref(&shape) } else { &[] });
             w.glass_sent = key;

@@ -1,0 +1,30 @@
+# notifications: Notifications page. Check in each look. Glass Style list has no "Material".
+setup notify-send "Test A" "first" ; notify-send "Test B" "second"
+wait 2
+ipc panels settings notifications
+wait 2
+shot nt-top
+note N1/N7: top of the page: same rows, texts, footers and order as QML; Clear all row/detail counts kept notifications ("2 kept" if both test notifications were kept, else "0 kept" with the button greyed). Glass Style list has no "Material".
+ptr move 1100 600 scroll 0 5
+wait 1
+shot nt-scroll
+note N1 cont.: scrolled; Style, Volume, More options rows same as QML.
+ptr move 1100 600 scroll 0 10
+wait 1
+shot nt-bottom
+note N1 cont.: end of the page with the sound rows same as QML ("Plugging in the charger" Choose... etc. when More options is open).
+ipc focus on
+wait 2
+shot nt-dnd
+note N2: with Focus/DND turned on via ipc, the DND switch on this page follows within a second and the menu bar shows the DND/Focus icon, both shells alike.
+ipc focus off
+wait 2
+shot nt-dnd-off
+note N2: after ipc focus off the switch follows back to off within a second.
+# MANUAL: N2 click the DND switch on: on, menu bar shows the DND/Focus icon.
+# MANUAL: N3 click the Style dropdown, shot the open list: QML item height 36 Material / 28 Glass, list at least 200 wide, right edge on the control's, 4 px below; write both sizes. Pick "Taps": config sounds.pack "taps", enabled true, detail "Short, low taps", a play logged. "Off": Volume row and the More sound rows disappear.
+# MANUAL: N4 click the Style control, Esc (closes, focus stays), key Down: steps to the next option without a list opening; key Up steps back (Rust must match).
+# MANUAL: N5 drag Volume and hold still 1 s before releasing: note when "charging" plays (log time) in both shells (Rust plays at release).
+# MANUAL: N6 More options, "Plugging in the charger" > Choose...: file chooser "Choose a sound" opens in ~/Music; pick a .ogg: detail shows its name and a Reset button; Reset clears both.
+# MANUAL: N7 click Clear all: "0 kept", button greyed; shot both looks.
+ipc panels close

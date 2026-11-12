@@ -1,0 +1,26 @@
+# Login Items page. Never Remove, never Start now, never add an app for real. Put switches back with Undo.
+ipc panels settings about/loginitems
+wait 3
+shot login
+note LI1 same groups, rows, icons, status lines and footers as QML (icons fill in about 0.3 s after the rows; batch 1: page in 10.9 ms).
+ptr move 1320 400 sleep 1200 glide 1320 400 100
+wait 1
+shot login-hover
+note LI2 hovering a row's dots for 1 s shows tooltip "Options for <name>" (QML); Rust: note. Position is a guess: read from the login shot.
+ptr move 1320 400 sleep 200 glide 1320 400 100 click
+wait 1
+shot login-menu
+note LI2 menu with Start now (greyed if it cannot), Remove only for your own items; the dots turn label colour in QML while open.
+key -k Escape
+wait 1
+ptr move 1250 400 sleep 200 glide 1250 400 100 click
+wait 1
+shot login-toast
+note LI3 status line "... - Turned off" at once and toast "Turned off <name>" with an Undo action; clicking Undo within 5 s puts it back quietly.
+# MANUAL: LI3 click Undo within 5 s and check the switch is back on (leave the item as it was)
+ipc panels settings about/loginitems
+wait 2
+key -k Escape
+# MANUAL: LI4 click Add app..., then type "sync" without clicking the field: QML puts the text in the field and matches show; Rust: note; then Cancel
+# MANUAL: LI5 Add app..., click the field, type "ma", Esc: the search closes in both
+ipc panels close

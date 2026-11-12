@@ -11,6 +11,7 @@ doctest = false
 
 [dependencies]
 tessera-core.workspace = true
+tessera-host-system = { path = "../system" } # (Devices: a Bluetooth device's glyph and drawing)
 slint.workspace = true
 serde_json.workspace = true
 serde.workspace = true

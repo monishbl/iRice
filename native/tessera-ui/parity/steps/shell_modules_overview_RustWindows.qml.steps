@@ -1,0 +1,32 @@
+# RustWindows bridge: window-management calls reach the Overview / Mission Control. Rust-side effects are compared with QML.
+# Earlier run: spaces/titles PASS; Expose opened Mission Control but NEITHER shell showed the "foot / N windows" header (not scored); lock-vs-strip not run.
+setup foot & foot & foot &
+wait 2
+ipc panels open overview IRICE-TEST
+wait 1
+shot spaces-overview
+note Every space shows its title ("Desktop" / "Space N") with the same names and window counts as QML; compare both looks.
+ipc panels closeOpen
+wait 1
+ipc panels exposeApp foot
+wait 1
+shot expose-foot
+note Mission Control opens with only the foot windows and "foot" plus "N windows" on top (earlier run: header missing in BOTH shells - report if still missing, and whether QML and Rust differ).
+ipc panels closeOpen
+wait 1
+# Lock vs switcher strip: hold Alt+Tab (strip shown), then lock.
+key -M alt -k Tab
+wait 1
+shot strip-before-lock
+note Switcher strip visible while Alt is held (the sandbox cannot hold a key across steps; if no strip shows, report not testable).
+ipc lock lock
+wait 1
+shot strip-after-lock
+note After the lock the strip is gone at once (keyboard taken, up to 1 s late in Rust) and only the lock screen shows; note the delay vs QML.
+ipc lock unlock
+wait 1
+# MANUAL: Rename/add a space (+ in the macOS bar) and reopen the Overview: the new one is there within one open
+# MANUAL: In the Overview drag a window to space 3: hyprctl clients shows it there; reorder two spaces; (virtual pointer drags did nothing in an earlier run)
+# MANUAL: minimize a window (title-bar button), Alt+Tab to it: it comes back (apps.show)
+# MANUAL: after unlocking, Alt+Tab works again
+# MANUAL: grep "no wm call" /tmp/irice-rt*/tessera-ui*.log is empty after the steps above (Rust log check)

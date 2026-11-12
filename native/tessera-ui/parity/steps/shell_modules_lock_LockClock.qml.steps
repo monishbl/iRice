@@ -1,0 +1,12 @@
+look material
+# LockClock: faces need lock.clockFace/clockSize config edits (not available as steps). Default face is checked here.
+ipc lock lock
+wait 3
+shot default-face
+note Default clock face at the right time, same as QML at the same minute (stacked, dynamic: 24h shows "7 Nov"-style date under the minutes, 12h shows "PM").
+# MANUAL: analog: hands at the right time (PASS earlier); record 1 s at a minute change: minute hand steps forward 6 degrees with a small overshoot (450 ms) (NOT RUN); at :59 -> :00 forward, not a full backward spin (NOT RUN)
+# MANUAL: small analog (lock.clockSize "small" + analog): the small dial in the corner has BOTH hands (PASS earlier)
+# MANUAL: dynamic with appearance.clock24 true/false: "AM"/"PM" vs "7 Nov" under the minutes; the date line above hides for 24 h while large (hidden check NOT RUN)
+# MANUAL: cross-over: switch lock.clockSize small <-> large while locked: large face shrinks and fades while the line grows in, both pinned top-left, no jump at the end (NOT RUN)
+ipc lock unlock
+wait 2

@@ -1,0 +1,55 @@
+# ResourcePopover: steps from parity/shell_modules_resources_ResourcePopover.qml.md (batches 1-5). Screen IRICE-TEST 1920x1080 scale 1;
+# the island is centred at x 960 (closed y ~14, open ~392 wide); the bar is 30 px tall.
+# Each block runs in both looks: the file runs top to bottom, Material first, then Glass.
+
+look material
+ptr move 1500 600
+wait 1
+ptr glide 960 14 400
+wait 1
+wait 10
+ptr glide 925 49 200
+wait 0.8
+shot pop
+note 3-4 rows (Graphics only with an AMD/Intel GPU), round tinted badges, titles, details ("NN°C", "N.N of N GB"), values right-aligned, graphs spanning most of their width
+wait 1.5
+shot pop-later
+note figures/graph tips changed; nothing else redrawn (compare with pop)
+static pop-rows 760 60 400 240
+note the popover's rows: only figures and graphs change over 3 s (no row rebuilt)
+ptr glide 960 700 300
+wait 1
+ptr move 1500 600
+wait 1
+ptr glide 960 14 400
+wait 1
+rec pop-in 1 ptr glide 925 49 150
+note it fades in and drops 6 px over Theme.motion.popover (not one frame)
+ptr glide 960 700 300
+wait 1
+
+look glass
+ptr move 1500 600
+wait 1
+ptr glide 960 14 400
+wait 1
+wait 10
+ptr glide 925 49 200
+wait 0.8
+shot pop
+note 3-4 rows (Graphics only with an AMD/Intel GPU), round tinted badges, titles, details ("NN°C", "N.N of N GB"), values right-aligned, graphs spanning most of their width
+wait 1.5
+shot pop-later
+note figures/graph tips changed; nothing else redrawn (compare with pop)
+static pop-rows 760 60 400 240
+note the popover's rows: only figures and graphs change over 3 s (no row rebuilt)
+ptr glide 960 700 300
+wait 1
+ptr move 1500 600
+wait 1
+ptr glide 960 14 400
+wait 1
+rec pop-in 1 ptr glide 925 49 150
+note it fades in and drops 6 px over Theme.motion.popover (not one frame)
+ptr glide 960 700 300
+wait 1

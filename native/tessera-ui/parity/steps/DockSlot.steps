@@ -1,0 +1,44 @@
+# Arena IRICE-TEST 1920x1080 scale 1, the user's config (expressive motion, Colloid, their 4 widgets).
+# Each file runs top to bottom from a fresh desktop. `static NAME x y w h`: that region must not change
+# from there until the next `shot`, `rec` or `look` (the no-reload blocks end with their last close).
+# Right-clicks: `ptr ... down up` lines marked (right button) need the runner's right button.
+
+look glass
+rec ds-apps 1.5 ptr move 894 1038 click
+note launchpad opens
+key -k Escape
+wait 0.8
+rec ds-downloads 1.5 ptr move 970 1038 click
+note the Downloads stack opens
+key -k Escape
+wait 0.8
+setup python3 -c "import json,os;p=os.path.expanduser('~/.config/tessera/config.json');c=json.load(open(p));c.setdefault('dock',{})['pinned']=json.loads('[\"foot\"]');json.dump(c,open(p,'w'),indent=4)"
+wait 1.5
+rec ds-launch 2 ptr move 951 1038 click
+note foot hops twice and opens
+rec ds-expose 1.5 ptr move 951 1038 click
+note foot in front: App Exposé opens
+key -k Escape
+setup hyprctl dispatch 'hl.dsp.window.close({ window = "class:foot" })'
+wait 1
+setup python3 -c "import json,os;p=os.path.expanduser('~/.config/tessera/config.json');c=json.load(open(p));c.setdefault('dock',{})['pinned']=json.loads('[]');json.dump(c,open(p,'w'),indent=4)"
+
+look material
+rec ds-apps 1.5 ptr move 894 1032 click
+note launchpad opens
+key -k Escape
+wait 0.8
+rec ds-downloads 1.5 ptr move 970 1032 click
+note the Downloads stack opens
+key -k Escape
+wait 0.8
+setup python3 -c "import json,os;p=os.path.expanduser('~/.config/tessera/config.json');c=json.load(open(p));c.setdefault('dock',{})['pinned']=json.loads('[\"foot\"]');json.dump(c,open(p,'w'),indent=4)"
+wait 1.5
+rec ds-launch 2 ptr move 951 1032 click
+note foot hops twice and opens
+rec ds-expose 1.5 ptr move 951 1032 click
+note foot in front: App Exposé opens
+key -k Escape
+setup hyprctl dispatch 'hl.dsp.window.close({ window = "class:foot" })'
+wait 1
+setup python3 -c "import json,os;p=os.path.expanduser('~/.config/tessera/config.json');c=json.load(open(p));c.setdefault('dock',{})['pinned']=json.loads('[]');json.dump(c,open(p,'w'),indent=4)"

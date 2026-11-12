@@ -1,0 +1,20 @@
+# displays: Displays page. Check in each look.
+# Never change IRICE-TEST's mode/scale/rotation; never toggle "Use this display"; do not click Preview.
+ipc panels settings displays
+wait 2
+shot dsp-top
+note D1: groups in the same order (arrangement canvas + Identify, display picker Segmented if two displays, the chosen display's group, Wireless displays, More options); tile colours, number size, footer texts, row heights match. Earlier finding: Rust first visit drew a "2" display rectangle over the page header/Identify row at about 996,274 and replaced the arrangement canvas with "Connect another display to arrange them."; QML shows the canvas panel above Identify. Report whether this still happens.
+wait 2
+shot dsp-top2
+note D1 settle: same page after 2 more seconds; the stray "2" rectangle over the header must be gone/absent and the arrangement canvas panel present as in the QML.
+ptr move 1100 600 scroll 0 5
+wait 1
+shot dsp-scroll
+note D1 cont.: lower groups (Resolution, Refresh rate, Scale rows with 160-ish px dropdowns, Wireless displays) same rows and footers as the QML.
+# MANUAL: D2 if the Segmented shows, click the other display's segment: group switches to "... (WAYLAND-1)" with "This display is off..." footer and only "Use this display"; click the first segment back. Do NOT toggle "Use this display".
+# MANUAL: D3 click the IRICE-TEST tile (about 1110,330): chosen (primary container / 2 px accent); cursor is the plain arrow (one placed display, no drag); release does nothing else.
+# MANUAL: D4 click Resolution's control, shot, Esc; same for Refresh rate and Scale: list under the control, right edges lined up, current item checked, "(Native)" on the first resolution, scale labels "N %  .  looks like W x H"; Esc closes without change.
+# MANUAL: D5 More options: Animation Segmented (300 wide), Directional sound, Preview buttons with arrow icons, Switching displays group, Restore Defaults (disabled unless the config has saved monitors); click Animation "Liquid" then back: Segmented follows. Do not click Preview.
+# MANUAL: D6 (optional) change Scale to 125 %, shot within 2 s: "Keep these display settings?" card with a counting-down "Going back to the previous settings in N seconds."; click "Go back": scale returns to 100 % and the card goes.
+# MANUAL: D7 drag needs two placed displays: skipped; code review only (dragged tile raised, z 2).
+ipc panels close

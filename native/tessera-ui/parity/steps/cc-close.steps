@@ -1,0 +1,32 @@
+# Control Center close stutter (latency.md steps 4 and 8): five opens and
+# closes by its shortcut, each close recorded. Compare the longest gap QML vs
+# Rust; with TESSERA_PERF the Rust log's stall lines during the closes.
+look material
+ptr move 1500 600
+wait 2
+rec cc-open-1 1.4 key -M alt -k c -m alt
+rec cc-close-1 1.4 key -M alt -k c -m alt
+wait 1
+rec cc-open-2 1.4 key -M alt -k c -m alt
+rec cc-close-2 1.4 key -M alt -k c -m alt
+wait 1
+rec cc-open-3 1.4 key -M alt -k c -m alt
+rec cc-close-3 1.4 key -M alt -k c -m alt
+wait 1
+rec cc-open-4 1.4 key -M alt -k c -m alt
+rec cc-close-4 1.4 key -M alt -k c -m alt
+wait 1
+rec cc-open-5 1.4 key -M alt -k c -m alt
+rec cc-close-5 1.4 key -M alt -k c -m alt
+wait 1
+# closing while something arrives: the readings still follow (step 9)
+key -M alt -k c -m alt
+wait 1
+setup wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+; notify-send -a Files 'Copied' '3 files'
+rec cc-close-with-news 2.0 key -M alt -k c -m alt
+shot after-close-with-news
+note close gaps: Rust ≤ QML + 17 ms; after-close-with-news shows the banner and the menu bar's sound icon updated, the Control Center item not pressed
+look glass
+rec cc-open-glass 1.4 key -M alt -k c -m alt
+rec cc-close-glass 1.4 key -M alt -k c -m alt
+note the same in Glass

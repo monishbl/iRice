@@ -1,0 +1,15 @@
+# google: Google page. Check in each look.
+# No Google account in the arena: never sign in, never click Connect / Add account, never pick a real client file.
+ipc panels settings google
+wait 2
+shot g-top
+note G1: groups "Google account" (footer one of the not-connected texts), "Keep", "Google Drive folder" with same rows, buttons and details as the QML.
+ptr move 1100 600 scroll 0 5
+wait 1
+shot g-scroll
+note G1 cont.: "Google Drive folder" group and More options row; same as the QML.
+# MANUAL: G2 glide over "Open Google Keep" and the Drive button (points from a shot), Esc: same hover fill and press look as QML in both looks; do NOT click Connect.
+# MANUAL: G3 click More options: "Advanced" with the switch off and no footer; "Calendars" (quick add) absent. Switch "Use your own OAuth client" on: "Client file" and "Connect with your client" (disabled) appear, footer shows. Hover "Choose...": hover look.
+# MANUAL: G4 click "Choose..." once, shot while the chooser is open, Esc the chooser: button reads "Choosing...", greyed, while open (QML); Rust must match.
+# MANUAL: G5 with Advanced on go to another page and back: More options closed, Advanced off (Rust must match).
+ipc panels close

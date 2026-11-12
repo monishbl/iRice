@@ -255,6 +255,26 @@ impl Drop for Kept {
 }
 
 /// After `ms`, the service hears `msg` (a Timer.qml single shot)
+/// A child that's stopped with signals (a recorder, dictation's mic) must
+/// hear them: this process blocks its signals for its signalfd, and when it
+/// was started in the background by a non-interactive shell SIGINT is
+/// ignored, and an ignored signal stays ignored across exec. So it starts
+/// with every signal unblocked and those at their defaults.
+pub fn default_signals(command: &mut std::process::Command) {
+    use std::os::unix::process::CommandExt;
+    unsafe {
+        command.pre_exec(|| {
+            let mut set: libc::sigset_t = std::mem::zeroed();
+            libc::sigemptyset(&mut set);
+            libc::sigprocmask(libc::SIG_SETMASK, &set, std::ptr::null_mut());
+            for sig in [libc::SIGINT, libc::SIGTERM, libc::SIGHUP, libc::SIGUSR1, libc::SIGUSR2, libc::SIGPIPE] {
+                libc::signal(sig, libc::SIG_DFL);
+            }
+            Ok(())
+        });
+    }
+}
+
 pub fn later(send: impl Fn(Box<dyn std::any::Any + Send>) + Send + 'static, ms: u64, msg: Box<dyn std::any::Any + Send>) {
     std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_millis(ms));

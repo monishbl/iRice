@@ -53,6 +53,8 @@ pub(super) struct IndexEnded;
 pub(super) struct Shoot(pub Vec<String>);
 pub(super) struct AskShoot(pub Vec<String>);
 pub(super) struct DropNow(pub String);
+/// A stop not heard yet: run number, step (1: SIGTERM, 2: SIGKILL)
+pub(super) struct RecEscalate(pub u64, pub u8);
 pub(super) struct StartRec(pub Value);
 pub(super) struct NotifyAction(pub String, pub String);
 
@@ -86,6 +88,8 @@ pub struct ScreenSvc {
     pub(super) discarding: bool,
     pub(super) discarded: String,
     pub(super) rec_pid: Option<i32>,
+    /// Stop was asked (the end that follows is a save, even forced)
+    pub(super) rec_stopping: bool,
     pub(super) rec_gen: u64,
     // LiveText
     pub(super) recent: Vec<(String, Value)>,
@@ -180,6 +184,8 @@ impl ScreenSvc {
         // (the menu bar's red recording item: ScreenTools.recording / recordingStarted)
         h.set_state("recording", json!({"on": self.recording, "started": self.started}));
         h.set_state("recorder", json!({"recording": self.recording, "paused": self.paused, "file": self.file, "started": self.started, "pausedAt": self.paused_at, "countdown": self.countdown, "micMuted": self.mic_muted, "canPause": self.gsr()}));
+        // Live Text's side for Settings → Keyboard (RustBridgeInput's `ocr`; host-system's input bridge reads it)
+        h.set_state("ocr", json!({"hasTesseract": self.has_tesseract(), "installing": self.ocr_installing, "error": self.ocr_install_error, "languages": self.ocr_languages}));
     }
 
     /// ScreenshotEditor.qml's toRust
@@ -229,7 +235,10 @@ impl ScreenSvc {
             // Control Center's Record tile (Recorder.openToolbar: the toolbar, or stop)
             "recorder.openToolbar" => self.open_toolbar(h),
             // Settings -> Input (OCR languages): ScreenTools.installOcr
-            "screentools.installOcr" => self.install_ocr(h, a[0].as_str().unwrap_or("")),
+            "screentools.installOcr" => {
+                self.install_ocr(h, a[0].as_str().unwrap_or(""));
+                self.publish(h);
+            }
             "screen.do" => {
                 let (k, v) = (a[0].as_str().unwrap_or(""), a[1].as_str().unwrap_or(""));
                 if k == "shot" {

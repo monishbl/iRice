@@ -1,0 +1,24 @@
+# OSK keyboard. Both looks. Focus a foot window first.
+setup foot &
+wait 2
+ipc panels open keyboard IRICE-TEST
+wait 1
+shot open
+note Rows of keys at the bottom of the screen; with a 1920 px screen unit = 58 so letter keys are 52 px. Same as QML.
+# NOTE: key positions read from the shot; letter "a" assumed near (440, 1000). click on layer surfaces may not register in the harness
+ptr move 440 1000 sleep 200 click
+wait 1
+shot typed-a
+note "a" typed in the focused foot window.
+# Shift assumed at the left of the bottom letter row
+ptr move 330 1060 sleep 200 click
+wait 1
+shot shift
+note Shift latched: Material primary, fully round; Glass accent fill. Same as QML.
+ptr move 440 1000 sleep 200 click
+wait 1
+shot typed-A
+note "A" typed (capital) and Shift unlatched.
+rec osk-press 0.6 ptr move 440 1000 sleep 100 down sleep 400 up
+note Material: pressing a letter key rounds corners in about 0.22 s with about 6 % swell and an overshoot; Glass: 95 % in 100 ms. Compare QML within 1 frame.
+ipc panels close

@@ -1,0 +1,10 @@
+# Record countdown. Check in each look. Needs a recorder in the sandbox; if the countdown does not start, report this file not testable here.
+# MANUAL: set Countdown to 3 s: ipc recorder options, click "3 s" in the Countdown row, Esc (needs a click on a layer surface)
+rec cd 4 ipc recorder screen
+note If it runs: the disc is centred at (960,540), 120 px; the numbers 3, 2, 1 appear a second apart; each number pops (0.82 -> about 1.03 -> 1 within 220 ms): compare the number's height per frame QML vs Rust (+-1 frame). Material: the shape changes each second (3 clover, 2 cookie12, 1 sunny). If nothing appears in either shell, mark not testable.
+wait 1
+shot cd-after
+note The countdown has ended or was cancelled; no stuck disc on the screen.
+ptr move 960 540 click
+# NOTE: click on layer surfaces may not register in the harness
+note A click at (960,540) during the countdown must reach the window under it (try with a foot window open there).

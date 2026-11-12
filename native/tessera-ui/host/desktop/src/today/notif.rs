@@ -66,6 +66,14 @@ pub struct Notif {
     pub undo_at: i64,
     pub fine: bool,
     pub tab: i64,
+    /// the count Settings → Notifications was last told (`notificationCount`)
+    pub count_sent: Option<usize>,
+    /// the calendar's item just deleted ({kind, item, title}), offered back for 8 s
+    pub cal_undo: Option<Value>,
+    pub cal_undo_at: i64,
+    /// until then the calendar reads events.json itself (a write here shows
+    /// at once, before the reader's next look at the file)
+    pub cal_fresh_until: i64,
 }
 
 fn words_initials(s: &str) -> String {
@@ -147,6 +155,11 @@ impl Notif {
         let fresh: Vec<Note> = new.iter().filter(|n| !old.contains(&n.id)).cloned().collect();
         let gone: Vec<u32> = old.difference(&now_ids).copied().collect();
         self.list = new;
+        // Settings → Notifications' "Clear All" row (RustBridgeNotify's notificationCount)
+        if self.count_sent != Some(self.list.len()) {
+            self.count_sent = Some(self.list.len());
+            h.ask("settings.feed", serde_json::json!(["notify", {"notificationCount": self.list.len()}]));
+        }
         // the lock screen's list (Lock.qml tellNotes): whoever serves them, the
         // lock shows them; it keeps the latest, so it's current when it locks
         let notes: Vec<Value> = self
@@ -335,9 +348,13 @@ impl Notif {
         }
         let Some((f, t, d)) = self.nc_cal.clone() else { return };
         let (Some(first), Some(to), Some(day)) = (parse_day(&f), parse_day(&t), parse_day(&d)) else { return };
-        let Some(c) = h.st.shell.get::<Calendar>().cloned() else { return };
+        let Some(mut c) = h.st.shell.get::<Calendar>().cloned() else { return };
+        if now() < self.cal_fresh_until {
+            c.local = cal::read_local(&std::fs::read_to_string(calq::events_path()).unwrap_or_default());
+        }
         let accent = h.st.shell.look.accent.clone();
-        let v = calendar_payload(&c, &todos::list(), first, to, day, &accent);
+        let mut v = calendar_payload(&c, &todos::list(), &calq::local_raw(), calq::default_alert(), first, to, day, &accent);
+        v["undo"] = json!(self.cal_undo.as_ref().and_then(|u| u["title"].as_str()).unwrap_or(""));
         let s = v.to_string();
         if s != self.last_calendar {
             self.last_calendar = s;
@@ -349,12 +366,16 @@ impl Notif {
         if self.undo.is_some() && now - self.undo_at > 8000 {
             self.undo = None;
         }
+        if self.cal_undo.is_some() && now - self.cal_undo_at > 8000 {
+            self.cal_undo = None;
+        }
     }
 }
 
 /// `{"to":"notifications","do":"calendar",…}` for the days Notification
 /// Center shows (Notifications.sendCalendar)
-pub fn calendar_payload(c: &Calendar, todo_list: &[todos::Item], first: i64, to: i64, day: i64, accent: &str) -> Value {
+#[allow(clippy::too_many_arguments)]
+pub fn calendar_payload(c: &Calendar, todo_list: &[todos::Item], raw: &[Value], default_alert: i64, first: i64, to: i64, day: i64, accent: &str) -> Value {
     let list = c.between(first, to);
     let daily = calq::daily_in(&list, first, to);
     let mut marks: BTreeMap<String, (Vec<String>, i64, Vec<Value>, i64)> = BTreeMap::new();
@@ -376,13 +397,21 @@ pub fn calendar_payload(c: &Calendar, todo_list: &[todos::Item], first: i64, to:
     for t in todo_list.iter().filter(|t| t.due != 0 && !t.done) {
         marks.entry(key_of(t.due)).or_default().1 += 1;
     }
+    // (with what the editor needs: its fields, and whether it's yours to change)
     let event = |e: &cal::Event| {
         let name = calq::name_of(c, e);
+        let id = e.key.strip_prefix("local:");
+        let r = id.and_then(|id| raw.iter().find(|r| r["id"].as_str() == Some(id)));
+        let info = if id.is_some() { String::new() } else { format!("{}\nFrom {}, a subscribed calendar (read-only).", calq::time_text(e), if name.is_empty() { "a calendar" } else { &name }) };
         json!({"kind": "event", "title": e.title, "sub": format!("{}{}", calq::time_text(e), if name.is_empty() { String::new() } else { format!(" · {name}") }),
-               "color": if e.color.is_empty() { accent.to_string() } else { e.color.clone() }, "key": e.key})
+               "color": if e.color.is_empty() { accent.to_string() } else { e.color.clone() }, "key": e.key,
+               "day": key_of(e.start), "allDay": e.all_day, "start": hm(e.start), "end": hm(e.end),
+               "alert": r.and_then(|r| r["alert"].as_i64()).unwrap_or(default_alert), "notes": r.and_then(|r| r["notes"].as_str()).unwrap_or(""),
+               "location": "", "editable": id.is_some(), "movable": id.is_some(), "recurring": false, "account": false, "info": info, "calLine": ""})
     };
     let todo = |t: &todos::Item| {
-        json!({"kind": "todo", "title": t.text, "sub": format!("To-do{}", if t.all_day { String::new() } else { format!(" · {}", hm(t.due)) }), "done": t.done, "key": t.key})
+        json!({"kind": "todo", "title": t.text, "sub": format!("To-do{}", if t.all_day { String::new() } else { format!(" · {}", hm(t.due)) }), "done": t.done, "key": t.key,
+               "day": key_of(t.due), "allDay": t.all_day, "start": if t.all_day { String::new() } else { hm(t.due) }, "editable": true, "movable": true})
     };
     let on = |d: i64| -> Vec<todos::Item> { todo_list.iter().filter(|t| t.due >= cal::day_bounds(d).0 && t.due < cal::day_bounds(d).1).cloned().collect() };
     // (the week: a few of what's on each day, then "+N more")
@@ -413,7 +442,10 @@ pub fn calendar_payload(c: &Calendar, todo_list: &[todos::Item], first: i64, to:
         .collect();
     let mut items: Vec<Value> = calq::events_on(c, day).iter().map(event).collect();
     items.extend(on(day).iter().map(todo));
-    json!({"to": "notifications", "do": "calendar", "marks": marks, "everyDay": daily.values().cloned().collect::<Vec<_>>().join(", "), "items": items})
+    // (where a new event can go: this computer; the accounts' calendars are
+    // the system host's, see calendar.rs)
+    json!({"to": "notifications", "do": "calendar", "marks": marks, "everyDay": daily.values().cloned().collect::<Vec<_>>().join(", "), "items": items,
+           "targets": [{"value": "", "label": "This computer"}], "target": "", "targetLabel": "This computer", "defaultAlert": default_alert})
 }
 
 #[cfg(test)]
@@ -435,9 +467,16 @@ mod tests {
         c.local.push(cal::Local { id: "a".into(), title: "Dentist".into(), start: at, end: at + 3_600_000, all_day: false });
         let first = cal::make(2026, 10, 1, 0, 0, 0);
         let todo = todos::Item { key: "local/t".into(), text: "Pay".into(), done: false, due: cal::make(2026, 10, 7, 17, 0, 0), all_day: false };
-        let v = calendar_payload(&c, &[todo], first, first + 30 * calq::DAY, at, "#0A84FF");
+        let raw = vec![json!({"id": "a", "alert": 30, "notes": "Bring card"})];
+        let v = calendar_payload(&c, &[todo], &raw, 10, first, first + 30 * calq::DAY, at, "#0A84FF");
         assert_eq!(v["marks"]["2026-11-06"]["colors"][0], "#0A84FF");
         assert_eq!(v["marks"]["2026-11-07"]["todos"], 1);
         assert_eq!(v["items"][0]["title"], "Dentist");
+        // (the editor's fields)
+        assert_eq!(v["items"][0]["editable"], true);
+        assert_eq!(v["items"][0]["alert"], 30);
+        assert_eq!(v["items"][0]["notes"], "Bring card");
+        assert_eq!(v["items"][0]["day"], "2026-11-06");
+        assert_eq!(v["targets"][0]["label"], "This computer");
     }
 }

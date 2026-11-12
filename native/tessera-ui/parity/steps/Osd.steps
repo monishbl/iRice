@@ -1,0 +1,97 @@
+# Right-clicks are press-and-hold here (the DSL's click is the left button).
+# Coordinates: IRICE-TEST 1920x1080, scale 1, the default Control Center layout
+# (setup below resets it). Material grid: x0 1512, y0 50, columns 94 apart
+# (86 wide), rows 80 apart (72 tall). Glass grid: x0 1560, y0 50, columns
+# and rows 82.5 apart (72.5). Default layout rows: 0 Wi-Fi 2x1 + Now Playing
+# 2x2; 1 Bluetooth, Night Light; 2 Focus 2x1, Stages, Dark Mode; 3 Display;
+# 4 Sound; 5 Screenshot, Record, Caffeine, Clipboard; 6 Mirroring 2x1.
+look glass
+wait 3
+ipc shortcut volumeUp
+wait 0.3
+shot island-volume
+note the island shows 'Sound' with the level matching wpctl (before the fix: nothing)
+wait 2
+ipc shortcut brightnessUp
+wait 0.3
+shot island-brightness
+note island shows 'Display'
+wait 2
+ipc shortcut micMute
+wait 0.3
+shot island-mic
+note 'Microphone off'
+ipc shortcut micMute
+wait 2
+ipc shortcut volumeMute
+wait 1
+ipc shortcut volumeUp
+wait 1
+setup wpctl get-volume @DEFAULT_AUDIO_SINK@
+note not MUTED, +5%
+ipc shortcut volumeUp
+ipc shortcut volumeUp
+ipc shortcut volumeUp
+ipc shortcut volumeUp
+ipc shortcut volumeUp
+ipc shortcut volumeUp
+wait 1
+setup wpctl get-volume @DEFAULT_AUDIO_SINK@
+note +30% (not less)
+setup python3 -I -c "import json,os;p=os.path.expanduser('~/.config/tessera/config.json');c=json.load(open(p));c.setdefault('island',{})['hud']=False;json.dump(c,open(p,'w'),indent=4)"
+wait 2
+rec capsule 3 ipc shortcut volumeUp
+note capsule under the bar at the right (x 1632..1912, y 36..88), grows in 220 ms, gone after 1.6 s
+ipc shortcut volumeUp
+ptr glide 1760 62 200
+wait 3
+shot capsule-held
+note still up while the pointer rests
+ptr glide 1500 600 200
+wait 2.2
+shot capsule-gone
+note gone ~1.6 s after leaving
+ipc shortcut volumeUp
+ptr glide 1700 70 200 sleep 50 down sleep 50 glide 1840 70 500 sleep 50 up
+wait 1
+setup wpctl get-volume @DEFAULT_AUDIO_SINK@
+note level ~0.8; no backward jumps
+ptr move 1658 62 sleep 50 click
+wait 0.5
+shot muted
+note icon speaker-x, level empty
+ptr click
+wait 0.5
+ptr move 1890 62 sleep 50 click
+wait 0.5
+shot outputs
+note Outputs list below; click 'Sound settings' (y from shot): Settings opens on Sound, OSD closes
+look material
+wait 3
+rec panel 3 ipc shortcut volumeUp
+note Material panel springs in at the right edge, hides after 1.6 s
+ipc shortcut volumeUp
+ptr glide 1874 540 200 sleep 50 down sleep 50 glide 1874 450 500 sleep 50 up
+wait 0.5
+setup wpctl get-volume @DEFAULT_AUDIO_SINK@
+note value pill beside the handle while dragging; level ~0.95
+ptr move 1874 670 sleep 50 click
+wait 0.5
+shot card
+note Outputs card opens to the left
+ipc shortcut brightnessUp
+wait 0.5
+shot brightness-panel
+note sun, no mute toggle
+ipc panels open controlCenter IRICE-TEST
+wait 1
+ptr move 1604 406 sleep 50 click
+wait 0.5
+shot no-osd
+note no OSD while dragging CC's slider
+ipc panels close
+wait 1.5
+ipc shortcut volumeUp
+wait 0.3
+shot osd-again
+note the OSD shows again (not hushed forever)

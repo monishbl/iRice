@@ -1,0 +1,25 @@
+# network: Network page. Check in each look.
+# No real Wi-Fi in the arena: never click the Wi-Fi switch, Scan again, networks, Forget, "Start NetworkManager". Never run the speed test.
+ipc panels settings network
+wait 2
+shot net-top
+note N1: Wi-Fi group (row text by state; if unmanaged compare the ServiceNotice: centred icon, title, why, button, with Rust's row), Known networks, then the speed test card. Texts identical in both shells.
+ptr move 1100 600 scroll 0 5
+wait 1
+shot net-scroll
+note N1 cont.: speed test card (title "Speed test", sub line, "Test speed" button), Connection group, More options, then Bluetooth; texts identical.
+ptr move 1100 600 scroll 0 10
+wait 1
+shot net-bottom
+note N1 cont.: bottom of the page (More options, Bluetooth section) same as the QML.
+key -k Tab
+key -k Tab
+key -k Tab
+wait 1
+shot net-tab
+note N3: after three Tab presses a focus ring shows on some control (QML: a ring reaches the speed button and list rows if any). Report which control has the ring in each shell; Rust's speed button and Wi-Fi list are Tab stops.
+# MANUAL: N2 glide onto "Test speed" (read x,y): hover tint in both. Press-and-hold ("ptr down", 0.4 s), shot, then move off and release: QML Glass shrinks to 0.97 / Material corners go to 8; Rust Glass gives 0.97 when pressed (Material swell not done).
+# MANUAL: N4 More options: Connection rows the arena has (Interface at least), Server Segmented (Cloudflare chosen), History ("No tests yet" or rows); click Ookla then Cloudflare: Segmented and footer change and come back.
+# MANUAL: N5 only if the arena lists Wi-Fi networks: hover a row (Material inner corners 12, tint), right-click: menu's left edge at the pointer with a separator before "Share network..."/"Copy name"; Esc. Never press-and-hold in Rust. Else note "no networks in the arena".
+# MANUAL: N6 open displays then network again: the list (not a form / password row) shows in both (needs networks).
+ipc panels close

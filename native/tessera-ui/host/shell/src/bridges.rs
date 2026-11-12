@@ -179,18 +179,53 @@ pub fn look_feed(h: &Host) -> Value {
             json!({"name": name, "model": info.as_ref().map(|i| i.model.clone()).unwrap_or_default(), "width": w, "height": hgt})
         })
         .collect();
+    // Wallpaper.seed: the colour Material You picks from the picture (core's
+    // seed.rs, as the Material look uses it), else the tone; read only in the
+    // Material look (its "Wallpaper" swatch), remembered per picture
+    let seed = {
+        let tone7: String = tone.chars().take(7).collect();
+        if !h.st.shell.look.material {
+            tone7
+        } else if cfg["appearance"]["materialSeed"].as_str().unwrap_or("wallpaper") == "wallpaper" {
+            h.st.shell.look.seed.clone() // (the look's own seed is the picture's)
+        } else {
+            use std::sync::Mutex;
+            static LAST: Mutex<Option<(String, Option<String>)>> = Mutex::new(None);
+            let pic = cfg["wallpaper"]["path"].as_str().unwrap_or("").to_string();
+            let mut last = LAST.lock().unwrap_or_else(|e| e.into_inner());
+            if last.as_ref().map(|l| &l.0) != Some(&pic) {
+                let found = if pic.is_empty() { None } else { tessera_core::seed::from_picture(std::path::Path::new(&pic)) };
+                *last = Some((pic, found));
+            }
+            let found = last.as_ref().and_then(|l| l.1.clone());
+            found.unwrap_or(tone7)
+        }
+    };
+    // the core Weather service's reading (the lock page's clock preview; Desktop's footer)
+    let weather = h
+        .st
+        .shell
+        .get::<tessera_core::services::weather::Weather>()
+        .map(|w| json!({"ready": w.ready, "place": w.place, "temp": w.temp, "condition": w.condition, "error": w.error, "icon": w.icon}))
+        .unwrap_or_else(|| json!({"ready": false, "place": "", "temp": 0, "condition": "", "error": "", "icon": "sun"}));
     json!({
         "cooldownGlass": h.state("cooldown.glass"),
         "sunrise": sunrise, "sunset": sunset,
         "path": h.state("wallpaper.path"),
-        "seed": tone, "accent": accent, "tone": h.state("wallpaper.tone"),
+        "seed": seed, "accent": accent, "tone": h.state("wallpaper.tone"),
         "glassPlugin": h.st.shell.plugin,
+        // (Settings' "Update plugin…" when the loaded one is older; the
+        // Drop shelf's count and Show/Hide: RustBridgeLook.qml's fields)
+        "glassPluginVersion": h.state("glass")["version"].clone(),
+        "shelfCount": h.state("shelf")["count"].clone(),
+        "shelfOpened": h.state("shelf")["opened"].clone(),
         "pickerBusy": h.state("picker.busy"),
         "sets": h.state("wallpaper.sets"),
         "directory": tessera_core::wallpaper::directory(cfg),
         "rootHelper": h.state("look.rootHelper"),
         "loginStatus": h.state("look.loginStatus"),
-        "screens": screens
+        "screens": screens,
+        "weather": weather
     })
 }
 
@@ -232,6 +267,8 @@ pub struct Bridges {
     locked: bool,
     held: bool,
     leaving: bool,
+    /// Lock.qml's `veiled`: the lock's veil follows LockFx's steps (the lock part draws it)
+    veiled: bool,
     rust_lock: bool,
     desktop_zero: bool,
     lock_zoom: bool,
@@ -314,7 +351,25 @@ impl Bridges {
             _ => self.desktop_zero = false,
         }
         let at = now_ms();
-        h.tell("background", json!({"settle": step, "zoom": self.lock_zoom, "ms": ms, "at": at}));
+        let m = json!({"settle": step, "zoom": self.lock_zoom, "ms": ms, "at": at});
+        h.tell("background", m.clone());
+        h.tell("desktop", m); // (the widgets and icons zoom in with it: LockFx.itemScale)
+        // The veil over the windows, dock and menu bar while the lock goes
+        // (Lock.qml's lockveil): up with the desktop set back, faded by the
+        // same reveal, gone at rest (once its reveal is told, it lowers itself)
+        if self.veiled || step == "rest" {
+            h.tell("lock", json!({"veil": step, "zoom": self.lock_zoom, "ms": ms}));
+            if step != "prepare" {
+                self.veiled = false;
+            }
+        }
+    }
+
+    fn unveil(&mut self, h: &mut Host) {
+        if self.veiled {
+            self.veiled = false;
+            h.tell("lock", json!({"veil": "rest"}));
+        }
     }
 
     // ── Lock.qml: lock and unlock, with their transitions ───────────────
@@ -342,19 +397,22 @@ impl Bridges {
         } else {
             if !self.held {
                 // locked and unlocked again before the lock showed
+                self.unveil(h);
                 self.lockfx(h, "reveal", 300);
                 return;
             }
             let t = cfg_str(h.cfg(), "lock.unlockTransition", "zoom").to_string();
             if t == "none" {
+                self.unveil(h);
                 self.lockfx(h, "rest", 0);
                 self.set_held(h, false);
                 return;
             }
             // Lock → desktop: while the lock's content lifts away, the desktop
-            // is set back behind it, so the first frame without the lock looks
-            // just like the last one
+            // is set back behind it and the veil goes up, so the first frame
+            // without the lock looks just like the last one
             self.lock_zoom = t == "zoom";
+            self.veiled = true;
             self.lockfx(h, "prepare", 0);
             self.leaving = true;
             self.tell_lock(h);
@@ -393,9 +451,11 @@ impl Bridges {
         if e["sound"] == "error" {
             h.ask("sound.play", json!(["error"]));
         }
+        // (the lock part has already tried again a few times; there's no
+        // other locker here to hand it to, as Lock.qml had: it stays the
+        // lock's, still wanted, so a later lock goes on trying)
         if e["refused"] == true && self.rust_lock {
-            eprintln!("tessera-ui: lock: couldn't lock the session; trying again");
-            self.rust_lock = false;
+            eprintln!("tessera-ui: lock: the compositor refused the session lock");
         }
     }
 

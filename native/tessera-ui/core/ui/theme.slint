@@ -124,6 +124,12 @@ export global Theme {
     in property <length> radius-panel: 26px;
     // Motion: the shell's spring (Theme.motion; 0..1, Slint's spring() damping)
     in property <float> spring: 0.32;
+    // Theme.motion.expressive (appearance.motion; the Material look always),
+    // .snappy (a Glass choice), .pressBounce (Material's press swell, off with
+    // Reduce motion): a surface picks its springs and durations from these
+    in property <bool> expressive: false;
+    in property <bool> snappy: false;
+    in property <bool> press-bounce: false;
 }
 
 // Phosphor glyphs used here (shell/common/phosphor.js)

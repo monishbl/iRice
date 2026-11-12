@@ -53,9 +53,10 @@ pub mod pages;
 use tessera_core::shell::{self, Command as ShellCommand, Part};
 use tessera_core::wayland::{State, Surface, WindowSpec};
 use config::Cfg;
-use model::{Arg, Ctx, Local, MenuItem, Models, Out, Page};
+use model::{Arg, Ctx, Local, MenuItem, Out, Page, Pages};
+use tessera_core::rows::Rows;
 use serde_json::{json, Value};
-use slint::{ComponentHandle, ModelRc, VecModel};
+use slint::{ComponentHandle, ModelRc};
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -63,6 +64,25 @@ use std::time::Duration;
 
 pub const NS: &str = "tessera:settings";
 pub const NAME: &str = "settings";
+/// The Wi-Fi list's open parts, dropped when the page changes
+const WIFI_TRANSIENT: &[&str] = &["wifi.form", "wifi.asking", "wifi.typed", "wifi.hint", "wifi.sharing", "wifi.shareSeen"];
+/// The account pages' typed state (forms, a typed password, a question
+/// asked): gone when you go to another page or Settings opens again, as
+/// the QML's pages made anew
+const PAGE_TRANSIENT: &[&str] = &["acct.", "ai.", "cal.", "wr.", "gest.", "focus.", "dict.refreshed", "look.bootRefreshed"];
+/// Material's cookie steps this often (ms)
+const SPIN_MS: u64 = 80;
+/// The services' updates (every service's, every tick) wait this long and
+/// make one build together, instead of a build of the whole page for each
+const DATA_MS: u64 = 120;
+
+/// Something to decode off the UI thread
+enum Job {
+    /// (key, path, width, height): a picture covering that box
+    Picture(String, String, u32, u32),
+    /// (key, path, px, style): an app icon (appicon.rs)
+    Icon(String, std::path::PathBuf, u32, crate::appicon::Style),
+}
 
 /// Its own messages (Msg::Part("settings", …))
 pub enum M {
@@ -74,6 +94,11 @@ pub enum M {
     Forward,
     Crumb,
     Menu(String, f32, f32, f32, f32),
+    /// a control that opens a popover: where it is in the window
+    Anchor(f32, f32, f32, f32),
+    /// a key the window got while a menu is open: the menu's
+    MenuKey(String),
+    PopoverDismiss,
     MenuPick(i32),
     MenuDismiss,
     Undo,
@@ -87,7 +112,26 @@ pub enum M {
     /// show the search target, once the page is drawn
     Reveal,
     Unflash,
+    /// the services' data changed meanwhile: the page built again (DATA_MS)
+    DataChanged,
     Picture(String, Option<slint::SharedPixelBuffer<slint::Rgb8Pixel>>),
+    /// an app icon drawn (Ctx::icon)
+    Icon(String, Option<slint::SharedPixelBuffer<slint::Rgba8Pixel>>),
+}
+
+/// A popover's popup window (settings-popover.slint)
+struct PopWin {
+    surface: Rc<Surface>,
+    ui: ui::SettingsPopover,
+    /// the page-local switch that keeps it open (the block's `text`)
+    key: String,
+    sub: String,
+}
+
+/// The menu's popup window (settings-menu.slint)
+struct MenuWin {
+    surface: Rc<Surface>,
+    ui: ui::SettingsMenu,
 }
 
 struct Win {
@@ -124,12 +168,38 @@ pub struct Settings {
     toast_timer: slint::Timer,
     reveal_timer: slint::Timer,
     flash_timer: slint::Timer,
-    models: Models,
-    built_page: String,
+    /// the pages made in this window, kept (model.rs Pages)
+    pages: Pages,
+    /// the sidebar's pages and the search's results: changed in place (a
+    /// new model each time made the whole sidebar again on every switch)
+    sections: Rows<ui::SSection>,
+    found: Rows<ui::SResult>,
+    menu_rows: Rows<ui::SOpt>,
+    /// the page's choices that are Dropdown.qml's (their own list's size)
+    dropdowns: std::collections::HashSet<String>,
+    /// the menu open (ActionMenu.qml): its own popup next to its control
+    menu: Option<MenuWin>,
+    /// the menu a click elsewhere just closed (its id, when): the same click
+    /// on its own control must not open it again (Choice.qml toggles)
+    menu_dismissed: Option<(String, std::time::Instant)>,
+    /// where the last control that opens a popover is (SBus.anchor)
+    anchor: (f32, f32, f32, f32),
+    /// the page's popover open (Glass › Appearance's Advanced…)
+    popover: Option<PopWin>,
+    /// when a click elsewhere closed it: that click on its own button must
+    /// not open it again
+    popover_dismissed: Option<std::time::Instant>,
+    /// Material's open-page cookie: a slow turn, stepped (SPIN_MS)
+    spin_timer: slint::Timer,
+    /// the services' updates, a build for each burst (DATA_MS)
+    data_timer: slint::Timer,
+    /// every 30 s while open: what shows a time ("Last synced 3 min ago",
+    /// the look previews' clocks) moves on, as the QML's 30 s timers
+    minute_timer: slint::Timer,
     reveal_tries: u32,
     pictures: HashMap<String, Option<slint::Image>>,
     decoding: std::collections::HashSet<String>,
-    waiting: std::collections::VecDeque<(String, String, u32, u32)>,
+    waiting: std::collections::VecDeque<Job>,
     running: usize,
 }
 
@@ -156,6 +226,44 @@ pub fn resolve(page: &str, target: &str) -> (String, String) {
         Some((p, part)) => (p.to_string(), if target.is_empty() { part.to_string() } else { target.to_string() }),
         None => (if page.is_empty() { "appearance".to_string() } else { page.to_string() }, target.to_string()),
     }
+}
+
+/// A menu's size (logical px) for its longest label (in characters) and
+/// its number of items (ActionMenu.qml: width max(240/220, the label +
+/// 60/44 + 10), height min(360/320, items × 44/32 + 10))
+pub fn menu_size(material: bool, longest: usize, n: usize) -> (u32, u32) {
+    menu_box(&MenuKind::Menu, material, longest, n, 0, 0.0)
+}
+
+/// Which list a menu is: ActionMenu.qml's (a Choice, a row's "…"),
+/// Dropdown.qml's (its own list: 36/28 px rows, at least the control's width
+/// and 200, at most 280 tall), or a pointer menu (PointerMenu.qml)
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum MenuKind {
+    Menu,
+    Dropdown,
+    Pointer,
+}
+
+/// A row's height in a menu of this kind
+pub fn menu_item_h(kind: &MenuKind, material: bool) -> f32 {
+    match kind {
+        MenuKind::Dropdown => if material { 36.0 } else { 28.0 },
+        _ => if material { 44.0 } else { 32.0 },
+    }
+}
+
+/// A menu's size (logical px): its longest label (characters), its rows,
+/// its separators (9 px each), the control's width
+pub fn menu_box(kind: &MenuKind, material: bool, longest: usize, n: usize, lines: usize, control_w: f32) -> (u32, u32) {
+    let item = menu_item_h(kind, material);
+    let (max_h, min_w, pad, per_char) = if material { (360.0, 240.0, 70.0, 7.6) } else { (320.0, 220.0, 54.0, 7.4) };
+    // (Dropdown.qml: as wide as the control, 200 at least; 4/5 px above and below)
+    let (w, h) = match kind {
+        MenuKind::Dropdown => (control_w.max(200.0), (n as f32 * item + if material { 8.0 } else { 10.0 }).min(280.0)),
+        _ => ((longest as f32 * per_char + pad).max(min_w).min(480.0), (n as f32 * item + lines as f32 * 9.0 + 10.0).min(max_h)),
+    };
+    (w.ceil() as u32, h.ceil() as u32)
 }
 
 /// Back and forward, like a browser: going to a page puts the one shown on
@@ -193,7 +301,10 @@ impl Settings {
         });
         let ui = ui::SettingsWindow::new().expect("SettingsWindow");
         st.shell.apply_theme(&ui.global::<ui::Theme>());
-        ui.set_blocks(ModelRc::from(self.models.blocks.clone()));
+        self.pages.clear();
+        ui.set_pages(ModelRc::from(self.pages.model.clone()));
+        ui.set_sections(self.sections.model());
+        ui.set_results(self.found.model());
         ui.set_cookie(crate::surfaces::shapes::outline("cookie9").into());
         let s = Self::sender(st);
         macro_rules! on {
@@ -218,29 +329,179 @@ impl Settings {
         on!(on_close_window, M::Close);
         on!(on_drag, |dx, dy| M::Drag(dx, dy));
         on!(on_key_nav, |d| M::KeyNav(d));
+        on!(on_menu_key, |k| M::MenuKey(k.to_string()));
         {
             let bus = ui.global::<ui::SBus>();
             let s1 = s.clone();
             bus.on_act(move |id, i, f, t| s1(M::Act(id.to_string(), Arg { i, f, s: t.to_string(), id: id.to_string() })));
             let s2 = s.clone();
             bus.on_menu(move |id, x, y, w, h| s2(M::Menu(id.to_string(), x, y, w, h)));
+            let s3 = s.clone();
+            bus.on_anchor(move |x, y, w, h| s3(M::Anchor(x, y, w, h)));
         }
         ui.show().expect("show settings");
+        {
+            let s = s.clone();
+            self.minute_timer.start(slint::TimerMode::Repeated, Duration::from_secs(30), move || s(M::DataChanged));
+        }
         let a11y = crate::a11y::A11y::new(&surface, st.tx.clone());
         self.win = Some(Win { output: name.to_string(), surface, ui, a11y, pos: (0.0, 0.0), size });
-        self.models = Models::default();
-        if let Some(w) = &self.win {
-            w.ui.set_blocks(ModelRc::from(self.models.blocks.clone()));
-        }
-        self.built_page.clear();
     }
 
     fn drop_window(&mut self, st: &mut State) {
+        self.close_menu(st);
+        self.close_popover(st);
+        self.spin_timer.stop();
+        self.minute_timer.stop();
         if let Some(w) = self.win.take() {
+            // (its pages' elements go with it; the next window makes its own)
+            self.pages.clear();
             // (hidden first: Slint keeps a shown window, and with it the surface, alive)
             let _ = w.ui.hide();
             w.surface.hide();
             st.drop_surface(&w.surface);
+        }
+    }
+
+    // ── The menu (ActionMenu.qml) ───────────────────────────────────────
+
+    /// The menu for `id` as a popup by its control (x, y, w, h: the control
+    /// in the window, logical px): below it, right edges lined up, 4 px
+    /// apart; the compositor flips it above or slides it when there's no
+    /// room. Sized from its items as ActionMenu.qml: 44/32 px each, 360/320
+    /// at most (it scrolls inside), at least 240/220 wide.
+    fn open_menu(&mut self, st: &mut State, id: String, at: (f32, f32, f32, f32)) {
+        let Some(items) = self.menus.get(&id) else { return };
+        let Some(win) = &self.win else { return };
+        let material = st.shell.look.material;
+        let rows: Vec<ui::SOpt> = items
+            .iter()
+            .map(|m| ui::SOpt { text: m.text.as_str().into(), on: m.checked, off: !m.enabled, style: if m.danger { 2 } else { 0 }, icon: model::ic(&m.icon), num: if m.separator { 1.0 } else { 0.0 }, ..Default::default() })
+            .collect();
+        let checked = rows.iter().position(|r| r.on).map_or(0, |i| i as i32);
+        let (x, y, aw, ah) = at;
+        // (a 0 height: opened at the pointer, its left edge there)
+        let kind = if ah <= 0.0 { MenuKind::Pointer } else if self.dropdowns.contains(&id) { MenuKind::Dropdown } else { MenuKind::Menu };
+        let lines = rows.iter().filter(|r| r.num > 0.5).count();
+        let (w, h) = menu_box(&kind, material, rows.iter().map(|r| r.text.chars().count()).max().unwrap_or(0), rows.len(), lines, aw);
+        self.menu_rows.set(rows);
+        let spec = tessera_core::wayland::PopupSpec {
+            namespace: "tessera:settings-menu",
+            anchor: (x.round() as i32, y.round() as i32, aw.round().max(1.0) as i32, ah.round().max(1.0) as i32),
+            size: (w, h),
+            offset: if kind == MenuKind::Pointer { (0, 0) } else { ((aw.round() as i32 - w as i32).min(0), 4) },
+            above: false,
+            grab: true,
+        };
+        let Some(surface) = st.prepare_popup(&win.surface, spec) else {
+            eprintln!("tessera-ui: settings: no popup for the menu");
+            return;
+        };
+        let ui = ui::SettingsMenu::new().expect("SettingsMenu");
+        st.shell.apply_theme(&ui.global::<ui::Theme>());
+        ui.set_items(self.menu_rows.model());
+        ui.set_item_h(menu_item_h(&kind, material));
+        // (Dropdown.qml: the keys start on the chosen one)
+        if kind == MenuKind::Dropdown {
+            ui.set_current(checked);
+            ui.set_dropdown(true);
+        }
+        let s = Self::sender(st);
+        {
+            let s = s.clone();
+            ui.on_pick(move |i| s(M::MenuPick(i)));
+        }
+        ui.on_dismiss(move || s(M::MenuDismiss));
+        ui.show().expect("show the settings menu");
+        ui.invoke_settle(checked);
+        win.ui.set_menu_id(id.as_str().into());
+        win.ui.set_menu_open(true);
+        win.ui.global::<ui::SBus>().set_menu_shown(id.as_str().into());
+        self.local.insert("menu.open".into(), Value::Bool(true));
+        self.menu_id = id;
+        self.menu = Some(MenuWin { surface, ui });
+    }
+
+    // ── A popover (a page's QQC.Popup) ──────────────────────────────────
+
+    /// The page's popover as built now: opened by the control that asked
+    /// (below it, right edges lined up, 8 px apart, as the QML's
+    /// `y: parent.height + 8; x: parent.width - width`), kept up to date in
+    /// place (its lists kept: a slider being dragged in it stays), closed
+    /// when the page no longer has it
+    fn sync_popover(&mut self, st: &mut State, want: Option<ui::SBlock>) {
+        let Some(mut b) = want else {
+            self.close_popover(st);
+            return;
+        };
+        if let Some(p) = &self.popover {
+            if p.sub == b.sub.as_str() {
+                let old = p.ui.get_b();
+                b.data = model::keep(&old.data, b.data);
+                if old != b {
+                    p.ui.set_b(b);
+                }
+                return;
+            }
+            self.close_popover(st);
+        }
+        let key = b.text.to_string();
+        // (the click that closed it, on its own button, asked to open it again)
+        if self.popover_dismissed.take().is_some_and(|t| t.elapsed() < Duration::from_millis(300)) {
+            self.local.remove(&key);
+            return;
+        }
+        let Some(win) = &self.win else { return };
+        let (x, y, aw, ah) = self.anchor;
+        // (300 wide; as tall as the window has room for, at most 840, the rest scrolls)
+        let (w, h) = (300u32, (win.size.1 as i32 - 56).clamp(240, 840) as u32);
+        let spec = tessera_core::wayland::PopupSpec {
+            namespace: "tessera:settings-popover",
+            anchor: (x.round() as i32, y.round() as i32, aw.round().max(1.0) as i32, ah.round().max(1.0) as i32),
+            size: (w, h),
+            offset: ((aw.round() as i32 - w as i32).min(0), 8),
+            above: false,
+            grab: true,
+        };
+        let Some(surface) = st.prepare_popup(&win.surface, spec) else {
+            eprintln!("tessera-ui: settings: no popup for the popover");
+            return;
+        };
+        let ui = ui::SettingsPopover::new().expect("SettingsPopover");
+        st.shell.apply_theme(&ui.global::<ui::Theme>());
+        let s = Self::sender(st);
+        {
+            let s = s.clone();
+            ui.global::<ui::SBus>().on_act(move |id, i, f, t| s(M::Act(id.to_string(), Arg { i, f, s: t.to_string(), id: id.to_string() })));
+        }
+        ui.on_dismiss(move || s(M::PopoverDismiss));
+        let sub = b.sub.to_string();
+        ui.set_b(b);
+        ui.show().expect("show the settings popover");
+        self.popover = Some(PopWin { surface, ui, key, sub });
+    }
+
+    /// The popover gone, and the page's switch that kept it open off
+    fn close_popover(&mut self, st: &mut State) {
+        if let Some(p) = self.popover.take() {
+            self.local.remove(&p.key);
+            let _ = p.ui.hide();
+            p.surface.hide();
+            st.drop_surface(&p.surface);
+        }
+    }
+
+    fn close_menu(&mut self, st: &mut State) {
+        if let Some(m) = self.menu.take() {
+            let _ = m.ui.hide();
+            m.surface.hide();
+            st.drop_surface(&m.surface);
+        }
+        self.menu_id.clear();
+        self.local.remove("menu.open");
+        if let Some(w) = &self.win {
+            w.ui.set_menu_open(false);
+            w.ui.global::<ui::SBus>().set_menu_shown("".into());
         }
     }
 
@@ -261,7 +522,7 @@ impl Settings {
         if !self.open {
             // (opening again: the page's own state starts over, as the QML
             // window is made anew each time)
-            self.local.retain(|k, _| !k.starts_with("more:"));
+            self.local.retain(|k, _| !k.starts_with("more:") && !WIFI_TRANSIENT.iter().any(|w| k.starts_with(w)) && !PAGE_TRANSIENT.iter().any(|w| k.starts_with(w)));
             self.query.clear();
             self.results.clear();
             if let Some(w) = &self.win {
@@ -287,7 +548,9 @@ impl Settings {
             return;
         }
         self.open = false;
-        self.menu_id.clear();
+        self.spin_timer.stop();
+        self.close_menu(st);
+        self.close_popover(st);
         self.toast_timer.stop();
         self.toast_undo = None;
         if let Some(w) = &self.win {
@@ -325,7 +588,9 @@ impl Settings {
         self.target = target;
         if changed {
             shell::ask("settings", json!(["page", page]));
-            self.local.retain(|k, _| !k.starts_with("more:"));
+            // (another page: More options close, and the Wi-Fi list's password
+            // row, join form and share card go, as WifiList.qml's when hidden)
+            self.local.retain(|k, _| !k.starts_with("more:") && !WIFI_TRANSIENT.iter().any(|w| k.starts_with(w)) && !PAGE_TRANSIENT.iter().any(|w| k.starts_with(w)));
         }
         self.rebuild(st);
         self.sync_chrome(st);
@@ -361,7 +626,7 @@ impl Settings {
                 ui::SSection { id: s.id.into(), name: s.name.into(), group: group.into(), icon: model::ic(s.icon), color: model::color(s.color), current: s.id == current }
             })
             .collect();
-        w.ui.set_sections(ModelRc::new(VecModel::from(sections)));
+        self.sections.set(sections);
         let results: Vec<ui::SResult> = self
             .results
             .iter()
@@ -377,7 +642,7 @@ impl Settings {
                 }
             })
             .collect();
-        w.ui.set_results(ModelRc::new(VecModel::from(results)));
+        self.found.set(results);
         w.ui.set_searching(!self.query.trim().is_empty());
         w.ui.set_section_id(current.as_str().into());
         w.ui.set_can_back(!self.back.is_empty());
@@ -428,11 +693,14 @@ impl Settings {
         for s in std::mem::take(&mut out.want) {
             st.shell.want(s);
         }
-        let fresh = self.built_page != page_id;
-        self.built_page = page_id.clone();
         self.actions = std::mem::take(&mut out.actions);
         self.menus = model::menus(&page, &out.menus);
-        self.models.apply(model::to_ui(&page, material), fresh);
+        self.dropdowns = model::dropdowns(&page);
+        let t = std::time::Instant::now();
+        let fresh = self.pages.show(&page_id, model::to_ui(&page, material));
+        if fresh && crate::env::is_set("DEBUG") {
+            eprintln!("debug: settings: {page_id} shown in {:.1} ms (kept: {})", t.elapsed().as_secs_f64() * 1000.0, self.pages.ids().join(" "));
+        }
         let sec = map::section_of(&page_id);
         let is_sub = page_id.contains('/');
         if let Some(w) = &self.win {
@@ -440,12 +708,30 @@ impl Settings {
             w.ui.set_page_title(if is_sub { page.title.as_str() } else { name }.into());
             w.ui.set_crumb(name.into());
             w.ui.set_is_sub(is_sub);
-            w.ui.set_spin(!self.cfg.b("appearance.reduceMotion"));
+            w.ui.global::<ui::SBus>().set_picker_busy(self.feed["look"]["pickerBusy"].as_bool().unwrap_or(false) || self.feed["devices"]["pickerBusy"].as_bool().unwrap_or(false));
+            let spin = !self.cfg.b("appearance.reduceMotion");
+            w.ui.set_spin(spin);
+            // (the cookie turns 24 s a round: a step every SPIN_MS is smooth
+            // enough at its size, where a per-frame tick redrew the window
+            // 60 times a second the whole time it was open)
+            if spin && material {
+                if !self.spin_timer.running() {
+                    let weak = w.ui.as_weak();
+                    self.spin_timer.start(slint::TimerMode::Repeated, Duration::from_millis(SPIN_MS), move || {
+                        if let Some(u) = weak.upgrade() {
+                            u.set_spin_angle((u.get_spin_angle() + 360.0 * SPIN_MS as f32 / 24000.0) % 360.0);
+                        }
+                    });
+                }
+            } else {
+                self.spin_timer.stop();
+            }
             w.ui.set_radius(self.cfg.f("appearance.windowRadius").clamp(0.0, 40.0) as f32);
             if fresh {
                 w.ui.invoke_page_changed();
             }
         }
+        self.sync_popover(st, model::popover_ui(&page));
         self.after(st, out);
         if reveal {
             // (once it's laid out: mark the row, it scrolls itself there)
@@ -458,12 +744,15 @@ impl Settings {
     /// Pictures decode two at a time (a folder of wallpapers waits its turn)
     fn decode_next(&mut self, st: &State) {
         while self.running < 2 {
-            let Some((key, path, w, h)) = self.waiting.pop_front() else { return };
+            let Some(job) = self.waiting.pop_front() else { return };
             self.running += 1;
             let tx = st.tx.clone();
             std::thread::spawn(move || {
-                let px = crate::picture::decode(&path, w.max(1), h.max(1));
-                let _ = tx.send(crate::Msg::Part(NAME, Box::new(M::Picture(key, px))));
+                let m = match job {
+                    Job::Picture(key, path, w, h) => M::Picture(key, crate::picture::decode(&path, w.max(1), h.max(1))),
+                    Job::Icon(key, path, px, style) => M::Icon(key, crate::appicon::render(&path, px, &style, None)),
+                };
+                let _ = tx.send(crate::Msg::Part(NAME, Box::new(m)));
             });
         }
     }
@@ -472,7 +761,13 @@ impl Settings {
     fn after(&mut self, st: &mut State, mut out: Out) {
         for job in std::mem::take(&mut out.pictures) {
             if self.decoding.insert(job.0.clone()) {
-                self.waiting.push_back(job);
+                self.waiting.push_back(Job::Picture(job.0, job.1, job.2, job.3));
+            }
+        }
+        for (key, path, px, style) in std::mem::take(&mut out.icons) {
+            if self.decoding.insert(key.clone()) {
+                // (icons first: they're small, and a page shows many)
+                self.waiting.push_front(Job::Icon(key, path, px, style));
             }
         }
         self.decode_next(st);
@@ -574,8 +869,18 @@ impl Part for Settings {
                     if !self.feed.is_object() {
                         self.feed = json!({});
                     }
+                    // (merged by field: a group's feed comes from its host-system
+                    // bridge and from the services that know a part of it,
+                    // through `settings.feed`; a field sent again replaces itself)
                     for (k, x) in f {
-                        self.feed[k] = x.clone();
+                        match (self.feed.get_mut(k), x) {
+                            (Some(Value::Object(old)), Value::Object(new)) => {
+                                for (kk, vv) in new {
+                                    old.insert(kk.clone(), vv.clone());
+                                }
+                            }
+                            _ => self.feed[k] = x.clone(),
+                        }
                     }
                     // Out of the way while you sign in to Google (the
                     // sign-in window and the browser would open behind it);
@@ -603,6 +908,14 @@ impl Part for Settings {
         let Ok(m) = msg.downcast::<M>() else { return };
         match *m {
             M::Act(id, arg) => {
+                // (a list says the pointer is over it: kept for its order, no build)
+                if let Some(list) = id.strip_prefix("hover:") {
+                    self.local.insert(format!("{list}.hover"), Value::Bool(arg.i == 1));
+                    if arg.i == 0 {
+                        self.rebuild(st);
+                    }
+                    return;
+                }
                 if let Some(page) = id.strip_prefix("search:") {
                     // a search result: its page, and the row on it (not for a section)
                     let target = if arg.i == 1 { String::new() } else { arg.s.clone() };
@@ -633,33 +946,29 @@ impl Part for Settings {
                 self.go(st, &sec, "", false);
             }
             M::Menu(id, x, y, w, h) => {
-                let Some(items) = self.menus.get(&id) else { return };
-                let Some(win) = &self.win else { return };
-                let items: Vec<ui::SOpt> = items
-                    .iter()
-                    .map(|m| ui::SOpt { text: m.text.as_str().into(), on: m.checked, off: !m.enabled, style: if m.danger { 2 } else { 0 }, icon: model::ic(&m.icon), ..Default::default() })
-                    .collect();
-                win.ui.set_menu_items(ModelRc::new(VecModel::from(items)));
-                win.ui.set_menu_x(x);
-                win.ui.set_menu_y(y);
-                win.ui.set_menu_w(w);
-                win.ui.set_menu_h(h);
-                win.ui.set_menu_id(id.as_str().into());
-                win.ui.set_menu_open(true);
-                self.menu_id = id;
+                // (its control again while it's open: closes it, as Choice.qml)
+                let just = self.menu_dismissed.take().is_some_and(|(d, t)| d == id && t.elapsed() < Duration::from_millis(300));
+                let again = just || (self.menu.is_some() && self.menu_id == id);
+                self.close_menu(st);
+                if !again {
+                    self.open_menu(st, id, (x, y, w, h));
+                }
             }
             M::MenuPick(i) => {
-                let id = std::mem::take(&mut self.menu_id);
-                if let Some(w) = &self.win {
-                    w.ui.set_menu_open(false);
-                }
+                let id = self.menu_id.clone();
+                self.close_menu(st);
                 self.act(st, &id, Arg { i, f: 0.0, s: String::new(), id: id.clone() });
             }
-            M::MenuDismiss => {
-                self.menu_id.clear();
-                if let Some(w) = &self.win {
-                    w.ui.set_menu_open(false);
+            M::MenuDismiss => self.close_menu(st),
+            M::Anchor(x, y, w, h) => self.anchor = (x, y, w, h),
+            M::MenuKey(k) => {
+                if let Some(m) = &self.menu {
+                    m.ui.invoke_key(k.into());
                 }
+            }
+            M::PopoverDismiss => {
+                self.close_popover(st);
+                self.rebuild(st);
             }
             M::Undo => {
                 self.toast_timer.stop();
@@ -681,7 +990,13 @@ impl Part for Settings {
             M::KeyNav(d) => {
                 let cur = self.page.split('/').next().unwrap_or("");
                 let i = map::SECTIONS.iter().position(|s| s.id == cur).unwrap_or(0) as i32;
-                let j = (i + d).clamp(0, map::SECTIONS.len() as i32 - 1) as usize;
+                // (Up and Down step; Home and End go to the first and last)
+                let last = map::SECTIONS.len() as i32 - 1;
+                let j = match d {
+                    -2 => 0,
+                    2 => last,
+                    d => (i + d).clamp(0, last),
+                } as usize;
                 if j as i32 != i {
                     let id = map::SECTIONS[j].id;
                     self.go(st, id, "", false);
@@ -711,16 +1026,34 @@ impl Part for Settings {
                 let s = Self::sender(st);
                 self.flash_timer.start(slint::TimerMode::SingleShot, Duration::from_millis(1050), move || s(M::Unflash));
             }
+            M::DataChanged => {
+                if self.open {
+                    self.rebuild(st);
+                }
+            }
             M::Unflash => {
                 self.flashing.clear();
                 self.rebuild(st);
+            }
+            M::Icon(key, px) => {
+                self.decoding.remove(&key);
+                self.running = self.running.saturating_sub(1);
+                self.pictures.insert(key, px.map(slint::Image::from_rgba8));
+                self.decode_next(st);
+                // (one build for a batch of icons: the next one when the
+                // queue is empty, or now and then while it drains)
+                if self.running == 0 || self.waiting.len() % 8 == 0 {
+                    self.rebuild(st);
+                }
             }
             M::Picture(key, px) => {
                 self.decoding.remove(&key);
                 self.running = self.running.saturating_sub(1);
                 self.pictures.insert(key, px.map(slint::Image::from_rgb8));
                 self.decode_next(st);
-                self.rebuild(st);
+                if self.running == 0 || self.waiting.len() % 4 == 0 {
+                    self.rebuild(st);
+                }
             }
         }
     }
@@ -764,12 +1097,26 @@ impl Part for Settings {
     }
 
     fn data(&mut self, st: &mut State, _what: TypeId) {
-        if self.open {
-            self.rebuild(st);
+        if self.open && !self.data_timer.running() {
+            let s = Self::sender(st);
+            self.data_timer.start(slint::TimerMode::SingleShot, Duration::from_millis(DATA_MS), move || s(M::DataChanged));
         }
     }
 
     fn surface_closed(&mut self, st: &mut State, s: &Rc<Surface>) {
+        // (the popover: a click elsewhere, or its window went)
+        if self.popover.as_ref().is_some_and(|m| Rc::ptr_eq(&m.surface, s)) {
+            self.popover_dismissed = Some(std::time::Instant::now());
+            self.close_popover(st);
+            self.rebuild(st);
+            return;
+        }
+        // (the menu: a click elsewhere, or its window went)
+        if self.menu.as_ref().is_some_and(|m| Rc::ptr_eq(&m.surface, s)) {
+            self.menu_dismissed = Some((self.menu_id.clone(), std::time::Instant::now()));
+            self.close_menu(st);
+            return;
+        }
         if self.win.as_ref().is_some_and(|w| Rc::ptr_eq(&w.surface, s)) {
             self.close(st, true);
             self.drop_window(st);
@@ -820,6 +1167,26 @@ mod tests {
             visit(&mut b, &mut f, &format!("p{i}"), "z");
         }
         assert_eq!(b.len(), 50);
+    }
+
+    #[test]
+    fn a_dropdowns_list_is_as_big_as_dropdown_makes_it() {
+        // (36/28 px rows, at least the control and 200 wide, 280 tall at most)
+        assert_eq!(menu_box(&MenuKind::Dropdown, true, 5, 3, 0, 260.0), (260, 116));
+        assert_eq!(menu_box(&MenuKind::Dropdown, false, 5, 3, 0, 100.0), (200, 94));
+        assert_eq!(menu_box(&MenuKind::Dropdown, true, 5, 30, 0, 100.0).1, 280);
+        // (separators: 9 px each)
+        assert_eq!(menu_box(&MenuKind::Pointer, false, 5, 3, 1, 1.0).1, 115);
+    }
+
+    #[test]
+    fn a_menu_is_as_big_as_actionmenu_makes_it() {
+        assert_eq!(menu_size(true, 5, 3), (240, 142));
+        assert_eq!(menu_size(false, 5, 3), (220, 106));
+        // (long lists scroll inside: 360 / 320 at most)
+        assert_eq!(menu_size(true, 5, 30).1, 360);
+        assert_eq!(menu_size(false, 5, 30).1, 320);
+        assert!(menu_size(true, 40, 2).0 > 240);
     }
 
     #[test]

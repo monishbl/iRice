@@ -1,0 +1,40 @@
+# Right-clicks are press-and-hold here (the DSL's click is the left button).
+# Coordinates: IRICE-TEST 1920x1080, scale 1, the default Control Center layout
+# (setup below resets it). Material grid: x0 1512, y0 50, columns 94 apart
+# (86 wide), rows 80 apart (72 tall). Glass grid: x0 1560, y0 50, columns
+# and rows 82.5 apart (72.5). Default layout rows: 0 Wi-Fi 2x1 + Now Playing
+# 2x2; 1 Bluetooth, Night Light; 2 Focus 2x1, Stages, Dark Mode; 3 Display;
+# 4 Sound; 5 Screenshot, Record, Caffeine, Clipboard; 6 Mirroring 2x1.
+look material
+setup python3 -I -c "import json,os;p=os.path.expanduser('~/.config/tessera/config.json');c=json.load(open(p));c.setdefault('controlCenter',{})['layout']=[];json.dump(c,open(p,'w'),indent=4)"
+wait 2
+ipc panels open controlCenter IRICE-TEST
+wait 1
+shot cc-open
+note Sound slider: row 4, x 1512..1820 (button 1828..1880), y 370..442
+setup wpctl set-volume @DEFAULT_AUDIO_SINK@ 0.5
+wait 1
+ptr move 1604 406 sleep 100 click
+wait 1
+setup wpctl get-volume @DEFAULT_AUDIO_SINK@
+note ~0.30
+rec drag 2 ptr move 1574 406 sleep 50 down sleep 50 glide 1789 406 600 sleep 50 up
+setup wpctl get-volume @DEFAULT_AUDIO_SINK@
+note ~0.90; no backward jumps; corners square to 8 px while held and spring back round
+ptr move 1700 406 sleep 100 scroll 0 -15 sleep 100 scroll 0 -15 sleep 100 scroll 0 -15
+wait 1
+setup wpctl get-volume @DEFAULT_AUDIO_SINK@
+note +15%
+ptr move 1700 406 sleep 50 down sleep 1100 up
+wait 1
+shot hold-page
+note level restored; the Sound page slides in
+key -k Escape
+wait 1
+ptr move 1854 406 sleep 100 click
+wait 1
+shot more-button
+note the sliders button opens the Sound page
+key -k Escape
+wait 1
+ipc panels close

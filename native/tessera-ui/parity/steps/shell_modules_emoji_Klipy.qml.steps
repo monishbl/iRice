@@ -1,0 +1,11 @@
+# Klipy: no key in the sandbox.
+ipc panels open emoji IRICE-TEST
+wait 1
+# NOTE: click on layer surfaces may not register in the harness
+ptr move 1141 398 sleep 300 click
+wait 1
+shot nokey
+note GIF tab without a key: "Add a KLIPY key to use GIFs" with buttons "Open Settings" and "Get a key" centred under the text; same as QML.
+# MANUAL: with a key and network: GIF tab -> "Loading trending GIFs..." then a 3-column grid; type cat -> after 350 ms "Searching GIFs..." then results; scroll to the end -> spinner and next page appends without jumps
+# MANUAL: change emoji.klipyKey in the config while the GIF tab is open -> grid clears and reloads (bad key: "KLIPY didn't accept the key")
+key -k Escape

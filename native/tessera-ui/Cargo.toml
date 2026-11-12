@@ -20,6 +20,9 @@ tessera-core = { path = "core" }
 slint = { version = "=1.18.1", default-features = false, features = ["std", "compat-1-2", "renderer-femtovg", "unstable-fontique-011"] }
 slint-build = "=1.18.1"
 i-slint-core = "=1.18.1"
+# (Slint's FemtoVG, vendored with a screen clip so a frame redraws only what
+# changed: core/src/egl.rs; the [patch] below makes Slint use the same copy)
+femtovg = { version = "=0.27.0", default-features = false }
 smithay-client-toolkit = { version = "0.20", default-features = false, features = ["calloop", "xkbcommon"] }
 wayland-egl = "0.32"
 khronos-egl = { version = "6", features = ["dynamic"] }
@@ -121,6 +124,11 @@ tessera-settings = { path = "surfaces/settings" }
 # (wave 4b: the overlays that had no Rust version: corners, find-pointer ring, space-switch cue,
 # display connect, identify and confirm, shelf probes; all standalone only)
 tessera-screenfx = { path = "surfaces/screenfx" }
+
+[patch.crates-io]
+# (vendor/femtovg: femtovg 0.27.0 with one change, SCREEN_CLIP in
+# src/renderer/opengl.rs; MIT or Apache-2.0, its licences beside it)
+femtovg = { path = "vendor/femtovg" }
 
 [profile.release]
 opt-level = 3

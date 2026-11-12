@@ -1,0 +1,19 @@
+look material
+# MaterialClock: minute tick of the stacked clock. Needs a minute change; start close to :58 (the runner may wait: see MANUAL).
+# MANUAL: wait until the clock is near hh:mm:57, then lock and record 1.5 s across the minute change
+ipc lock lock
+wait 3
+# The wait below waits for the next minute change (up to 60 s); the tick is recorded in the minute region.
+# NOTE: the rec is not aligned to the minute change; the runner/reviewer must start it within ~1 s before :00 (clock shown on screen)
+wait 56
+rec tick 2 ipc lock demo off
+note Around the minute change: the minutes go visibly thinner within ~180 ms, then swell back over ~420 ms with a slight over-bold before settling (OutBack); the hours NEVER change weight. Change spans ~600 ms in both shells (PASS earlier: Rust minutes region changed over ~470 ms, hours static).
+# Step 2: no tick in StandBy
+ipc lock demo standby
+wait 1.5
+shot standby
+note In StandBy the minute tick is off: at a minute change no weight animation (MANUAL: needs another minute change wait).
+# MANUAL: in StandBy at a minute change: no tick (NOT RUN earlier)
+ipc lock demo off
+ipc lock unlock
+wait 2

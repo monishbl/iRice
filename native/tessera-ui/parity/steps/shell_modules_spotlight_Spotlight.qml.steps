@@ -1,0 +1,13 @@
+# Runs in each look: Glass shows the floating glass field; Material the 56 px pill in the docked view.
+ipc panels open spotlight IRICE-TEST
+wait 1
+shot spot-open
+note Glass: the floating glass field. Material: the 56 px pill in the docked view. Same drawing as QML in this look.
+key -k Escape
+wait 1
+# MANUAL: switch look (config) and reopen: the other drawing appears
+# MANUAL: right after a shell reload plus 3 s: rec first open; first moving frame no later than a second open and no later than QML (anim-timing.py)
+rec sp-first 1 ipc panels open spotlight IRICE-TEST
+note First open in this file's run: first moving frame no later than a second open, and no later than QML.
+wait 1
+key -k Escape

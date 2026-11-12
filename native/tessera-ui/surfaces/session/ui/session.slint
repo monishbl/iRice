@@ -50,7 +50,7 @@ export component SessionDialog inherits Window {
 
     // Opens on a spring, closes quickly (Dialog.qml)
     property <float> progress: shown ? 1 : 0;
-    animate progress { duration: shown ? 420ms : 192ms; easing: shown ? (Theme.material ? spring(0.12) : spring(0.3)) : (Theme.material ? cubic-bezier(0.3, 0, 0.8, 0.15) : cubic-bezier(0.4, 0, 1, 1)); }
+    animate progress { duration: shown ? (Theme.material ? 312ms : 388ms) : 192ms; easing: shown ? (Theme.material ? spring(0.1) : spring(0.23)) : (Theme.material ? cubic-bezier(0.3, 0, 0.8, 0.15) : cubic-bezier(0.4, 0, 1, 1)); }
     property <length> m: 24px;
     property <length> pad: Theme.material ? 24px : 20px;
     property <length> content-w: which == "about" ? 300px : Theme.material ? 5 * 96px + 4 * 8px : 5 * 80px + 4 * 12px;
@@ -119,8 +119,9 @@ export component SessionDialog inherits Window {
                             border-radius: self.width / 2;
                             background: Theme.material ? transparent : hot ? (o.danger ? Theme.danger : Theme.accent) : Theme.toggle-off;
                             animate background { duration: Theme.hover; }
-                            transform-scale: Theme.material ? (ta.pressed ? 1.06 : 1) : ta.pressed ? 0.94 : 1;
-                            animate transform-scale { duration: Theme.material ? 250ms : 100ms; easing: Theme.material ? spring(0.4) : ease-out; }
+                            // (Material: ElasticControl on springPress; Glass: 94 % over `press`, linear)
+                            transform-scale: Theme.material ? (ta.pressed ? 1 + min(0.06, 10px / max(1px, self.width)) : 1) : ta.pressed ? 0.94 : 1;
+                            animate transform-scale { duration: Theme.material ? 290ms : 100ms; easing: Theme.material ? spring(0.57) : linear; }
                             accessible-role: button;
                             accessible-label: o.text;
                             accessible-action-default => { root.choose(i); }

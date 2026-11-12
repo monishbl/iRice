@@ -1,0 +1,28 @@
+# EmojiStore: search ranking; grid y 418..694.
+ipc panels open emoji IRICE-TEST
+wait 1
+key smile
+wait 1
+shot smile
+note Search "smile": the first results are the same emoji in the same order as QML (compare the grid y 418..694).
+key -M ctrl -k a -m ctrl
+key -k BackSpace -k BackSpace -k BackSpace -k BackSpace -k BackSpace
+key :heart:
+wait 1
+shot heart
+note Search ":heart:": same results and order as QML.
+key -M ctrl -k a -m ctrl
+key -k BackSpace
+key <3
+wait 1
+shot lt3
+note Search "<3": same results and order as QML; literal matches first.
+key -M ctrl -k a -m ctrl
+key -k BackSpace
+key wave
+wait 1
+shot wave
+note Search "wave": waving hand first; same order as QML. First cell centre is (784, 468).
+# MANUAL: pick with Enter into a text field (foot): text arrives about 200 ms after close; reopen -> it is first under "Frequently used"
+# MANUAL: right-click a toned emoji (784, 468), choose a tone; reopen, search wave -> shown in that tone; footer says "Waving hand, ... skin tone" (right button not supported by ptr)
+key -k Escape

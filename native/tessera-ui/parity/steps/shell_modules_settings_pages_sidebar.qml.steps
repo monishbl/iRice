@@ -1,0 +1,10 @@
+# Settings window: Material 1040x700 at 440,205 (page column from x~772); Glass 860x620 at 530,230. Sidebar rows (Material, x=560): Appearance 335, Wallpaper 385, Desktop 435, Menu bar 485, Lock 535, Notifications 626, Focus 676, Windows 767, Displays 858.
+# Click coordinates inside pages are not known in advance: those steps are MANUAL unless a keyboard path exists. Check in each look.
+ipc panels settings sidebar
+wait 2
+shot sb
+note S1 Sidebar page (scrolled to the 'Sidebar' heading): GIFs group, detail 'No key' or 'Key saved' as QML, More options button.
+# MANUAL: S1 open More options: Anime and Overlay groups as QML
+# MANUAL: S2 click Medium: emoji.gifFilter medium; restore old value
+# MANUAL: S3 click key field, type x, Tab: stores x, field empties, detail 'Key saved', placeholder 'Replace key'; restore the old value (never paste a real KLIPY key)
+# MANUAL: S4 toggle 'Show Anime tab' off/on: config follows

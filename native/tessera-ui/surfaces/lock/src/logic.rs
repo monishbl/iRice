@@ -263,29 +263,10 @@ pub fn standby_weight(setting: &str, material: bool) -> i32 {
     }
 }
 
-/// The month for Bedside Mode's calendar: (day, column 0 = Monday, row) for
-/// each day of a month starting on `first_wday` (0 = Sunday) with `days` days
-pub fn month_grid(first_wday: u32, days: u32) -> Vec<(u32, u32, u32)> {
-    let lead = (first_wday + 6) % 7; // Monday first
-    (1..=days).map(|d| {
-        let i = lead + d - 1;
-        (d, i % 7, i / 7)
-    }).collect()
-}
-
-/// Days in a month (month0 0 = January)
-pub fn days_in_month(year: i32, month0: u32) -> u32 {
-    match month0 {
-        1 => {
-            if (year % 4 == 0 && year % 100 != 0) || year % 400 == 0 {
-                29
-            } else {
-                28
-            }
-        }
-        3 | 5 | 8 | 10 => 30,
-        _ => 31,
-    }
+/// Bedside Mode's calendar: how many days of the month before fill its
+/// first week (Monday first) when the 1st is on `first_wday` (0 = Sunday)
+pub fn lead(first_wday: i32) -> i32 {
+    (first_wday + 6).rem_euclid(7)
 }
 
 /// Whether to treat the face camera's or the reader's tries as given back
@@ -409,14 +390,10 @@ mod tests {
 
     #[test]
     fn months() {
-        // November 2026 starts on a Sunday: the 1st in the last column
-        let g = month_grid(0, 30);
-        assert_eq!(g[0], (1, 6, 0));
-        assert_eq!(g[1], (2, 0, 1));
-        assert_eq!(g.last(), Some(&(30, 0, 5)));
-        assert_eq!(days_in_month(2028, 1), 29);
-        assert_eq!(days_in_month(2026, 1), 28);
-        assert_eq!(days_in_month(2026, 10), 30);
+        // November 2026 starts on a Sunday: six days of October first
+        assert_eq!(lead(0), 6);
+        assert_eq!(lead(1), 0);
+        assert_eq!(lead(6), 5);
         assert!(came_back(true, 0, 0));
         assert!(came_back(false, 40_000, 0));
         assert!(!came_back(false, 20_000, 0));

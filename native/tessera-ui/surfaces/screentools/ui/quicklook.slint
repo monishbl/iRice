@@ -39,6 +39,7 @@ export component QuickLook inherits Window {
     in property <LtBar> lt;
     in property <string> shape; // Material: the shape under the icon
     in property <string> play-shape; // Material: the play button's
+    in property <string> press-shape; // Material: the play button's while pressed ("cookie9")
     in property <StIc> ic-text;
     in property <StIc> ic-copy;
     in property <StIc> ic-download;
@@ -195,11 +196,14 @@ export component QuickLook inherits Window {
                         width: parent.width;
                         height: Theme.material ? 36px : 28px;
                         border-radius: Theme.material ? (ot.pressed ? 8px : self.height / 2) : Theme.radius-control;
-                        animate border-radius { duration: 250ms; easing: spring(0.55); }
-                        transform-scale: Theme.material && ot.pressed ? 1.04 : 1;
-                        animate transform-scale { duration: 300ms; easing: spring(0.35); }
+                        // (MaterialSpring "fast": springFast 12.8 / 0.54 → ω 28.3, ζ 0.60)
+                        animate border-radius { duration: 222ms; easing: spring(0.4); }
+                        // (ElasticControl, Material: swells by min(6 %, 10 px) on springPress 7.5 / 0.3 → ω 21.7, ζ 0.43)
+                        transform-scale: Theme.material && ot.pressed ? 1 + min(0.06, 10px / max(1px, max(self.width, self.height))) : 1;
+                        animate transform-scale { duration: 290ms; easing: spring(0.57); }
+                        // (Glass: Qt.darker(accent, 1.2) pressed, 1.1 hovered)
                         background: Theme.material ? Theme.m3-primary.mix(Theme.m3-on-primary, ot.pressed ? 0.9 : ot.has-hover ? 0.92 : 1)
-                            : ot.pressed ? Theme.accent.darker(0.17) : ot.has-hover ? Theme.accent.darker(0.09) : Theme.accent;
+                            : ot.pressed ? Theme.accent.darker(0.2) : ot.has-hover ? Theme.accent.darker(0.1) : Theme.accent;
                         accessible-role: button;
                         accessible-label: open-text.text;
                         accessible-action-default => { root.open-it(); }
@@ -282,7 +286,7 @@ export component QuickLook inherits Window {
                         border-radius: Theme.material ? 0 : Theme.radius-control;
                         background: Theme.material ? transparent : pt.pressed ? Theme.fill-pressed : pt.has-hover ? Theme.fill : transparent;
                         transform-scale: Theme.material && pt.pressed ? 1.06 : 1;
-                        animate transform-scale { duration: 300ms; easing: spring(0.35); }
+                        animate transform-scale { duration: 290ms; easing: spring(0.57); } // (springPress)
                         accessible-role: button;
                         accessible-label: playing ? "Pause" : "Play";
                         accessible-action-default => { root.toggle-play(); }
@@ -293,7 +297,7 @@ export component QuickLook inherits Window {
                             height: 100%;
                             viewbox-width: 100;
                             viewbox-height: 100;
-                            commands: play-shape;
+                            commands: pt.pressed ? press-shape : play-shape;
                             fill: Theme.m3-primary-container.mix(Theme.m3-on-primary-container, pt.pressed ? 0.9 : pt.has-hover ? 0.92 : 1);
                         }
                         StIcon {

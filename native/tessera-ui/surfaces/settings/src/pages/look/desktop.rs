@@ -18,6 +18,17 @@ pub const CORNER_ACTIONS: [(&str, &str); 9] = [
     ("quickNote", "Quick note"),
 ];
 
+/// The file managers Files.qml knows, in its order
+pub const FILE_MANAGERS: &[(&str, &str)] = &[
+    ("nautilus", "Files (Nautilus)"),
+    ("dolphin", "Dolphin"),
+    ("thunar", "Thunar"),
+    ("nemo", "Nemo"),
+    ("caja", "Caja"),
+    ("pcmanfm-qt", "PCManFM-Qt"),
+    ("pcmanfm", "PCManFM"),
+];
+
 /// "3 widgets", "1 widget"
 pub fn count(n: usize, one: &str, many: &str) -> String {
     format!("{n} {}", if n == 1 { one } else { many })
@@ -27,10 +38,11 @@ pub fn desktop(cx: &mut Ctx, p: &mut Page) {
     let widgets = cx.list("desktop.widgets").len();
     let edit = cx.on(|cx, _| cx.ask("look", "editWidgets", Value::Null));
     // Files app: Automatic (the first installed), or one of them (the shell says which are)
-    let managers: Vec<(String, String)> = feed(cx)["files"]
-        .as_array()
-        .map(|a| a.iter().map(|m| (m["bin"].as_str().unwrap_or("").to_string(), m["name"].as_str().unwrap_or("").to_string())).collect())
-        .unwrap_or_default();
+    let managers: Vec<(String, String)> = match feed(cx)["files"].as_array() {
+        Some(a) => a.iter().map(|m| (m["bin"].as_str().unwrap_or("").to_string(), m["name"].as_str().unwrap_or("").to_string())).collect(),
+        // (the standalone shell doesn't say: Files.qml's list, those on the PATH)
+        None => FILE_MANAGERS.iter().filter(|(bin, _)| crate::pages::accounts::defaultapps::on_path(bin)).map(|(b, n)| (b.to_string(), n.to_string())).collect(),
+    };
     let mut opts = vec![format!("Automatic{}", managers.first().map(|m| format!(" ({})", m.1)).unwrap_or_default())];
     opts.extend(managers.iter().map(|m| m.1.clone()));
     let fm = cx.s("desktop.fileManager");
@@ -49,7 +61,11 @@ pub fn desktop(cx: &mut Ctx, p: &mut Page) {
             .width(220.0));
 
     // Weather
-    let w = &feed(cx)["weather"];
+    cx.want("weather");
+    let w = match cx.shell.get::<crate::services::weather::Weather>() {
+        Some(s) if !feed(cx)["weather"].is_object() => serde_json::json!({"ready": s.ready, "place": s.place, "temp": s.temp, "condition": s.condition, "error": s.error}),
+        _ => feed(cx)["weather"].clone(),
+    };
     let footer = if w["ready"].as_bool().unwrap_or(false) {
         format!("Showing {}: {}°, {}.", w["place"].as_str().unwrap_or(""), w["temp"].as_i64().unwrap_or(0), w["condition"].as_str().unwrap_or("").to_lowercase())
     } else {

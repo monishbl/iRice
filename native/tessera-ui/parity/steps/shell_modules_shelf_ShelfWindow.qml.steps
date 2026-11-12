@@ -1,0 +1,30 @@
+# Shelf card x1672..1912, top y40. Title buttons centre y 66: Close (1886,66) Clear (1856,66) Share (1826,66). Glass All row y88..132, row i centre 162+44i; Material All 88..140, row 174+52i. Row x at ~1882.
+# NOTE: click on layer surfaces may not register in the harness
+rec shf-open 0.4 ipc shelf open
+note Card there at once with the empty state; compare QML vs Rust.
+wait 1
+shot shf-opened
+note Card on the right x1672..1912 top y40 with title buttons Share, Clear, Close and the empty state; matches QML in this look.
+rec shf-close 0.4 ipc shelf close
+note Card fades over 130 ms while sliding 6 px to the right; QML vs Rust within 1 frame.
+wait 1
+# 2 button press
+ipc shelf open
+wait 1
+ptr move 1886 66
+wait 1
+shot shf-hover-close
+note Hover on Close: fill faded in over 150 ms (fix 7).
+rec shf-btn 0.4 ptr move 1886 66 down
+note Material: button grows to 1.06 and corners go to 8; Glass: shrinks to 0.95 with a slight spring (fix 8).
+ptr move 1886 66 down glide 1700 600 100 up
+wait 1
+shot shf-after-press-off
+note Released off the button: nothing happened, the shelf is still open.
+ipc shelf close
+# 3 to 7 need items on the shelf
+# MANUAL: drag 3 files from a file manager onto the card: "All 3 items" plus 3 rows, picture thumbnails arrive a moment later (no drag source in the sandbox; steps 4-6 also not testable)
+# MANUAL: rows kept (fix 12): hover row 2 (glide 1790 206 200, Glass) so its x shows; drop one more picture: row 2 keeps hover and x while the new thumbnail arrives, no blinking
+# MANUAL: drag out: down on row 1 (1790,162), glide to a foot window (900,500) 600 ms, up -> foot receives the path, row stays on the shelf
+# MANUAL: remove: hover a row, click its x (1882, row y) -> it goes; Clear (1856,66) -> empty state
+# MANUAL: outside drag over the card with items: 2 px accent outline plus 8 percent fill

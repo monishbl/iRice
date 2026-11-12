@@ -1,0 +1,17 @@
+# Settings window: Material 1040x700 at 440,205 (page column from x~772); Glass 860x620 at 530,230. Sidebar rows (Material, x=560): Appearance 335, Wallpaper 385, Desktop 435, Menu bar 485, Lock 535, Notifications 626, Focus 676, Windows 767, Displays 858.
+# Click coordinates inside pages are not known in advance: those steps are MANUAL unless a keyboard path exists. Check in each look.
+ipc panels settings shortcuts
+wait 2
+# Opening Add shortcut needs a click: MANUAL. Keys below assume the form is open with kind Command and the recorder focused.
+# MANUAL: open Add shortcut, kind Command, type true; click Keys-group recorder (read y from a shot)
+# MANUAL: R1 click SUPER (labelled Alt) and SHIFT chips: both checked; box still 'Click, then press a key'
+# MANUAL: R2 click box ('Press a key...'), key q: box 'Q', box lets go of focus; Tab: focus ring on 'Edit as text' (fixed batch 3)
+# MANUAL: R3 click box, Escape: box 'Escape', Settings stays open; same with BackSpace, Return, F5
+# MANUAL: R4 click box, key Print: 'Print Screen' (fixed batch 3)
+# MANUAL: R5 clear chips, click box, ctrl+k: CTRL chip on, key K; shift+slash: SHIFT on, key / (Slash)
+# MANUAL: R6 unknown key e-acute: QML 'Key <n>' (code:N); Rust not done
+# MANUAL: R7 Edit as text: field holds 'SUPER + CTRL + K' with help text, caret in field; type 'SUPER + mouse:272', 'Use the key picker' shows chip SUPER, box empty
+# MANUAL: R8 Change shortcut on a bind with mouse/code keys: recorder opens in text mode; 'Use default keys' resets the field
+# MANUAL: R9 Glass: R1, R2, R7 (box: fill + accent border while listening); Cancel at the end of each test, never Save a harmful key
+shot rec-list
+note Keyboard page opens as in QML (starting point for the recorder tests, no recorder open).

@@ -69,7 +69,7 @@ impl Osk {
         let rows: Vec<ui::OskRow> = ROWS
             .iter()
             .map(|r| ui::OskRow {
-                keys: ModelRc::new(VecModel::from(
+                keys: tessera_core::rows::shared(
                     r.iter()
                         .map(|k| ui::OskKey {
                             text: k.text(self.mods, self.caps).into(),
@@ -82,10 +82,10 @@ impl Osk {
                             name: if k.sym == "space" { "Space".into() } else { k.text(self.mods, self.caps).into() },
                         })
                         .collect::<Vec<_>>(),
-                )),
+                ),
             })
             .collect();
-        ModelRc::new(VecModel::from(rows))
+        tessera_core::rows::shared(rows)
     }
 
     fn refresh(&self) {
@@ -213,7 +213,7 @@ impl Part for Osk {
         let (ww, wh) = (w.size.0 as f32, w.size.1 as f32);
         let (x, y) = ((sw - ww) / 2.0 + M, sh - wh - (8.0 - M) + M);
         let shape = theme::glass_shape(&st.shell.look, x.round(), y.round(), ww - 2.0 * M, wh - 2.0 * M, 26.0, 1.0, 1.0);
-        let key = format!("{shape:?}");
+        let key = tessera_core::theme::glass_key(&shape);
         if key != w.glass_sent {
             st.shell.glass.set(&w.output, NS, std::slice::from_ref(&shape));
             w.glass_sent = key;

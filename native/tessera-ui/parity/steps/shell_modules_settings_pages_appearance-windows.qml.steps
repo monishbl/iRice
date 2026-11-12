@@ -1,0 +1,17 @@
+# Windows, Stages and Overview part (check in each look).
+ipc panels settings windowrules
+wait 2
+shot top
+note The page opens; read the y of the "Windows, Stages and Overview" part (scroll below).
+ptr move 1100 600 sleep 200 scroll 0 20
+wait 1
+shot part
+note W1 Title bars footer: with hyprbars loaded "macOS-style title bars..." and no hyprbars row in More options; without it "Title bars need the hyprbars plugin..." and the "Install..." row. Window controls footer names the compositor-drawn text when the glass plugin draws controls. Report both shells (batch 3: plugin looked for with hyprctl plugin list).
+ptr move 1100 600 sleep 200 scroll 0 20
+wait 1
+shot part2
+note W2 Gaps / Stages / Overview style options: details and footers word for word as QML; Stages On detail "Windows get the full width...".
+# MANUAL: W1 click Title bars and Window controls and compare footers
+# MANUAL: W2 click each Gaps / Stages / Overview option and compare details and footers
+# MANUAL: W3 More options: Window transparency Custom shows two sliders 60-100 percent, drag one: detail "NN% opaque"; Window tabs Tessera: detail with/without the plugin note; Overview rows' details change per option; the wallpaper switch toggles
+ipc panels close

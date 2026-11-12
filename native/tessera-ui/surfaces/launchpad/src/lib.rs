@@ -40,7 +40,9 @@ use tessera_core::theme;
 use tessera_core::wayland::{Spec, State, Surface};
 use model::{Activated, App, Lib};
 use slint::platform::Key;
-use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
+use slint::{ComponentHandle, ModelRc, SharedString};
+use std::collections::HashMap;
+use tessera_core::rows::Rows;
 use smithay_client_toolkit::shell::wlr_layer::{Anchor, KeyboardInteractivity, Layer};
 use smithay_client_toolkit::shell::WaylandSurface;
 use std::any::Any;
@@ -76,6 +78,8 @@ enum M {
     Cats(Vec<App>),
     Scroll,
     IntroEnd,
+    Wheel(f32),
+    WheelEnd,
 }
 
 #[derive(Clone, Copy, Default)]
@@ -129,13 +133,53 @@ struct Win {
     ui: ui::LaunchpadPanel,
     a11y: Option<crate::a11y::A11y>,
     glass_sent: String,
+    // Lists handed to the window once, changed in place (a cell that stays
+    // keeps its element: its hover, press and corner springs, its picture)
+    cells: Rows<ui::LpCell>,
+    letters: Rows<ui::LpLetter>,
+    fab: Rows<ui::LpFab>,
+    menu_rows: Rows<ui::WMenuRow>,
+    /// each folder's preview icons, by its name
+    previews: HashMap<String, Rows<slint::Image>>,
 }
 
-/// The grid's glide: from, to, when it started
+/// The grid's glide: from, to, when it started; Material's is its scroll
+/// spring (critically damped), Glass's an OutCubic over `ms`
 struct Glide {
     from: f32,
     to: f32,
     t0: Instant,
+    spring: bool,
+    ms: f32,
+    /// a fling instead (Flickable.flick): its start speed, px/s (+ down)
+    fling: Option<f32>,
+}
+
+/// Momentum.qml, for a run of scroll steps: when the last came, how fast
+/// the grid was going (px/s, + down; smoothed 0.4 / 0.6 as the QML), how
+/// many steps
+#[derive(Default)]
+struct Wheel {
+    last: Option<Instant>,
+    v: f32,
+    steps: u32,
+}
+
+/// Qt Quick's Flickable defaults: flickDeceleration and maximumFlickVelocity (px/s², px/s)
+const FLICK_DECELERATION: f32 = 1500.0;
+const FLICK_MAX_VELOCITY: f32 = 2500.0;
+/// Momentum.qml: a touchpad's run ends after 50 ms without a step; it glides
+/// when it was going faster than 120 px/s
+const RUN_END_MS: u64 = 50;
+const GLIDE_MIN_VELOCITY: f32 = 120.0;
+
+/// A fling with constant deceleration (Qt's timeline accel), `secs` in:
+/// how far it went (px, + along `v0`) and whether it stopped
+fn fling_at(v0: f32, secs: f32) -> (f32, bool) {
+    let v = v0.abs().min(FLICK_MAX_VELOCITY);
+    let t_end = v / FLICK_DECELERATION;
+    let t = secs.min(t_end);
+    ((v * t - FLICK_DECELERATION * t * t / 2.0) * v0.signum(), secs >= t_end)
 }
 
 #[derive(Default)]
@@ -152,7 +196,8 @@ pub struct Launchpad {
     held: Option<(i32, f32, f32)>,
     hold_fired: bool,
     glide: Option<Glide>,
-    timers: [slint::Timer; 3],
+    timers: [slint::Timer; 4],
+    wheel: Wheel,
 }
 
 fn send(st: &State) -> impl Fn(Box<dyn Any + Send>) + Clone + 'static {
@@ -215,9 +260,15 @@ impl Launchpad {
         on!(on_dismissed, | | M::Dismissed);
         on!(on_sheet_clicked, | | M::SheetClicked);
         on!(on_closed, | | M::Closed);
+        on!(on_wheel, |d| M::Wheel(d));
         ui.show().expect("show launchpad");
         let a11y = crate::a11y::A11y::new(&surface, st.tx.clone());
-        self.win = Some(Win { output: output.into(), surface, ui, a11y, glass_sent: String::new() });
+        let (cells, letters, fab, menu_rows) = (Rows::new(), Rows::new(), Rows::new(), Rows::new());
+        ui.set_cells(cells.model());
+        ui.set_letters(letters.model());
+        ui.set_fab_items(fab.model());
+        ui.set_menu_rows(menu_rows.model());
+        self.win = Some(Win { output: output.into(), surface, ui, a11y, glass_sent: String::new(), cells, letters, fab, menu_rows, previews: HashMap::new() });
         self.look(st);
         true
     }
@@ -319,7 +370,8 @@ impl Launchpad {
                 .collect()
         } else {
             let folders = self.lib.folders.clone();
-            folders
+            let mut previews = std::mem::take(&mut self.win.as_mut().unwrap().previews);
+            let cells: Vec<ui::LpCell> = folders
                 .iter()
                 .map(|f| {
                     let n = f.apps.len();
@@ -330,21 +382,29 @@ impl Launchpad {
                     } else {
                         f.apps.iter().map(|&i| (i, 64.0)).collect()
                     };
-                    let previews: Vec<slint::Image> = shown.into_iter().map(|(i, s)| self.icons.get(st, &self.lib.apps[i].id, s, scale, true).unwrap_or_default()).collect();
-                    ui::LpCell { name: f.name.as_str().into(), icon: Default::default(), has_icon: false, folder: true, count: n as i32, previews: ModelRc::new(VecModel::from(previews)), letter: Default::default() }
+                    let pics: Vec<slint::Image> = shown.into_iter().map(|(i, s)| self.icons.get(st, &self.lib.apps[i].id, s, scale, true).unwrap_or_default()).collect();
+                    // (each folder's previews one list, kept: an icon drawn
+                    // later only changes its own picture)
+                    let rows = previews.entry(f.name.clone()).or_default();
+                    rows.set(pics);
+                    ui::LpCell { name: f.name.as_str().into(), icon: Default::default(), has_icon: false, folder: true, count: n as i32, previews: rows.model(), letter: Default::default() }
                 })
-                .collect()
+                .collect();
+            self.win.as_mut().unwrap().previews = previews;
+            cells
         };
         self.icons.flush(send(st));
         let letters: Vec<ui::LpLetter> = self.lib.letters.iter().enumerate().map(|(k, (l, i))| ui::LpLetter { letter: l.as_str().into(), index: *i as i32, next: self.lib.letters.get(k + 1).map(|x| x.1 as i32).unwrap_or(i32::MAX) }).collect();
         let w = self.win.as_ref().unwrap();
         let ui = &w.ui;
         let none = apps_view && !self.lib.query.is_empty() && cells.is_empty();
-        ui.set_cells(ModelRc::new(VecModel::from(cells)));
+        // (by place: a cell's place in the grid is its index, so the
+        // element at a place takes the new app; nothing is made again)
+        w.cells.set(cells);
         ui.set_apps(apps_view);
         ui.set_selected(self.lib.selected as i32);
         ui.set_picked(self.lib.picked.as_str().into());
-        ui.set_letters(ModelRc::new(VecModel::from(letters)));
+        w.letters.set(letters);
         ui.set_alphabetical(self.lib.alphabetical());
         let in_folder = self.lib.folder.is_some() && self.lib.query.is_empty();
         ui.set_in_folder(in_folder);
@@ -356,13 +416,13 @@ impl Launchpad {
         ui.set_no_results(none);
         let toggle = if self.lib.view == 1 { ("Show folders", "squares-four") } else { ("Show A to Z", "list") };
         let fab = [("Get apps", "storefront"), toggle, ("Dock and drawer settings", "gear")];
-        ui.set_fab_items(ModelRc::new(VecModel::from(fab.iter().map(|(t, g)| ui::LpFab { text: (*t).into(), glyph: wglyph(g, m, false) }).collect::<Vec<_>>())));
+        w.fab.set(fab.iter().map(|(t, g)| ui::LpFab { text: (*t).into(), glyph: wglyph(g, m, false) }).collect());
         ui.set_fab_open(self.fab);
         match &self.menu {
             Some(mn) => {
                 let rows: Vec<ui::WMenuRow> = mn.items.iter().map(|i| ui::WMenuRow { text: i.text.as_str().into(), header: i.header, separator: false, enabled: true }).collect();
                 let wdt = 200f32.max(mn.items.iter().map(|i| i.text.chars().count()).max().unwrap_or(0) as f32 * 7.5 + 40.0);
-                ui.set_menu_rows(ModelRc::new(VecModel::from(rows)));
+                w.menu_rows.set(rows);
                 ui.set_menu_w(wdt);
                 ui.set_menu_h(mn.items.iter().map(|i| if i.header { 26.0 } else { 28.0 }).sum());
                 ui.set_menu_x(mn.x + wdt / 2.0);
@@ -382,7 +442,7 @@ impl Launchpad {
                 ui.invoke_start_intro();
                 ui.set_entering(true);
                 let to = send(st);
-                self.timers[1].start(slint::TimerMode::SingleShot, Duration::from_millis(500), move || to(Box::new(M::IntroEnd)));
+                self.timers[1].start(slint::TimerMode::SingleShot, Duration::from_millis(1000), move || to(Box::new(M::IntroEnd)));
             }
         }
         self.key_ctx.set(KeyCtx { has_text: !self.text.is_empty(), menu: self.menu.is_some() });
@@ -397,9 +457,60 @@ impl Launchpad {
         if (to - from).abs() < 0.5 {
             return;
         }
-        self.glide = Some(Glide { from, to, t0: Instant::now() });
+        // Material: AppDrawer's SpringAnimation (springDefault's spring,
+        // damping 0.62: critically damped); Glass: AppLibraryGlass's
+        // NumberAnimation, Theme.motion.panel, OutCubic
+        self.glide = Some(Glide { from, to, t0: Instant::now(), spring: st.shell.look.material, ms: 320.0 * w.ui.get_pace(), fling: None });
         let tx = send(st);
-        self.timers[2].start(slint::TimerMode::Repeated, Duration::from_millis(16), move || tx(Box::new(M::Scroll)));
+        self.timers[2].start(slint::TimerMode::Repeated, Duration::from_millis(8), move || tx(Box::new(M::Scroll)));
+    }
+
+    /// A scroll step (Momentum.qml's onWheel): the grid moves at once; any
+    /// glide or fling stops (the drawer's `onMovementStarted:
+    /// scrollAnim.stop()`); the speed is kept for the run's end
+    fn wheel(&mut self, st: &State, d: f32) {
+        let Some(w) = &self.win else { return };
+        let max = (w.ui.get_content_h() - w.ui.get_view_h()).max(0.0);
+        if max <= 0.0 {
+            return;
+        }
+        self.glide = None;
+        self.timers[2].stop();
+        let top = -w.ui.get_scroll_y();
+        let now = Instant::now();
+        // (Slint's step: + when the content should come down, as the Flickable's)
+        let to = (top - d).clamp(0.0, max);
+        w.ui.set_scroll_y(-to);
+        let dt = self.wheel.last.map_or(100.0, |l| (now - l).as_secs_f32() * 1000.0).clamp(4.0, 100.0) / 1000.0;
+        if self.wheel.last.is_none_or(|l| now - l > Duration::from_millis(RUN_END_MS * 2)) {
+            self.wheel = Wheel::default();
+        }
+        self.wheel.v = self.wheel.v * 0.4 + (to - top) / dt * 0.6;
+        self.wheel.last = Some(now);
+        self.wheel.steps += 1;
+        let tx = send(st);
+        self.timers[3].start(slint::TimerMode::SingleShot, Duration::from_millis(RUN_END_MS), move || tx(Box::new(M::WheelEnd)));
+    }
+
+    /// The run ended (no step for 50 ms): Momentum's glide, `flickable.flick`
+    /// at the speed it was going (a lone step, as a mouse wheel's notch,
+    /// doesn't glide)
+    fn wheel_end(&mut self, st: &State) {
+        let w = std::mem::take(&mut self.wheel);
+        if w.steps < 2 || w.v.abs() <= GLIDE_MIN_VELOCITY {
+            return;
+        }
+        let Some(win) = &self.win else { return };
+        let max = (win.ui.get_content_h() - win.ui.get_view_h()).max(0.0);
+        let from = -win.ui.get_scroll_y();
+        // (from, to): the stretch it may move in, the end it's going towards
+        let to = if w.v > 0.0 { max } else { 0.0 };
+        if (to - from).abs() < 0.5 {
+            return;
+        }
+        self.glide = Some(Glide { from, to, t0: Instant::now(), spring: false, ms: 0.0, fling: Some(w.v) });
+        let tx = send(st);
+        self.timers[2].start(slint::TimerMode::Repeated, Duration::from_millis(8), move || tx(Box::new(M::Scroll)));
     }
 
     fn glide_step(&mut self) {
@@ -407,12 +518,30 @@ impl Launchpad {
             self.timers[2].stop();
             return;
         };
-        let t = (g.t0.elapsed().as_secs_f32() / 0.32).min(1.0);
-        let e = 1.0 - (1.0 - t).powi(3);
+        let secs = g.t0.elapsed().as_secs_f32();
+        if let Some(v0) = g.fling {
+            // (StopAtBounds: it stops at either end)
+            let (d, mut done) = fling_at(v0, secs);
+            let (lo, hi) = (g.from.min(g.to), g.from.max(g.to));
+            let y = (g.from + d).clamp(lo, hi);
+            done |= (y - g.to).abs() < 0.5;
+            if let Some(w) = &self.win {
+                w.ui.set_scroll_y(-y);
+            }
+            if done {
+                self.glide = None;
+                self.timers[2].stop();
+            }
+            return;
+        }
+        let (e, done) = if g.spring { qt_spring(6.08, 0.62, 0.5 / (g.to - g.from).abs().max(1.0), secs) } else {
+            let t = (secs * 1000.0 / g.ms).min(1.0);
+            (1.0 - (1.0 - t).powi(3), t >= 1.0)
+        };
         if let Some(w) = &self.win {
             w.ui.set_scroll_y(-(g.from + (g.to - g.from) * e));
         }
-        if t >= 1.0 {
+        if done {
             self.glide = None;
             self.timers[2].stop();
         }
@@ -693,9 +822,14 @@ impl Part for Launchpad {
                 self.push(st);
             }
             M::Hovered(i) => {
+                // (MouseArea.onEntered: lib.selected = index; only the
+                // selection and a letter picked change)
                 if self.lib.selected != i.max(0) as usize {
                     self.lib.select(i.max(0) as usize);
-                    self.push(st);
+                    if let Some(w) = &self.win {
+                        w.ui.set_selected(self.lib.selected as i32);
+                        w.ui.set_picked(self.lib.picked.as_str().into());
+                    }
                 }
             }
             M::Activate(i) => {
@@ -787,6 +921,8 @@ impl Part for Launchpad {
                 }
             }
             M::Scroll => self.glide_step(),
+            M::Wheel(d) => self.wheel(st, d),
+            M::WheelEnd => self.wheel_end(st),
             M::IntroEnd => {
                 if let Some(w) = &self.win {
                     w.ui.set_entering(false);
@@ -838,6 +974,27 @@ impl Part for Launchpad {
     }
 }
 
+/// Qt's SpringAnimation from 0 to 1 (`spring`, `damping`, `epsilon`, no
+/// mass), `secs` in: its 16 ms steps (v += spring·diff − damping·v; x +=
+/// v·0.016), the last one eased into the next. Where it is, and whether it
+/// stopped.
+fn qt_spring(spring: f32, damping: f32, epsilon: f32, secs: f32) -> (f32, bool) {
+    let steps = secs * 1000.0 / 16.0;
+    let (mut x, mut v) = (0.0f32, 0.0f32);
+    for _ in 0..steps.floor() as usize {
+        v += spring * (1.0 - x) - damping * v;
+        x += v * 0.016;
+        if (1.0 - x).abs() < epsilon && (v * 0.016).abs() < epsilon {
+            return (1.0, true);
+        }
+        if steps > 600.0 {
+            return (1.0, true);
+        }
+    }
+    let v1 = v + spring * (1.0 - x) - damping * v;
+    (x + v1 * 0.016 * steps.fract(), false)
+}
+
 /// A glyph as this crate's Slint takes it (tessera_core::wm::glyph)
 fn wglyph(name: &str, material: bool, bold: bool) -> ui::WGlyph {
     let (text, family, scale) = tessera_core::wm::glyph(name, material, bold);
@@ -858,5 +1015,27 @@ mod tests {
         assert!(handles(none, &k(Key::F10), true) && !handles(none, &k(Key::F10), false));
         assert!(!handles(none, "a", false));
         assert!(handles(KeyCtx { has_text: true, menu: true }, " ", false));
+    }
+
+    #[test]
+    fn a_fling_slows_as_qts_flickable() {
+        // 1500 px/s at 1500 px/s²: one second, 750 px
+        let (d, done) = fling_at(1500.0, 2.0);
+        assert!((d - 750.0).abs() < 0.01 && done);
+        let (half, done) = fling_at(-1500.0, 0.5);
+        assert!((half + 562.5).abs() < 0.01 && !done);
+        // never faster than maximumFlickVelocity
+        assert!((fling_at(9000.0, 5.0).0 - 2500.0 * 2500.0 / 3000.0).abs() < 0.1);
+    }
+
+    #[test]
+    fn the_scroll_spring_settles_like_qts() {
+        // (AppDrawer's: springDefault's spring, damping 0.62, nearly critical)
+        let (half, _) = qt_spring(6.08, 0.62, 0.001, 0.08);
+        assert!(half > 0.4 && half < 0.8, "{half}");
+        let (x, done) = qt_spring(6.08, 0.62, 0.001, 0.6);
+        assert!(done && (x - 1.0).abs() < 1e-6);
+        // it never runs past
+        assert!((1..60).all(|i| qt_spring(6.08, 0.62, 0.001, i as f32 * 0.01).0 <= 1.0005));
     }
 }

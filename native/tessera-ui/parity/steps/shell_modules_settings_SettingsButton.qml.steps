@@ -1,0 +1,12 @@
+# Settings window: Material 1040x700 at 440,205 (page column from x~772); Glass 860x620 at 530,230. Sidebar rows (Material, x=560): Appearance 335, Wallpaper 385, Desktop 435, Menu bar 485, Lock 535, Notifications 626, Focus 676, Windows 767, Displays 858.
+# Click coordinates inside pages are not known in advance: those steps are MANUAL unless a keyboard path exists. Check in each look.
+ipc panels settings about
+wait 2
+shot b1
+note B1 find a neutral and a primary button: same look as QML in this look (Material and Glass).
+# Press and hold on a button needs its position from b1: MANUAL below
+# MANUAL: B2 Material press-and-hold ~0.6 s on a button while recording its region: swells ~6 % and squares to 8 px, springs back past its size on release (ElasticControl); time with tools/anim-timing.py
+# MANUAL: B3 Glass press: shrinks to 0.97 in ~100 ms, back on release
+# MANUAL: B4 hover glide on/off: colour fades ~150 ms
+# MANUAL: B5 Tab to a button: focus ring 2 px clear (Glass 2 px accent; Material 3 px secondary); Space presses a harmless one
+# MANUAL: B6 Update > Check for updates: spinner (Material) / spinning notch (Glass) beside the label

@@ -5,7 +5,8 @@
 //! a change and only when it differs from what is there. Never from the dev
 //! sandbox; never before the helper's policy knows login-look.
 //!
-//! Bus "loginscreen": { installed, hasCopy, canWrite, status, share }.
+//! Bus "loginscreen": { installed, hasCopy, canWrite, status, share }, also
+//! sent to Settings as its "look" feed's `login` (settings.feed).
 //! Calls: loginscreen.preview (shows the login screen as it would look,
 //! with a stand-in password; Escape closes it).
 
@@ -31,11 +32,13 @@ pub struct LoginScreen {
     writing: bool,
     look: String,
     later: slint::Timer,
+    /// what Settings was last sent (its "look" feed's `login`)
+    sent: Value,
 }
 
 impl Default for LoginScreen {
     fn default() -> Self {
-        Self { tx: None, has_copy: false, can_write: false, status: String::new(), share: "/usr/share/tessera".into(), writing: false, look: String::new(), later: slint::Timer::default() }
+        Self { tx: None, has_copy: false, can_write: false, status: String::new(), share: "/usr/share/tessera".into(), writing: false, look: String::new(), later: slint::Timer::default(), sent: Value::Null }
     }
 }
 
@@ -70,8 +73,14 @@ impl LoginScreen {
     fn tx(&self) -> Tx {
         self.tx.clone().expect("started")
     }
-    fn publish(&self) {
-        put("loginscreen", json!({"installed": self.has_copy, "hasCopy": self.has_copy, "canWrite": self.can_write, "status": self.status, "share": self.share}));
+    fn publish(&mut self, h: &mut Host) {
+        let v = json!({"installed": self.has_copy, "hasCopy": self.has_copy, "canWrite": self.can_write, "status": self.status, "share": self.share});
+        put("loginscreen", v.clone());
+        // Settings → Lock & Login Screen reads it as feed["look"]["login"]
+        if v != self.sent {
+            self.sent = v.clone();
+            h.ask("settings.feed", json!(["look", {"login": v}]));
+        }
     }
     fn recompute(&mut self, h: &Host) {
         let l = &h.st.shell.look;
@@ -114,7 +123,7 @@ impl Service for LoginScreen {
                 tx.send(M::Share("/usr/share/irice".into()));
             }
         });
-        self.publish();
+        self.publish(h);
     }
     fn config_changed(&mut self, h: &mut Host) {
         self.recompute(h);
@@ -175,8 +184,7 @@ impl Service for LoginScreen {
                 self.status = if code == 0 { "The login screen has your look.".into() } else { "Couldn't give the login screen your look. It's tried again after your next change.".into() };
             }
         }
-        let _ = h;
-        self.publish();
+        self.publish(h);
     }
 }
 

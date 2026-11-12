@@ -1,0 +1,84 @@
+# Arena IRICE-TEST 1920x1080 scale 1, the user's config (expressive motion, Colloid, their 4 widgets).
+# Each file runs top to bottom from a fresh desktop. `static NAME x y w h`: that region must not change
+# from there until the next `shot`, `rec` or `look` (the no-reload blocks end with their last close).
+# Right-clicks: `ptr ... down up` lines marked (right button) need the runner's right button.
+
+look glass
+note no reload: widgets must not fade or grow in again while windows open, focus and close (only the clock's minute may change)
+ptr move 1500 600
+shot dw-before
+setup sh -c "foot & sleep 0.8; hyprctl dispatch \"hl.dsp.window.move({ workspace = 'special:parity', follow = false, window = 'class:foot' })\""
+shot dw-after-open-1
+setup sh -c "foot & sleep 0.8; hyprctl dispatch \"hl.dsp.window.move({ workspace = 'special:parity', follow = false, window = 'class:foot' })\""
+shot dw-after-open-2
+note the after-open shots equal the before shot over the widgets (no widget at 0.9 scale or faded)
+static dw-clock 32 54 344 164
+static dw-stack 32 234 344 164
+static dw-batteries 32 414 344 164
+static dw-shortcuts 392 54 344 164
+ptr move 1300 700 click
+wait 1
+setup hyprctl dispatch 'hl.dsp.window.close({ window = "class:foot" })'
+wait 1.5
+setup hyprctl dispatch 'hl.dsp.window.close({ window = "class:foot" })'
+wait 1.5
+ptr move 600 600 glide 200 300 300 sleep 200
+note (right button, manual) right-click the stack at 200,300:
+note right-click on the stack: sizes with ✓, kinds, Smart Rotate, Widget Options…, Edit Widgets…, Remove Widget (red); opens at the pointer, downward
+key -k Escape
+wait 0.5
+note right-click the bare desktop at 1200 400: Edit Widgets…, Change Wallpaper…, ✓ Use Stacks, Show Files on Desktop, Desktop Settings…
+ptr move 1200 400
+key -k Escape
+wait 0.3
+rec dw-edit 1.0 ipc panels widgets true
+note editing: faint cells fade in ≈220 ms, each widget's − badge springs in with a small overshoot
+ipc panels widgets false
+wait 0.5
+rec dw-drag 3 ptr move 600 130 down glide 600 330 400 glide 1000 330 400 up
+note the shortcuts widget follows after 6 px, grows 1.04, ghost springs cell to cell; on release springs into the cell (~450 ms) and config desktop.widgets has it moved
+ptr move 1000 300 down glide 600 130 400 up
+wait 1
+shot dw-after
+setup python3 -c "import json,os;p=os.path.expanduser('~/.config/tessera/config.json');c=json.load(open(p));c.setdefault('desktop',{})['widgets']=json.loads('[\"clock:m:0:0\", \"stack:m:0:1:pz3mh8\", \"batteries:m:0:2\", \"shortcuts:m:2:0:5a2cav\"]');json.dump(c,open(p,'w'),indent=4)"
+wait 1
+
+look material
+note no reload: widgets must not fade or grow in again while windows open, focus and close (only the clock's minute may change)
+ptr move 1500 600
+shot dw-before
+setup sh -c "foot & sleep 0.8; hyprctl dispatch \"hl.dsp.window.move({ workspace = 'special:parity', follow = false, window = 'class:foot' })\""
+shot dw-after-open-1
+setup sh -c "foot & sleep 0.8; hyprctl dispatch \"hl.dsp.window.move({ workspace = 'special:parity', follow = false, window = 'class:foot' })\""
+shot dw-after-open-2
+note the after-open shots equal the before shot over the widgets (no widget at 0.9 scale or faded)
+static dw-clock 32 54 344 164
+static dw-stack 32 234 344 164
+static dw-batteries 32 414 344 164
+static dw-shortcuts 392 54 344 164
+ptr move 1300 700 click
+wait 1
+setup hyprctl dispatch 'hl.dsp.window.close({ window = "class:foot" })'
+wait 1.5
+setup hyprctl dispatch 'hl.dsp.window.close({ window = "class:foot" })'
+wait 1.5
+ptr move 600 600 glide 200 300 300 sleep 200
+note (right button, manual) right-click the stack at 200,300:
+note right-click on the stack: sizes with ✓, kinds, Smart Rotate, Widget Options…, Edit Widgets…, Remove Widget (red); opens at the pointer, downward
+key -k Escape
+wait 0.5
+note right-click the bare desktop at 1200 400: Edit Widgets…, Change Wallpaper…, ✓ Use Stacks, Show Files on Desktop, Desktop Settings…
+ptr move 1200 400
+key -k Escape
+wait 0.3
+rec dw-edit 1.0 ipc panels widgets true
+note editing: faint cells fade in ≈220 ms, each widget's − badge springs in with a small overshoot
+ipc panels widgets false
+wait 0.5
+rec dw-drag 3 ptr move 600 130 down glide 600 330 400 glide 1000 330 400 up
+note the shortcuts widget follows after 6 px, grows 1.04, ghost springs cell to cell; on release springs into the cell (~450 ms) and config desktop.widgets has it moved
+ptr move 1000 300 down glide 600 130 400 up
+wait 1
+shot dw-after
+setup python3 -c "import json,os;p=os.path.expanduser('~/.config/tessera/config.json');c=json.load(open(p));c.setdefault('desktop',{})['widgets']=json.loads('[\"clock:m:0:0\", \"stack:m:0:1:pz3mh8\", \"batteries:m:0:2\", \"shortcuts:m:2:0:5a2cav\"]');json.dump(c,open(p,'w'),indent=4)"
+wait 1

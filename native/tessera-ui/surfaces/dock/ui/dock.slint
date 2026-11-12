@@ -12,6 +12,7 @@
 import { Theme, Icon } from "@tessera/theme.slint";
 
 export struct DockSlot {
+    key: string, // the item (kind:id): rows are kept by it
     kind: string, // launcher | app | recent | minimized | downloads | trash
     name: string,
     icon: image,
@@ -26,6 +27,69 @@ export struct DockSlot {
     hot: bool,
     pressed: bool,
     bounce: int, // bumped to make it hop (launching)
+    badge: int, // unread count (Badges.countFor)
+    dot: bool, // asks for attention (Badges.urgentFor), no count
+    thumb: image, // a minimized window's last frame
+    has-thumb: bool,
+}
+
+// The red badge, top right of an icon: a count, or a dot (DockItem /
+// MaterialDockItem's Rectangle); pops in as it appears
+component Badge inherits Rectangle {
+    in property <int> count;
+    in property <bool> dot;
+    in property <length> size; // the icon's
+    property <bool> on: count > 0 || dot;
+    property <length> h: Theme.material ? (dot ? 8px : 16px) : round(max(14px, size * 0.34) / 1px) * 1px;
+    property <float> pop: on ? 1 : 0;
+    // (Glass 200 ms out-back; Material the fast spatial spring)
+    animate pop {
+        duration: Theme.material ? 222ms : 200ms;
+        easing: Theme.material ? spring(0.4) : cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    visible: on || pop > 0.001;
+    height: h;
+    width: dot ? h : max(h, label.preferred-width + (Theme.material ? 8px : h * 0.6));
+    x: size - self.width + (Theme.material ? (dot ? 0 : 4px) : size * 0.06);
+    y: Theme.material ? (dot ? 0 : -2px) : -size * 0.06;
+    border-radius: self.height / 2;
+    background: Theme.material ? Theme.m3-error : #FF3B30;
+    border-width: Theme.material ? 0 : 1px;
+    border-color: rgba(0, 0, 0, 0.15);
+    transform-origin: { x: self.width / 2, y: self.height / 2 };
+    transform-scale: pop;
+    label := Text {
+        visible: !dot;
+        text: Theme.material ? (count > 999 ? "999+" : "\{count}") : (count > 99 ? "99+" : "\{count}");
+        color: Theme.material ? Theme.m3-on-error : #ffffff;
+        font-size: Theme.material ? 11px : round(h * 0.62 / 1px) * 1px;
+        font-weight: Theme.material ? 500 : 600;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        accessible-role: none;
+    }
+}
+
+// Material's emphasized decelerate (cubic-bezier 0.05, 0.7, 0.1, 1) at p in
+// 0..1: the curve's x solved by halving (Slint has no loops), then its y
+global Curves {
+    pure public function emphasized(p: float) -> float {
+        let x0 = 0.5;
+        let x1 = x0 + (bx(x0) < p ? 0.25 : -0.25);
+        let x2 = x1 + (bx(x1) < p ? 0.125 : -0.125);
+        let x3 = x2 + (bx(x2) < p ? 0.0625 : -0.0625);
+        let x4 = x3 + (bx(x3) < p ? 0.03125 : -0.03125);
+        let x5 = x4 + (bx(x4) < p ? 0.015625 : -0.015625);
+        let x6 = x5 + (bx(x5) < p ? 0.0078125 : -0.0078125);
+        let x7 = x6 + (bx(x6) < p ? 0.00390625 : -0.00390625);
+        let x8 = x7 + (bx(x7) < p ? 0.001953125 : -0.001953125);
+        let x9 = x8 + (bx(x8) < p ? 0.0009765625 : -0.0009765625);
+        let t = x9 + (bx(x9) < p ? 0.00048828125 : -0.00048828125);
+        return 3 * (1 - t) * (1 - t) * t * 0.7 + 3 * (1 - t) * t * t + t * t * t;
+    }
+    pure public function bx(t: float) -> float {
+        return 3 * (1 - t) * (1 - t) * t * 0.05 + 3 * (1 - t) * t * t * 0.1 + t * t * t;
+    }
 }
 
 // Glass's Apps button without a themed icon: a 3×3 grid of colour dots on a tile
@@ -72,7 +136,8 @@ export component Dock inherits Window {
     out property <float> slide: hidden ? 1 : 0;
     animate slide {
         duration: Theme.material ? 320ms : (hidden ? 250ms : 350ms);
-        easing: Theme.material ? spring(0.2) : (hidden ? cubic-bezier(0.32, 0, 0.67, 0) : cubic-bezier(0.34, 1.35, 0.64, 1));
+        // (Easing.OutBack, overshoot 1.2, as a bezier: within 0.5% of it)
+        easing: Theme.material ? spring(0.2) : (hidden ? cubic-bezier(0.32, 0, 0.67, 0) : cubic-bezier(0.35, 1.45, 0.7, 0.975));
     }
     out property <length> pill-x: pill.x;
     out property <length> pill-y: pill.y;
@@ -127,7 +192,7 @@ export component Dock inherits Window {
             }
             property <float> bt: bouncing ? (animation-tick() - bounce-start) / 1ms : 0;
             property <float> cycle: Math.mod(bt, Theme.material ? 480 : 520);
-            property <length> hop: !bouncing ? 0 : Theme.material ? (cycle < 220 ? (1 - Math.pow(1 - cycle / 220, 5)) * root.base * 0.3 : (1 - out-bounce((cycle - 220) / 260)) * root.base * 0.3) : (cycle < 260 ? (1 - (1 - cycle / 260) * (1 - cycle / 260)) * root.base * 0.35 : (1 - (cycle - 260) / 260 * (cycle - 260) / 260) * root.base * 0.35);
+            property <length> hop: !bouncing ? 0 : Theme.material ? (cycle < 220 ? Curves.emphasized(cycle / 220) * root.base * 0.3 : (1 - out-bounce((cycle - 220) / 260)) * root.base * 0.3) : (cycle < 260 ? (1 - (1 - cycle / 260) * (1 - cycle / 260)) * root.base * 0.35 : (1 - (cycle - 260) / 260 * (cycle - 260) / 260) * root.base * 0.35);
             pure function out-bounce(p: float) -> float {
                 if p < 1 / 2.75 { return 7.5625 * p * p; }
                 if p < 2 / 2.75 { return 7.5625 * (p - 1.5 / 2.75) * (p - 1.5 / 2.75) + 0.75; }
@@ -159,6 +224,7 @@ export component Dock inherits Window {
                 animate transform-scale { duration: 320ms; easing: spring(0.44); }
                 if s.kind == "launcher" && !s.themed: DotGrid { size: s.size; }
                 // Minimized: a tile for its last frame (no thumbnail here), its app's badge
+                // Minimized: its last frame on a tile, its app's badge
                 if s.kind == "minimized": Rectangle {
                     x: s.size * 0.06;
                     y: s.size * 0.06;
@@ -166,6 +232,15 @@ export component Dock inherits Window {
                     height: s.size * 0.88;
                     border-radius: self.width * 0.12;
                     background: Theme.fill;
+                    clip: true;
+                    if s.has-thumb: Image {
+                        width: 100%;
+                        height: 100%;
+                        source: s.thumb;
+                        image-fit: contain;
+                        image-rendering: smooth;
+                        accessible-role: none;
+                    }
                 }
                 if s.has-icon && (s.kind != "launcher" || s.themed): Image {
                     x: s.kind == "minimized" ? s.size * 0.5 : 0;
@@ -175,6 +250,11 @@ export component Dock inherits Window {
                     source: s.icon;
                     image-rendering: smooth;
                     accessible-role: none;
+                }
+                if s.kind == "app" || s.kind == "recent": Badge {
+                    count: s.badge;
+                    dot: s.dot;
+                    size: s.size;
                 }
             }
             // Running: a small dot under the icon
@@ -238,10 +318,14 @@ export component Dock inherits Window {
                     width: root.base - 4px;
                     height: self.width;
                     transform-origin: { x: self.width / 2, y: self.height / 2 };
-                    transform-scale: s.pressed ? 1 + min(0.06, 10px / self.width) : 1;
+                    transform-scale: s.pressed && Theme.press-bounce ? 1 + min(0.06, 10px / self.width) : 1;
                     animate transform-scale { duration: 290ms; easing: spring(0.57); }
                     // Apps button: a tonal circle that squares off while pressed
                     if s.kind == "launcher": Rectangle {
+                        // (its own ElasticControl too, inside the icon's: it swells twice)
+                        transform-origin: { x: self.width / 2, y: self.height / 2 };
+                        transform-scale: s.pressed && Theme.press-bounce ? 1 + min(0.06, 10px / self.width) : 1;
+                        animate transform-scale { duration: 290ms; easing: spring(0.57); }
                         border-radius: s.pressed ? 16px : self.width / 2;
                         animate border-radius { duration: 150ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
                         background: Theme.m3-on-secondary-container.mix(Theme.m3-secondary-container, s.pressed ? 0.1 : s.hot ? 0.08 : 0);
@@ -265,8 +349,17 @@ export component Dock inherits Window {
                         y: 2px;
                         width: parent.width - 4px;
                         height: parent.height - 4px;
-                        border-radius: 8px;
+                        border-radius: Theme.radius-item;
                         background: Theme.m3-surface-container-highest;
+                        clip: true;
+                        if s.has-thumb: Image {
+                            width: 100%;
+                            height: 100%;
+                            source: s.thumb;
+                            image-fit: contain;
+                            image-rendering: smooth;
+                            accessible-role: none;
+                        }
                     }
                     if s.has-icon && s.kind != "launcher": Image {
                         x: s.kind == "minimized" ? parent.width * 0.5 : 0;
@@ -276,6 +369,11 @@ export component Dock inherits Window {
                         source: s.icon;
                         image-rendering: smooth;
                         accessible-role: none;
+                    }
+                    if s.kind == "app" || s.kind == "recent": Badge {
+                        count: s.badge;
+                        dot: s.dot;
+                        size: parent.width;
                     }
                 }
             }

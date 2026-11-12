@@ -43,7 +43,21 @@ enum Do {
     Config(&'static str, Value),
     Bt(String, &'static str),
     Settings(&'static str, &'static str),
+    /// the Wi-Fi join form (WifiJoinForm) for a network, "" a hidden one
+    WifiForm(String),
+    /// the share card (WifiShareCard) for a network
+    WifiShare(String),
     Nop,
+}
+
+/// What the Wi-Fi page shows: its list, the join form, or the share card
+#[derive(Clone, Debug, Default, PartialEq)]
+enum WifiView {
+    #[default]
+    List,
+    /// (network name, hidden)
+    Form(String, bool),
+    Share(String),
 }
 
 #[derive(Clone, Debug)]
@@ -195,7 +209,33 @@ pub struct ControlCenter {
     art: HashMap<String, String>,
     position: f64,
     last_pos: i64,
+    /// the player and track the position was read for (read again on a change)
+    pos_key: String,
     last_seen_page: String,
+    /// when Bluetooth discovery was last started for its page (it looks
+    /// while the list shows, as BluetoothList's Binding)
+    bt_scan_at: i64,
+    /// the shell's state recheck while a "Bluetooth doesn't work" notice shows
+    bt_recheck_at: i64,
+    /// the pointer is over the open page's list (the surface says: cc.hover)
+    page_hover: bool,
+    /// Wi-Fi's and Bluetooth's lists as last shown, and when they were last
+    /// sorted: they re-sort every 4 s only while the pointer is away and no
+    /// prompt is open, as WifiList's and BluetoothList's snapshots; gone
+    /// rows leave at once, new ones go at the end
+    shown_order: std::cell::RefCell<HashMap<String, (Vec<String>, i64)>>,
+    /// the Wi-Fi page's view, and the join form's values
+    wifi_view: WifiView,
+    form: HashMap<String, String>,
+    form_problem: String,
+    form_filled: bool,
+    /// the network the form last asked to join (its state on the bus "wifijoin")
+    form_ssid_sent: String,
+    share_reveal: bool,
+    share_copied: i64,
+    share_retry: bool,
+    /// the Resources page asked for samples (resources.use "graph")
+    res_used: bool,
     poll: slint::Timer,
 }
 
@@ -217,7 +257,21 @@ impl Default for ControlCenter {
             art: HashMap::new(),
             position: 0.0,
             last_pos: 0,
+            pos_key: String::new(),
             last_seen_page: String::new(),
+            bt_scan_at: 0,
+            bt_recheck_at: 0,
+            page_hover: false,
+            shown_order: Default::default(),
+            wifi_view: WifiView::List,
+            form: HashMap::new(),
+            form_problem: String::new(),
+            form_filled: false,
+            form_ssid_sent: String::new(),
+            share_reveal: false,
+            share_copied: 0,
+            share_retry: false,
+            res_used: false,
             poll: slint::Timer::default(),
         }
     }
@@ -474,7 +528,7 @@ impl ControlCenter {
     }
 
     // ── The open page, as blocks ─────────────────────────────────────────
-    fn build(&self, h: &Host, name: &str) -> Option<Value> {
+    fn build(&mut self, h: &Host, name: &str) -> Option<Value> {
         if name.is_empty() || name == "sound" || name == "mic" {
             return None;
         }
@@ -499,11 +553,11 @@ impl ControlCenter {
             items.push(Item::new("Connect", Do::Ask("network.connect", json!([n.name]))));
         }
         if !n.connected && n.secured {
-            items.push(Item::new(if n.enterprise { "Connect with sign-in…" } else { "Connect with password…" }, if n.enterprise { Do::Settings("network", "") } else { Do::Asking(n.name.clone()) }));
+            items.push(Item::new(if n.enterprise { "Connect with sign-in…" } else { "Connect with password…" }, if n.enterprise { Do::WifiForm(n.name.clone()) } else { Do::Asking(n.name.clone()) }));
         }
         items.push(Item::sep());
         if (n.connected || n.known) && !n.enterprise {
-            items.push(Item::new("Share network…", Do::Settings("network", "")));
+            items.push(Item::new("Share network…", Do::WifiShare(n.name.clone())));
         }
         items.push(Item::new("Copy name", Do::Cmd(strs(&["wl-copy", "--", &n.name]))));
         if n.known {
@@ -514,7 +568,26 @@ impl ControlCenter {
         items
     }
 
-    fn wifi_page(&self, h: &Host) -> Value {
+    fn wifi_page(&mut self, h: &Host) -> Value {
+        match self.wifi_view.clone() {
+            WifiView::Form(ssid, hidden) => {
+                // (joined: back to the list)
+                let j = g("wifijoin");
+                if !self.form_ssid_sent.is_empty() && ss(&j, "ssid") == self.form_ssid_sent && ss(&j, "stage") == "connected" {
+                    self.wifi_view = WifiView::List;
+                    self.form.clear();
+                    self.form_ssid_sent.clear();
+                } else {
+                    return self.form_page(&ssid, hidden);
+                }
+            }
+            WifiView::Share(ssid) => return self.share_page(&ssid),
+            WifiView::List => {}
+        }
+        self.wifi_list_page(h)
+    }
+
+    fn wifi_list_page(&self, h: &Host) -> Value {
         let be = g("backends");
         let net = g("network");
         let wifi = h.st.shell.get::<Wifi>().cloned().unwrap_or_default();
@@ -523,6 +596,7 @@ impl ControlCenter {
         let unmanaged = bs(&be, "wifiUnmanaged");
         let mut networks = nets();
         networks.sort_by(|a, b| b.connected.cmp(&a.connected).then(b.known.cmp(&a.known)).then(b.signal.partial_cmp(&a.signal).unwrap_or(std::cmp::Ordering::Equal)));
+        let mut networks = self.hold_order("wifi", networks, |n| n.name.clone());
         networks.truncate(30);
         let mut blocks = vec![];
         if unmanaged {
@@ -605,11 +679,37 @@ impl ControlCenter {
         devices
     }
 
+    /// `items` (sorted) in the order last shown, unless it's time to re-sort
+    fn hold_order<T>(&self, page: &str, items: Vec<T>, key: impl Fn(&T) -> String) -> Vec<T> {
+        let mut all = self.shown_order.borrow_mut();
+        let (order, at) = all.entry(page.to_string()).or_insert((Vec::new(), 0));
+        let now = now_ms();
+        let still = self.page_hover || !self.asking.is_empty() || now - *at < 4000;
+        if !still || order.is_empty() {
+            *order = items.iter().map(&key).collect();
+            *at = now;
+            return items;
+        }
+        let mut slots: Vec<Option<T>> = items.into_iter().map(Some).collect();
+        let keys: Vec<String> = slots.iter().map(|t| key(t.as_ref().unwrap())).collect();
+        let mut out = Vec::new();
+        for k in order.iter() {
+            if let Some(i) = keys.iter().position(|x| x == k) {
+                if let Some(t) = slots[i].take() {
+                    out.push(t);
+                }
+            }
+        }
+        out.extend(slots.into_iter().flatten());
+        *order = out.iter().map(&key).collect();
+        out
+    }
+
     fn bt_page(&self, h: &Host) -> Value {
         let be = g("backends");
         let bt = h.st.shell.get::<Bluetooth>().cloned().unwrap_or_default();
         let btstate = ss(&be, "btState");
-        let devices = Self::bt_devices(h);
+        let devices = self.hold_order("bluetooth", Self::bt_devices(h), |d| d.address.clone());
         let pics = g("devices")["pictures"].clone();
         let mut blocks = vec![];
         if !btstate.is_empty() && btstate != "ok" {
@@ -626,8 +726,10 @@ impl ControlCenter {
                         Some(p) => format!("Connected · {p}%"),
                         None => "Connected".into(),
                     }
-                } else if busy {
+                } else if busy && !d.paired {
                     "Pairing…".into()
+                } else if busy {
+                    "Connecting…".into()
                 } else if d.paired {
                     "Not connected".into()
                 } else {
@@ -742,7 +844,13 @@ impl ControlCenter {
         for d in &displays {
             let here = !ss(&m, "target").is_empty() && ss(&m, "target") == ss(d, "uuid");
             let streaming = ss(&m, "state") == "streaming";
-            let proto = d["protocolName"].as_str().unwrap_or(ss(d, "protocol"));
+            // (Mirroring.protocolName)
+            let proto = d["protocolName"].as_str().unwrap_or(match ss(d, "protocol") {
+                "chromecast" => "Chromecast",
+                "miracast" => "Miracast (network)",
+                "mice" => "Miracast",
+                p => p,
+            });
             blocks.push(row(json!({"id": format!("m:{}", ss(d, "uuid")), "icon": if ss(d, "protocol") == "chromecast" { "television-simple" } else { "screencast" },
                 "hl": here && streaming, "title": ss(d, "name"), "status": if here { if streaming { "Mirroring" } else { "Connecting…" } } else { proto },
                 "busy": here && ss(&m, "state") == "connecting", "trail": if here { "stop" } else { "" }})));
@@ -791,7 +899,14 @@ impl ControlCenter {
         for d in &devices {
             let here = active && c["device"]["id"] == d["id"];
             let st = ss(&c, "state");
-            blocks.push(row(json!({"id": format!("t:{}", ss(d, "id")), "icon": ss(d, "icon"), "hl": here, "title": ss(d, "name"),
+            // (Cast.iconFor: a speaker by its model, else a TV)
+            let icon = if !ss(d, "icon").is_empty() {
+                ss(d, "icon").to_string()
+            } else {
+                let m = format!("{} {}", ss(d, "model"), ss(d, "name")).to_lowercase();
+                (if ["nest", "home", "speaker", "audio"].iter().any(|w| m.contains(w)) { "speaker-hifi" } else { "television-simple" }).to_string()
+            };
+            blocks.push(row(json!({"id": format!("t:{}", ss(d, "id")), "icon": icon, "hl": here, "title": ss(d, "name"),
                 "status": if here { if st == "playing" { "Playing" } else if st == "paused" { "Paused" } else { "Connecting…" } } else { ss(d, "model") },
                 "trail": if here { "stop" } else { "" }, "busy": here && (st == "connecting" || st == "loading"), "dis": !(here || (can_cast && p.is_some()))})));
         }
@@ -810,12 +925,28 @@ impl ControlCenter {
     fn resources_page(&self) -> Value {
         let r = g("resources");
         let pct = |k: &str| format!("{}%", (r[k].as_f64().unwrap_or(0.0) * 100.0).round());
-        let blocks = vec![
-            row(json!({"id": "cpu", "icon": "cpu", "title": "Processor", "status": pct("cpu")})),
-            row(json!({"id": "mem", "icon": "memory", "title": "Memory", "status": pct("memory")})),
+        // (ResourcesPage: one ResourceRow per reading, with its last minute)
+        let mut blocks: Vec<Value> = r["stats"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .map(|st| {
+                        let detail = ss(st, "detail");
+                        json!({"t": "graph", "id": format!("r:{}", ss(st, "key")), "icon": ss(st, "icon"), "title": ss(st, "label"),
+                               "status": if detail.is_empty() { ss(st, "text").to_string() } else { format!("{} · {detail}", ss(st, "text")) },
+                               "values": st["history"].clone(), "max": st["max"].as_f64().unwrap_or(1.0)})
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        if blocks.is_empty() {
+            blocks.push(row(json!({"id": "cpu", "icon": "cpu", "title": "Processor", "status": pct("cpu")})));
+            blocks.push(row(json!({"id": "mem", "icon": "memory", "title": "Memory", "status": pct("memory")})));
+        }
+        blocks.extend([
             json!({"t": "gap", "h": 2}),
             note(&format!("The last minute, once a second. Network counts every interface but loopback, containers and VPN tunnels.{}", if r["gpuAvailable"].as_bool().unwrap_or(false) { "" } else { " Your GPU driver doesn't report its load." }), "tertiary", false),
-        ];
+        ]);
         json!({"name": "resources", "title": "CPU & Memory", "blocks": blocks})
     }
 
@@ -837,7 +968,233 @@ impl ControlCenter {
                     tx.send(M::Done(a2));
                 });
             }
+            Do::WifiForm(n) => self.open_form(h, &n, n.is_empty()),
+            Do::WifiShare(n) => self.open_share(h, &n),
             Do::Nop => {}
+        }
+    }
+
+    // ── Wi-Fi: the join form and the share card, inside its page ─────────
+
+    fn open_form(&mut self, h: &mut Host, ssid: &str, hidden: bool) {
+        self.asking.clear();
+        self.form = HashMap::from([
+            ("security".to_string(), if hidden { "psk" } else { "enterprise" }.to_string()),
+            ("eap".into(), "peap".into()),
+            ("phase2".into(), "mschapv2".into()),
+            ("ca".into(), "system".into()),
+        ]);
+        self.form_problem.clear();
+        self.form_filled = hidden;
+        self.wifi_view = WifiView::Form(ssid.to_string(), hidden);
+        // (a saved network's settings again, never its secrets)
+        h.ask("wifijoin.dismiss", json!([]));
+        if !hidden {
+            h.ask("wifijoin.saved", json!([ssid]));
+        }
+    }
+
+    fn open_share(&mut self, h: &mut Host, ssid: &str) {
+        self.asking.clear();
+        self.share_reveal = false;
+        self.share_copied = 0;
+        self.wifi_view = WifiView::Share(ssid.to_string());
+        h.ask("wifishare.share", json!([ssid]));
+    }
+
+    fn close_wifi_view(&mut self, h: &mut Host) {
+        if let WifiView::Share(_) = self.wifi_view {
+            h.ask("wifishare.close", json!([]));
+        }
+        self.wifi_view = WifiView::List;
+        self.form.clear();
+    }
+
+    fn fv(&self, k: &str) -> String {
+        self.form.get(k).cloned().unwrap_or_default()
+    }
+
+    /// WifiJoinForm.submit
+    fn submit_form(&mut self, h: &mut Host) {
+        let WifiView::Form(ssid, hidden) = self.wifi_view.clone() else { return };
+        let name = if hidden { self.fv("name").trim().to_string() } else { ssid };
+        let (sec, eap) = (self.fv("security"), self.fv("eap"));
+        let tls = eap == "tls";
+        let psk = self.fv("psk");
+        self.form_problem = if name.is_empty() {
+            "Type the network name."
+        } else if sec == "psk" && !(8..=63).contains(&psk.chars().count()) {
+            "Wi-Fi passwords are 8 to 63 characters."
+        } else if sec == "enterprise" && self.fv("identity").trim().is_empty() {
+            "Type your username (often your email address)."
+        } else if sec == "enterprise" && !tls && self.fv("password").is_empty() {
+            "Type your password."
+        } else if sec == "enterprise" && tls && (self.fv("clientCert").is_empty() || self.fv("privateKey").is_empty()) {
+            "Choose your certificate and private key files."
+        } else if sec == "enterprise" && self.fv("ca") == "file" && self.fv("caFile").is_empty() {
+            "Choose the CA certificate file, or use the system's certificates."
+        } else {
+            ""
+        }
+        .to_string();
+        if !self.form_problem.is_empty() {
+            return;
+        }
+        let ca = if self.fv("ca") == "file" { self.fv("caFile") } else { self.fv("ca") };
+        h.ask("wifijoin.join", json!([{
+            "ssid": name, "hidden": hidden, "security": sec, "eap": eap, "phase2": self.fv("phase2"),
+            "identity": self.fv("identity"), "anonymous": self.fv("anonymous"), "domain": self.fv("domain"),
+            "ca": ca, "clientCert": self.fv("clientCert"), "privateKey": self.fv("privateKey"),
+            "password": if tls { String::new() } else { self.fv("password") }, "keyPassword": self.fv("keyPassword"), "psk": psk,
+        }]));
+        // (the typed secrets aren't kept once they're sent)
+        for k in ["password", "keyPassword", "psk"] {
+            self.form.remove(k);
+        }
+        self.form_ssid_sent = name;
+    }
+
+    fn form_page(&mut self, ssid: &str, hidden: bool) -> Value {
+        let j = g("wifijoin");
+        // (a saved enterprise network: its settings, once)
+        let saved = &j["saved"];
+        if !self.form_filled && saved["exists"] == true && saved["name"].as_str().is_none_or(|n| n == ssid) {
+            self.form_filled = true;
+            if ss(saved, "keyMgmt") == "wpa-eap" {
+                let e = ss(saved, "eap");
+                if ["peap", "ttls", "tls", "pwd"].contains(&e) {
+                    self.form.insert("eap".into(), e.into());
+                }
+                for (k, from) in [("phase2", "phase2"), ("identity", "identity"), ("anonymous", "anonymous"), ("domain", "domain"), ("caFile", "caFile"), ("clientCert", "clientCert"), ("privateKey", "privateKey")] {
+                    if !ss(saved, from).is_empty() {
+                        self.form.insert(k.into(), ss(saved, from).into());
+                    }
+                }
+                let ca = if !ss(saved, "caFile").is_empty() { "file" } else if ss(saved, "systemCa") == "yes" { "system" } else { "none" };
+                self.form.insert("ca".into(), ca.into());
+            }
+        }
+        let mine = !self.form_ssid_sent.is_empty() && ss(&j, "ssid") == self.form_ssid_sent;
+        let joining = mine && bs(&j, "busy");
+        let field = |id: &str, value: String, placeholder: &str, secret: bool| json!({"t": "field", "id": format!("f:{id}"), "title": value, "status": placeholder, "flag": secret});
+        let seg = |id: &str, opts: &[(&str, &str)], cur: &str| json!({"t": "seg", "id": format!("f:{id}"), "options": opts.iter().map(|o| o.1).collect::<Vec<_>>(), "cur": opts.iter().position(|o| o.0 == cur).unwrap_or(0)});
+        let mut blocks = vec![
+            head(if hidden { "Join other network" } else { ssid }, false),
+            note(if hidden { "For a network that doesn't show its name." } else { "This network needs a username and password, or a certificate." }, "tertiary", false),
+        ];
+        let sec = self.fv("security");
+        if hidden {
+            blocks.push(field("name", self.fv("name"), "Network name", false));
+            blocks.push(seg("security", &[("open", "None"), ("psk", "WPA/WPA2"), ("enterprise", "Enterprise")], &sec));
+        }
+        if sec == "psk" {
+            blocks.push(field("psk", self.fv("psk"), "Password", true));
+        }
+        if sec == "enterprise" {
+            let eap = self.fv("eap");
+            blocks.push(seg("eap", &[("peap", "PEAP"), ("ttls", "TTLS"), ("tls", "TLS"), ("pwd", "PWD")], &eap));
+            if eap == "peap" || eap == "ttls" {
+                blocks.push(seg("phase2", &[("mschapv2", "MSCHAPv2"), ("pap", "PAP"), ("gtc", "GTC")], &self.fv("phase2")));
+            }
+            blocks.push(field("identity", self.fv("identity"), "Username", false));
+            if eap == "tls" {
+                blocks.push(field("clientCert", self.fv("clientCert"), "Certificate file (path)", false));
+                blocks.push(field("privateKey", self.fv("privateKey"), "Private key file (path)", false));
+                blocks.push(field("keyPassword", self.fv("keyPassword"), "Private key password", true));
+            } else {
+                blocks.push(field("password", self.fv("password"), "Password", true));
+            }
+            blocks.push(seg("ca", &[("system", "System CAs"), ("none", "Don't check"), ("file", "CA file")], &self.fv("ca")));
+            if self.fv("ca") == "file" {
+                blocks.push(field("caFile", self.fv("caFile"), "CA certificate file (path)", false));
+            }
+            blocks.push(field("domain", self.fv("domain"), "Domain (optional)", false));
+            blocks.push(field("anonymous", self.fv("anonymous"), "Anonymous identity (optional)", false));
+        }
+        let failure = if mine && ss(&j, "stage") == "error" { ss(&j, "error").to_string() } else { String::new() };
+        if !self.form_problem.is_empty() {
+            blocks.push(note(&self.form_problem, "danger", false));
+        } else if !failure.is_empty() {
+            blocks.push(note(&failure, "danger", false));
+        }
+        let join = if joining { if ss(&j, "stage") == "saving" { "Saving…" } else { "Joining…" } } else { "Join" };
+        blocks.push(json!({"t": "buttons", "id": "f:buttons", "options": ["Cancel", join], "cur": 1, "busy": joining}));
+        json!({"name": "wifi", "title": "Wi-Fi", "switch": false, "refresh": false, "blocks": blocks})
+    }
+
+    fn share_page(&self, ssid: &str) -> Value {
+        let w = g("wifishare");
+        let stage = ss(&w, "stage");
+        let mut blocks = vec![head(&format!("Share “{ssid}”"), false)];
+        if stage == "error" {
+            blocks.push(note(ss(&w, "error"), "danger", false));
+            if ss(&w, "error").contains("qrencode") {
+                blocks.push(json!({"t": "buttons", "id": "s:install", "options": ["Install qrencode"], "cur": 0}));
+            }
+        } else {
+            blocks.push(json!({"t": "picture", "id": "s:qr", "pic": if stage == "ready" { ss(&w, "qr") } else { "" }, "title": format!("QR code to join {ssid}")}));
+            blocks.push(note("Point another phone's camera at the code to join.", "tertiary", true));
+        }
+        let pw = ss(&w, "password");
+        if !pw.is_empty() {
+            let copied = now_ms() - self.share_copied < 1500;
+            blocks.push(row(json!({"id": "s:password", "icon": "key", "title": "Password", "status": if self.share_reveal { pw.to_string() } else { "•".repeat(pw.chars().count().min(12)) },
+                "trail": if self.share_reveal { "eye-slash" } else { "eye" }})));
+            blocks.push(json!({"t": "buttons", "id": "s:buttons", "options": ["Done", if copied { "Copied" } else { "Copy password" }], "cur": 1}));
+        } else {
+            blocks.push(json!({"t": "buttons", "id": "s:buttons", "options": ["Done"], "cur": 0}));
+        }
+        json!({"name": "wifi", "title": "Wi-Fi", "switch": false, "refresh": false, "blocks": blocks})
+    }
+
+    /// A click in the form or the card
+    fn wifi_view_block(&mut self, h: &mut Host, id: &str, what: &str, text: &str) -> bool {
+        match self.wifi_view.clone() {
+            WifiView::List => false,
+            WifiView::Form(..) => {
+                let Some(k) = id.strip_prefix("f:") else { return true };
+                if k == "buttons" {
+                    if text == "Cancel" {
+                        h.ask("wifijoin.dismiss", json!([]));
+                        self.close_wifi_view(h);
+                    } else {
+                        self.submit_form(h);
+                    }
+                } else if let Some(label) = what.strip_prefix("seg:") {
+                    let map: &[(&str, &str)] = &[("None", "open"), ("WPA/WPA2", "psk"), ("Enterprise", "enterprise"), ("PEAP", "peap"), ("TTLS", "ttls"), ("TLS", "tls"), ("PWD", "pwd"),
+                        ("MSCHAPv2", "mschapv2"), ("PAP", "pap"), ("GTC", "gtc"), ("System CAs", "system"), ("Don't check", "none"), ("CA file", "file")];
+                    if let Some(v) = map.iter().find(|m| m.0 == label).map(|m| m.1) {
+                        self.form.insert(k.into(), v.into());
+                    }
+                } else if what == "commit" || what == "enter" {
+                    self.form.insert(k.into(), text.into());
+                    self.form_problem.clear();
+                    // (Enter in a field joins, as the form's onAccepted)
+                    if what == "enter" {
+                        self.submit_form(h);
+                    }
+                }
+                true
+            }
+            WifiView::Share(ssid) => {
+                match (id, text) {
+                    ("s:password", _) => self.share_reveal = !self.share_reveal,
+                    ("s:buttons", "Done") => self.close_wifi_view(h),
+                    ("s:buttons", "Copy password") => {
+                        let pw = ss(&g("wifishare"), "password").to_string();
+                        h.ask("wifishare.copy", json!([pw]));
+                        self.share_copied = now_ms();
+                    }
+                    ("s:install", _) => {
+                        h.ask("needs.install", json!([["qrencode"]]));
+                        // (shared again once it's there: WifiShareCard's re-share)
+                        self.share_retry = true;
+                        let _ = ssid;
+                    }
+                    _ => {}
+                }
+                true
+            }
         }
     }
 
@@ -855,6 +1212,15 @@ impl ControlCenter {
     fn page_changed(&mut self, h: &mut Host) {
         self.asking.clear();
         self.hint.clear();
+        if self.page != "wifi" && self.wifi_view != WifiView::List {
+            self.close_wifi_view(h);
+        }
+        // (the graphs sample once a second while their page shows)
+        let res = self.page == "resources";
+        if res != self.res_used {
+            self.res_used = res;
+            h.ask("resources.use", json!([{"kind": "graph", "on": res}]));
+        }
         if self.page == "sound" {
             h.ask("audioprofiles.refresh", json!([]));
         }
@@ -1037,15 +1403,23 @@ impl ControlCenter {
             h.ask(if bs(&be, "canStartNm") { "backends.startNm" } else { "backends.openWifiApp" }, json!([]));
             return;
         }
+        if self.wifi_view_block(h, id, what, text) {
+            return;
+        }
         if id == "join" {
-            h.ask("panels.openSettings", json!(["network", ""]));
+            self.open_form(h, "", true);
             return;
         }
         let Some(name) = id.strip_prefix("n:") else { return };
         let Some(n) = nets().into_iter().find(|n| n.name == name) else { return };
         match what {
-            "cancel" => self.asking.clear(),
-            "action" | "other" => h.ask("panels.openSettings", json!(["network", ""])),
+            "cancel" => {
+                self.asking.clear();
+                self.hint.clear();
+            }
+            // (the row's QR button: the share card; "Other options…": the form)
+            "action" => self.open_share(h, &n.name),
+            "other" => self.open_form(h, &n.name, false),
             "commit" => {
                 if !psk_ok(text) {
                     self.hint = if text.is_empty() { "Type the password first." } else { "Wi-Fi passwords are at least 8 characters." }.into();
@@ -1060,9 +1434,11 @@ impl ControlCenter {
                 } else if n.known || !n.secured {
                     h.ask("network.connect", json!([n.name]));
                 } else if n.enterprise {
-                    h.ask("panels.openSettings", json!(["network", ""]));
+                    self.open_form(h, &n.name, false);
                 } else {
                     self.asking = if self.asking == n.name { String::new() } else { n.name };
+                    // (WifiList: a new prompt starts without the last one's hint)
+                    self.hint.clear();
                 }
             }
         }
@@ -1075,7 +1451,7 @@ impl ControlCenter {
             ("all", Some(l)) => h.ask("sharing.setLevel", json!([l])),
             ("localsend", Some(l)) => crate::util::config_set("sharing.receiving", json!(l)),
             ("quickshare", Some(l)) => crate::util::config_set("sharing.quickShare", json!(l)),
-            ("name", _) if what == "commit" => crate::util::config_set("sharing.name", json!(text.trim())),
+            ("name", _) if what == "commit" || what == "enter" => crate::util::config_set("sharing.name", json!(text.trim())),
             ("send", _) => h.ask("panels.pickShare", json!([])),
             _ => {
                 if let Some(n) = id.strip_prefix("s:") {
@@ -1116,11 +1492,32 @@ impl ControlCenter {
 
     fn open_edge(&mut self, h: &mut Host, open: bool) {
         self.sent_state.clear();
+        // (the position is read afresh as it opens)
+        self.pos_key.clear();
         self.sent_page.clear();
         if open {
             h.tell("controlcenter", json!({"ccPage": self.page, "editing": self.editing}));
             self.page_changed(h);
         } else if self.was_open {
+            // closed: Sharing and Mirroring stop looking (their pages'
+            // onVisibleChanged), a Wi-Fi prompt goes (WifiList's hide)
+            if self.sharing_look {
+                self.sharing_look = false;
+                h.ask("sharing.look", json!([false]));
+            }
+            if self.mirroring_look {
+                self.mirroring_look = false;
+                h.ask("mirroring.look", json!([false]));
+            }
+            self.asking.clear();
+            self.hint.clear();
+            if self.wifi_view != WifiView::List {
+                self.close_wifi_view(h);
+            }
+            if self.res_used {
+                self.res_used = false;
+                h.ask("resources.use", json!([{"kind": "graph", "on": false}]));
+            }
             // closed: leave editing
             if self.editing {
                 self.editing = false;
@@ -1139,8 +1536,13 @@ impl ControlCenter {
             return;
         }
         // the playing track's position, once a second
+        // (QSMedia: read again on opening and when the player or track
+        // changes, playing or not; then once a second while it plays)
         if let Some(p) = h.st.shell.get::<Players>().and_then(|p| p.chosen().cloned()) {
-            if p.playing && now_ms() - self.last_pos >= 1000 {
+            let key = format!("{}|{}|{}", p.bus, p.track.title, p.track.length);
+            let changed = key != self.pos_key;
+            if changed || (p.playing && now_ms() - self.last_pos >= 1000) {
+                self.pos_key = key;
                 self.last_pos = now_ms();
                 let (tx, bus) = (self.tx(), p.bus.clone());
                 std::thread::spawn(move || {
@@ -1151,11 +1553,33 @@ impl ControlCenter {
                 });
             }
         }
+        if self.page == "bluetooth" {
+            let be = g("backends");
+            let state = ss(&be, "btState").to_string();
+            let powered = h.st.shell.get::<Bluetooth>().is_some_and(|b| b.powered);
+            // (discovery on while the list shows: bluetoothctl's scan, renewed)
+            if (state.is_empty() || state == "ok") && powered && now_ms() - self.bt_scan_at >= 8000 {
+                self.bt_scan_at = now_ms();
+                spawn_cmd(strs(&["bluetoothctl", "--timeout", "9", "scan", "on"]));
+            }
+            // (BluetoothList: the notice checks again every 3 s until it's fixed)
+            if !state.is_empty() && state != "ok" && now_ms() - self.bt_recheck_at >= 3000 {
+                self.bt_recheck_at = now_ms();
+                h.ask("backends.recheck", json!([]));
+            }
+        }
         let st = self.state(h);
         let s = st.to_string();
         if s != self.sent_state {
             self.sent_state = s;
             h.tell("controlcenter", json!({"state": st}));
+        }
+        // (WifiShareCard: shared again once qrencode is installed)
+        if let WifiView::Share(ssid) = self.wifi_view.clone() {
+            if self.share_retry && ss(&g("wifishare"), "stage") == "error" && has_tool("qrencode") {
+                self.share_retry = false;
+                h.ask("wifishare.share", json!([ssid]));
+            }
         }
         if let Some(pm) = self.build(h, &self.page.clone()) {
             let s = pm.to_string();
@@ -1212,6 +1636,7 @@ impl Service for ControlCenter {
         match call {
             "cc.act" => self.module_act(h, &s(0)),
             "cc.page" => self.set_page(h, &s(0)),
+            "cc.hover" => self.page_hover = a0 == true,
             "cc.editing" => {
                 self.editing = a0 == true;
                 h.set_state("ccEditing", json!(self.editing));
@@ -1232,10 +1657,15 @@ impl Service for ControlCenter {
                         x if x.starts_with("seek:") && p.track.length > 0 => {
                             let frac = x[5..].parse::<f64>().unwrap_or(0.0).clamp(0.0, 1.0);
                             let target = (frac * p.track.length as f64) as i64;
-                            let offset = target - (self.position * 1e6) as i64;
                             let bus = p.bus.clone();
                             self.position = target as f64 / 1e6;
-                            spawn_cmd(strs(&["busctl", "--user", "call", &bus, "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2.Player", "Seek", "x", &offset.to_string()]));
+                            // (an absolute place, as QSMedia sets it: the offset
+                            // from the position read now, not one up to a second old)
+                            std::thread::spawn(move || {
+                                let (_, out, _) = run_full(&strs(&["busctl", "--user", "get-property", &bus, "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2.Player", "Position"]), None);
+                                let now = out.split_whitespace().nth(1).and_then(|n| n.parse::<i64>().ok()).unwrap_or(0);
+                                let _ = run_full(&strs(&["busctl", "--user", "call", &bus, "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2.Player", "Seek", "x", &(target - now).to_string()]), None);
+                            });
                         }
                         _ => {}
                     }

@@ -25,8 +25,9 @@
 //! - the AI answer is CommonMark through Slint's StyledText (no headings,
 //!   tables or code boxes, which the QML's rich text draws); links open only
 //!   when they're https (the shell's launch.open);
-//! - springs are Slint's spring() easing at the QML spring's feel, and the
-//!   rows' entrance is an eased stagger, not a spring each;
+//! - springs are Slint's spring() easing with the QML SpringAnimation's ω and
+//!   ζ (Qt steps 16 ms: ω = √(62.5·spring), ζ = 62.5·damping / 2ω); the rows'
+//!   entrance is that spring's closed form, staggered as the QML's;
 //! - no tooltips on the field's buttons; Glass's Tab to the buttons is a
 //!   focus ring the panel draws (the field keeps the keyboard);
 //! - Material's loading row shows the shared Busy arc, not the QML's
@@ -61,7 +62,8 @@ use tessera_core::wayland::{Spec, State, Surface};
 use layout::Entry;
 use rank::{AiMeta, Answer, Definition, Extras, Known, Row, Run};
 use slint::platform::Key;
-use slint::{ComponentHandle, Model, ModelRc, SharedPixelBuffer, SharedString, VecModel};
+use slint::{ComponentHandle, Model, SharedPixelBuffer, SharedString};
+use tessera_core::rows::Rows;
 use smithay_client_toolkit::shell::wlr_layer::{Anchor, KeyboardInteractivity, Layer};
 use smithay_client_toolkit::shell::WaylandSurface;
 use std::any::Any;
@@ -103,6 +105,8 @@ enum M {
     Icons(Vec<(IconKey, Option<Px>)>),
     Picture(String, Option<Px>),
     Fetched(String, Option<PathBuf>),
+    /// make the window ahead, so the first open draws at once
+    Prepare,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -249,6 +253,8 @@ struct Win {
     ui: ui::SpotlightPanel,
     a11y: Option<crate::a11y::A11y>,
     glass_sent: String,
+    /// the rows, handed to the window once (changed in place on every keystroke)
+    rows: Rows<ui::SRow>,
 }
 
 pub struct Spotlight {
@@ -286,7 +292,7 @@ pub struct Spotlight {
     plocate: bool,
     rg: bool,
     home: String,
-    timers: [slint::Timer; 7],
+    timers: [slint::Timer; 8],
     // pictures
     icons: HashMap<IconKey, slint::Image>,
     /// each row's icon render
@@ -351,6 +357,7 @@ const T_FILES: usize = 3;
 const T_HOLD: usize = 4;
 const T_INTRO: usize = 5;
 const T_IDLE: usize = 6;
+const T_PREP: usize = 7;
 
 fn glyph(name: &str, material: bool, fill: bool, bold: bool) -> ui::SGlyph {
     let (text, family, scale) = providers::glyph(name, material, fill, bold);
@@ -422,9 +429,11 @@ impl Spotlight {
         on!(on_link, |l| M::Link(l.to_string()));
         on!(on_dismissed, | | M::Dismissed);
         on!(on_closed, | | M::Closed);
+        let rows = Rows::new();
+        ui.set_rows(rows.model());
         ui.show().expect("show spotlight");
         let a11y = crate::a11y::A11y::new(&surface, st.tx.clone());
-        self.win = Some(Win { output: output.into(), surface, ui, a11y, glass_sent: String::new() });
+        self.win = Some(Win { output: output.into(), surface, ui, a11y, glass_sent: String::new(), rows });
         self.look(st);
         true
     }
@@ -449,7 +458,7 @@ impl Spotlight {
         let t = ui.global::<ui::Theme>();
         let accent = t.get_accent();
         if m {
-            let roles = theme::material_roles(&look.seed, look.dark, &look.style);
+            let roles = theme::look_roles(&look);
             let r = |k: &str| hexc(roles.iter().find(|(n, _)| n == k).map(|(_, v)| v.as_str()).unwrap_or("#ff00ff"));
             ui.set_surface_bright(r("surfaceBright"));
             ui.set_on_tertiary(r("onTertiary"));
@@ -737,7 +746,7 @@ impl Spotlight {
             })
             .collect();
         self.row_keys = row_keys;
-        w.ui.set_rows(ModelRc::new(VecModel::from(out)));
+        w.rows.set(out);
         w.ui.set_content_h(h);
         self.request_icons(st, want_icons);
         self.request_pictures(st, want_pics);
@@ -1008,6 +1017,16 @@ fn mixc(a: u8, b: u8, t: f32) -> u8 {
 }
 
 impl Part for Spotlight {
+    // (the window it keeps while closed, made ahead and left unmapped)
+    fn prewarm(&mut self, st: &mut State) {
+        let Some(out) = st.likely_output() else { return };
+        if self.win.is_none() && !self.open && self.window(st, &out) {
+            if let Some(w) = &self.win {
+                w.surface.hide();
+            }
+        }
+    }
+
     fn name(&self) -> &'static str {
         NAME
     }
@@ -1018,6 +1037,7 @@ impl Part for Spotlight {
         self.qalc = crate::util::on_path("qalc");
         self.plocate = crate::util::on_path("plocate");
         self.rg = crate::util::on_path("rg");
+        self.after(st, T_PREP, 1500, || M::Prepare);
     }
 
     fn command(&mut self, st: &mut State, cmd: &Command) {
@@ -1181,6 +1201,13 @@ impl Part for Spotlight {
                 }
                 self.update_images();
             }
+            M::Prepare => {
+                if self.win.is_none() {
+                    if let Some(o) = st.outputs_now().first().map(|o| o.1.clone()) {
+                        self.window(st, &o);
+                    }
+                }
+            }
             M::Fetched(u, p) => {
                 let got = p.is_some();
                 self.remote.insert(u, p);
@@ -1240,7 +1267,7 @@ impl Part for Spotlight {
         if bh > 0.0 {
             shapes.push(theme::glass_shape(&st.shell.look, x, y + 64.0, 680.0, bh, 24.0, o, 1.0));
         }
-        let key = format!("{shapes:?}");
+        let key = tessera_core::theme::glass_key(&shapes);
         if key != w.glass_sent {
             st.shell.glass.set(&w.output, NS, if o > 0.002 { &shapes } else { &[] });
             w.glass_sent = key;

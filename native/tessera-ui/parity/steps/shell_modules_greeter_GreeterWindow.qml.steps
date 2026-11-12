@@ -1,0 +1,51 @@
+# GreeterWindow: shared actions of every login style (preview, mock password "tessera").
+# NOTE: $TESSERA_BIN must point at the Rust binary; stderr "greeter (dry): ..." lines are MANUAL.
+setup TESSERA_GREETER_MOCK=1 $TESSERA_BIN --greeter --style look --look glass --demo users &
+wait 2
+shot first
+note Glass greeter with the first of 3 people chosen.
+key -k Down
+wait 0.5
+shot down
+note Down: next person (name and avatar change, field empty).
+key -k Up
+wait 0.5
+key -k Up
+wait 0.5
+shot up-wrap
+note Up from the first person wraps to the LAST person (and Down from the last wraps to the first).
+key abc
+wait 0.3
+key -k Down
+wait 0.5
+shot field-cleared
+note After typing abc and pressing Down the field is empty and the next person is chosen.
+key -k Tab
+wait 0.5
+shot session
+note Tab changed the session text under the field ("Hyprland  ▾" ... next); wraps after the last.
+# Power: needs a click on the Shut Down button
+ptr move 1060 1010 sleep 200 click down up
+# NOTE: click on layer surfaces may not register in the harness; the Shut Down button is at the bottom (guess x=1060,y=1010), compare with the shot.
+wait 0.5
+shot power-chosen
+note Shut Down button turned red and the line says "Shut Down: click it again or press Return. Esc cancels."
+key -k Escape
+wait 0.5
+shot power-cancelled
+note Esc dropped the power choice; the line is back to normal and the window stays.
+# MANUAL: click Shut Down twice: stderr shows "greeter (dry): poweroff"; choose Restart then Return: dry reboot logged
+# Name edit
+ptr move 960 480 sleep 200 click down up
+wait 0.5
+shot name-edit
+note Clicking the name turned it into a username field with the name selected.
+key grace
+key -k Return
+wait 0.6
+shot grace
+note That person is chosen (picture/initial changes) and focus is in the password field.
+key -k Escape
+wait 1
+key -k Escape
+wait 1

@@ -18,7 +18,8 @@
 //!                (pam_start_confdir: TESSERA_LOCK_PAM_DIR and
 //!                TESSERA_LOCK_PAM_SERVICE), never the system's files
 //!   Mock         no PAM at all: accepts TESSERA_LOCK_TEST_PASSWORD (when
-//!                set) after the moment a real check takes
+//!                set; else "mock" in the dev sandbox) after the moment a
+//!                real check takes
 
 use std::any::Any;
 use std::ffi::{c_char, c_int, c_void, CStr, CString};
@@ -41,7 +42,9 @@ pub fn backend(real: bool) -> Backend {
     }
     match (crate::env::var("LOCK_PAM_DIR"), crate::env::var("LOCK_PAM_SERVICE")) {
         (Some(dir), Some(service)) if !dir.is_empty() && !service.is_empty() => Backend::TestService { dir, service },
-        _ => Backend::Mock { password: crate::env::var("LOCK_TEST_PASSWORD").filter(|p| !p.is_empty()) },
+        // (the dev sandbox's own lock: "mock" unless the test names one; a
+        // `--demo` outside the sandbox knows none. Never reached when real.)
+        _ => Backend::Mock { password: crate::env::var("LOCK_TEST_PASSWORD").filter(|p| !p.is_empty()).or_else(|| crate::env::sandboxed().then(|| "mock".to_string())) },
     }
 }
 

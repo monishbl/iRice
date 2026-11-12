@@ -1,0 +1,94 @@
+# Lock: session lock, both looks (check in each look). Password in the Rust sandbox is "mock"; QML cannot unlock by password, so use ipc lock unlock to leave the lock.
+# Step 1: lock at once
+setup foot & foot &
+wait 2
+wait 1
+rec enter 1.5 ipc lock lock
+note FAILED earlier in Material: Rust showed black frames with the clock already in, then the wallpaper circle appeared within ~3 frames (50-100 ms, no visible opening); QML opens the circle from the centre over ~450-700 ms with the clock inside. PASS needs: first frame after the command already covers the screen, content plays an entrance (zoom: wallpaper settles from 105 % over 450 ms, clock drops 20 px; Material: black circle opens from the centre over ~450 ms). Glass: no desktop frame, wallpaper settles.
+wait 1
+shot locked
+note Locked screen at rest: same layout as QML in this look.
+# Step 2: wrong password
+key nope
+wait 0.3
+shot typing
+note Dots show while typing (4 dots).
+key -k Return
+wait 0.4
+shot busy
+note About 0.7 s spinner after Return (Material: spinner in send slot, avatar turned ~40 degrees).
+wait 1
+shot wrong
+note "Incorrect password. Try again." under the field on ONE line (Glass) / in a red pill above the pill with red border (Material); field empty and still focused. Earlier test PASSED in both looks.
+key nope
+rec wrong-shake 2 key -k Return
+note Shake: Glass 260 ms (+10, -10, +6, 0); Material a decaying spring ~0.7 s. Shake duration was NOT measured earlier; report the measured duration vs QML.
+wait 2
+# Step 2b: fast typing
+# MANUAL: 8 times: ipc lock lock; wtype -d 0 mock; wtype -k Return; every try must log "password check: success" (8/8). Earlier harness note: fast typing was often not accepted; check key delivery speed.
+# Step 3: right password, unlock + veil (Rust only; QML uses ipc lock unlock)
+key mock
+wait 0.3
+rec unlock 2.5 key -k Return
+note PASS earlier (Material): content lifts away ~220 ms (Glass also grows 8 %), then windows, dock and bar fade in under a veil of the wallpaper (zoom: wallpaper scales 105 % to 100 %). FAIL if windows/dock appear at full opacity on the first frame after the lock goes. Timing: lock gone to desktop at rest ~150 + 560 ms (zoom) / 360 ms (fade); earlier Rust 483 ms vs QML 783 ms in Material. Glass veil timing was NOT measured (recording stopped before the fade).
+wait 2
+shot after-unlock
+note Desktop with both foot windows back after unlock.
+# Step 4: unlock none
+# MANUAL: set lock.unlockTransition "none"; lock, type mock + Return: desktop back on the next frame, no veil, no zoom (NOT RUN before)
+# Step 5: IPC unlock
+ipc lock lock
+wait 2
+rec ipc-unlock 2.5 ipc lock unlock
+note Same as the password unlock: lift, veil of the wallpaper, windows/dock fade in, settle (PASS earlier, veil frames not inspected).
+wait 2
+# Step 6: fingerprint states
+ipc lock lock
+wait 2
+ipc lock demo finger
+wait 0.8
+shot finger
+note "Touch the fingerprint reader to unlock" and the reader glyph pulses (Glass: in the field, placeholder "Fingerprint or Password", scale 1 to 1.14 to 1; Material: round target circle beside the arrow springs from 1.15). PASS earlier.
+ipc lock demo miss
+wait 0.5
+shot miss
+note Red glyph/circle, shakes, line "Not recognised. Try again" (PASS earlier).
+ipc lock demo match
+wait 0.4
+shot match
+note Green check (Material: check on a cookie plus a ripple ring growing to 280 px over 600 ms; ring/pulse timing NOT measured earlier).
+ipc lock demo off
+wait 0.5
+# Step 7: face
+ipc lock demo face
+wait 0.8
+shot face
+note "Looking for your face..." with the smiley (Glass, PASS earlier) / Material: the lock icon at the top becomes the loading indicator (NOT inspected earlier; check it).
+ipc lock demo off
+wait 0.5
+# Step 8: lockout
+ipc lock demo lockout
+wait 0.8
+shot lockout
+note "Too many attempts: try again in about 9 minutes." on ONE line, field shakes (text PASS earlier in both looks; FAIL if it wraps; shake not measured).
+ipc lock demo off
+wait 0.5
+# Step 9: Bedside Mode
+ipc lock demo standby
+wait 1.5
+shot standby
+note Screen is in StandBy (clock view); in night mode (after 22:00) red - compare with QML in the same mode.
+rec wake 1.5 ipc lock demo wake
+note Back to the lock with the lock <-> StandBy morph of ~650 ms (demo wake / morph timing NOT RUN earlier).
+wait 1
+ipc lock demo standby
+wait 1
+ipc lock demo wake
+wait 22
+shot standby-auto
+note About 20 s after a wake with demo standby still active the screen enters StandBy again by itself (PASS earlier at ~20 s, same as QML).
+# Step 10: burn-in
+# MANUAL: in StandBy take a shot at each minute change for 3 minutes (long wait): the content is at a different height each minute, glides ~3 s, always centred across
+ipc lock demo off
+ipc lock unlock
+wait 2

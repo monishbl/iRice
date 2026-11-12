@@ -1,0 +1,35 @@
+# Workspaces: steps from parity/shell_modules_menubar_Workspaces.qml.md (batches 1-5). Screen IRICE-TEST 1920x1080 scale 1;
+# the island is centred at x 960 (closed y ~14, open ~392 wide); the bar is 30 px tall.
+# Each block runs in both looks: the file runs top to bottom, Material first, then Glass.
+
+look material
+note the space menu (right-click a chip, ~945,14) is checked by hand: the runner's pointer has no right button
+setup python3 -c 'import json, os;p = os.path.expanduser("~/.config/tessera/config.json"); c = json.load(open(p)); m = c.setdefault("menubar", {}); m["workspaceOverflow"] = "dynamic"; m["workspaceCount"] = 3; json.dump(c, open(p, "w"), indent=4)'
+wait 3
+key -M alt -k 6 -m alt
+wait 1
+shot overflow
+note chips past the window's ends are smaller in both directions and fainter
+key -M alt -k 1 -m alt
+wait 1
+ptr glide 945 14 300
+ptr scroll 0 -15
+wait 0.6
+shot wheel
+note the wheel stepped to the next space
+
+look glass
+note the space menu (right-click a chip, ~945,14) is checked by hand: the runner's pointer has no right button
+setup python3 -c 'import json, os;p = os.path.expanduser("~/.config/tessera/config.json"); c = json.load(open(p)); m = c.setdefault("menubar", {}); m["workspaceOverflow"] = "dynamic"; m["workspaceCount"] = 3; json.dump(c, open(p, "w"), indent=4)'
+wait 3
+key -M alt -k 6 -m alt
+wait 1
+shot overflow
+note chips past the window's ends are smaller in both directions and fainter
+key -M alt -k 1 -m alt
+wait 1
+ptr glide 945 14 300
+ptr scroll 0 -15
+wait 0.6
+shot wheel
+note the wheel stepped to the next space

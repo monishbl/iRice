@@ -1,0 +1,44 @@
+# GreeterPlain: plain login screen (black, small date/time on top, power buttons bottom-right).
+# NOTE: $TESSERA_BIN must point at the Rust binary. Mock password is "tessera".
+setup TESSERA_GREETER_MOCK=1 $TESSERA_BIN --greeter --style plain --demo users &
+wait 2
+shot start
+note Black screen; small dim date+time line 24 px from the top (14 px); avatar 96 round or initial; name row with chevrons and Switch user; 300x44 field #1C1C1F; session "Name ▾"; power buttons 44 round bottom-right with 24 px margin. Compare with QML plain.
+ptr move 960 700 sleep 200 click down up
+# NOTE: click on layer surfaces may not register in the harness
+key nope
+key -k Return
+wait 0.35
+shot shake
+note During the shake the field is offset about +10/-8/+4/0 px (about 250 ms) and the border is red (1 px focus border earlier, red with an error).
+wait 1.2
+shot wrong
+note Red border on the field and a red line "Incorrect password. Try again." under it; field empty.
+# Step 4: power
+# MANUAL: hover each power button (fill #232327), click Sleep: glyph red on #3A1F22 and the line "Sleep: click it again or press Enter. Esc cancels."
+key -k Escape
+wait 1
+setup TESSERA_GREETER_MOCK=1 $TESSERA_BIN --greeter --style plain --demo finger &
+wait 2
+shot finger
+note --demo finger: fingerprint glyph (22 px) at the end of the field in the accent colour.
+key -k Escape
+wait 1
+setup TESSERA_GREETER_MOCK=1 $TESSERA_BIN --greeter --style plain --demo finger-miss &
+wait 2
+shot finger-miss
+note --demo finger-miss: the fingerprint glyph is red.
+key -k Escape
+wait 1
+setup TESSERA_GREETER_MOCK=1 $TESSERA_BIN --greeter --style plain --demo none &
+wait 2
+shot none
+note --demo none: avatar shows "?" as the initial.
+key bob
+wait 0.5
+shot none-bob
+note After typing "bob" the avatar initial becomes "B" (name field filled).
+key -k Escape
+wait 1
+key -k Escape
+wait 1

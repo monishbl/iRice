@@ -53,6 +53,10 @@ pub struct DictationSvc {
     download_use: bool,
     dl_pid: Option<i32>,
     install_asked: bool,
+    /// why the last install didn't finish (Settings → Dictation)
+    install_error: String,
+    /// the model last downloaded (which one an error is about)
+    last_download: String,
 }
 
 impl DictationSvc {
@@ -75,6 +79,8 @@ impl DictationSvc {
             download_use: true,
             dl_pid: None,
             install_asked: false,
+            install_error: String::new(),
+            last_download: String::new(),
         }
     }
 
@@ -133,6 +139,7 @@ impl DictationSvc {
                 "info": self.info, "ready": ready, "hasBinary": self.has_binary(), "model": self.model(h),
                 "error": self.error, "downloading": self.downloading, "downloadProgress": self.progress,
                 "downloadError": self.download_error, "installing": self.install_asked,
+                "installError": self.install_error, "lastDownload": self.last_download,
             }),
         );
     }
@@ -195,7 +202,10 @@ impl DictationSvc {
             if command -v pw-record >/dev/null; then exec pw-record --rate 16000 --channels 1 --format s16 \"$1\"; \
             elif command -v parecord >/dev/null; then exec parecord --rate=16000 --channels=1 --format=s16le --file-format=wav \"$1\"; \
             else exec arecord -q -f S16_LE -r 16000 -c 1 -t wav \"$1\"; fi";
-        let child = Command::new("setpriv").args(["--pdeathsig", "INT", "--", "sh", "-c", script, "sh", &self.wav]).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn();
+        let mut command = Command::new("setpriv");
+        command.args(["--pdeathsig", "INT", "--", "sh", "-c", script, "sh", &self.wav]).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+        util::default_signals(&mut command); // (so the mic hears the stop)
+        let child = command.spawn();
         let Ok(mut child) = child else {
             return self.fail(h, "The microphone couldn't be recorded. Check the input in Settings → Sound, then try again.");
         };
@@ -339,6 +349,7 @@ impl DictationSvc {
             return;
         }
         self.install_asked = true;
+        self.install_error.clear();
         let list = if util::has("wtype") { "whisper-cpp" } else { "whisper-cpp,wtype" };
         // Updates.update(["--install", list]); the system host answers, and
         // tells `dictation install-done` (ipc) when its job ends
@@ -352,6 +363,7 @@ impl DictationSvc {
         }
         self.download_use = use_it; // (Live captions fetch Tiny without changing Dictation's model)
         self.downloading = name.into();
+        self.last_download = name.into();
         self.progress = 0.0;
         self.download_error.clear();
         self.download_ok = false;
@@ -433,6 +445,7 @@ impl Service for DictationSvc {
                 if self.install_asked {
                     self.install_asked = false;
                     self.error = if ok { String::new() } else { "The install didn't finish.".into() };
+                    self.install_error = if ok { String::new() } else { "The install didn't finish.".into() };
                     self.refresh(h);
                     self.publish(h);
                 }

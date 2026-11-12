@@ -179,14 +179,13 @@ pub struct Mouse {
     opened_class: BTreeMap<String, (String, u64)>,
     boundary_sig: String,
     lease_gen: u64,
-    udev: bool,
 }
 
 impl Default for Mouse {
     fn default() -> Self {
         Self {
             mice: vec![], touchpads: vec![], sig: String::new(), apply_gen: 0, look_gen: 0, plugin_name: "tessera-glass".into(), plugin_version: 0,
-            pending: vec![], focus_gen: 0, urgent_window: String::new(), urgent_gen: 0, opened_class: BTreeMap::new(), boundary_sig: String::new(), lease_gen: 0, udev: false,
+            pending: vec![], focus_gen: 0, urgent_window: String::new(), urgent_gen: 0, opened_class: BTreeMap::new(), boundary_sig: String::new(), lease_gen: 0,
         }
     }
 }
@@ -347,10 +346,17 @@ impl Service for Mouse {
             }
         });
         // udev says when a mouse comes or goes; without udevadm, every 60 s
+        // (asked on the thread: `udevadm --version` on the loop held up the start)
         let send = h.sender("Mouse");
-        self.udev = Command::new("udevadm").arg("--version").stdout(Stdio::null()).stderr(Stdio::null()).status().is_ok_and(|s| s.success());
-        if self.udev {
-            std::thread::spawn(move || loop {
+        std::thread::spawn(move || {
+            let udev = Command::new("udevadm").arg("--version").stdout(Stdio::null()).stderr(Stdio::null()).status().is_ok_and(|s| s.success());
+            if !udev {
+                // (the first poll; each poll asks for the next: M::Poll)
+                std::thread::sleep(std::time::Duration::from_secs(60));
+                send(Box::new(M::Poll));
+                return;
+            }
+            loop {
                 let child = Command::new("udevadm").args(["monitor", "--udev", "--subsystem-match=input"]).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn();
                 if let Ok(mut c) = child {
                     if let Some(out) = c.stdout.take() {
@@ -364,10 +370,8 @@ impl Service for Mouse {
                 }
                 send(Box::new(M::UdevEnded));
                 std::thread::sleep(std::time::Duration::from_secs(10));
-            });
-        } else {
-            after(h.sender("Mouse"), 60000, M::Poll);
-        }
+            }
+        });
         self.look(h);
         self.apply_gen += 1;
         after(h.sender("Mouse"), 150, M::ApplyLater(self.apply_gen));

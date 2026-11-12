@@ -1,0 +1,25 @@
+# Overlay. Both looks.
+ipc panels open overlay IRICE-TEST
+wait 1
+shot open
+note Scrim (32 % Material / 30 % Glass), toolbar pill centred at y 44; toggles 48 px (Material) / 40 px (Glass). Same as QML.
+# First toggle position read from the shot; assumed left part of the pill near (800, 44). click on layer surfaces may not register in the harness
+ptr move 800 44 sleep 200 glide 800 44 100 sleep 200
+rec ov-press 0.6 ptr move 800 44 sleep 100 down sleep 400 up
+note Material: pressing the first toggle squares corners to 8 and swells about 6 % (settles about 0.22 s); release toggles the widget (corners 16 when on). Compare QML within 1 frame.
+wait 1
+shot toggled
+note The first toggle's widget is shown (on) and the toggle has corners 16 (Material). Same as QML.
+# MANUAL: mixer widget: start audio (paplay) and drag a stream slider while the level changes: knob stays under the pointer
+# MANUAL: switch (e.g. crosshair dot): Material knob slides on the fast spring with slight overshoot; Glass 220 ms without overshoot (needs the switch position)
+# MANUAL: recorder widget: Record pill press -> Material corners 8 + swell (do not start a recording)
+key -k Escape
+wait 1
+shot esc
+note Escape closes the overlay.
+ipc panels open overlay IRICE-TEST
+wait 1
+ptr move 300 800 sleep 200 click
+wait 1
+shot scrim-click
+note Clicking the scrim closes the overlay (same as QML).

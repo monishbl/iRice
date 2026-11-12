@@ -1,0 +1,193 @@
+# GreeterSurface: Glass and Material login screens, every demo state.
+# NOTE: $TESSERA_BIN must point at the Rust binary; QML greeter (qs -p shell/greeter.qml, TESSERA_GREETER_MOCK=1) is the reference. Mock password: tessera.
+# Sandbox clock may be after 22:00; compare QML and Rust in the same mode.
+# ===== glass
+setup TESSERA_GREETER_MOCK=1 $TESSERA_BIN --greeter --style look --look glass --demo users &
+wait 2
+shot g-users
+note (glass) --demo users: 3 made-up people, avatar, name row with chevrons and Switch user, field, session, power buttons; positions, texts and colours as QML.
+key -k Escape
+wait 1
+setup TESSERA_GREETER_MOCK=1 $TESSERA_BIN --greeter --style look --look glass --demo typing &
+wait 2
+shot g-typing
+note (glass) --demo typing: Field shows dots and the send arrow active (Glass: hover 45 %; Material: send circle in primary).
+key -k Escape
+wait 1
+setup TESSERA_GREETER_MOCK=1 $TESSERA_BIN --greeter --style look --look glass --demo wrong &
+wait 2
+shot g-wrong
+note (glass) --demo wrong: Error line under the field (Glass, red) / red-toned say pill above the pill (Material), field empty.
+key -k Escape
+wait 1
+setup TESSERA_GREETER_MOCK=1 $TESSERA_BIN --greeter --style look --look glass --demo busy &
+wait 2
+shot g-busy
+note (glass) --demo busy: Placeholder "Logging in...", dots, spinner; Material avatar turned about 40 degrees.
+key -k Escape
+wait 1
+setup TESSERA_GREETER_MOCK=1 $TESSERA_BIN --greeter --style look --look glass --demo finger &
+wait 2
+shot g-finger
+note (glass) --demo finger: Fingerprint glyph in the field (Glass: placeholder "Use Fingerprint or Enter Password"; Material: finger slot).
+key -k Escape
+wait 1
+setup TESSERA_GREETER_MOCK=1 $TESSERA_BIN --greeter --style look --look glass --demo finger-miss &
+wait 2
+shot g-finger-miss
+note (glass) --demo finger-miss: Fingerprint glyph red (Glass) / error container slot (Material).
+key -k Escape
+wait 1
+setup TESSERA_GREETER_MOCK=1 $TESSERA_BIN --greeter --style look --look glass --demo session &
+wait 2
+shot g-session
+note (glass) --demo session: Session chip / "Name  ▾" under the field as in QML.
+key -k Escape
+wait 1
+setup TESSERA_GREETER_MOCK=1 $TESSERA_BIN --greeter --style look --look glass --demo power &
+wait 2
+shot g-power
+note (glass) --demo power: A power choice is pending: chosen button red, line asks to confirm ("... click it again or press Return. Esc cancels.").
+key -k Escape
+wait 1
+setup TESSERA_GREETER_MOCK=1 $TESSERA_BIN --greeter --style look --look glass --demo other &
+wait 2
+shot g-other
+note (glass) --demo other: Typed-username mode: username field shown with the placeholder "Username".
+key -k Escape
+wait 1
+setup TESSERA_GREETER_MOCK=1 $TESSERA_BIN --greeter --style look --look glass --demo none &
+wait 2
+shot g-none
+note (glass) --demo none: No people listed: username field shown, initial "?" avatar.
+key -k Escape
+wait 1
+setup TESSERA_GREETER_MOCK=1 $TESSERA_BIN --greeter --style look --look glass --demo single &
+wait 2
+shot g-single
+note (glass) --demo single: A single person: no chevrons / Switch user behaviour as in QML.
+key -k Escape
+wait 1
+# ===== material
+setup TESSERA_GREETER_MOCK=1 $TESSERA_BIN --greeter --style look --look material --demo users &
+wait 2
+ptr move 960 540 sleep 200 glide 1010 600 300
+wait 1
+shot m-users
+note (material) --demo users: 3 made-up people, avatar, name row with chevrons and Switch user, field, session, power buttons; positions, texts and colours as QML.
+key -k Escape
+wait 1
+setup TESSERA_GREETER_MOCK=1 $TESSERA_BIN --greeter --style look --look material --demo typing &
+wait 2
+shot m-typing
+note (material) --demo typing: Field shows dots and the send arrow active (Glass: hover 45 %; Material: send circle in primary).
+key -k Escape
+wait 1
+setup TESSERA_GREETER_MOCK=1 $TESSERA_BIN --greeter --style look --look material --demo wrong &
+wait 2
+shot m-wrong
+note (material) --demo wrong: Error line under the field (Glass, red) / red-toned say pill above the pill (Material), field empty.
+key -k Escape
+wait 1
+setup TESSERA_GREETER_MOCK=1 $TESSERA_BIN --greeter --style look --look material --demo busy &
+wait 2
+shot m-busy
+note (material) --demo busy: Placeholder "Logging in...", dots, spinner; Material avatar turned about 40 degrees.
+key -k Escape
+wait 1
+setup TESSERA_GREETER_MOCK=1 $TESSERA_BIN --greeter --style look --look material --demo finger &
+wait 2
+shot m-finger
+note (material) --demo finger: Fingerprint glyph in the field (Glass: placeholder "Use Fingerprint or Enter Password"; Material: finger slot).
+key -k Escape
+wait 1
+setup TESSERA_GREETER_MOCK=1 $TESSERA_BIN --greeter --style look --look material --demo finger-miss &
+wait 2
+shot m-finger-miss
+note (material) --demo finger-miss: Fingerprint glyph red (Glass) / error container slot (Material).
+key -k Escape
+wait 1
+setup TESSERA_GREETER_MOCK=1 $TESSERA_BIN --greeter --style look --look material --demo session &
+wait 2
+ptr move 960 540 sleep 200 glide 1010 600 300
+wait 1
+shot m-session
+note (material) --demo session: Session chip / "Name  ▾" under the field as in QML.
+key -k Escape
+wait 1
+setup TESSERA_GREETER_MOCK=1 $TESSERA_BIN --greeter --style look --look material --demo power &
+wait 2
+shot m-power
+note (material) --demo power: A power choice is pending: chosen button red, line asks to confirm ("... click it again or press Return. Esc cancels.").
+key -k Escape
+wait 1
+setup TESSERA_GREETER_MOCK=1 $TESSERA_BIN --greeter --style look --look material --demo other &
+wait 2
+shot m-other
+note (material) --demo other: Typed-username mode: username field shown with the placeholder "Username".
+key -k Escape
+wait 1
+setup TESSERA_GREETER_MOCK=1 $TESSERA_BIN --greeter --style look --look material --demo none &
+wait 2
+ptr move 960 540 sleep 200 glide 1010 600 300
+wait 1
+shot m-none
+note (material) --demo none: No people listed: username field shown, initial "?" avatar.
+key -k Escape
+wait 1
+setup TESSERA_GREETER_MOCK=1 $TESSERA_BIN --greeter --style look --look material --demo single &
+wait 2
+ptr move 960 540 sleep 200 glide 1010 600 300
+wait 1
+shot m-single
+note (material) --demo single: A single person: no chevrons / Switch user behaviour as in QML.
+key -k Escape
+wait 1
+# ===== Glass shake
+setup TESSERA_GREETER_MOCK=1 $TESSERA_BIN --greeter --style look --look glass --demo users &
+wait 2
+key x
+rec g-shake 1.5 key -k Return
+note Field dots first, then after about 600 ms of Logging in the field shakes: offsets +12, -10, +5, 0 over about 250 ms; red border and error line; compare with QML.
+key -k Escape
+wait 1
+key -k Escape
+wait 1
+# ===== Material pill
+setup TESSERA_GREETER_MOCK=1 $TESSERA_BIN --greeter --style look --look material --demo users &
+wait 2
+shot m-closed
+note Material with no input: pill CLOSED (cookie avatar + name only), clock at 18 % height.
+rec m-open 1.5 ptr move 900 500 sleep 100 glide 960 560 200 sleep 800
+note Pointer moved more than 2 px: pill springs open to 360 px width with placeholder "Enter password"; measure the open time against QML (spring 600 ms, damping 0.5 is a possible curve difference).
+wait 11
+shot m-reclosed
+note About 10 s after the last input the pill is closed again.
+key a
+wait 0.5
+shot m-key-open
+note A letter key opens the pill with one dot.
+# Material power
+# MANUAL: click Restart once: button turns error-container, say pill "Restart: press Enter or click it again"; press and hold a Round button: corners square off (22 to 14)
+# MANUAL: Material analog clock (lock.clockFace analog in the arena's greeter config): at a minute change the minute hand steps 6 degrees forward with overshoot; at :00 forward 6 degrees, not a full turn back
+# Tab cycles sessions
+key -k Tab
+wait 0.5
+shot m-tab
+note Tab changed the session chip text to the next session (wraps); compare with QML.
+key -k Escape
+wait 1
+key -k Escape
+wait 1
+setup TESSERA_GREETER_MOCK=1 $TESSERA_BIN --greeter --style look --look glass --demo users &
+wait 2
+key -k Tab
+wait 0.5
+shot g-tab
+note Tab cycled the session "Name  ▾" under the field to the next one (wraps).
+key -k Down
+wait 0.5
+shot g-down
+note Down chose the next person (name changes, field empty).
+key -k Escape
+wait 1

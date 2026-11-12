@@ -1,0 +1,13 @@
+# Settings window: Material 1040x700 at 440,205 (page column from x~772); Glass 860x620 at 530,230. Sidebar rows (Material, x=560): Appearance 335, Wallpaper 385, Desktop 435, Menu bar 485, Lock 535, Notifications 626, Focus 676, Windows 767, Displays 858.
+# Click coordinates inside pages are not known in advance: those steps are MANUAL unless a keyboard path exists. Check in each look.
+ipc panels settings appearance
+wait 2
+shot l1
+note L1 Appearance links: value text, caret and text-to-tail gap (12 px) match QML in this look.
+key -k Tab -k Tab -k Tab
+wait 0.3
+shot l3-focus
+note L3 after several Tabs a link row shows a focus ring (QML does); stops are links/controls in order.
+# MANUAL: L2 Glass: glide onto a link (x,y from l1): fill fades in ~150 ms, darker while pressed, the Glass subpage opens
+# MANUAL: L3 click an empty spot, Tab to a link row, Return: the subpage opens (fixed batch 3: Space also)
+# MANUAL: L4 Notifications page: click a link naming another page's setting: that page opens scrolled to the row, which flashes

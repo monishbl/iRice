@@ -1,0 +1,27 @@
+# RustBridge: steps from parity/shell_modules_menubar_RustBridge.qml.md (batches 1-5). Screen IRICE-TEST 1920x1080 scale 1;
+# the island is centred at x 960 (closed y ~14, open ~392 wide); the bar is 30 px tall.
+# Each block runs in both looks: the file runs top to bottom, Material first, then Glass.
+
+look material
+setup python3 -c 'import json, os;p = os.path.expanduser("~/.config/tessera/config.json"); c = json.load(open(p)); c.setdefault("menubar", {})["resources"] = True; json.dump(c, open(p, "w"), indent=4)'
+wait 3
+static bar-resources 1500 0 160 30
+rec resources 3 ptr move 1500 600
+note the bar's resources figures update about once a second
+ipc timer toggle
+static pill 880 0 160 30
+rec pill 3 ptr move 1500 600
+note the pill's time counts each second
+ipc timer reset
+
+look glass
+setup python3 -c 'import json, os;p = os.path.expanduser("~/.config/tessera/config.json"); c = json.load(open(p)); c.setdefault("menubar", {})["resources"] = True; json.dump(c, open(p, "w"), indent=4)'
+wait 3
+static bar-resources 1500 0 160 30
+rec resources 3 ptr move 1500 600
+note the bar's resources figures update about once a second
+ipc timer toggle
+static pill 880 0 160 30
+rec pill 3 ptr move 1500 600
+note the pill's time counts each second
+ipc timer reset

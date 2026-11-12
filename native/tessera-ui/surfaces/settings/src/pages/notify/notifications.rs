@@ -3,7 +3,7 @@
 //! (notifications-startup.qml, with services/StartupSounds.js's list).
 
 use super::super::super::model::{btn, Ctx, Opt, Page, Row};
-use super::{feed, idx, play_when_still, sw};
+use super::{feed, idx, play_now, play_when_still, sw};
 use serde_json::{json, Value};
 
 // ── The sounds to log in to (StartupSounds.js) ──────────────────────────
@@ -170,7 +170,13 @@ pub fn notifications(cx: &mut Ctx, p: &mut Page) {
     let volume = cx.f("sounds.volume");
     let vol = cx.on(|cx, a| {
         cx.set_num("sounds.volume", a.f as f64);
-        play_when_still("charging"); // (hear the level)
+        // (hear the level as the slider is let go, notifications.qml 108;
+        // the keys move it without a release: after they rest)
+        if a.i == 1 {
+            play_now("charging");
+        } else {
+            play_when_still("charging");
+        }
     });
     p.group("Sound effects")
         .footer("Choose… plays your own file instead of the style's sound.")
@@ -179,7 +185,7 @@ pub fn notifications(cx: &mut Ctx, p: &mut Page) {
 
     let count = feed(cx)["notificationCount"].as_i64().unwrap_or(0);
     let clear = cx.on(|cx, _| cx.ask("notify", "clearAll", Value::Null));
-    p.group("").row(Row::new("Notification history").detail(format!("{count} kept")).button("Clear all", clear).enabled(count > 0));
+    p.group("").row(Row::new("Notification history").detail(format!("{count} kept")).button("Clear all", clear).compact().enabled(count > 0));
 
     // ── More options ──
     p.more(cx);
@@ -218,7 +224,11 @@ pub fn notifications(cx: &mut Ctx, p: &mut Page) {
             }
             cx.set_num("sounds.startupVolume", (a.f as f64).max(0.05));
             cx.set("sounds.startup", true);
-            play_when_still("startup"); // (hear the level)
+            if a.i == 1 {
+                play_now("startup"); // (hear the level, as it's let go: notifications.qml 180)
+            } else {
+                play_when_still("startup");
+            }
         });
         p.group("Logging in")
             .footer("Plays once when you log in, at its own volume, even with sound effects off.")
@@ -473,7 +483,7 @@ pub fn island(cx: &mut Ctx, p: &mut Page) {
                         cx.set("island.known", strings(k));
                     }
                 });
-                rows.push(Row::new(label).chips(chips, id).width(320.0));
+                rows.push(Row::new(label).chips(chips, id).width(320.0).wrap(cx.material));
             }
         }
         let events = cx.list("island.events");

@@ -1,0 +1,14 @@
+# Drag a foot window by its title bar to the left edge.
+setup foot &
+wait 2
+ptr move 960 540 sleep 100 glide 960 60 200 down glide 2 540 400 sleep 500
+shot snap-left
+note Drag held at the left edge: the preview shows the left half of the screen (translucent, same as QML in this look).
+rec snap-corner 0.8 ptr move 960 540 glide 960 60 200 down glide 2 540 400 sleep 500 glide 2 2 300 sleep 500
+note Gliding to the top-left corner moves the preview to the top-left quarter over 200 ms; compare the move with QML within 1 frame.
+ptr move 960 540 glide 960 60 200 down glide 2 540 400 sleep 300 up
+wait 1
+shot snap-release
+note After release the preview fades out in 100 ms; the window is tiled to the left half.
+# alternative: ipc qs ipc call tiling snap left (QML only); not run
+setup pkill -x foot || true

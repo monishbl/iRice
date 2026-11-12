@@ -1,0 +1,12 @@
+# Settings window: Material 1040x700 at 440,205 (page column from x~772); Glass 860x620 at 530,230. Sidebar rows (Material, x=560): Appearance 335, Wallpaper 385, Desktop 435, Menu bar 485, Lock 535, Notifications 626, Focus 676, Windows 767, Displays 858.
+# Click coordinates inside pages are not known in advance: those steps are MANUAL unless a keyboard path exists. Check in each look.
+ipc panels settings update
+wait 2
+shot upd-start
+note U1 label 'Software Update', detail 'Tessera and your system (pacman, and the AUR...)', 'Check for updates' button; same footer as QML (sandbox: 'Updates are off in the dev sandbox...').
+note Status detail: after the version QML may show ' . <ui label>' before Hyprland; Rust must show the same string.
+# MANUAL: U2 click 'Check for updates', shot at once ('Checking for updates...' with a busy button), wait 20 s, shot the plan; compare status detail
+# MANUAL: U3 more than 8 packages: 'and N more' / 'Show fewer' grows/shrinks the list; badges, dimming and mono versions as QML
+# MANUAL: U4 only if footer says updates are off in the dev sandbox: Update > progress group (steps line, bar + %, Show details dark log box 240 tall following the end, Hide details, Done)
+# MANUAL: U5 Go Back ONCE: label 'Go back to the earlier versions?', detail with weekday time; Cancel restores
+# MANUAL: never press Update, Go Back (beyond asking), Restart, Install or the snapshot switch

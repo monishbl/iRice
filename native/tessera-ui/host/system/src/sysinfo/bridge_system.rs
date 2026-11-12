@@ -16,23 +16,25 @@
 //!        pamBusy, pamError, hints{}}
 //!   bus "face" {hasCamera, installed, setUp, faces, busy, error,
 //!        installError, installing, camera:{name}}
-//!   bus "quickshare" {trusted, trustBusy, trustError}
-//!   bus "sharingports" {error, failedWith, busy}
-//!   bus "power" {hasBattery, why, mode, modeName, guardError, ownHypridle,
+//!   state "quickshare" {trusted, trustBusy, trustError} (host-sharing)
+//!   state "sharing".ports {error, failedWith, busy} (host-sharing)
+//!   bus "Power" {hasBattery, why, mode, modeName, guardError, ownHypridle,
 //!        userHypridle, energyMinutes, energyApps:[{key,seconds}]}
-//!   bus "backends" {ppd, powerShort, powerReason, hasPerformanceProfile}
-//!   bus "shellpriority" {available, on, busy, error}
-//!   bus "cooldown" {active, why}
-//!   bus "captions" {hasBinary, hasModel, ready, error, downloading}
-//!   bus "dictation" {installing, installError, downloadProgress,
-//!        downloadError, lastDownload, downloading, languages:[{value,label}]}
+//!   state "backends" {ppd, powerShort, powerReason, hasPerformanceProfile}
+//!   state "priority" {available, on, busy, error} (host-shell probes)
+//!   state "cooldown" {active, why} (host-shell appearance)
+//!   state "captions" {hasBinary, hasModel, ready, error, languages} (desktop)
+//!   state "dictation" {hasBinary, info.models, installing, installError,
+//!        downloadProgress, downloadError, lastDownload, downloading} (desktop)
 //!   asks: fingerprint.{refresh,enroll,cancelEnroll,remove,fix,install,
 //!        setPam}, face.{refresh,install,setUpCamera,addFace,clearFaces},
 //!        quickshare.setTrusted, sharingports.retry, power.{setMode,
 //!        clearEnergy,energyUsers}, shellpriority.set, apps.quit,
-//!        cooldown.toggle, captions.{install,download}, dictation.{refresh,
+//!        cooldown.toggle, captions [install|download|refresh], dictation.{refresh,
 //!        cancelDownload}.
-//! Scan results arrive as `system.scanned [result]` (Fingerprint.scanned).
+//! Fingerprint scans (Fingerprint.scanned) are seen as a new
+//! bus "fingerprint".scanned.seq, and the firewall's ports' busy ending as
+//! state "sharing".ports.busy, in the 400 ms feed tick (`watch`).
 
 use super::helpers::{self, Ticker, Tx};
 use crate::util;
@@ -58,6 +60,10 @@ pub struct SystemBridge {
     t_retry: Option<Ticker>,
     t_flash: Option<Ticker>,
     t_feed: Option<Ticker>,
+    /// the last fingerprint scan seen (bus "fingerprint".scanned.seq; None: not looked yet)
+    scan_seq: Option<i64>,
+    /// the firewall's ports were being opened (host state "sharing".ports.busy)
+    ports_busy: bool,
 }
 
 fn obj(name: &str) -> Value {
@@ -107,6 +113,7 @@ impl SystemBridge {
             self.check_system();
         } else if new == "accessibility" {
             h.ask("dictation.refresh", json!([]));
+            h.ask("captions", json!(["refresh"]));
         }
         // The apps' energy report runs while Battery & Power shows (Power.energyUsers)
         let energy = new == "power";
@@ -134,10 +141,31 @@ impl SystemBridge {
         match name {
             "sysRetry" => self.retry.clear(),
             "sysFlash" => self.flash = false,
-            "sysFeed" => {}
+            "sysFeed" => self.watch(h),
             _ => return,
         }
         self.push(h);
+    }
+
+    /// What the QML had signals for: Fingerprint.scanned (a new scan
+    /// sequence on the bus) and SharingPorts' busy ending
+    fn watch(&mut self, h: &mut Host) {
+        let sc = obj("fingerprint")["scanned"].clone();
+        let seq = sc["seq"].as_i64().unwrap_or(0);
+        match self.scan_seq {
+            Some(old) if seq > old => {
+                self.scan_seq = Some(seq);
+                let r = sc["result"].clone();
+                self.call(h, "scanned", &json!([r]), &mut Vec::new());
+            }
+            Some(old) if seq == old => {}
+            _ => self.scan_seq = Some(seq),
+        }
+        let busy = h.state("sharing")["ports"]["busy"].as_bool().unwrap_or(false);
+        if busy != self.ports_busy {
+            self.ports_busy = busy;
+            self.call(h, "sharingBusy", &json!([busy]), &mut Vec::new());
+        }
     }
 
     pub fn message(&mut self, h: &mut Host, msg: Box<dyn Any + Send>) {
@@ -152,24 +180,34 @@ impl SystemBridge {
     }
 
     /// The feed, as RustBridgeSystem.qml builds it
-    fn feed(&self) -> Value {
+    fn feed(&self, h: &Host) -> Value {
         let empty = json!({});
         let fp = obj("fingerprint");
         let finger_names = if fp["fingerNames"].is_object() { fp["fingerNames"].clone() } else { json!({}) };
         let order = if fp["fingerOrder"].is_array() { fp["fingerOrder"].clone() } else { json!(finger_names.as_object().map(|m| m.keys().cloned().collect::<Vec<_>>()).unwrap_or_default()) };
         let face = obj("face");
-        let qs = obj("quickshare");
-        let ports = obj("sharingports");
-        let pw = obj("power");
-        let be = obj("backends");
-        let pr = obj("shellpriority");
-        let cd = obj("cooldown");
-        let cap = obj("captions");
-        let dict = obj("dictation");
+        let b = |v: &Value| v.as_bool().unwrap_or(false);
+        // (Power publishes itself as "Power" on the bus; the backends, the
+        // shell's priority, cool-down, sharing, captions and dictation are
+        // other crates' host states)
+        let pw = obj("Power");
+        let state = |k: &str| {
+            let v = h.state(k).clone();
+            if v.is_object() { v } else { json!({}) }
+        };
+        let qs = state("quickshare");
+        let ports = state("sharing")["ports"].clone();
+        let be = state("backends");
+        let pr = state("priority");
+        let cd = state("cooldown");
+        let cap = state("captions");
+        let dict = state("dictation");
         let sys = obj("system");
         let apps: Vec<Value> = pw["energyApps"].as_array().map(|a| a.iter().map(|x| json!({"key": x["key"], "seconds": x["seconds"]})).collect()).unwrap_or_default();
-        let langs: Vec<Value> = dict["languages"].as_array().map(|a| a.iter().map(|l| json!({"value": l["value"], "label": l["label"]})).collect()).unwrap_or_default();
-        let b = |v: &Value| v.as_bool().unwrap_or(false);
+        let langs: Vec<Value> = cap["languages"].as_array().map(|a| a.iter().map(|l| json!({"value": l["value"], "label": l["label"]})).collect()).unwrap_or_default();
+        // Captions.hasBinary/hasModel are Dictation's (its reading is the freshest after an install or download)
+        let has_bin = b(&dict["hasBinary"]) || b(&cap["hasBinary"]);
+        let has_model = dict["info"]["models"]["tiny"].as_bool().unwrap_or(false) || b(&cap["hasModel"]);
         let s = |v: &Value| v.as_str().unwrap_or("").to_string();
         json!({
             "fingerprint": {
@@ -207,10 +245,10 @@ impl SystemBridge {
             },
             "cooldown": {"active": b(&cd["active"]), "why": get(&cd, "why", &json!(""))},
             "captions": {
-                "hasBinary": b(&cap["hasBinary"]), "hasModel": b(&cap["hasModel"]), "ready": b(&cap["ready"]), "error": s(&cap["error"]),
-                "downloading": b(&cap["downloading"]), "installing": b(&dict["installing"]), "installError": s(&dict["installError"]),
+                "hasBinary": has_bin, "hasModel": has_model, "ready": has_bin && has_model, "error": s(&cap["error"]),
+                "downloading": dict["downloading"] == "tiny", "installing": b(&dict["installing"]), "installError": s(&dict["installError"]),
                 "downloadProgress": get(&dict, "downloadProgress", &json!(0)), "downloadError": s(&dict["downloadError"]),
-                "lastDownload": get(&dict, "lastDownload", &json!("")), "dictDownloading": b(&dict["downloading"]), "languages": langs,
+                "lastDownload": get(&dict, "lastDownload", &json!("")), "dictDownloading": dict["downloading"].as_str().is_some_and(|d| !d.is_empty()) || b(&dict["downloading"]), "languages": langs,
             },
         })
     }
@@ -220,7 +258,7 @@ impl SystemBridge {
         if !self.live {
             return;
         }
-        let f = self.feed();
+        let f = self.feed(h);
         if f != self.last_feed {
             self.last_feed = f.clone();
             h.tell("settings", json!({"feed": {"system": f}}));
@@ -240,6 +278,9 @@ impl SystemBridge {
                 if self.live {
                     self.t_feed.as_ref().unwrap().every(self.tx.as_ref().unwrap(), 400);
                     self.last_feed = Value::Null;
+                    // (scans and port changes from before are not replayed)
+                    self.scan_seq = obj("fingerprint")["scanned"]["seq"].as_i64();
+                    self.ports_busy = h.state("sharing")["ports"]["busy"].as_bool().unwrap_or(false);
                 } else {
                     self.t_feed.as_ref().unwrap().stop();
                 }
@@ -330,8 +371,8 @@ impl SystemBridge {
             }
             "coolDownToggle" => ask("cooldown.toggle", json!([])),
             // Live captions
-            "captionsInstall" => ask("captions.install", json!([])),
-            "captionsDownload" => ask("captions.download", json!([])),
+            "captionsInstall" => ask("captions", json!(["install"])),
+            "captionsDownload" => ask("captions", json!(["download"])),
             "captionsCancel" => ask("dictation.cancelDownload", json!([])),
             _ => eprintln!("settings (system): no act {what}"),
         }

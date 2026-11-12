@@ -1,0 +1,19 @@
+# notifications-island: Notifications > Island. Check in each look.
+ipc panels settings notifications/island
+wait 2
+shot isl-top
+note I1: Island switch row and footer, Live activities and the 17 alert switches; same texts and order in both shells.
+ptr move 1100 600 scroll 0 5
+wait 1
+shot isl-scroll
+note I3: after scrolling: music pieces/chips. The 7 "Music shows" chips wrap onto two or three lines inside a 320 px column right of the label; Glass: on chips accent-tinted with an accent edge (not solid accent), off chips grey fill; Material: on chips secondaryContainer with a tick.
+ptr move 1100 600 scroll 0 10
+wait 1
+shot isl-bottom
+note I3/I4/I5 cont.: bottom of the page (Music player layout "Small"/"Faded", "CPU running hot" row) same as the QML.
+# MANUAL: I1 switch the Island off: only the Island switch row and footer remain; on again: Live activities and the 17 switches return.
+# MANUAL: I2 switch "USB devices and drives" off then on: island.events loses/gains "usb", island.known gains "usb" (jq .island on the config), same in both shells.
+# MANUAL: I3 open More options, scroll to "Music shows", click "Album art": toggles; for "Calls show" (newer kind) the first click writes the defaults out (island.livePieces gains call.icon, call.name, call.time, call.mute + the change).
+# MANUAL: I4 click "Small": detail "Small album on the left...", config playerLayout "side"; "Faded": playerArt faded, layout overlay.
+# MANUAL: I5 with "CPU running hot" on the row shows; the detail's temperature updates (wait 5 s, shot twice).
+ipc panels close

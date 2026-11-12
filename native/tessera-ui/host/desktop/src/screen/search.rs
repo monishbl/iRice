@@ -25,6 +25,8 @@ enum Run {
     OpenFile(String),
     /// (path, what was searched for: LiveText.preview(path, query))
     PreviewShot(String, String),
+    /// Panels.openAppStore(app): the store, on that app (null: the store)
+    AppStore(Value),
 }
 
 /// "2026-10-27 1432 Call the bank" → "Call the bank"
@@ -38,6 +40,11 @@ pub fn note_title(name: &str) -> String {
 pub struct SearchSvc {
     runs: HashMap<String, Run>,
     index: Option<(std::time::SystemTime, Value)>,
+    /// what Spotlight asked the store about (Search.qml's rustAsked[1]), and
+    /// the store's answer last sent: a newer one (host-sharing's appstore.quick)
+    /// answers the query again
+    store_q: String,
+    store_rev: i64,
 }
 
 impl SearchSvc {
@@ -163,7 +170,47 @@ impl SearchSvc {
                 }
             }
         }
+        // The App Store's few installable matches (Search.qml's store rows, as
+        // it answers Rust: asked only when Spotlight said so)
+        if !self.store_q.is_empty() && self.store_q == raw {
+            let quick = h.state("appstore.quick").clone();
+            if quick["query"].as_str() == Some(raw) {
+                let apps: Vec<Value> = quick["apps"].as_array().cloned().unwrap_or_default();
+                let loading = quick["loading"].as_bool().unwrap_or(false);
+                let mut list: Vec<(Value, Run)> = apps
+                    .iter()
+                    .map(|a| {
+                        let votes = a["votes"].as_i64().filter(|v| *v > 0 && a["source"] == "aur").map(|v| format!(" · {v} votes")).unwrap_or_default();
+                        let mut row = Self::row("Software", a["name"].as_str().unwrap_or(""), &format!("Get · {}{votes}", a["_source"].as_str().unwrap_or("")), "package");
+                        row["icon"] = a["_icon"].clone();
+                        (row, Run::AppStore(a.clone()))
+                    })
+                    .collect();
+                if loading {
+                    let mut row = Self::row("Software", if apps.is_empty() { "Looking for apps…" } else { "Looking on Flathub…" }, "", "circle-notch");
+                    row["loading"] = json!(true);
+                    list.push((row, Run::AppStore(Value::Null)));
+                }
+                out["store"] = json!(self.pack(list, &mut n));
+            }
+        }
         h.tell("spotlight", json!({"extras": out}));
+    }
+
+    /// AppStore.lookUp / forget, as Search.qml does for Rust's query
+    fn store_ask(&mut self, h: &mut Host, raw: &str, want: bool) {
+        let raw = raw.trim();
+        let available = tessera_core::util::on_path("pacman") || tessera_core::util::on_path("flatpak");
+        if want && available && !raw.is_empty() {
+            if self.store_q != raw {
+                self.store_q = raw.to_string();
+                self.store_rev = -1;
+                h.ask("appstore.lookUp", json!([raw]));
+            }
+        } else if !self.store_q.is_empty() {
+            self.store_q.clear();
+            h.ask("appstore.forget", json!([]));
+        }
     }
 
     /// Search.rustAction: an action by its title
@@ -223,6 +270,7 @@ impl SearchSvc {
         match r {
             Run::Paste { id, image, text } => clipboard::paste(h, id.as_deref(), image.as_deref(), &text, false),
             Run::NotificationCenter => h.ask("panels.show", json!(["notificationCenter"])),
+            Run::AppStore(app) => h.ask("panels.openAppStore", if app.is_null() { json!([]) } else { json!([app]) }),
             Run::OpenFile(p) => files::open(&h.cfg().clone(), &p),
             Run::PreviewShot(p, query) => {
                 // (Quick Preview takes it once when it opens: LiveText.takeQuery)
@@ -245,9 +293,26 @@ impl Service for SearchSvc {
         h.st.shell.want("calendar");
         h.st.shell.want("clients");
     }
+    /// The store answered (more of) the query Spotlight is showing: send it again
+    fn settled(&mut self, h: &mut Host) {
+        if self.store_q.is_empty() {
+            return;
+        }
+        let quick = h.state("appstore.quick");
+        let rev = quick["revision"].as_i64().unwrap_or(0);
+        if quick["query"].as_str() == Some(self.store_q.as_str()) && rev != self.store_rev {
+            self.store_rev = rev;
+            let q = self.store_q.clone();
+            self.query(h, &q);
+        }
+    }
     fn call(&mut self, h: &mut Host, call: &str, args: &Value) {
         match call {
-            "search.query" => self.query(h, args[0].as_str().unwrap_or("")),
+            "search.query" => {
+                let raw = args[0].as_str().unwrap_or("").to_string();
+                self.store_ask(h, &raw, args[1].as_bool().unwrap_or(false));
+                self.query(h, &raw);
+            }
             "search.run" => self.run(h, args[0].as_str().unwrap_or("")),
             "search.action" => self.action(h, args[0].as_str().unwrap_or("")),
             // ">command" typed in the Rust search: run in a terminal

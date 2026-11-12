@@ -244,8 +244,12 @@ impl ScreenSvc {
         full.push(folder);
         full.extend(cmd);
         self.discarding = false;
+        self.rec_stopping = false;
         self.paused = false;
-        let child = Command::new(&full[0]).args(&full[1..]).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::piped()).spawn();
+        let mut command = Command::new(&full[0]);
+        command.args(&full[1..]).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::piped());
+        util::default_signals(&mut command); // (so it hears the stop)
+        let child = command.spawn();
         let mut child = match child {
             Ok(c) => c,
             Err(_) => return self.rec_failed(h, "The recorder couldn't be started. Try again, or check that the display is still connected."),
@@ -265,7 +269,11 @@ impl ScreenSvc {
             if let Some(mut e) = child.stderr.take() {
                 let _ = e.read_to_string(&mut err);
             }
-            let code = child.wait().ok().and_then(|s| s.code()).unwrap_or(-1);
+            // (killed by a signal: 128 + its number, as a shell says it)
+            let code = child.wait().ok().map(|s| {
+                use std::os::unix::process::ExitStatusExt;
+                s.code().unwrap_or_else(|| 128 + s.signal().unwrap_or(0))
+            }).unwrap_or(-1);
             send(Box::new(RecExit(gen, code, err)));
         });
     }
@@ -279,6 +287,25 @@ impl ScreenSvc {
             unsafe { libc::kill(p, libc::SIGUSR2) }; // resume first, so the end is written
         }
         unsafe { libc::kill(p, libc::SIGINT) }; // stop and finish the file
+        // (a recorder waiting on a frame or a stuck encoder doesn't end on
+        // SIGINT: SIGTERM after 4 s, SIGKILL 3 s after that)
+        if !self.rec_stopping {
+            self.rec_stopping = true;
+            util::later(_h.sender("ScreenTools"), 4000, Box::new(RecEscalate(self.rec_gen, 1)));
+        }
+    }
+
+    /// Stop not heard: harder, as long as it's still the same recording
+    pub(super) fn rec_escalate(&mut self, h: &mut Host, gen: u64, step: u8) {
+        let Some(p) = self.rec_pid.filter(|_| gen == self.rec_gen && self.rec_stopping) else { return };
+        if step == 1 {
+            eprintln!("Recorder: no end 4 s after SIGINT, sending SIGTERM to {p}");
+            unsafe { libc::kill(p, libc::SIGTERM) };
+            util::later(h.sender("ScreenTools"), 3000, Box::new(RecEscalate(gen, 2)));
+        } else {
+            eprintln!("Recorder: still running, SIGKILL to {p}");
+            unsafe { libc::kill(p, libc::SIGKILL) };
+        }
     }
 
     pub(super) fn toggle_pause(&mut self, _h: &mut Host) {
@@ -329,6 +356,10 @@ impl ScreenSvc {
             return;
         }
         self.rec_pid = None;
+        let stopping = std::mem::take(&mut self.rec_stopping);
+        // asked to stop and ended by a signal (INT 130, TERM 143, KILL 137):
+        // whatever was written is the recording
+        let code = if stopping && [130, 143, 137, 255].contains(&code) && std::fs::metadata(&self.file).is_ok_and(|m| m.len() > 0) { 0 } else { code };
         self.restore_mic(h);
         self.recording = false;
         self.paused = false;

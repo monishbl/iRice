@@ -51,21 +51,25 @@ pub fn place(first: bool, last: bool) -> i32 {
     first as i32 | (last as i32) << 1
 }
 
+/// Play a sound now (a slider let go: its level is saved already). Any
+/// sound waiting for a slider to rest is called off.
+pub fn play_now(what: &'static str) {
+    STILL.fetch_add(1, Ordering::SeqCst);
+    crate::shell::ask("settings", serde_json::json!(["act", "notify", "play", what]));
+}
+
+static STILL: AtomicU64 = AtomicU64::new(0);
+
 /// Play a sound once a slider rests (QML plays it as the slider is let go):
 /// each move starts the wait again
 pub fn play_when_still(what: &'static str) {
-    static GEN: AtomicU64 = AtomicU64::new(0);
-    let mine = GEN.fetch_add(1, Ordering::SeqCst) + 1;
+    let mine = STILL.fetch_add(1, Ordering::SeqCst) + 1;
     std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_millis(450));
-        if GEN.load(Ordering::SeqCst) == mine {
+        if STILL.load(Ordering::SeqCst) == mine {
             crate::shell::ask("settings", serde_json::json!(["act", "notify", "play", what]));
         }
     });
-}
-
-thread_local! {
-    static APP_ICONS: std::cell::RefCell<std::collections::HashMap<String, Option<slint::Image>>> = Default::default();
 }
 
 /// An app's icon from the icon theme (Apps.iconFor: its desktop entry's
@@ -80,13 +84,9 @@ pub fn app_icon(cx: &mut Ctx, class: &str) -> Option<slint::Image> {
         .and_then(|a| a.entry_for(class).or_else(|| a.by_id(class)))
         .map(|e| e.icon.clone())
         .unwrap_or_default();
-    let key = format!("{}|{name}|{class}", icons.theme);
-    if let Some(hit) = APP_ICONS.with(|m| m.borrow().get(&key).cloned()) {
-        return hit;
-    }
-    let img = icons.path(&[name.as_str(), class], &[]).and_then(|p| slint::Image::load_from_path(&p).ok());
-    APP_ICONS.with(|m| m.borrow_mut().insert(key, img.clone()));
-    img
+    let path = icons.path(&[name.as_str(), class, "application-x-executable"], &[])?;
+    // (read off the UI thread: a page of rules waited for every icon before)
+    cx.plain_icon(&path, 64)
 }
 
 /// "22:30" as the shell shows a time (Focus.fmt: TimeFormat.hm, "10:30 PM"

@@ -15,9 +15,10 @@ export component Background inherits Window {
     in property <float> a-from: -1;
     in property <float> b-from: -2;
     in property <float> target: 0; // where the fade is headed
-    // the first picture of a screen plugged in later: 120 ms, ease-out cubic
-    // (Background.qml's firstFade once the desktop has started)
-    in property <bool> quick;
+    // a screen's first picture, from black: Background.qml's firstFade,
+    // ease-out cubic over 450 ms (the session's first picture, standalone)
+    // or 120 ms (a screen plugged in later); 0: a change, 700 ms in-out-quad
+    in property <int> first-ms;
     // The lock's settle, LockFx's own curve (src/surfaces/background:
     // Settle): `desktop` runs linearly from desk-from to 1 over desk-ms from
     // settle-start(), and the scale is 1 + 0.05 (1 - ease-out-cubic(desktop))
@@ -39,8 +40,8 @@ export component Background inherits Window {
     accessible-role: none;
 
     animate fade {
-        duration: quick ? 120ms : 700ms;
-        easing: quick ? cubic-bezier(0.33, 1, 0.68, 1) : cubic-bezier(0.45, 0, 0.55, 1); // (out-cubic, in-out-quad)
+        duration: first-ms > 0 ? first-ms * 1ms : 700ms;
+        easing: first-ms > 0 ? cubic-bezier(0.33, 1, 0.68, 1) : cubic-bezier(0.45, 0, 0.55, 1); // (out-cubic, in-out-quad)
     }
     changed fade => {
         if fade >= max(a-from, b-from) + 0.999 { faded(); }

@@ -1,0 +1,26 @@
+# About page. Never press Restore Settings; Back Up Settings writes a file (skip).
+ipc panels settings about
+wait 2
+shot about-top
+note AB1 same info values, links and values (health value as on QML), texts and footers.
+ptr move 1100 600 sleep 200 scroll 0 30
+wait 1
+shot about-more
+note AB1 bottom of the page and More options area same as QML. AB5 Glass: Show and Back Up Settings... buttons are 26 px pills (QML); write their height and corner shape.
+ptr move 1100 600 sleep 200 scroll 0 -30
+wait 1
+ptr move 1250 330 sleep 200 glide 1250 330 100 click
+wait 1
+key Sam
+key -k Return
+wait 1
+shot name-sam
+note AB2 the field shows "Sam" and config today.name is "Sam". Field position is a guess: read from about-top.
+key -M ctrl -k a -m ctrl -k BackSpace
+key -k Return
+wait 1
+shot name-clear
+note AB2 cleared: placeholder (the first name) shows.
+# MANUAL: AB3 click System health, back; Login Items, back; Report a Bug, back: each subpage opens with its title
+# MANUAL: AB4 Restore...: a file chooser titled "Choose a Tessera settings file" in ~/Documents; Esc; nothing changes
+ipc panels close

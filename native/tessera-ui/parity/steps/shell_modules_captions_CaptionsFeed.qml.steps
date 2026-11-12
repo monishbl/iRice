@@ -1,0 +1,25 @@
+# CaptionsFeed: shell half of the Captions state.
+setup foot &
+wait 1
+ipc captions on
+wait 1
+ipc captions demo "a" "b"
+wait 1
+shot feed-bar
+note The caption bar shows "b" (bright) with "a" dimmer above/before it, same layout as QML; bar has a close (x) button.
+# NOTE: click on layer surfaces may not register in the harness
+# MANUAL: click the x on the bar -> captions turn off (needs the x position from the shot)
+# Drag the bar 200 px up from its centre (bar is centred above the Dock; assumed centre (960, 960)); adjust if the shot shows another place
+ptr move 960 960 sleep 200 down glide 960 760 400 up
+wait 1
+shot feed-dragged
+note The bar sits about 200 px higher than in the previous shot (dropped place), same as QML.
+ipc captions off
+wait 1
+ipc captions on
+wait 1
+ipc captions demo "a" "b"
+wait 1
+shot feed-restored
+note After off/on the bar comes back where it was dropped (about 200 px higher than the default), not at the default place; same as QML.
+ipc captions off

@@ -75,6 +75,8 @@ pub struct Surface {
     renderer: crate::damage::Renderer,
     /// where render() leaves that for the EGL swap
     damage: Rc<RefCell<Option<(Vec<[i32; 4]>, i32)>>>,
+    /// a frame begins: egl.rs clips its drawing to what changed (GlSurface::frame)
+    gl_frame: Rc<Cell<bool>>,
     egl: Rc<Egl>,
     /// frames drawn, and of those the ones the compositor has shown (one
     /// is in flight at most: frame n is on screen once `presented` >= n)
@@ -215,10 +217,12 @@ impl Surface {
         if self.egl.has_damage() {
             let (w, h) = self.logical.get();
             let px = self.physical();
-            let region = self.renderer.damage.region(&self.window, (w as f32, h as f32));
+            let region = crate::perf::time(|| format!("damage probe {}", self.namespace), || self.renderer.damage.region(&self.window, (w as f32, h as f32)));
             *self.damage.borrow_mut() = region.map(|r| (crate::damage::to_buffer(&r, self.scale.get(), (px.width as i32, px.height as i32)), px.height as i32));
+            // (and the frame draws only that, with the back buffer's age: egl.rs)
+            self.gl_frame.set(true);
         }
-        if let Err(e) = self.renderer.femto.render() {
+        if let Err(e) = crate::perf::time(|| format!("femtovg draw {}", self.namespace), || self.renderer.femto.render()) {
             eprintln!("tessera-ui: render failed: {e}");
         }
         self.stats.borrow_mut().rendered(t.elapsed());
@@ -233,6 +237,12 @@ impl Surface {
         // (no "redraw while animations run" here: Slint's animation clock is
         // global, so every window would redraw while any one animates; an
         // animated property marks only its own window dirty)
+    }
+    /// The next frame draws everything (its damage can't be trusted: the
+    /// look or the glass changed under it; egl.rs then doesn't clip it)
+    pub fn redraw_all(&self) {
+        self.renderer.damage.all();
+        self.needs_redraw.set(true);
     }
     /// Unmap (a null buffer); `show` asks for a new configure
     pub fn hide(&self) {
@@ -658,12 +668,14 @@ impl State {
     fn adopt(&mut self, wl: WlSurface, layer: Role, viewport: Option<WpViewport>, fractional: Option<WpFractionalScaleV1>, namespace: &str, output: String, size: (u32, u32)) -> Rc<Surface> {
         let gl = GlSurface::new(self.egl.clone(), WlProxy::id(&wl)).expect("EGL window surface");
         let damage = gl.damage.clone();
+        let gl_frame = gl.frame.clone();
         // (FemtoVG loads GL as it's made: the context must be current)
         slint::platform::femtovg_renderer::OpenGLInterface::ensure_current(&gl).expect("EGL make current");
         let surface = Rc::new_cyclic(|weak: &Weak<Surface>| Surface {
             window: slint::Window::new(weak.clone() as Weak<dyn WindowAdapter>),
             renderer: crate::damage::Renderer { femto: FemtoVGRenderer::new(gl).expect("FemtoVG renderer"), damage: Default::default() },
             damage,
+            gl_frame,
             egl: self.egl.clone(),
             rendered: Cell::new(0),
             enters: Cell::new(0),
@@ -744,6 +756,11 @@ impl State {
         self.pointer_on.clone()
     }
 
+    /// One of ours, by its wl_surface (touch.rs)
+    pub(crate) fn surface_for(&self, wl: &WlSurface) -> Option<Rc<Surface>> {
+        self.find(wl)
+    }
+
     fn find(&self, wl: &WlSurface) -> Option<Rc<Surface>> {
         self.surfaces.iter().find(|s| &s.wl == wl).cloned()
     }
@@ -751,7 +768,7 @@ impl State {
     /// After each event loop turn: draw what changed
     pub fn render_all(&mut self) {
         for s in self.surfaces.clone() {
-            s.render(&self.qh);
+            crate::perf::time(|| format!("render {}", s.namespace), || s.render(&self.qh));
         }
         if IME_DIRTY.replace(false) {
             self.sync_text_input();
@@ -936,6 +953,10 @@ impl SeatHandler for State {
             let cb = Box::new(|state: &mut State, _: &WlKeyboard, e: KeyEvent| state.key(e, KeyKind::Repeat));
             self.keyboard = self.seat.get_keyboard_with_repeat(qh, &seat, None, self.loop_handle.clone(), cb).ok();
         }
+        // (touch: taps, drags and long presses as the pointer's, touch.rs)
+        if cap == Capability::Touch {
+            crate::touch::bind(self, qh, &seat);
+        }
         if cap == Capability::Pointer && self.pointer.is_none() {
             self.dnd.seat(&seat, qh);
             if let Ok(p) = self.seat.get_pointer(qh, &seat) {
@@ -954,6 +975,9 @@ impl SeatHandler for State {
             if let Some(p) = self.pointer.take() {
                 p.release();
             }
+        }
+        if cap == Capability::Touch {
+            crate::touch::unbind();
         }
     }
     fn remove_seat(&mut self, _: &Connection, _: &QueueHandle<Self>, _: WlSeat) {}
@@ -1002,6 +1026,8 @@ fn key_text(e: &KeyEvent, release: bool) -> Option<slint::SharedString> {
         Keysym::Alt_L | Keysym::Alt_R => Key::Alt,
         Keysym::Super_L | Keysym::Super_R => Key::Meta,
         Keysym::Menu => Key::Menu, // (the app drawer's app menu; Shift+F10 is F10 above)
+        // (Print Screen: Slint's SysReq is it; Settings' shortcut recorder names it "Print")
+        Keysym::Print | Keysym::Sys_Req => Key::SysReq,
         _ => {
             let t = if release { None } else { e.utf8.clone() };
             let t = t.or_else(|| e.keysym.key_char().map(String::from))?;
@@ -1013,6 +1039,13 @@ fn key_text(e: &KeyEvent, release: bool) -> Option<slint::SharedString> {
 
 impl State {
     fn key(&mut self, e: KeyEvent, kind: KeyKind) {
+        if crate::perf::on() {
+            let on = self.keyboard_on.as_ref().map(|s| s.namespace.clone()).unwrap_or_default();
+            return crate::perf::time(|| format!("key on {on}"), || self.key_now(e, kind));
+        }
+        self.key_now(e, kind)
+    }
+    fn key_now(&mut self, e: KeyEvent, kind: KeyKind) {
         let Some(s) = self.keyboard_on.clone() else { return };
         let Some(text) = key_text(&e, matches!(kind, KeyKind::Release)) else { return };
         if let Some(i) = MODS.iter().position(|m| text == slint::SharedString::from(*m)) {
@@ -1070,7 +1103,24 @@ impl KeyboardHandler for State {
 }
 
 impl PointerHandler for State {
-    fn pointer_frame(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlPointer, events: &[PointerEvent]) {
+    fn pointer_frame(&mut self, c: &Connection, q: &QueueHandle<Self>, p: &WlPointer, events: &[PointerEvent]) {
+        if crate::perf::on() {
+            let what = events.iter().find_map(|e| self.find(&e.surface).map(|s| format!("pointer {} on {}", match e.kind {
+                PointerEventKind::Enter { .. } => "enter",
+                PointerEventKind::Leave { .. } => "leave",
+                PointerEventKind::Motion { .. } => "motion",
+                PointerEventKind::Press { .. } => "press",
+                PointerEventKind::Release { .. } => "release",
+                PointerEventKind::Axis { .. } => "scroll",
+            }, s.namespace))).unwrap_or_else(|| "pointer".into());
+            return crate::perf::time(|| what, || self.pointer_frame_now(c, q, p, events));
+        }
+        self.pointer_frame_now(c, q, p, events)
+    }
+}
+
+impl State {
+    fn pointer_frame_now(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlPointer, events: &[PointerEvent]) {
         for e in events {
             let Some(s) = self.find(&e.surface) else { continue };
             let position = LogicalPosition::new(e.position.0 as f32, e.position.1 as f32);
@@ -1224,6 +1274,7 @@ smithay_client_toolkit::delegate_xdg_popup!(State);
 delegate_seat!(State);
 delegate_keyboard!(State);
 delegate_pointer!(State);
+smithay_client_toolkit::delegate_touch!(State);
 delegate_registry!(State);
 delegate_session_lock!(State);
 

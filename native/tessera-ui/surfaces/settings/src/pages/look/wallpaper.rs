@@ -141,7 +141,19 @@ pub fn wallpaper(cx: &mut Ctx, p: &mut Page) {
         .row(Row::new("Dark picture").visible(dynamic == "appearance").path(cx.s("wallpaper.darkPath"), "Built-in dusk", dark));
 
     let live = cx.s("wallpaper.live");
-    let poster = feed(cx)["livePoster"].as_str().unwrap_or("").to_string();
+    // The video's poster frame: the shell's, else the one the QML and the
+    // wallpaper share (made here off the UI thread when it's missing)
+    let poster = match feed(cx)["livePoster"].as_str() {
+        Some(p) => p.to_string(),
+        None if !live.is_empty() => {
+            let file = crate::wallpaper::poster_path(&crate::wallpaper::cache_dir(), &live);
+            let (v, f2) = (live.clone(), file.clone());
+            let made = cx.once(&format!("look.poster:{live}"), move || Value::Bool(crate::wallpaper::make_poster(&v, &f2)));
+            // (still being made: not "couldn't read" yet)
+            if made.is_null() || file.exists() { file.to_string_lossy().into_owned() } else { String::new() }
+        }
+        None => String::new(),
+    };
     let lp = path_action(cx, "wallpaper.live", false, "Videos|*.mp4 *.webm *.mkv *.mov", "~/Videos");
     p.group("Live wallpaper")
         .footer("Plays muted and loops. It pauses while windows cover most of the screen, so it only costs power while you can see it.")

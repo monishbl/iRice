@@ -1,0 +1,30 @@
+# Editor tool buttons. Check in each look. Top bar y Glass 127 / Material 133; pen x Glass 391 / Material 424; tools every 40 (Glass) / 42 (Material) px.
+setup (magick -size 1600x900 xc:white -fill black -pointsize 48 -annotate +100+200 "Invoice total 42.00" -annotate +100+320 "https://example.com/pay" /tmp/t.png || convert -size 1600x900 xc:white -fill black -pointsize 48 -annotate +100+200 "Invoice total 42.00" -annotate +100+320 "https://example.com/pay" /tmp/t.png); cp /tmp/t.png /tmp/t2.png
+ipc shotEditor edit /tmp/t.png
+wait 1
+rec tip 1.2 ptr glide 470 127 200
+note Pointer on the Arrow tool (Glass x 470 y 127; Material would be x 508 y 133, here the pointer lands on whichever tool is near): hover fill at once, tooltip "Arrow A" fades in about 600 ms later; both shells within 2 frames.
+wait 1
+ptr move 391 127 sleep 200 down
+shot press
+ptr up
+note Pressed tool button: Glass shrinks to 97 %; Material swells about 6 % and its corner squares to 8 then springs back (Material corner/scale curve was known different; report the difference vs QML).
+wait 1
+ptr move 600 400 down glide 800 500 100 up
+wait 1
+ptr move 1570 953 sleep 300 glide 1570 953 50
+wait 1
+shot save-hover
+note Primary Save button hover (bottom right, left of Copy), after one mark drawn: same colour as QML (Rust was slightly lighter before the fix).
+key -k Tab
+key -k Tab
+key -k Tab
+wait 1
+shot focus-ring
+note After Tab presses a button shows the visible focus ring; compare ring colour/offset with QML (Space activates the focused button).
+ptr move 1410 953 click
+shot copy-busy
+note Copy clicked: spinner shown in the button until the toast "Copied to the clipboard" appears; compare with QML. NOTE: click on layer surfaces may not register in the harness.
+wait 2
+shot copy-done
+note The toast has appeared and the spinner is gone.

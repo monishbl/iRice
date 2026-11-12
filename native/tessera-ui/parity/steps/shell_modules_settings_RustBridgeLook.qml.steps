@@ -1,0 +1,26 @@
+# Settings window: Material 1040x700 at 440,205 (page column from x~772); Glass 860x620 at 530,230. Sidebar rows (Material, x=560): Appearance 335, Wallpaper 385, Desktop 435, Menu bar 485, Lock 535, Notifications 626, Focus 676, Windows 767, Displays 858.
+# Click coordinates inside pages are not known in advance: those steps are MANUAL unless a keyboard path exists. Check in each look.
+ipc panels settings appearance
+wait 2
+shot l1
+note L1 sunrise/sunset times, wallpaper colour swatch (seed), accent, emoji style availability, Glass plugin row match QML.
+ipc panels settings wallpaper
+wait 2
+shot l2
+note L2 current picture, sets list, folder, 'Use for login screen' row text match QML; with a live wallpaper no "Couldn't read this video".
+ipc panels settings desktop
+wait 2
+shot l3
+note L3 Files app choices, weather footer ('Showing <place>: <temp>...'), Drop shelf count match QML.
+ipc panels settings lock
+wait 2
+shot l5
+note L5 clock preview shows the weather temperature; Login screen footer and boot animation cards (designs, chosen) as QML.
+wait 4
+shot l6
+note L6 boot animation cards updated after a few seconds; same as QML.
+# MANUAL: L4 click Show/Hide shelf twice: shelf opens then closes, button label follows
+# MANUAL: L6 log after L5 shows no 'no look.' lines
+# MANUAL: L7 Preview Login Screen: login preview shows; Escape closes it
+# MANUAL: L8 Edit Controls / Edit Widgets: Settings closes, the editor opens; Esc
+# MANUAL: never switchLook, loginWallpaper, bootSet, installEmoji, buildPlugin

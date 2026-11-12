@@ -508,7 +508,7 @@ fn form(cx: &mut Ctx, p: &mut Page, all: &[Value], editing: &Value, custom: bool
                         set(cx, "role", r.0);
                     }
                 });
-                rows.push(Row::new("Opens your").detail("The app chosen for it in Settings → Default apps").choice(&labels, cur, id).width(180.0));
+                rows.push(Row::new("Opens your").detail("The app chosen for it in Settings → Default apps").choice(&labels, cur, id).menu_choice().width(180.0));
             }
             "shell" => {
                 let sh = ls(cx, "shell");
@@ -520,7 +520,7 @@ fn form(cx: &mut Ctx, p: &mut Page, all: &[Value], editing: &Value, custom: bool
                         set(cx, "error", "");
                     }
                 });
-                rows.push(Row::new("Action").choice(&labels, cur, id).placeholder("Choose an action").width(260.0));
+                rows.push(Row::new("Action").choice(&labels, cur, id).menu_choice().placeholder("Choose an action").width(260.0));
             }
             "command" => {
                 let id = cx.on(|cx, a| set(cx, "command", a.s.clone()));
@@ -656,21 +656,20 @@ fn recorder_event(cx: &mut Ctx, i: i32, f: f32, s: &str) {
 }
 
 thread_local! {
-    static ICONS: std::cell::RefCell<std::collections::HashMap<String, Option<slint::Image>>> = Default::default();
+    static ICON_PATHS: std::cell::RefCell<std::collections::HashMap<String, Option<std::path::PathBuf>>> = Default::default();
 }
 
-/// An app's icon from the icon theme (AppIcon.qml without the look's styles)
-fn app_icon(cx: &Ctx, id: &str) -> Option<slint::Image> {
+/// An app's icon from the icon theme (AppIcon.qml without the look's
+/// styles): its file found once, read off the UI thread
+fn app_icon(cx: &mut Ctx, id: &str) -> Option<slint::Image> {
     let icon = cx.shell.get::<crate::services::apps::Apps>().and_then(|a| a.by_id(id)).map(|e| e.icon.clone()).unwrap_or_default();
-    ICONS.with(|m| {
+    let path = ICON_PATHS.with(|m| {
         m.borrow_mut()
             .entry(icon.clone())
-            .or_insert_with(|| {
-                let path = if icon.starts_with('/') { Some(std::path::PathBuf::from(&icon)) } else { crate::icon_theme::find(&icon, None) };
-                path.and_then(|p| slint::Image::load_from_path(&p).ok())
-            })
+            .or_insert_with(|| if icon.starts_with('/') { Some(std::path::PathBuf::from(&icon)) } else { crate::icon_theme::find(&icon, None) })
             .clone()
-    })
+    })?;
+    cx.plain_icon(&path, 64)
 }
 
 #[cfg(test)]

@@ -60,6 +60,7 @@ use tessera_core::appicon::{self, Style};
 use tessera_core::services::icons::Icons;
 use tessera_core::shell::{self, Part};
 use tessera_core::theme;
+use tessera_core::rows::Rows;
 use tessera_core::wayland::{Spec, State, Surface};
 use feed::Feed;
 use grid::{Grid, IconItem, W};
@@ -150,8 +151,9 @@ struct Win {
     output: String,
     surface: Rc<Surface>,
     ui: ui::Desktop,
-    widgets: Rc<VecModel<ui::DeskWidget>>,
-    icons: Rc<VecModel<ui::DeskIcon>>,
+    widgets: Rows<ui::DeskWidget>,
+    icons: Rows<ui::DeskIcon>,
+    stack_files: Rows<ui::DeskFile>,
     a11y: Option<crate::a11y::A11y>,
     keys: Vec<String>,
     glass_sent: String,
@@ -164,7 +166,29 @@ struct MenuWin {
     a11y: Option<crate::a11y::A11y>,
     open: bool,
     rows: Vec<Row>,
+    ui_rows: Rows<ui::DeskMenuRow>,
     glass_sent: String,
+}
+
+/// One widget's own lists, kept while the widget is (by its key): a refresh
+/// changes their rows in place, so the widget's row only changes when its own
+/// words or figures do, and nothing in it is made again (a fresh model in the
+/// row would compare unequal every time and rebuild what it lists)
+#[derive(Default)]
+struct Lists {
+    lines: Rows<ui::DLine>,
+    lines2: Rows<ui::DLine>,
+    gauges: Rows<ui::DGauge>,
+    days: Rows<ui::DDay>,
+    hours: Rows<ui::DHour>,
+    clocks: Rows<ui::DClock>,
+    stats: Rows<ui::DStat>,
+    stocks: Rows<ui::DStock>,
+    buttons: Rows<ui::DButton>,
+    bars: Rows<ui::DBar>,
+    apps: Rows<ui::DApp>,
+    runs: Rows<ui::DRun>,
+    chars: Rows<SharedString>,
 }
 
 #[derive(Default)]
@@ -196,6 +220,8 @@ pub struct Desktop {
     stack_dir: HashMap<String, i32>,
     manual_at: i64,
     photos: HashMap<String, Photo>,
+    lists: HashMap<String, Lists>,
+    fans: HashMap<String, Rows<slint::Image>>,
     note_pending: Option<(String, String)>,
     note_timer: slint::Timer,
     // data read here
@@ -321,7 +347,7 @@ impl Desktop {
         let look = &st.shell.look;
         self.roles.clear();
         if look.material {
-            for (n, v) in theme::material_roles(&look.seed, look.dark, &look.style) {
+            for (n, v) in theme::look_roles(look) {
                 if let Some(c) = hexc(&v) {
                     self.roles.insert(n, c);
                 }
@@ -375,10 +401,12 @@ impl Desktop {
         st.shell.apply_theme(&ui.global::<ui::Theme>());
         // (Material: the Material Symbols glyph for a Phosphor one, as the bar)
         ui.global::<ui::Symbols>().on_of(|g| crate::icons::symbol(&g).into());
-        let widgets = Rc::new(VecModel::<ui::DeskWidget>::default());
-        let icons = Rc::new(VecModel::<ui::DeskIcon>::default());
-        ui.set_widgets(ModelRc::from(widgets.clone()));
-        ui.set_icons(ModelRc::from(icons.clone()));
+        let widgets = Rows::new();
+        let icons = Rows::new();
+        let stack_files = Rows::new();
+        ui.set_widgets(widgets.model());
+        ui.set_icons(icons.model());
+        ui.set_stack_files(stack_files.model());
         ui.set_cookie12(view_shape("cookie12").into());
         ui.set_cookie9(crate::surfaces::shapes::outline("cookie9").into());
         ui.set_spot(grid::SPOT);
@@ -403,7 +431,7 @@ impl Desktop {
         ui.on_stack_file_menu(move |i, x, y| t(Box::new(M::StackFileMenu(i, x, y))));
         ui.show().expect("show desktop");
         let a11y = crate::a11y::A11y::new(&surface, st.tx.clone());
-        self.win = Some(Win { output: name.to_string(), surface, ui, widgets, icons, a11y, keys: Vec::new(), glass_sent: String::new(), kbd: None });
+        self.win = Some(Win { output: name.to_string(), surface, ui, widgets, icons, stack_files, a11y, keys: Vec::new(), glass_sent: String::new(), kbd: None });
         self.colors(st);
     }
 
@@ -474,29 +502,14 @@ impl Desktop {
         let stack = self.items.iter().find(|i| i.key == self.open_stack && i.is_stack()).cloned();
         let stack_at = stack.as_ref().map(|it| self.stack_panel_at(it));
         let win = self.win.as_mut().unwrap();
-        // one slot per widget, changed in place: adding or removing one
-        // inserts or removes just that one (the rest don't appear again)
-        let prev = std::mem::take(&mut win.keys);
-        let mut head = 0;
-        while head < prev.len() && head < keys.len() && prev[head] == keys[head] {
-            head += 1;
-        }
-        let mut tail = 0;
-        while tail < prev.len() - head && tail < keys.len() - head && prev[prev.len() - 1 - tail] == keys[keys.len() - 1 - tail] {
-            tail += 1;
-        }
-        for _ in 0..prev.len() - head - tail {
-            win.widgets.remove(head);
-        }
-        for (i, r) in rows.iter().enumerate() {
-            if i >= head && i < keys.len() - tail {
-                win.widgets.insert(i, r.clone());
-            } else if win.widgets.row_data(i).as_ref() != Some(r) {
-                win.widgets.set_row_data(i, r.clone());
-            }
-        }
+        // one row per widget, by its key, changed in place: adding or removing
+        // one inserts or removes just that one; the rest keep their elements
+        win.widgets.set_keyed(rows, |r| r.key.clone());
+        // (the lists of widgets no longer there go with them)
+        let gallery_open = self.gal.is_some();
+        self.lists.retain(|k, _| keys.contains(k) || (gallery_open && k.starts_with("gallery:")));
         win.keys = keys;
-        sync(&win.icons, icons);
+        win.icons.set_keyed(icons, |r| r.key.clone());
         win.ui.set_editing(editing);
         win.ui.set_glass_plugin(glass);
         if let Some(g) = self.grid {
@@ -542,9 +555,10 @@ impl Desktop {
 
     fn stack_files(&mut self, st: &mut State) {
         let Some(it) = self.items.iter().find(|i| i.key == self.open_stack).cloned() else { return };
-        let files: Vec<ui::DeskFile> = it.stack.iter().take(16).map(|e| ui::DeskFile { name: e.name.as_str().into(), icon: self.file_icon(st, e) }).collect();
+        // (ElideMiddle on one 88 px line)
+        let files: Vec<ui::DeskFile> = it.stack.iter().take(16).map(|e| ui::DeskFile { name: elide_middle(&e.name, 14).into(), icon: self.file_icon(st, e) }).collect();
         if let Some(w) = &self.win {
-            w.ui.set_stack_files(ModelRc::new(VecModel::from(files)));
+            w.stack_files.set(files);
         }
     }
 
@@ -590,7 +604,9 @@ impl Desktop {
                 let (c, r) = self.spots.get(&it.key).copied().unwrap_or((0, 0));
                 let mut row = ui::DeskIcon {
                     index: i as i32,
-                    name: it.name.as_str().into(),
+                    key: it.key.as_str().into(),
+                    // (ElideMiddle over two lines of about 13 characters)
+                    name: elide_middle(&it.name, 26).into(),
                     x: grid::ORIGIN.0 + c as f32 * grid::SPOT,
                     y: grid::ORIGIN.1 + r as f32 * grid::SPOT,
                     selected: self.selected == it.key,
@@ -599,7 +615,9 @@ impl Desktop {
                 };
                 if it.is_stack() {
                     let fan: Vec<slint::Image> = it.stack.iter().take(3).map(|e| self.file_icon(st, e)).collect::<Vec<_>>().into_iter().rev().collect();
-                    row.fan = ModelRc::new(VecModel::from(fan));
+                    let rows = self.fans.entry(it.key.clone()).or_default();
+                    rows.set(fan);
+                    row.fan = rows.model();
                 } else {
                     let e = grid::Entry { name: it.name.clone(), path: it.path.clone(), dir: it.dir, modified: 0 };
                     let thumb = if files::is_picture(&e) {
@@ -682,6 +700,21 @@ impl Desktop {
     #[allow(clippy::too_many_arguments)]
     fn fill(&mut self, st: &State, r: &mut ui::DeskWidget, kind: &str, size: &str, key: &str, id: &str, cw: f32, ch: f32) {
         let c = Self::cfg(st);
+        // (this widget's lists, changed in place: see Lists)
+        macro_rules! keep {
+            ($f:ident, $v:expr) => {{
+                let v = $v;
+                let l = self.lists.entry(key.to_string()).or_default();
+                l.$f.set(v);
+                l.$f.model()
+            }};
+            ($f:ident, $v:expr, keyed) => {{
+                let v = $v;
+                let l = self.lists.entry(key.to_string()).or_default();
+                l.$f.set_keyed(v, |x| x.key.clone());
+                l.$f.model()
+            }};
+        }
         let material = st.shell.look.material;
         let dark = st.shell.look.dark;
         let now = crate::util::now_ms();
@@ -692,10 +725,11 @@ impl Desktop {
         let ev_tint = |e: &feed::Event| hexc(&e.color).unwrap_or(accent);
         match kind {
             "clock" => {
-                r.clocks = clocks(vec![clock(hh, mm, String::new(), String::new(), now)]);
+                r.clocks = keep!(clocks, vec![clock(hh, mm, String::new(), String::new(), now)]);
                 r.shape = view_shape("cookie12").into();
                 r.t1 = view::fmt("%A", now).to_uppercase().into();
                 r.t2 = view::hm_short(now, c.h24).into();
+                r.chars = keep!(chars, view::hm_short(now, c.h24).chars().map(|ch| SharedString::from(ch.to_string())).collect::<Vec<_>>());
                 r.t3 = view::fmt("%-d %B %Y", now).into();
             }
             "worldClock" => {
@@ -711,7 +745,7 @@ impl Desktop {
                         clock(h, m, name, t.map(view::describe).unwrap_or_default(), now)
                     })
                     .collect();
-                r.clocks = clocks(list);
+                r.clocks = keep!(clocks, list);
             }
             "weather" => {
                 let wx = &f.weather;
@@ -725,7 +759,7 @@ impl Desktop {
                 r.g1 = glyphs::glyph(if wx.icon.is_empty() { "cloud" } else { &wx.icon }).into();
                 r.shape = crate::surfaces::shapes::outline("circle").into();
                 let hours: Vec<ui::DHour> = wx.hourly.iter().map(|h| ui::DHour { time: s(&h.time), glyph: glyphs::glyph(&h.icon).into(), temp: format!("{}°", h.temp).into() }).collect();
-                r.hours = ModelRc::new(VecModel::from(hours));
+                r.hours = keep!(hours, hours);
             }
             "today" => {
                 let wx = &f.weather;
@@ -743,10 +777,10 @@ impl Desktop {
                     .take(if size == "l" { 3 } else { 2 })
                     .map(|e| ui::DLine { text: s(&e.title), sub: if e.all_day { "All day".into() } else { view::hm(e.start, c.h24).into() }, tint: ev_tint(e), ..Default::default() })
                     .collect();
-                r.lines = ModelRc::new(VecModel::from(evs));
+                r.lines = keep!(lines, evs);
                 r.t5 = "Nothing else today".into();
                 let todos: Vec<ui::DLine> = f.open_todos().into_iter().take(3).map(|t| ui::DLine { text: s(&t.text), key: s(&t.key), ..Default::default() }).collect();
-                r.lines2 = ModelRc::new(VecModel::from(todos));
+                r.lines2 = keep!(lines2, todos, keyed);
                 r.t6 = "No to-dos".into();
             }
             "calendar" => {
@@ -765,12 +799,12 @@ impl Desktop {
                     f.events_between(d0, d1).into_iter().filter(|e| !on_today || e.all_day || e.end > now).take(if on_today { 2 } else { 3 }).collect()
                 };
                 let lines: Vec<ui::DLine> = evs.iter().map(|e| ui::DLine { text: s(&e.title), sub: view::when(e.start, e.all_day, today, small, c.h24).into(), tint: ev_tint(e), ..Default::default() }).collect();
-                r.lines = ModelRc::new(VecModel::from(lines));
+                r.lines = keep!(lines, lines);
                 r.t3 = if small || on_today { "No more events today" } else { "No events" }.into();
                 let busy: HashSet<String> = f.busy.iter().cloned().collect();
                 let (days, weeks) = view::month(today, sel, &busy);
                 let days: Vec<ui::DDay> = days.iter().map(|d| ui::DDay { label: d.day.to_string().into(), col: d.col as i32, row: d.row as i32, today: d.today, selected: d.selected, busy: d.busy }).collect();
-                r.days = ModelRc::new(VecModel::from(days));
+                r.days = keep!(days, days);
                 r.n1 = weeks as f32;
                 r.t4 = view::fmt("%B", now).to_uppercase().into();
             }
@@ -783,7 +817,7 @@ impl Desktop {
                 let open = f.open_todos();
                 r.t1 = open.len().to_string().into();
                 let lines: Vec<ui::DLine> = open.iter().take(rows).map(|t| ui::DLine { text: s(&t.text), sub: s(&t.due_label), flag: t.overdue, key: s(&t.key), ..Default::default() }).collect();
-                r.lines = ModelRc::new(VecModel::from(lines));
+                r.lines = keep!(lines, lines, keyed);
                 r.t3 = if f.todos.is_empty() { "No reminders" } else { "All done" }.into();
                 r.t4 = if open.len() > rows { format!("{} more", open.len() - rows).into() } else { SharedString::new() };
             }
@@ -811,7 +845,7 @@ impl Desktop {
                     };
                     gauges.push(ui::DGauge { value: b.value as f32, glyph: glyphs::glyph(&b.icon).into(), has_picture: pic.is_some(), picture: pic.unwrap_or_default(), tint, text: format!("{}%", (b.value * 100.0).round()).into(), name: s(&b.name) });
                 }
-                r.gauges = ModelRc::new(VecModel::from(gauges));
+                r.gauges = keep!(gauges, gauges);
                 r.t1 = "No batteries".into();
             }
             "nowPlaying" => {
@@ -823,9 +857,23 @@ impl Desktop {
                 if !m.art.is_empty() {
                     let url = m.art.clone();
                     let px = (164.0 * 2.0 * self.scale()) as u32;
-                    let img = self.image(st, format!("art:{url}"), move || art(&url, px));
+                    let u = url.clone();
+                    let img = self.image(st, format!("art:{url}"), move || art(&u, px));
                     r.has_img = img.is_some();
                     r.img = img.unwrap_or_default();
+                    // Material: the cover cut to the cookie it morphs to while
+                    // it plays (MaterialShape "cookie9"; square while paused)
+                    if material {
+                        let cut = self.image(st, format!("art:{url}#cookie9"), move || {
+                            art(&url, px).map(|p| {
+                                let side = p.width().min(p.height());
+                                let mut sq = square(&p, side);
+                                files::cut_to_shape(&mut sq, "cookie9");
+                                sq
+                            })
+                        });
+                        r.img2 = cut.unwrap_or_default();
+                    }
                 }
             }
             "system" => {
@@ -859,7 +907,7 @@ impl Desktop {
                     // (the area's alpha is for the soft fill; bars want the solid tone)
                     r.flag = true;
                 }
-                r.stats = ModelRc::new(VecModel::from(stats));
+                r.stats = keep!(stats, stats);
                 r.n1 = cols as f32;
             }
             "photos" => {
@@ -872,17 +920,29 @@ impl Desktop {
                     }
                 }
                 let (a, b, front_a, n) = (p.a.clone(), p.b.clone(), p.front_a, p.list.len());
+                // Material, small: cut to a clover (MaterialShape "clover4")
+                let shaped = material && size == "s";
                 let (w, h) = ((cw * self.scale()) as u32, (ch * self.scale()) as u32);
+                let (w, h) = if shaped { (w.min(h), w.min(h)) } else { (w, h) };
                 let load = |me: &mut Self, path: &str| -> Option<slint::Image> {
                     if path.is_empty() {
                         return None;
                     }
                     let p = path.to_string();
-                    me.image(st, format!("photo:{p}@{w}x{h}"), move || files::cover(&p, w.max(1), h.max(1)))
+                    me.image(st, format!("photo:{p}@{w}x{h}{}", if shaped { "#clover4" } else { "" }), move || {
+                        let mut px = files::cover(&p, w.max(1), h.max(1))?;
+                        if shaped {
+                            files::cut_to_shape(&mut px, "clover4");
+                        }
+                        Some(px)
+                    })
                 };
                 let ia = load(self, &a);
                 let ib = load(self, &b);
                 r.has_img = n > 0;
+                if shaped {
+                    r.shape = crate::surfaces::shapes::outline("clover4").into();
+                }
                 r.front = front_a;
                 r.img = ia.unwrap_or_default();
                 r.img2 = ib.unwrap_or_default();
@@ -912,7 +972,7 @@ impl Desktop {
                         ink: self.role(roles[i % 3].1),
                     })
                     .collect();
-                r.buttons = ModelRc::new(VecModel::from(buttons));
+                r.buttons = keep!(buttons, buttons);
                 r.t1 = "Right-click to choose buttons".into();
             }
             "screenTime" => {
@@ -920,7 +980,7 @@ impl Desktop {
                 r.t1 = if t.total > 0 { view::duration(t.total).into() } else { "—".into() };
                 let max = t.week.iter().map(|d| d.seconds).max().unwrap_or(0).max(1);
                 let bars: Vec<ui::DBar> = t.week.iter().enumerate().map(|(i, d)| ui::DBar { label: s(&d.label), frac: d.seconds as f32 / max as f32, today: i == 6 }).collect();
-                r.bars = ModelRc::new(VecModel::from(bars));
+                r.bars = keep!(bars, bars);
                 let most = t.apps.first().map_or(1, |a| a.seconds).max(1);
                 let apps: Vec<feed::AppTime> = t.apps.iter().take(if size == "s" { 2 } else { 3 }).cloned().collect();
                 let rows: Vec<ui::DApp> = apps
@@ -930,7 +990,7 @@ impl Desktop {
                         ui::DApp { name: s(if a.name.is_empty() { &a.id } else { &a.name }), time: view::duration(a.seconds).into(), frac: a.seconds as f32 / most as f32, has_icon: icon.is_some(), icon: icon.unwrap_or_default() }
                     })
                     .collect();
-                r.apps = ModelRc::new(VecModel::from(rows));
+                r.apps = keep!(apps, rows);
                 r.t3 = "Nothing yet today".into();
             }
             "batteryHistory" => {
@@ -948,7 +1008,7 @@ impl Desktop {
                 let on = if material { self.role("primary") } else { self.accent(st, "green") };
                 let off = if material { self.role("outline") } else { hexc(if dark { "#A1A1AA" } else { "#71717A" }).unwrap_or_default() };
                 let runs: Vec<ui::DRun> = view::battery_runs(&self.battery, now / 1000, gw, gh).into_iter().map(|(a, l, chg)| ui::DRun { area: a.into(), line: l.into(), tint: if chg { on } else { off } }).collect();
-                r.runs = ModelRc::new(VecModel::from(runs));
+                r.runs = keep!(runs, runs);
             }
             "stocks" => {
                 let rows = match size {
@@ -995,7 +1055,7 @@ impl Desktop {
                         }
                     })
                     .collect();
-                r.stocks = ModelRc::new(VecModel::from(stocks));
+                r.stocks = keep!(stocks, stocks);
             }
             _ => {}
         }
@@ -1184,7 +1244,11 @@ impl Desktop {
             }
             "add" => ask("todoAdd", vec![json!(arg)]),
             "media" => ask("media", vec![json!(arg)]),
-            "shortcut" => ask("shortcut", vec![json!(arg)]),
+            "shortcut" => {
+                // (logged: the tester's check that the tile's click arrived)
+                eprintln!("tessera-ui: desktop shortcut {arg:?}");
+                ask("shortcut", vec![json!(arg)]);
+            }
             "photo" => self.next_photo(&key),
             "note" => {
                 let id = w.id.clone();
@@ -1400,14 +1464,16 @@ impl Desktop {
             ui.on_closed(move || t3(Box::new(M::MenuClosed)));
             ui.show().expect("show desktop menu");
             let a11y = crate::a11y::A11y::new(&surface, st.tx.clone());
-            self.menu = Some(MenuWin { surface, ui, a11y, open: false, rows: Vec::new(), glass_sent: String::new() });
+            let ui_rows = Rows::new();
+            ui.set_rows(ui_rows.model());
+            self.menu = Some(MenuWin { surface, ui, a11y, open: false, rows: Vec::new(), ui_rows, glass_sent: String::new() });
         }
         let mw = self.menu.as_mut().unwrap();
         let ui_rows: Vec<ui::DeskMenuRow> = rows.iter().map(|r| ui::DeskMenuRow { text: r.text.as_str().into(), enabled: r.enabled, danger: r.danger, separator: r.act.is_none() }).collect();
+        mw.ui_rows.set(ui_rows);
         // (ContextMenu.qml: about 7.5 px a character, at least 200)
         let widest = rows.iter().map(|r| r.text.chars().count()).max().unwrap_or(0);
         mw.ui.set_menu_width((widest as f32 * 7.5 + 40.0).max(200.0));
-        mw.ui.set_rows(ModelRc::new(VecModel::from(ui_rows)));
         mw.ui.set_point_x(x);
         mw.ui.set_point_y(y);
         mw.ui.set_glass_plugin(st.shell.plugin && !st.shell.look.material);
@@ -1565,10 +1631,6 @@ fn clock(h: i64, m: i64, name: String, sub: String, now: i64) -> ui::DClock {
     ui::DClock { angle_h: days * 720.0 + mins * 0.5, angle_m: days * 8640.0 + mins * 6.0, night: !(6..18).contains(&h), name: name.into(), sub: sub.into() }
 }
 
-fn clocks(v: Vec<ui::DClock>) -> ModelRc<ui::DClock> {
-    ModelRc::new(VecModel::from(v))
-}
-
 /// Album art: a file, or fetched (http)
 fn art(url: &str, px: u32) -> Option<Pixels> {
     if let Some(p) = url.strip_prefix("file://") {
@@ -1581,6 +1643,33 @@ fn art(url: &str, px: u32) -> Option<Pixels> {
         return Some(slint::SharedPixelBuffer::clone_from_slice(img.as_raw(), w, h));
     }
     None
+}
+
+/// A name cut in its middle to `max` characters (Text.ElideMiddle: Slint
+/// only cuts the end, so the cut is made here)
+pub fn elide_middle(name: &str, max: usize) -> String {
+    let n = name.chars().count();
+    if n <= max || max < 3 {
+        return name.to_string();
+    }
+    let head = (max - 1) / 2;
+    let tail = max - 1 - head;
+    let start: String = name.chars().take(head).collect();
+    let end: String = name.chars().skip(n - tail).collect();
+    format!("{start}…{end}")
+}
+
+/// The middle `side` × `side` of a picture
+fn square(p: &Pixels, side: u32) -> Pixels {
+    let (w, h) = (p.width(), p.height());
+    let (x0, y0) = ((w - side) / 2, (h - side) / 2);
+    let src = p.as_slice();
+    let mut out = Pixels::new(side, side);
+    for (i, px) in out.make_mut_slice().iter_mut().enumerate() {
+        let (x, y) = (x0 + i as u32 % side, y0 + i as u32 / side);
+        *px = src[(y * w + x) as usize];
+    }
+    out
 }
 
 fn percent_decode(s: &str) -> String {
@@ -1687,6 +1776,31 @@ impl Part for Desktop {
                     }
                     self.rotate(st);
                     self.update(st);
+                }
+                // Lock and unlock (LockFx, from the host's lock bridge): set
+                // back, settled over ms, or at rest
+                if let Some(step) = v["settle"].as_str() {
+                    if let Some(w) = &self.win {
+                        let ms = v["ms"].as_i64().unwrap_or(0).max(0);
+                        w.ui.set_fx_zoom(v["zoom"].as_bool().unwrap_or(true));
+                        match step {
+                            "prepare" => {
+                                w.ui.set_fx_ms(0);
+                                w.ui.set_fx_to(0.0);
+                            }
+                            "reveal" => {
+                                // (the time it took to get here is already gone)
+                                let late = v["at"].as_i64().map_or(0, |at| (crate::util::now_ms() - at).clamp(0, ms));
+                                w.ui.set_fx_ms(ms - late);
+                                w.ui.set_fx_to(1.0);
+                            }
+                            _ => {
+                                w.ui.set_fx_ms(0);
+                                w.ui.set_fx_to(1.0);
+                            }
+                        }
+                        w.ui.window().request_redraw();
+                    }
                 }
                 if let Some(a) = v["add"].as_array() {
                     let (k, s) = (a.first().and_then(|x| x.as_str()).unwrap_or(""), a.get(1).and_then(|x| x.as_str()).unwrap_or("s"));
@@ -1821,9 +1935,17 @@ impl Part for Desktop {
         }
     }
 
-    fn surface_closed(&mut self, st: &mut State, _s: &Rc<Surface>) {
-        self.unmake(st);
-        self.ensure(st);
+    /// Only the desktop's own surfaces: another part's window or panel
+    /// closing must not make the desktop (and every widget) again
+    fn surface_closed(&mut self, st: &mut State, s: &Rc<Surface>) {
+        if self.win.as_ref().is_some_and(|w| Rc::ptr_eq(&w.surface, s)) {
+            self.unmake(st);
+            self.ensure(st);
+        } else if self.menu.as_ref().is_some_and(|m| Rc::ptr_eq(&m.surface, s)) {
+            if let Some(m) = self.menu.take() {
+                st.drop_surface(&m.surface);
+            }
+        }
     }
 
     /// The grid once the window has its size; glass under each widget (and
@@ -1859,6 +1981,11 @@ impl Part for Desktop {
             return;
         }
         let mut shapes: Vec<[f32; 19]> = Vec::new();
+        // (while LockFx runs, each widget's glass zooms and fades with it)
+        let fx = w.ui.get_fx_now();
+        let zoom = w.ui.get_fx_zoom();
+        let (sw, sh) = w.surface.logical_size();
+        let (sw, sh) = (sw as f32, sh as f32);
         for (i, p) in self.placed.iter().enumerate() {
             let (mut x, mut y) = Grid::home(p.col, p.row);
             if let Some((j, lx, ly)) = self.live {
@@ -1867,7 +1994,18 @@ impl Part for Desktop {
                 }
             }
             let (pw, ph) = grid::pixel_size(&p.size);
-            shapes.push(theme::glass_shape(&look, x, y, pw, ph, 36.0, 1.0, 1.0));
+            let (mut s, mut a) = (1.0, 1.0);
+            if fx < 1.0 && sw > 0.0 && sh > 0.0 {
+                let (cx, cy) = (x + pw / 2.0, y + ph / 2.0);
+                let d = (((cx - sw / 2.0) / (sw / 2.0)).hypot((cy - sh / 2.0) / (sh / 2.0)) / std::f32::consts::SQRT_2).min(1.0);
+                let t = ((fx - 0.3 * d) / 0.7).clamp(0.0, 1.0);
+                a = 1.0 - (1.0 - t).powi(3);
+                s = if zoom { 1.0 + 0.22 * (1.0 - a) } else { 1.0 };
+                let (ncx, ncy) = (sw / 2.0 + s * (cx - sw / 2.0), sh / 2.0 + s * (cy - sh / 2.0));
+                x = ncx - pw * s / 2.0;
+                y = ncy - ph * s / 2.0;
+            }
+            shapes.push(theme::glass_shape(&look, x, y, pw * s, ph * s, 36.0 * s, a, 1.0));
         }
         if w.ui.get_stack_open() {
             let rows = (w.ui.get_stack_files().row_count().min(16).div_ceil(4)) as f32;
@@ -1950,6 +2088,9 @@ mod tests {
         assert!(view_shape("cookie12").ends_with('Z'));
         assert_eq!(percent_decode("/a%20b.png"), "/a b.png");
         assert!(pick("x", 5) < 5);
+        assert_eq!(elide_middle("short.txt", 14), "short.txt");
+        assert_eq!(elide_middle("a-very-long-file-name.pdf", 14), "a-very…ame.pdf");
+        assert_eq!(elide_middle("a-very-long-file-name.pdf", 14).chars().count(), 14);
     }
 
     #[test]

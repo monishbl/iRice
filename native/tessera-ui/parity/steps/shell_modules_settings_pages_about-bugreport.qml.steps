@@ -1,0 +1,41 @@
+# Report a Bug page. Never press Send report, Open on GitHub or Mark up. Clear boxes at the end.
+ipc panels settings about/bugreport
+wait 2
+shot bug-top
+note BR1 same groups, rows, texts and "Send report" state as QML.
+ptr move 1100 600 sleep 200 scroll 0 30
+wait 1
+shot bug-end
+note BR1 end of the page: same groups, rows and texts as QML.
+ptr move 1100 600 sleep 200 scroll 0 -30
+wait 1
+ptr move 1100 450 sleep 300 glide 1100 450 100
+wait 1
+shot bug-hover
+note BR3 (Material) pointer over an unfocused box tints it (QML does; batch 3 added in Rust). Box position is a guess: read from bug-top.
+ptr move 1100 450 sleep 200 glide 1100 450 100 click
+key one
+key -k Return
+key two
+key -k Return
+key three
+key -k Return
+key four
+key -k Return
+key five
+key -k Return
+key six
+key -k Return
+key seven
+key -k Return
+key eight
+wait 1
+shot bug-box
+note BR2 the box scrolls and the cursor's line (eight) is visible; same as QML (batch 3: boxes scroll and follow the caret).
+key -M ctrl -k a -m ctrl -k Delete
+wait 1
+shot bug-cleared
+note BR5 the box is empty again (placeholder shown).
+# MANUAL: BR4 Tessera log > Show gives a 200 px dark box with the log, Hide; System info > Show a 140 px box, Hide; switch the log's switch off and on
+# MANUAL: BR5 clear the Title field too
+ipc panels close

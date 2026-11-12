@@ -1,0 +1,48 @@
+# Arena IRICE-TEST 1920x1080 scale 1, the user's config (expressive motion, Colloid, their 4 widgets).
+# Each file runs top to bottom from a fresh desktop. `static NAME x y w h`: that region must not change
+# from there until the next `shot`, `rec` or `look` (the no-reload blocks end with their last close).
+# Right-clicks: `ptr ... down up` lines marked (right button) need the runner's right button.
+
+look glass
+shot bt-idle
+note rings as the QML pass; Fast Pair earbuds (only with real earbuds): Left / Right / Case rings
+note no reload: widgets must not fade or grow in again while windows open, focus and close (only the clock's minute may change)
+ptr move 1500 600
+shot bt-before
+setup sh -c "foot & sleep 0.8; hyprctl dispatch \"hl.dsp.window.move({ workspace = 'special:parity', follow = false, window = 'class:foot' })\""
+shot bt-after-open-1
+setup sh -c "foot & sleep 0.8; hyprctl dispatch \"hl.dsp.window.move({ workspace = 'special:parity', follow = false, window = 'class:foot' })\""
+shot bt-after-open-2
+note the after-open shots equal the before shot over the widgets (no widget at 0.9 scale or faded)
+static bt-clock 32 54 344 164
+static bt-stack 32 234 344 164
+static bt-batteries 32 414 344 164
+static bt-shortcuts 392 54 344 164
+ptr move 1300 700 click
+wait 1
+setup hyprctl dispatch 'hl.dsp.window.close({ window = "class:foot" })'
+wait 1.5
+setup hyprctl dispatch 'hl.dsp.window.close({ window = "class:foot" })'
+wait 1.5
+
+look material
+shot bt-idle
+note rings as the QML pass; Fast Pair earbuds (only with real earbuds): Left / Right / Case rings
+note no reload: widgets must not fade or grow in again while windows open, focus and close (only the clock's minute may change)
+ptr move 1500 600
+shot bt-before
+setup sh -c "foot & sleep 0.8; hyprctl dispatch \"hl.dsp.window.move({ workspace = 'special:parity', follow = false, window = 'class:foot' })\""
+shot bt-after-open-1
+setup sh -c "foot & sleep 0.8; hyprctl dispatch \"hl.dsp.window.move({ workspace = 'special:parity', follow = false, window = 'class:foot' })\""
+shot bt-after-open-2
+note the after-open shots equal the before shot over the widgets (no widget at 0.9 scale or faded)
+static bt-clock 32 54 344 164
+static bt-stack 32 234 344 164
+static bt-batteries 32 414 344 164
+static bt-shortcuts 392 54 344 164
+ptr move 1300 700 click
+wait 1
+setup hyprctl dispatch 'hl.dsp.window.close({ window = "class:foot" })'
+wait 1.5
+setup hyprctl dispatch 'hl.dsp.window.close({ window = "class:foot" })'
+wait 1.5

@@ -1,0 +1,33 @@
+# Keyboard shortcuts are Hyprland global shortcuts tessera-ui registers
+# itself: no process started per key press or per click (latency.md step 1)
+look material
+wait 2
+setup grep -c "no global shortcuts" "$HOME/.local/state/tessera/tessera-ui.log" > /tmp/core-shortcuts-missing.txt 2>&1; true
+note /tmp/core-shortcuts-missing.txt (in the arena) must read 0: the compositor offered the protocol
+rec global-cc 1.6 ipc shortcut controlCenter
+wait 1
+setup hyprctl dispatch 'hl.dsp.global("tessera:controlCenter")'
+wait 1
+shot cc-closed-by-global
+note the Control Center opened with the first rec and closed again with the dispatched global shortcut
+setup hyprctl dispatch 'hl.dsp.global("tessera:spotlight")'
+wait 1
+shot spotlight-by-global
+key -k Escape
+wait 1
+# Clicks: the shelf's pointerDown/pointerUp binds must not start processes
+setup (for i in 1 2 3 4 5 6 7 8 9 10; do ps -eo args | grep -c "[i]pc call shortcut"; sleep 0.2; done) > /tmp/core-click-procs.txt &
+ptr move 1000 700 click sleep 200 click sleep 200 click sleep 200 click
+wait 3
+note /tmp/core-click-procs.txt (in the arena) must hold only 0s: no `tessera-ui ipc call shortcut` per click
+# Super tap (ALT alone here) opens Overview; ALT with another key doesn't
+key -M alt -m alt
+wait 1
+shot super-tap-overview
+key -k Escape
+wait 1
+key -M alt -k space -m alt
+wait 1
+shot alt-space-spotlight-not-overview
+key -k Escape
+note super-tap-overview shows Overview; alt-space-spotlight-not-overview shows Spotlight only

@@ -25,6 +25,20 @@ export struct LDay {
     col: int,
     row: int,
     today: bool,
+    // (the grid's six weeks: the days around the month dimmed)
+    in-month: bool,
+    // up to three event colours, and a to-do due
+    colors: [color],
+    todos: bool,
+}
+
+// The chosen day's line in Bedside's calendar: an event or a to-do
+export struct LItem {
+    event: bool,
+    title: string,
+    sub: string,
+    color: color,
+    done: bool,
 }
 
 // Everything a lock screen shows, the same on every screen (Rust sets it)
@@ -132,6 +146,9 @@ export global LockData {
     in property <bool> has-photo;
     in property <[LDay]> days;
     in property <string> month;
+    in property <string> every-day;
+    in property <string> day-title: "Today";
+    in property <[LItem]> cal-items;
 
     callback edited(string);
     callback submit();
@@ -184,16 +201,24 @@ component StackClock inherits Rectangle {
     property <length> gap: size * 0.085;
     width: max(h.width, m.width);
     height: digits * 2 + gap;
-    // (the minutes dip as they change, Pixel's tick: a thinner weight a moment)
+    // (the minutes dip as they change, Pixel's tick, MaterialClock.qml's:
+    // 240 thinner over 180 ms, out-cubic, then back over 420 ms, out-back)
     property <bool> dipping;
+    property <duration> dip-t0;
     changed minutes => {
-        if ticks { dipping = true; }
+        if ticks {
+            dip-t0 = animation-tick();
+            dipping = true;
+        }
     }
     Timer {
         interval: 600ms;
         running: root.dipping;
         triggered => { root.dipping = false; }
     }
+    property <float> dk: dipping ? min(600, (animation-tick() - dip-t0) / 1ms) : 600;
+    property <float> dip: dk < 180 ? 1 - pow(1 - dk / 180, 3)
+        : 1 - (1 + 2.70158 * pow((dk - 180) / 420 - 1, 3) + 1.70158 * pow((dk - 180) / 420 - 1, 2));
     h := Ink {
         x: align-left ? 0px : (root.width - self.width) / 2;
         y: 0;
@@ -207,9 +232,9 @@ component StackClock inherits Rectangle {
         y: digits + gap;
         text: minutes;
         px: size;
-        wght: dipping ? max(100, round((root.wght - 240) / 40) * 40) : round(root.wght / 40) * 40;
+        // (in steps of 40, as the QML's axes(): a handful of instances, not one a frame)
+        wght: max(1, min(1000, round((root.wght - dip * 240) / 40) * 40));
         tone: ink2;
-        animate wght { duration: 180ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
     }
 }
 
@@ -316,49 +341,244 @@ component Analog inherits Rectangle {
 }
 
 // The month (Bedside Mode's large calendar)
-component Month inherits Rectangle {
+// Bedside's calendar: Notification Center's large calendar
+// (notifications/CalendarWidget.qml with todoTab, cellHeight 22, fitHeight)
+// as the desktop widget's preview shows it: not clickable, today chosen.
+component BedCalendar inherits Rectangle {
     in property <color> ink: Theme.label;
-    property <length> cw: self.width / 7;
-    property <length> ch: (self.height - 34px) / 7;
-    Text {
-        x: 0;
+    property <color> ink2: ink.with-alpha(0.6);
+    property <color> ink3: ink.with-alpha(0.35);
+    property <length> cell: self.width / 7;
+    property <length> ch: 22px;
+    property <length> btn: Theme.material ? 32px : 24px;
+    clip: true;
+    // Mmm yyyy, Month | Week | To-do, ‹ ›
+    head := Rectangle {
         y: 0;
-        text: LockData.month;
-        color: root.ink;
-        font-size: 15px;
-        font-weight: 700;
-        accessible-role: none;
-    }
-    for l[i] in ["M", "T", "W", "T", "F", "S", "S"]: Text {
-        x: i * cw;
-        y: 34px;
-        width: cw;
-        height: ch;
-        horizontal-alignment: center;
-        vertical-alignment: center;
-        text: l;
-        color: ink.with-alpha(0.5);
-        font-size: 12px;
-        font-weight: 600;
-        accessible-role: none;
-    }
-    for d in LockData.days: Rectangle {
-        x: d.col * cw;
-        y: 34px + (d.row + 1) * ch;
-        width: cw;
-        height: ch;
-        if d.today: Rectangle {
-            width: min(parent.width, parent.height) - 2px;
-            height: self.width;
-            border-radius: self.width / 2;
-            background: Theme.material ? Theme.m3-primary : #FF453A;
-        }
+        height: Theme.material ? 32px : 26px;
         Text {
-            text: d.label;
-            color: d.today ? (Theme.material ? Theme.m3-on-primary : white) : ink;
-            font-size: 13px;
-            font-weight: d.today ? 700 : 500;
+            x: 0;
+            text: LockData.month;
+            color: ink;
+            font-size: Theme.material ? 14px : Theme.body;
+            font-weight: 600;
+            vertical-alignment: center;
             accessible-role: none;
+        }
+        HorizontalLayout {
+            x: parent.width - self.preferred-width;
+            width: self.preferred-width;
+            spacing: 4px;
+            // (Segmented, the first tab chosen)
+            seg := Rectangle {
+                property <length> gap: Theme.material ? 2px : 0;
+                property <length> w: (self.width - 4px - self.gap * 2) / 3;
+                y: (parent.height - self.height) / 2;
+                width: Theme.material ? 172px : 150px;
+                height: Theme.material ? 32px : 24px;
+                border-radius: self.height / 2;
+                background: Theme.material ? transparent : Theme.toggle-off;
+                if !Theme.material: Rectangle {
+                    x: 2px;
+                    y: 2px;
+                    width: seg.w;
+                    height: parent.height - 4px;
+                    border-radius: self.height / 2;
+                    background: Theme.dark ? #ffffff33 : #ffffff;
+                }
+                for o[i] in ["Month", "Week", "To-do"]: Rectangle {
+                    property <length> full: self.height / 2;
+                    x: 2px + i * (seg.w + seg.gap);
+                    width: seg.w;
+                    height: parent.height;
+                    border-top-left-radius: !Theme.material ? 0 : i == 0 ? self.full : 8px;
+                    border-bottom-left-radius: self.border-top-left-radius;
+                    border-top-right-radius: !Theme.material ? 0 : i == 0 || i == 2 ? self.full : 8px;
+                    border-bottom-right-radius: self.border-top-right-radius;
+                    background: !Theme.material ? transparent : i == 0 ? Theme.m3-primary : Theme.m3-surface-container-highest;
+                    Text {
+                        text: o;
+                        color: Theme.material ? (i == 0 ? Theme.m3-on-primary : Theme.m3-on-surface-variant) : i == 0 ? root.ink : root.ink2;
+                        font-size: Theme.material ? Theme.body : Theme.small;
+                        font-weight: Theme.material ? 500 : 600;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        overflow: elide;
+                        accessible-role: none;
+                    }
+                }
+            }
+            for c in ["\u{e138}", "\u{e13a}"]: Rectangle { // caret-left, caret-right
+                y: (parent.height - self.height) / 2;
+                width: root.btn;
+                height: root.btn;
+                Icon { text: c; font-size: Theme.material ? 18px : 12px; color: root.ink2; }
+            }
+        }
+    }
+    VerticalLayout {
+        y: head.height + 8px;
+        height: self.preferred-height;
+        spacing: 8px;
+        // M T W …, then six weeks of dates
+        Rectangle {
+            height: 16px + 6 * root.ch;
+            for l[i] in ["M", "T", "W", "T", "F", "S", "S"]: Text {
+                x: i * root.cell;
+                y: 0;
+                width: root.cell;
+                height: 16px;
+                text: l;
+                color: root.ink3;
+                font-size: Theme.caption;
+                font-weight: 600;
+                horizontal-alignment: center;
+                accessible-role: none;
+            }
+            for d in LockData.days: Rectangle {
+                x: d.col * root.cell;
+                y: 16px + d.row * root.ch;
+                width: root.cell;
+                height: root.ch;
+                // Glass: today in the accent; Material: today (the chosen day
+                // too) a primary cookie
+                if d.today && !Theme.material: Rectangle {
+                    width: min(26px, root.ch);
+                    height: self.width;
+                    y: (parent.height - self.height) / 2 - 1px;
+                    border-radius: self.width / 2;
+                    background: Theme.accent;
+                }
+                if d.today && Theme.material: Path {
+                    x: (parent.width - min(28px, root.ch)) / 2;
+                    y: (parent.height - min(28px, root.ch)) / 2 - 1px;
+                    width: min(28px, root.ch);
+                    height: min(28px, root.ch);
+                    viewbox-width: 100;
+                    viewbox-height: 100;
+                    commands: LockData.cookie9;
+                    fill: Theme.m3-primary;
+                }
+                Text {
+                    y: (parent.height - self.height) / 2 - 1px;
+                    text: d.label;
+                    color: d.today ? (Theme.material ? Theme.m3-on-primary : Theme.on-accent) : d.in-month ? root.ink : root.ink3;
+                    font-size: Theme.small;
+                    font-weight: d.today ? 700 : 400;
+                    accessible-role: none;
+                }
+                // up to three event colours, then a square for to-dos
+                HorizontalLayout {
+                    y: parent.height - 5px;
+                    height: 4px;
+                    alignment: center;
+                    spacing: 2px;
+                    opacity: d.in-month ? 1 : 0.5;
+                    for c in d.colors: Rectangle {
+                        width: 4px;
+                        height: 4px;
+                        border-radius: 2px;
+                        background: c;
+                    }
+                    if d.todos: Rectangle {
+                        width: 4px;
+                        height: 4px;
+                        border-radius: 1px;
+                        background: Theme.material ? Theme.m3-tertiary : #ff9f0a;
+                    }
+                }
+            }
+        }
+        // what repeats every day (not dotted on every date above)
+        if LockData.every-day != "": HorizontalLayout {
+            spacing: 6px;
+            Icon {
+                text: "\u{e3f6}"; // repeat
+                font-size: 12px;
+                color: root.ink3;
+            }
+            Text {
+                text: "Every day: " + LockData.every-day;
+                color: root.ink3;
+                font-size: Theme.caption;
+                overflow: elide;
+                horizontal-stretch: 1;
+                accessible-role: none;
+            }
+        }
+        // the chosen day (today), and its add button
+        Rectangle {
+            height: Theme.material ? 32px : 22px;
+            Text {
+                x: 0;
+                text: LockData.day-title;
+                color: root.ink2;
+                font-size: Theme.material ? Theme.body : Theme.caption;
+                font-weight: Theme.material ? 500 : 600;
+                vertical-alignment: center;
+                accessible-role: none;
+            }
+            Rectangle {
+                x: parent.width - self.width;
+                width: Theme.material ? 32px : 22px;
+                height: self.width;
+                Icon { text: "\u{e3d4}"; font-size: Theme.material ? 18px : 12px; color: root.ink2; } // plus
+            }
+        }
+        if LockData.cal-items.length == 0: Text {
+            text: "Nothing on this day. Double-click a date to add something.";
+            color: root.ink3;
+            font-size: Theme.small;
+            wrap: word-wrap;
+            accessible-role: none;
+        }
+        for it in LockData.cal-items: Rectangle {
+            height: Theme.material ? 44px : 36px;
+            border-radius: Theme.material ? 12px : 8px;
+            background: Theme.material ? Theme.fill : transparent;
+            if it.event: Rectangle {
+                x: Theme.material ? 10px : 6px;
+                y: Theme.material ? 10px : 5px;
+                width: Theme.material ? 4px : 3px;
+                height: parent.height - 2 * self.y;
+                border-radius: 2px;
+                background: it.color;
+            }
+            if !it.event: Rectangle {
+                x: Theme.material ? 10px : 4px;
+                y: (parent.height - self.height) / 2;
+                width: Theme.material ? 18px : 16px;
+                height: self.width;
+                border-radius: Theme.material ? 4px : 8px;
+                background: it.done ? (Theme.material ? Theme.m3-primary : #ff9f0a) : transparent;
+                border-width: it.done ? 0 : Theme.material ? 2px : 1.5px;
+                border-color: Theme.material ? Theme.m3-on-surface-variant : #ff9f0a;
+                if it.done: Icon {
+                    text: "\u{e182}"; // check
+                    font-size: Theme.material ? 14px : 9px;
+                    color: Theme.material ? Theme.m3-on-primary : white;
+                }
+            }
+            VerticalLayout {
+                x: Theme.material ? (it.event ? 22px : 38px) : it.event ? 16px : 28px;
+                width: parent.width - self.x - 8px;
+                alignment: center;
+                Text {
+                    text: it.title;
+                    color: root.ink;
+                    font-size: Theme.small;
+                    font-weight: 500;
+                    overflow: elide;
+                    accessible-role: none;
+                }
+                Text {
+                    text: it.sub;
+                    color: root.ink2;
+                    font-size: Theme.caption;
+                    overflow: elide;
+                    accessible-role: none;
+                }
+            }
         }
     }
 }
@@ -795,10 +1015,20 @@ component GlassLock inherits Rectangle {
     property <float> sk: shaking ? (animation-tick() - shake-t0) / 1ms : 1000;
     property <length> shake-x: !shaking ? 0px : sk < 50 ? 10px * sk / 50 : sk < 130 ? 10px - 20px * (sk - 50) / 80 : sk < 200 ? -10px + 16px * (sk - 130) / 70 : sk < 260 ? 6px - 6px * (sk - 200) / 60 : 0px;
 
+    // (the error runs on one line, as wide as it is, as the QML's Column does:
+    // the column is that wide then, centred the same)
+    err-probe := Text {
+        visible: false;
+        text: LockData.error;
+        font-size: Theme.small;
+        font-weight: 500;
+        accessible-role: none;
+    }
+    property <length> login-w: max(360px, LockData.error != "" ? err-probe.preferred-width : 0px);
     login := VerticalLayout {
-        x: (W - 360px) / 2;
+        x: round((W - login-w) / 2 / 1px) * 1px;
         y: H - H * (ios ? 0.06 : 0.1) - self.preferred-height;
-        width: 360px;
+        width: login-w;
         height: self.preferred-height;
         spacing: 10px;
         opacity: reveal;
@@ -897,7 +1127,7 @@ component GlassLock inherits Rectangle {
         if LockData.error != "": Text {
             horizontal-alignment: center;
             text: LockData.error;
-            wrap: word-wrap;
+            wrap: no-wrap;
             color: ink;
             font-size: Theme.small;
             font-weight: 500;
@@ -925,6 +1155,54 @@ component GlassLock inherits Rectangle {
 // ── The Material lock (LockMaterial.qml, LockClock.qml) ─────────────────
 
 // The lock screen clock in one of Android's styles, large or small
+// LockClock.qml's Dial: a 12-scallop dial (Material's cookie), the hours'
+// hand thick and the minutes' long, both rounded, turning forward with a
+// little overshoot (450 ms, out-back; the angles only ever grow: Rust)
+component Dial inherits Rectangle {
+    in property <color> ink: white;
+    in property <color> ink2: white;
+    in property <color> ink3: white;
+    property <length> d: self.width;
+    Shape { width: 100%; height: 100%; commands: LockData.cookie12; fill: root.ink3.with-alpha(0.2); }
+    Rectangle {
+        width: d;
+        height: d;
+        transform-rotation: LockData.angle-h * 1deg;
+        transform-origin: { x: self.width / 2, y: self.height / 2 };
+        animate transform-rotation { duration: 450ms; easing: ease-out-back; }
+        Rectangle {
+            width: d * 0.085;
+            height: d * 0.27 + self.width / 2;
+            x: (d - self.width) / 2;
+            y: d / 2 - d * 0.27;
+            border-radius: self.width / 2;
+            background: root.ink;
+        }
+    }
+    Rectangle {
+        width: d;
+        height: d;
+        transform-rotation: LockData.angle-m * 1deg;
+        transform-origin: { x: self.width / 2, y: self.height / 2 };
+        animate transform-rotation { duration: 450ms; easing: ease-out-back; }
+        Rectangle {
+            width: d * 0.05;
+            height: d * 0.38 + self.width / 2;
+            x: (d - self.width) / 2;
+            y: d / 2 - d * 0.38;
+            border-radius: self.width / 2;
+            background: root.ink2;
+        }
+    }
+    // (Qt.darker(colour, 1.6): its brightness over 1.6)
+    Rectangle {
+        width: d * 0.06;
+        height: self.width;
+        border-radius: self.width / 2;
+        background: root.ink.darker(0.6);
+    }
+}
+
 component MClock inherits Rectangle {
     in property <string> face: "dynamic";
     in property <length> size: 200px;
@@ -942,7 +1220,7 @@ component MClock inherits Rectangle {
         : face == "wide" ? wide.width : face == "overlap" ? max(ov-h.width, ov-h.width * 0.4 + ov-m.width)
         : face == "analog" ? size * 1.5 : face == "weather" ? max(wx-t.width, wx-row.preferred-width) : stack.width;
     property <length> lh: face == "dynamic" ? dyn-h.height : face == "wide" ? wide.height : face == "overlap" ? ov-h.height * 0.58 + ov-m.height
-        : face == "analog" ? size * 1.5 : face == "weather" ? wx-t.height + (LockData.weather-ready ? size * 0.12 + size * 0.5 * 0.716 : 0px) : stack.height;
+        : face == "analog" ? size * 1.5 : face == "weather" ? wx-t.height + (LockData.weather-ready ? round(size * 0.12 / 1px) * 1px + wx-row.preferred-height : 0px) : stack.height;
     property <length> sw: face == "analog" ? round(small-size * 1.1 / 1px) * 1px : small-line.width;
     property <length> sh: face == "analog" ? round(small-size * 1.1 / 1px) * 1px : small-size * 0.716;
     width: lw + (sw - lw) * k;
@@ -990,42 +1268,12 @@ component MClock inherits Rectangle {
             ov-h := Ink { x: 0; y: 0; text: LockData.hh2; px: round(root.size * 0.95 / 1px) * 1px; wght: max(root.wght, 760); tone: root.ink; }
             ov-m := Ink { x: round(ov-h.width * 0.4 / 1px) * 1px; y: round(ov-h.height * 0.58 / 1px) * 1px; text: LockData.mm; px: ov-h.px; wght: max(root.wght, 760); tone: root.ink3; }
         }
-        if face == "analog": Rectangle {
+        if face == "analog": Dial {
             width: root.size * 1.5;
             height: root.size * 1.5;
-            Shape { width: 100%; height: 100%; commands: LockData.cookie12; fill: root.ink3.with-alpha(0.2); }
-            Rectangle {
-                transform-rotation: LockData.angle-h * 1deg;
-                transform-origin: { x: self.width / 2, y: self.height / 2 };
-                animate transform-rotation { duration: 450ms; easing: ease-out-back; }
-                Rectangle {
-                    width: parent.width * 0.085;
-                    height: parent.width * 0.27 + self.width / 2;
-                    x: (parent.width - self.width) / 2;
-                    y: parent.height / 2 - parent.width * 0.27;
-                    border-radius: self.width / 2;
-                    background: root.ink;
-                }
-            }
-            Rectangle {
-                transform-rotation: LockData.angle-m * 1deg;
-                transform-origin: { x: self.width / 2, y: self.height / 2 };
-                animate transform-rotation { duration: 450ms; easing: ease-out-back; }
-                Rectangle {
-                    width: parent.width * 0.05;
-                    height: parent.width * 0.38 + self.width / 2;
-                    x: (parent.width - self.width) / 2;
-                    y: parent.height / 2 - parent.width * 0.38;
-                    border-radius: self.width / 2;
-                    background: root.ink2;
-                }
-            }
-            Rectangle {
-                width: parent.width * 0.06;
-                height: self.width;
-                border-radius: self.width / 2;
-                background: root.ink.darker(0.4);
-            }
+            ink: root.ink;
+            ink2: root.ink2;
+            ink3: root.ink3;
         }
         Rectangle {
             visible: face == "weather";
@@ -1055,11 +1303,76 @@ component MClock inherits Rectangle {
             wght: face == "overlap" ? max(root.wght, 760) : root.wght;
             tone: root.ink;
         }
-        if face == "analog": Shape {
+        // (LockClock.qml's smallDial: the same dial, hands and all, smaller)
+        if face == "analog": Dial {
             width: round(small-size * 1.1 / 1px) * 1px;
             height: self.width;
-            commands: LockData.cookie12;
-            fill: root.ink3.with-alpha(0.2);
+            ink: root.ink;
+            ink2: root.ink2;
+            ink3: root.ink3;
+        }
+    }
+}
+
+// Material's wavy progress (WavyProgress.qml): the done part a moving wave
+// (amplitude 3, wavelength 40, a wavelength a second; flat near the ends and
+// while paused, eased over 300 ms), a 4 px gap, then the track and its stop dot
+component Wavy inherits Rectangle {
+    in property <float> value;
+    in property <bool> paused;
+    in property <color> ink: Theme.m3-primary;
+    in property <color> track: Theme.m3-secondary-container;
+    height: 10px;
+    property <length> stroke: 4px;
+    property <length> gap: 4px;
+    property <length> end: self.width * clamp(value, 0, 1);
+    property <length> amplitude: paused || value <= 0.1 || value >= 0.95 ? 0px : 3px;
+    animate amplitude { duration: 300ms; }
+    // the track, after a gap, with its stop dot
+    Rectangle {
+        x: min(root.width, end + gap + (end > 0px ? stroke / 2 : 0px));
+        y: (root.height - stroke) / 2;
+        width: max(0px, root.width - self.x);
+        height: stroke;
+        border-radius: 2px;
+        background: track;
+        Rectangle {
+            x: parent.width - 4px;
+            width: 4px;
+            height: 4px;
+            border-radius: 2px;
+            background: ink;
+        }
+    }
+    // the wave: drawn once, longer than the bar, slid sideways inside the done stretch
+    Rectangle {
+        x: 0;
+        width: end;
+        height: root.height;
+        clip: true;
+        if amplitude > 0.05px: Path {
+            x: -mod(animation-tick() / 1000ms, 1) * 40px;
+            y: (root.height - max(0.01px, amplitude * 2)) / 2;
+            width: 480px;
+            height: max(0.01px, amplitude * 2);
+            viewbox-x: 0;
+            viewbox-y: -1;
+            viewbox-width: 480;
+            viewbox-height: 2;
+            commands: "M 0 0 Q 10 -2 20 0 Q 30 2 40 0 Q 50 -2 60 0 Q 70 2 80 0 Q 90 -2 100 0 Q 110 2 120 0 Q 130 -2 140 0 Q 150 2 160 0 Q 170 -2 180 0 Q 190 2 200 0 Q 210 -2 220 0 Q 230 2 240 0 Q 250 -2 260 0 Q 270 2 280 0 Q 290 -2 300 0 Q 310 2 320 0 Q 330 -2 340 0 Q 350 2 360 0 Q 370 -2 380 0 Q 390 2 400 0 Q 410 -2 420 0 Q 430 2 440 0 Q 450 -2 460 0 Q 470 2 480 0";
+            fill: transparent;
+            stroke: ink;
+            stroke-width: stroke;
+            stroke-line-cap: round;
+            accessible-role: none;
+        }
+        if amplitude <= 0.05px: Rectangle {
+            x: 0;
+            y: (root.height - stroke) / 2;
+            width: max(0px, end);
+            height: stroke;
+            border-radius: 2px;
+            background: ink;
         }
     }
 }
@@ -1185,6 +1498,9 @@ component MaterialLock inherits Rectangle {
                 x: left-aligned ? 4px : (parent.width - self.preferred-width) / 2;
                 y: clock.height + 20px - 8px * small-t;
                 width: self.preferred-width;
+                // (its own height: left to fill the header, the date row
+                // stretched down by half the clock, under the shelf)
+                height: self.preferred-height;
                 spacing: 8px;
                 HorizontalLayout {
                     alignment: left-aligned ? LayoutAlignment.start : LayoutAlignment.center;
@@ -1247,9 +1563,14 @@ component MaterialLock inherits Rectangle {
                 spacing: 2px;
                 Text { text: LockData.track; overflow: elide; color: Theme.m3-on-surface; font-size: 14px; font-weight: 500; }
                 Text { text: LockData.artist; overflow: elide; color: Theme.m3-on-surface-variant; font-size: 13px; }
+                // The timeline: wavy while it plays, flat when paused
                 if LockData.has-timeline: Rectangle {
                     height: 18px;
-                    Rectangle {
+                    if LockData.playing: Wavy {
+                        y: 4px;
+                        value: LockData.progress;
+                    }
+                    if !LockData.playing: Rectangle {
                         y: 7px;
                         height: 4px;
                         border-radius: 2px;
@@ -1686,13 +2007,17 @@ component Bedside inherits Rectangle {
     changed on => { if on { fs.focus(); } }
 
     // Photos (full screen; they change on their own)
-    if view == 2 && !blank && LockData.has-photo: Image {
+    // (StandBy.qml's: faded in over 800 ms once loaded on coming in; the
+    // 20 s change swaps in one frame)
+    Image {
         width: W;
         height: H;
+        visible: view == 2 && !blank;
         source: LockData.photo;
         image-fit: cover;
-        opacity: LockData.sb-resting ? 0 : 1;
+        opacity: LockData.has-photo && !LockData.sb-resting ? 1 : 0;
         animate opacity { duration: 800ms; }
+        accessible-role: none;
     }
 
     stage := Rectangle {
@@ -1816,7 +2141,7 @@ component Bedside inherits Rectangle {
                 height: parent.side;
                 border-radius: Theme.material ? 48px : 28px;
                 background: Theme.material ? Theme.m3-surface-container : #1C1C1E;
-                Month {
+                BedCalendar {
                     x: Theme.material ? 28px : 20px;
                     y: Theme.material ? 28px : 20px;
                     width: parent.width - 2 * self.x;
@@ -1938,8 +2263,10 @@ export component LockScreen inherits Window {
     }
 
     // Someone at the pointer: the reader and the camera get their tries back
+    // (LockSurface.qml's MouseArea under everything: any move, across or up and down)
     TouchArea {
         changed mouse-x => { if self.has-hover && !LockData.standby { LockData.woke(); } }
+        changed mouse-y => { if self.has-hover && !LockData.standby { LockData.woke(); } }
     }
 
     if !Theme.material: GlassLock {
@@ -2029,6 +2356,27 @@ export component LockScreen inherits Window {
             transform-origin: { x: self.width / 2, y: self.height / 2 };
             opacity: 1 + (LockData.sb-opacity - 1) * sb;
         }
+    }
+}
+
+// ── The veil (Lock.qml's "tessera:lockveil"): the wallpaper over the
+// windows, the dock and the menu bar while the lock goes, exactly as the
+// desktop's own shows it (LockFx's scale); fading it is what fades them in
+export component LockVeil inherits Window {
+    in property <image> wallpaper;
+    in property <float> scale: 1;
+    in property <float> veil: 1;
+    background: transparent;
+    title: "Lock veil";
+    Image {
+        width: root.width;
+        height: root.height;
+        source: wallpaper;
+        image-fit: cover;
+        opacity: veil;
+        transform-scale: scale;
+        transform-origin: { x: self.width / 2, y: self.height / 2 };
+        accessible-role: none;
     }
 }
 

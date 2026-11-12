@@ -388,7 +388,7 @@ impl Part for Notes {
         let y = ui.get_body_y() + bh * (1.0 - s) / 2.0;
         let o = ui.get_body_opacity();
         let shape = theme::glass_shape(&st.shell.look, x, y, bw * s, bh * s, 28.0 * s, o, 1.0);
-        let key = format!("{shape:?}");
+        let key = tessera_core::theme::glass_key(&shape);
         if key != w.glass_sent {
             st.shell.glass.set(&w.output, NS, if o > 0.002 { std::slice::from_ref(&shape) } else { &[] });
             w.glass_sent = key;

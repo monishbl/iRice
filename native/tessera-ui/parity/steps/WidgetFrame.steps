@@ -1,0 +1,64 @@
+# Arena IRICE-TEST 1920x1080 scale 1, the user's config (expressive motion, Colloid, their 4 widgets).
+# Each file runs top to bottom from a fresh desktop. `static NAME x y w h`: that region must not change
+# from there until the next `shot`, `rec` or `look` (the no-reload blocks end with their last close).
+# Right-clicks: `ptr ... down up` lines marked (right button) need the runner's right button.
+
+look glass
+note no reload: widgets must not fade or grow in again while windows open, focus and close (only the clock's minute may change)
+ptr move 1500 600
+shot wf-before
+setup sh -c "foot & sleep 0.8; hyprctl dispatch \"hl.dsp.window.move({ workspace = 'special:parity', follow = false, window = 'class:foot' })\""
+shot wf-after-open-1
+setup sh -c "foot & sleep 0.8; hyprctl dispatch \"hl.dsp.window.move({ workspace = 'special:parity', follow = false, window = 'class:foot' })\""
+shot wf-after-open-2
+note the after-open shots equal the before shot over the widgets (no widget at 0.9 scale or faded)
+static wf-clock 32 54 344 164
+static wf-stack 32 234 344 164
+static wf-batteries 32 414 344 164
+static wf-shortcuts 392 54 344 164
+ptr move 1300 700 click
+wait 1
+setup hyprctl dispatch 'hl.dsp.window.close({ window = "class:foot" })'
+wait 1.5
+setup hyprctl dispatch 'hl.dsp.window.close({ window = "class:foot" })'
+wait 1.5
+ipc lock lock
+wait 2
+rec wf-unlock 2.0 ipc lock unlock
+note widgets start ~1.2x and see-through, zoom to their cells and fade in, outer ones later (batteries after the clock); Glass: the glass under each zooms with it; ≈900 ms Glass / 800 ms Material, ease-out
+rec wf-badges 1.0 ipc panels widgets true
+note each − badge grows from 0 with a small overshoot (~400 ms)
+ipc panels widgets false
+wait 0.5
+rec wf-lift 1.0 ptr move 200 130 down glide 240 130 200 sleep 400 up
+note dragged widget grows to 1.04 in ≈150 ms, springs back on release
+
+look material
+note no reload: widgets must not fade or grow in again while windows open, focus and close (only the clock's minute may change)
+ptr move 1500 600
+shot wf-before
+setup sh -c "foot & sleep 0.8; hyprctl dispatch \"hl.dsp.window.move({ workspace = 'special:parity', follow = false, window = 'class:foot' })\""
+shot wf-after-open-1
+setup sh -c "foot & sleep 0.8; hyprctl dispatch \"hl.dsp.window.move({ workspace = 'special:parity', follow = false, window = 'class:foot' })\""
+shot wf-after-open-2
+note the after-open shots equal the before shot over the widgets (no widget at 0.9 scale or faded)
+static wf-clock 32 54 344 164
+static wf-stack 32 234 344 164
+static wf-batteries 32 414 344 164
+static wf-shortcuts 392 54 344 164
+ptr move 1300 700 click
+wait 1
+setup hyprctl dispatch 'hl.dsp.window.close({ window = "class:foot" })'
+wait 1.5
+setup hyprctl dispatch 'hl.dsp.window.close({ window = "class:foot" })'
+wait 1.5
+ipc lock lock
+wait 2
+rec wf-unlock 2.0 ipc lock unlock
+note widgets start ~1.2x and see-through, zoom to their cells and fade in, outer ones later (batteries after the clock); Glass: the glass under each zooms with it; ≈900 ms Glass / 800 ms Material, ease-out
+rec wf-badges 1.0 ipc panels widgets true
+note each − badge grows from 0 with a small overshoot (~400 ms)
+ipc panels widgets false
+wait 0.5
+rec wf-lift 1.0 ptr move 200 130 down glide 240 130 200 sleep 400 up
+note dragged widget grows to 1.04 in ≈150 ms, springs back on release

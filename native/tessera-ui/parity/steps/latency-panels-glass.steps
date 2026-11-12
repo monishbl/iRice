@@ -1,0 +1,94 @@
+# Every panel opened as a person opens it (its keyboard shortcut; the arena's
+# mod key is ALT), recorded, then closed, recorded. Compare per panel, QML vs
+# Rust: start (command → first moving frame), duration (±10 %), frames,
+# longest gap. PASS: Rust start ≤ QML start; duration within ±10 %; Rust's
+# longest gap ≤ QML's + 17 ms. (parity/latency.md, steps 1–2; batch 1)
+look glass
+ptr move 1500 600
+wait 2
+
+# Control Center: ALT + C
+rec cc-open 1.6 key -M alt -k c -m alt
+rec cc-close 1.4 ipc panels close
+wait 1
+# Spotlight: ALT + Space
+rec spotlight-open 1.6 key -M alt -k space -m alt
+rec spotlight-close 1.4 key -k Escape
+wait 1
+# Notification Center: ALT + N
+rec nc-open 1.6 key -M alt -k n -m alt
+rec nc-close 1.4 ipc panels close
+wait 1
+# Launchpad: ALT + CTRL + Space
+rec launchpad-open 1.6 key -M alt -M ctrl -k space -m ctrl -m alt
+rec launchpad-close 1.4 key -k Escape
+wait 1
+# Overview: ALT + Tab
+rec overview-open 1.6 key -M alt -k Tab -m alt
+rec overview-close 1.4 key -k Escape
+wait 1
+# Mission Control: ALT + SHIFT + Tab
+rec missioncontrol-open 1.6 key -M alt -M shift -k Tab -m shift -m alt
+rec missioncontrol-close 1.4 key -k Escape
+wait 1
+# Sidebar: ALT + A
+rec sidebar-open 1.6 key -M alt -k a -m alt
+rec sidebar-close 1.4 ipc panels close
+wait 1
+# Clipboard: ALT + V
+rec clipboard-open 1.6 key -M alt -k v -m alt
+rec clipboard-close 1.4 key -k Escape
+wait 1
+# Emoji: ALT + Period
+rec emoji-open 1.6 key -M alt -k period -m alt
+rec emoji-close 1.4 key -k Escape
+wait 1
+# Wallpaper picker: CTRL + ALT + T
+rec wallpaper-open 1.6 key -M ctrl -M alt -k t -m alt -m ctrl
+rec wallpaper-close 1.4 key -k Escape
+wait 1
+# Power menu: CTRL + ALT + Delete
+rec session-open 1.6 key -M ctrl -M alt -k Delete -m alt -m ctrl
+rec session-close 1.4 key -k Escape
+wait 1
+# Cheatsheet: ALT + Slash
+rec cheatsheet-open 1.6 key -M alt -k slash -m alt
+rec cheatsheet-close 1.4 key -k Escape
+wait 1
+# Quick Note: ALT + N with ALT (the bind names ALT twice: ALT + N); by IPC
+rec quicknote-open 1.6 ipc panels open quickNote IRICE-TEST
+rec quicknote-close 1.4 key -k Escape
+wait 1
+# Screen tools: ALT + Print
+rec screentools-open 1.6 key -M alt -k Print -m alt
+rec screentools-close 1.4 key -k Escape
+wait 1
+# The status menus and the system menu (opened from the menu bar: by IPC here)
+rec sound-open 1.6 ipc panels open soundMenu IRICE-TEST
+rec sound-close 1.4 ipc panels close
+wait 1
+rec battery-open 1.6 ipc panels open batteryMenu IRICE-TEST
+rec battery-close 1.4 ipc panels close
+wait 1
+rec bluetooth-open 1.6 ipc panels open bluetoothMenu IRICE-TEST
+rec bluetooth-close 1.4 ipc panels close
+wait 1
+rec systemmenu-open 1.6 ipc panels open systemMenu IRICE-TEST
+rec systemmenu-close 1.4 ipc panels close
+wait 1
+# Clicks on the menu bar (check the coordinates with the first shot)
+shot menubar-before-clicks
+rec cc-click 1.6 ptr move 1895 14 click
+rec cc-click-close 1.4 ipc panels close
+wait 1
+rec clock-click 1.6 ptr move 1680 14 click
+rec clock-click-close 1.4 ipc panels close
+wait 1
+# The window switcher: ALT + Tab held (needs two windows)
+setup foot >/dev/null 2>&1 & sleep 1; foot >/dev/null 2>&1 &
+wait 2
+rec switcher-open 1.6 key -M alt -k Tab
+rec switcher-commit 1.2 key -m alt
+setup hyprctl dispatch 'hl.dsp.window.close({ window = "class:foot" })'; sleep 0.5; hyprctl dispatch 'hl.dsp.window.close({ window = "class:foot" })'
+note per panel: Rust start ≤ QML start; durations within 10 %; no Rust gap over QML's + 17 ms
+note the same as latency-panels.steps, in Glass

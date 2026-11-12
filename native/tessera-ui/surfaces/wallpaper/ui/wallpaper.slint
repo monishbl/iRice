@@ -285,12 +285,15 @@ export component WallpaperPicker inherits Window {
                         // (Material: corner 16, the chosen one rounder in a 3 px
                         // primary outline; keyboard focus in secondary)
                         border-radius: Theme.material ? (chosen ? 28px : 16px) : 12px;
-                        animate border-radius { duration: 400ms; easing: spring(0.6); }
+                        // (MaterialSpring "default": Qt's SpringAnimation spring 6.08,
+                        // damping 0.5, stepped every 16 ms, is critically damped at
+                        // about 26 rad/s: Slint's spring() over 2π/26 s, no bounce)
+                        animate border-radius { duration: Theme.material ? 242ms : 0ms; easing: spring(0); }
                         background: Theme.material && chosen ? Theme.m3-surface-container : Theme.fill;
                         border-width: chosen ? 3px : i == current ? 2px : 0;
                         border-color: chosen ? Theme.accent : Theme.material ? Theme.m3-secondary : Theme.label;
                         transform-scale: touch.has-hover ? 1.03 : 1;
-                        animate transform-scale { duration: 150ms; }
+                        animate transform-scale { duration: Theme.hover; }
 
                         // (Material: a gap inside the chosen one's outline)
                         inner := Rectangle {
@@ -307,7 +310,7 @@ export component WallpaperPicker inherits Window {
                                 source: t.image;
                                 image-fit: cover;
                                 opacity: t.ready ? 1 : 0;
-                                animate opacity { duration: 220ms; }
+                                animate opacity { duration: Theme.popover; }
                                 accessible-role: none;
                             }
                         }

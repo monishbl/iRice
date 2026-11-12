@@ -1,0 +1,53 @@
+# IslandAlertStack: steps from parity/shell_modules_menubar_IslandAlertStack.qml.md (batches 1-5). Screen IRICE-TEST 1920x1080 scale 1;
+# the island is centred at x 960 (closed y ~14, open ~392 wide); the bar is 30 px tall.
+# Each block runs in both looks: the file runs top to bottom, Material first, then Glass.
+
+look material
+ptr move 1500 600
+wait 1
+ptr glide 960 14 400
+wait 1
+ptr glide 1137 16 200
+ptr click
+ptr glide 1500 600 200
+ipc island demo download
+wait 1
+shot below
+note the island kept its content; a card under it holds the download alert (Open / Show in Folder work)
+ipc island demo usb
+wait 1
+shot below-two
+note "+1 waiting" and a card peeking under it
+ptr glide 960 140 300
+wait 6
+shot held
+note resting on the card holds them
+ptr glide 1500 600 200
+ptr glide 1137 16 300
+ptr click
+ptr glide 1500 600 200
+
+look glass
+ptr move 1500 600
+wait 1
+ptr glide 960 14 400
+wait 1
+ptr glide 1137 16 200
+ptr click
+ptr glide 1500 600 200
+ipc island demo download
+wait 1
+shot below
+note the island kept its content; a card under it holds the download alert (Open / Show in Folder work)
+ipc island demo usb
+wait 1
+shot below-two
+note "+1 waiting" and a card peeking under it
+ptr glide 960 140 300
+wait 6
+shot held
+note resting on the card holds them
+ptr glide 1500 600 200
+ptr glide 1137 16 300
+ptr click
+ptr glide 1500 600 200

@@ -8,6 +8,8 @@
 //! surface shows is said to it as `{"to":"captions","state":{…}}`; it asks
 //! (`ask("captions", ["off"])`, `["place", x, y]`) to turn them off or keep
 //! the bar's place. `qs ipc call captions toggle | on | off | demo`.
+//! For Settings it publishes the host state "captions" (hasBinary, hasModel,
+//! ready, error, languages) and answers `captions [install|download|refresh]`.
 
 use super::util;
 use serde_json::{json, Value};
@@ -16,6 +18,13 @@ use tessera_core::host::{Host, Service};
 use tessera_core::services::clients::Windows;
 
 struct Status(Value);
+
+/// Dictation.languages (the ones offered for Dictation and Live captions)
+const LANGUAGES: &[(&str, &str)] = &[
+    ("", "Same as the system"), ("auto", "Automatic"), ("en", "English"), ("hi", "Hindi"), ("es", "Spanish"), ("fr", "French"), ("de", "German"),
+    ("it", "Italian"), ("pt", "Portuguese"), ("nl", "Dutch"), ("ru", "Russian"), ("ar", "Arabic"), ("zh", "Chinese"), ("ja", "Japanese"), ("ko", "Korean"),
+    ("ta", "Tamil"), ("te", "Telugu"), ("bn", "Bengali"), ("ur", "Urdu"), ("tr", "Turkish"), ("pl", "Polish"), ("uk", "Ukrainian"),
+];
 struct Line(String);
 struct Ended(u64);
 struct Retry;
@@ -120,8 +129,17 @@ impl CaptionsSvc {
         }
     }
 
+    /// What Settings -> Accessibility reads of it (Captions.hasBinary, hasModel,
+    /// ready, error; Dictation.languages): the host state "captions"
+    fn publish(&self, h: &mut Host) {
+        let bin = self.info["binary"].as_str().is_some_and(|s| !s.is_empty()) || self.info["binary"].as_bool() == Some(true);
+        let langs: Vec<Value> = LANGUAGES.iter().map(|(v, l)| json!({"value": v, "label": l})).collect();
+        h.set_state("captions", json!({"hasBinary": bin, "hasModel": self.info["models"]["tiny"].as_bool().unwrap_or(false), "ready": self.ready(), "error": self.error, "languages": langs}));
+    }
+
     /// What the surface shows (CaptionsFeed.qml's `feed`), when it changed
     fn send(&mut self, h: &mut Host) {
+        self.publish(h);
         let ready = self.ready();
         let shown = Self::enabled(h) && Self::placement(h) != "island";
         let screen = h.st.shell.get::<Windows>().and_then(|w| w.focused_monitor().map(|m| m.name.clone())).unwrap_or_default();
@@ -198,6 +216,10 @@ impl Service for CaptionsSvc {
                 self.last = None;
                 self.send(h);
             }
+            // Settings -> Accessibility: setting it up is Dictation's (whisper.cpp, then Tiny)
+            "install" => h.ask("dictation.install", json!([])),
+            "download" => h.ask("dictation.download", json!(["tiny", "false"])),
+            "refresh" => self.refresh(h),
             _ => {}
         }
     }

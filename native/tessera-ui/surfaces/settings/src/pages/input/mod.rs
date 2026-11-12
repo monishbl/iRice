@@ -46,7 +46,9 @@ pub fn idx(values: &[&str], v: &str) -> i32 {
 pub fn places(b: &mut Block) {
     let n = b.rows.len();
     for (i, r) in b.rows.iter_mut().enumerate() {
-        if r.kind == Kind::Custom {
+        // (the app search and the key recorder keep their field's reset
+        // count in `num`: not a place)
+        if r.kind == Kind::Custom && r.sub != "search" && r.sub != "recorder" {
             r.num = match (i == 0, i + 1 == n) {
                 (true, true) => 3.0,
                 (true, false) => 1.0,

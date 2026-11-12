@@ -1,0 +1,33 @@
+# Settings window: Material 1040x700 at 440,205 (page column from x~772); Glass 860x620 at 530,230. Sidebar rows (Material, x=560): Appearance 335, Wallpaper 385, Desktop 435, Menu bar 485, Lock 535, Notifications 626, Focus 676, Windows 767, Displays 858.
+# Click coordinates inside pages are not known in advance: those steps are MANUAL unless a keyboard path exists. Check in each look.
+ipc panels settings appearance
+wait 2
+ptr move 560 335 sleep 200 click
+wait 1
+rec pages 14 ptr move 560 385 sleep 300 click sleep 800 glide 560 435 100 click sleep 800 glide 560 485 100 click sleep 800 glide 560 535 100 click sleep 800 glide 560 626 100 click sleep 800 glide 560 676 100 click sleep 800 glide 560 767 100 click sleep 800 glide 560 858 100 click sleep 800 glide 560 335 100 click sleep 800
+note T1 page switch (Material; Glass uses its own row ys): Rust mean first change <= QML + 17 ms, worst stall <= 34 ms, second visit <= first (earlier Material PASS: QML 821 ms vs Rust 764-885 ms, Wallpaper thumbnails stall same as QML).
+note T2 first visit of each page builds in < 30 ms (log 'settings:... shown in'; earlier max 20.2 ms Displays).
+ipc panels settings displays
+wait 2
+ptr move 1900 1000
+rec idle 5 wait 5
+static idle 772 260 650 600
+note T3 idle on Displays: zero changed frames in the page region (no whole-row flashes); earlier PASS. Known glitch first visit: a '2' display rectangle over the header and 'Connect another display to arrange them.' instead of QML's arrangement canvas.
+ipc panels settings notifications
+wait 2
+shot t4-before
+note T4 baseline before More options (button about 822,820 Material, read from this shot).
+# MANUAL: T4 click More options while recording: nothing above the button changes, the added groups appear below
+ipc panels settings wallpaper
+wait 3
+ptr move 560 335 sleep 200 click
+wait 1
+ptr move 560 385 sleep 200 click
+wait 0.3
+shot t5
+note T5 returning to Wallpaper: thumbnails show at once in the first frame (no grey tiles, no fade in).
+ipc panels settings about/loginitems
+wait 1
+shot t6
+note T6 Login Items page shown at the same time as QML (Rust 10.9 ms; first change ~1.5 s then icons 1.8 s; QML 2.0/2.3 s); icons may fill in after.
+# MANUAL: T1 timing analysis with tools/page-switch.py on the recording (area 330 60 700 620) and T6 the same

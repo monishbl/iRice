@@ -1,0 +1,90 @@
+# Quick Look. Check in each look.
+setup ffmpeg -loglevel quiet -f lavfi -i testsrc=size=1600x900 -frames:v 1 -y /tmp/ql.png; ffmpeg -loglevel quiet -f lavfi -i sine=d=6 -y /tmp/ql.ogg; seq 1 3000 > /tmp/ql.txt; mkdir -p /tmp/qldir/sub /tmp/qlempty; touch /tmp/qldir/a.txt /tmp/qldir/b.png
+wait 3
+rec ql-first 1 ipc panels quickLook /tmp/ql.png
+note First card frame no later in Rust than in QML (+-1 frame): the window must be prepared ahead (it was made on the first Space before).
+wait 1
+shot ql-png
+note Picture 1600x900: card 1443 x 864 at (238,108): edges x 238 / 1681, y 108 / 972 in both shells (+-1); header centre y 134; Open right edge x 1669 (Glass) / 1665 (Material); Glass radius 20.
+key -k space
+wait 1
+rec ql-open 1 ipc panels quickLook /tmp/ql.png
+note Open: 200 ms OutCubic, card scale 0.94 -> 1, opacity = progress, scrim black 30 % (Glass) / 32 % (Material).
+wait 1
+rec ql-close 0.5 key -k Escape
+note Close: 140 ms InCubic; compare frame strips with QML.
+wait 1
+ipc panels quickLook /tmp/ql.png
+wait 1
+ptr glide 1630 134 200
+wait 1
+shot ql-open-hover
+note Open button hover colour equals QML (Glass: accent divided by 1.1; Material primary with state layer).
+rec ql-open-press 0.7 ptr glide 1630 134 100 down sleep 250 glide 960 600 1 up
+note Material: corners 18 -> 8 and back on a quick spring, pill swells about 6 % and settles in about 0.3 s, curves within +-1 frame of QML; Glass: darker 1.2 when pressed. Released away so nothing opens. NOTE: click on layer surfaces may not register in the harness.
+wait 1
+key -k t
+wait 1
+shot ql-livetext
+note Text (Live Text) selected and the bar appears 12 px above the card bottom with room made under the picture. Reading needs tesseract: if missing the bar shows "Install" (mark reading not testable).
+key -M ctrl -k a -m ctrl
+wait 1
+shot ql-select-all
+note Ctrl+A selects all recognised words (accent bands).
+key -k Escape
+wait 1
+shot ql-esc1
+note First Escape clears the selection only; the card stays open.
+key -k Escape
+wait 1
+shot ql-closed
+note Second Escape closes the card; screen back to the desktop.
+ipc panels quickLook /usr/share/applications
+wait 1
+shot ql-folder
+note Folder: names at once, icons fill in after; rows 32 high, icon 20; folders first, no hidden entries; subtitle "N items".
+ptr move 960 540 sleep 100 scroll 0 5
+shot ql-folder-scroll
+note Wheel scrolled a few rows; the list must stay where it is when icons land (Rust: rows not rebuilt).
+key -k Escape
+wait 1
+ipc panels quickLook /tmp/qldir
+wait 1
+shot ql-dir
+note "sub" first, then a.txt, b.png; subtitle "3 items" plus date.
+key -k Escape
+wait 1
+ipc panels quickLook /tmp/qlempty
+wait 1
+shot ql-empty
+note Folder icon and "Empty folder".
+key -k Escape
+wait 1
+ipc panels quickLook /tmp/ql.txt
+wait 1
+shot ql-text
+note Text: mono 12 lines, card 686 x 864 at (617,108); selectable; no scroll bar in Rust (known).
+ptr move 960 540 sleep 100 scroll 0 10
+shot ql-text-scroll
+note The wheel scrolls the text.
+key -k Escape
+wait 1
+ipc panels quickLook /tmp/ql.ogg
+wait 1
+shot ql-audio
+note Audio: 96 px icon (Material on a 144 shape: sunny) and a play control under it (Glass 44 px icon button, Material 64 px primaryContainer shape); the progress line moves.
+ptr move 960 620 sleep 200 down
+shot ql-play-press
+ptr up
+note Material: pressing the 64 px shape shows the cookie9 shape swelled; after release square (paused) or circle (playing). Glass: button pauses/plays. NOTE: click on layer surfaces may not register in the harness.
+key -k Escape
+wait 1
+ipc panels quickLook /tmp/ql.png
+wait 1
+key -k Return
+wait 1
+shot ql-return
+note Return opens the picture in its app (Rust log files.open /tmp/ql.png) and closes the card.
+# MANUAL: Audio sound is not checkable in the sandbox
+# MANUAL: Share (left of Open) closes and opens the share sheet with the file (click on layer surface; check by hand)
+# MANUAL: Return: confirm the Rust log line "files.open /tmp/ql.png"

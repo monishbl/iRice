@@ -1,0 +1,15 @@
+# Settings Group component (check in each look). Material window 1040x700 at 440,205.
+ipc panels settings appearance
+wait 2
+shot g1
+note G1 captions, tiles (24/4 corners, 2 px gaps) and footer text match the QML shot.
+rec hover 3 ptr move 900 500 sleep 500 glide 900 560 900 glide 900 620 900
+wait 1
+shot g2
+note G2 each tile lights under the pointer in about 150 ms and un-lights after; it stays lit while over the row's switch. Row y values are guesses: read three rows from the g1 shot.
+ipc panels settings wallpaper
+wait 2
+shot wallpaper-a
+note G3 note the groups shown on the Wallpaper page before flipping Dynamic.
+# MANUAL: G3 flip the "Dynamic" choice so a conditional group appears/disappears; a group with no rows leaves no caption and no gap, as QML
+ipc panels close

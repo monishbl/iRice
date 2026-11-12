@@ -1,0 +1,149 @@
+# IslandEvent: steps from parity/shell_modules_menubar_IslandEvent.qml.md (batches 1-5). Screen IRICE-TEST 1920x1080 scale 1;
+# the island is centred at x 960 (closed y ~14, open ~392 wide); the bar is 30 px tall.
+# Each block runs in both looks: the file runs top to bottom, Material first, then Glass.
+
+look material
+ipc island demo download
+wait 1
+ptr glide 960 50 300
+wait 0.4
+shot alert-hover
+note the alert with Open (filled) and Show in Folder (outlined); a round x over the glyph's top-left
+ptr glide 1050 50 200
+ptr click
+wait 1
+shot after-button
+note the button ran and the alert left
+ptr glide 1500 600 300
+ipc island demo connect
+wait 1
+ptr glide 1100 50 300
+ptr click
+wait 1
+shot connecting
+note the alert changed in place to "Connecting... keep the case open nearby"
+ptr glide 1500 600 300
+wait 25
+ipc island demo usb
+wait 1
+ptr glide 790 40 300
+wait 0.4
+ptr glide 778 33 100
+ptr click
+wait 1
+shot closed-by-x
+note the x removed it
+ipc island demo usb
+wait 1
+ptr glide 960 50 300
+ptr scroll 0 -4
+wait 0.5
+shot tiny-tick
+note a single small touchpad tick does NOT dismiss it
+ptr scroll 0 -15
+wait 0.8
+shot notch
+note one wheel notch up dismisses it
+ptr glide 1500 600 300
+ipc island demo download
+wait 1
+ptr glide 900 50 300
+ptr click
+ptr glide 1500 600 300
+wait 8
+shot not-stuck
+note after a click and leaving, the alert still times out (no stuck x, no stuck hold); download lives 10 min in QML too: use demo wifi for a 5 s check
+ipc island demo wifi
+wait 1
+ptr glide 900 50 300
+ptr click
+ptr glide 1500 600 300
+wait 7
+shot wifi-gone
+note the Wi-Fi alert left within ~6 s even after a click
+ipc island demo usb
+wait 1
+ptr glide 900 50 300
+ptr click
+key -k Escape
+wait 0.6
+shot esc
+note Escape removed the newest alert after a click
+ipc island demo battery
+wait 1
+shot battery-red
+note Material: the red disc's icon is on-error (light); colour names read (red, not accent)
+ptr glide 1500 600 300
+
+look glass
+ipc island demo download
+wait 1
+ptr glide 960 50 300
+wait 0.4
+shot alert-hover
+note the alert with Open (filled) and Show in Folder (outlined); a round x over the glyph's top-left
+ptr glide 1050 50 200
+ptr click
+wait 1
+shot after-button
+note the button ran and the alert left
+ptr glide 1500 600 300
+ipc island demo connect
+wait 1
+ptr glide 1100 50 300
+ptr click
+wait 1
+shot connecting
+note the alert changed in place to "Connecting... keep the case open nearby"
+ptr glide 1500 600 300
+wait 25
+ipc island demo usb
+wait 1
+ptr glide 790 40 300
+wait 0.4
+ptr glide 778 33 100
+ptr click
+wait 1
+shot closed-by-x
+note the x removed it
+ipc island demo usb
+wait 1
+ptr glide 960 50 300
+ptr scroll 0 -4
+wait 0.5
+shot tiny-tick
+note a single small touchpad tick does NOT dismiss it
+ptr scroll 0 -15
+wait 0.8
+shot notch
+note one wheel notch up dismisses it
+ptr glide 1500 600 300
+ipc island demo download
+wait 1
+ptr glide 900 50 300
+ptr click
+ptr glide 1500 600 300
+wait 8
+shot not-stuck
+note after a click and leaving, the alert still times out (no stuck x, no stuck hold); download lives 10 min in QML too: use demo wifi for a 5 s check
+ipc island demo wifi
+wait 1
+ptr glide 900 50 300
+ptr click
+ptr glide 1500 600 300
+wait 7
+shot wifi-gone
+note the Wi-Fi alert left within ~6 s even after a click
+ipc island demo usb
+wait 1
+ptr glide 900 50 300
+ptr click
+key -k Escape
+wait 0.6
+shot esc
+note Escape removed the newest alert after a click
+ipc island demo battery
+wait 1
+shot battery-red
+note Material: the red disc's icon is on-error (light); colour names read (red, not accent)
+ptr glide 1500 600 300

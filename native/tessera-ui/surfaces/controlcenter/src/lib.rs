@@ -49,6 +49,7 @@ use tessera_core::*;
 pub mod bridge;
 pub mod defs;
 pub mod icons;
+pub mod live;
 
 use tessera_core::services::audio::{self, Cmd, Sound};
 use tessera_core::services::bluez::Bluetooth;
@@ -57,6 +58,7 @@ use tessera_core::services::mpris::{self, Players};
 use tessera_core::services::hypr::Glass;
 use tessera_core::services::status::{Battery, Wifi};
 use tessera_core::shell::{self, Command, Part};
+use tessera_core::rows::Rows;
 use tessera_core::theme;
 use tessera_core::wayland::{Spec, State, Surface};
 use bridge::{Block, BlockKind, MenuItem, Page, Said};
@@ -108,6 +110,8 @@ enum M {
     Closed,
     /// the album art for this address, read on a thread
     Art(String, Option<slint::SharedPixelBuffer<slint::Rgba8Pixel>>),
+    /// ~/.face (or the account's picture), decoded on a thread
+    Avatar(String, Option<slint::SharedPixelBuffer<slint::Rgba8Pixel>>),
 }
 
 /// Whose choices the open menu shows
@@ -203,7 +207,7 @@ pub fn accent_ink(accent: slint::Color, dark: bool) -> slint::Color {
 /// The keys it takes (the rest go nowhere)
 pub fn handles(text: &str) -> bool {
     let k = |key: Key| text == SharedString::from(key).as_str();
-    k(Key::Escape) || k(Key::Tab) || k(Key::Backtab) || k(Key::Return) || k(Key::UpArrow) || k(Key::DownArrow) || k(Key::LeftArrow) || k(Key::RightArrow) || k(Key::Delete) || k(Key::Backspace) || k(Key::PageUp) || k(Key::PageDown) || k(Key::Home) || k(Key::End) || text == " " || k(Key::Menu)
+    k(Key::Escape) || k(Key::Tab) || k(Key::Backtab) || k(Key::Return) || k(Key::UpArrow) || k(Key::DownArrow) || k(Key::LeftArrow) || k(Key::RightArrow) || k(Key::Delete) || k(Key::Backspace) || k(Key::PageUp) || k(Key::PageDown) || k(Key::Home) || k(Key::End) || text == " " || k(Key::Menu) || k(Key::F10)
 }
 
 // ── The part ─────────────────────────────────────────────────────────────
@@ -215,6 +219,8 @@ struct Win {
     a11y: Option<crate::a11y::A11y>,
     glass_sent: String,
     region: (u32, u32),
+    /// the menu's items, changed in place (rows.rs)
+    menu: Rows<ui::CcMenuItem>,
 }
 
 pub struct ControlCenter {
@@ -242,6 +248,15 @@ pub struct ControlCenter {
     art_url: String,
     art: Option<slint::Image>,
     hushed: Option<Instant>,
+    /// the open page's rows and the gallery's, changed in place (live.rs)
+    blocks: Rows<ui::CcBlock>,
+    gallery: Rows<ui::CcGal>,
+    /// levels just set with a slider or a key, shown at once (live.rs)
+    held: live::Held,
+    /// the pointer over the open page's list (told to the host: lists hold still)
+    page_hover: bool,
+    /// the pointer menu's row the keyboard is on (-1: none)
+    menu_kbd: i32,
 }
 
 impl Default for ControlCenter {
@@ -266,6 +281,11 @@ impl Default for ControlCenter {
             art_url: String::new(),
             art: None,
             hushed: None,
+            blocks: Rows::new(),
+            gallery: Rows::new(),
+            held: live::Held::default(),
+            page_hover: false,
+            menu_kbd: -1,
         }
     }
 }
@@ -306,8 +326,14 @@ fn glyphs(material: bool) -> ui::CcGlyphs {
 }
 
 /// A picture file as an image (the device drawings, ~/.face, album art), or None
+/// (decoded once per path: live::cached)
 pub fn picture(path: &str) -> Option<slint::Image> {
-    picture_px(path).map(slint::Image::from_rgba8)
+    if path.is_empty() {
+        return None;
+    }
+    // (by path and change time: a file written again, a new QR code, is read again)
+    let when = std::fs::metadata(path).and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_millis());
+    live::cached(&format!("{path}@{when}"), || picture_px(path).map(slint::Image::from_rgba8))
 }
 
 fn picture_px(path: &str) -> Option<slint::SharedPixelBuffer<slint::Rgba8Pixel>> {
@@ -411,9 +437,13 @@ impl ControlCenter {
         on!(on_dismissed, | | M::Dismissed);
         on!(on_closed, | | M::Closed);
         ui.set_modules(ModelRc::from(self.model.clone()));
+        ui.set_blocks(self.blocks.model());
+        ui.set_gallery(self.gallery.model());
+        let menu = Rows::new();
+        ui.set_menu(menu.model());
         ui.show().expect("show controlcenter");
         let a11y = crate::a11y::A11y::new(&surface, st.tx.clone());
-        self.win = Some(Win { output: output.into(), surface, ui, a11y, glass_sent: String::new(), region: (0, 0) });
+        self.win = Some(Win { output: output.into(), surface, ui, a11y, glass_sent: String::new(), region: (0, 0), menu });
         self.model.set_vec(Vec::new());
         self.apply_look(st);
         true
@@ -448,10 +478,11 @@ impl ControlCenter {
         self.open = true;
         self.menu = None;
         self.set_kbd(-1);
-        self.model.set_vec(Vec::new()); // (the tiles rise in afresh)
+        // (the tiles are kept, as the QML's Loader keeps them: they rise in
+        // again from the panel's own stagger, reset once it closed)
         self.rebuild(st);
         self.push_page(st);
-        self.push_avatar();
+        self.push_avatar(st);
         self.want_art(st);
         self.push_footer(st);
         let w = self.win.as_ref().unwrap();
@@ -548,7 +579,7 @@ impl ControlCenter {
                 }
             })
             .collect();
-        ui.set_gallery(ModelRc::new(VecModel::from(gal)));
+        self.gallery.set(gal);
         self.push_footer(st);
     }
 
@@ -610,6 +641,15 @@ impl ControlCenter {
             }
             _ => {}
         }
+        // (a level just set here shows at once: the server's answer lags the pointer)
+        if d.kind == Kind::Slider {
+            if let Some(h) = self.held.get(&p.id) {
+                value = h as f64;
+                if p.id == "sound" {
+                    icon = volume_icon(value, false).into();
+                }
+            }
+        }
         if d.kind == Kind::Info && title.is_empty() {
             title = "—".into();
         }
@@ -646,6 +686,7 @@ impl ControlCenter {
         if !self.open {
             return;
         }
+        self.held.sweep();
         let material = Self::material(st);
         for k in 0..self.model.row_count() {
             let r = self.model.row_data(k).unwrap();
@@ -686,7 +727,8 @@ impl ControlCenter {
             next: p.map_or(m.can_next, |p| p.can_next),
             toggle: p.map_or(m.can_toggle, |p| p.can_play),
             seek: m.can_seek,
-            progress: if m.length > 0.0 { (m.position / m.length).clamp(0.0, 1.0) as f32 } else { 0.0 },
+            // (a seek shows at once, then the player's answer)
+            progress: self.held.or("seek", if m.length > 0.0 { (m.position / m.length).clamp(0.0, 1.0) as f32 } else { 0.0 }),
             timed: m.length > 0.0,
         });
         ui.set_cast(self.said.cast);
@@ -701,8 +743,9 @@ impl ControlCenter {
             return;
         }
         self.art_url = url.clone();
-        self.art = None;
+        // (the old art stays until the new one is read: retainWhileLoading)
         if url.is_empty() {
+            self.art = None;
             return;
         }
         let to = st.shell.sender(NAME);
@@ -712,11 +755,23 @@ impl ControlCenter {
         });
     }
 
-    fn push_avatar(&self) {
+    fn push_avatar(&self, st: &State) {
         let Some(w) = &self.win else { return };
-        let a = picture(&self.said.avatar);
-        w.ui.set_has_avatar(a.is_some());
-        w.ui.set_avatar(a.unwrap_or_default());
+        let path = self.said.avatar.clone();
+        match live::cached_hit(&path) {
+            Some(a) => {
+                w.ui.set_has_avatar(a.is_some());
+                w.ui.set_avatar(a.unwrap_or_default());
+            }
+            // (a photo can take a while to decode: on a thread, shown when it's ready)
+            None => {
+                let to = st.shell.sender(NAME);
+                std::thread::spawn(move || {
+                    let px = picture_px(&path);
+                    to(Box::new(M::Avatar(path, px)));
+                });
+            }
+        }
     }
 
     /// The open page into the window: Sound and Microphone from here, the
@@ -735,6 +790,14 @@ impl ControlCenter {
         } else {
             Page { name: self.page.clone(), title: page_title(&self.page).into(), ..Default::default() }
         };
+        // (back from a page: it slides out with its rows, as QuickSettings'
+        // shownPage; the next page replaces them)
+        if self.page.is_empty() {
+            if let Some(w) = &self.win {
+                w.ui.set_paging(false);
+            }
+            return;
+        }
         self.shown_page = page;
         let Some(w) = &self.win else { return };
         let ui = &w.ui;
@@ -743,7 +806,11 @@ impl ControlCenter {
         let groups = bridge::groups(&p.blocks);
         let t = ui.global::<ui::Theme>();
         let fonts = (t.get_caption(), t.get_small());
-        let blocks: Vec<ui::CcBlock> = p.blocks.iter().zip(groups).map(|(b, (first, last))| block(b, first, last, material, fonts)).collect();
+        let mut blocks: Vec<ui::CcBlock> = p.blocks.iter().zip(groups).map(|(b, (first, last))| block(b, first, last, material, fonts)).collect();
+        // (a page's slider just dragged keeps the level under the pointer)
+        for b in blocks.iter_mut().filter(|b| b.kind == 4) {
+            b.value = self.held.or(&format!("block:{}", b.id), b.value);
+        }
         // (Wi-Fi's and Bluetooth's lists scroll past 360, as their QML lists)
         ui.set_page_cap(if self.page == "wifi" || self.page == "bluetooth" { 360.0 } else { 4000.0 });
         ui.set_paging(!self.page.is_empty());
@@ -752,7 +819,7 @@ impl ControlCenter {
         ui.set_page_switch_on(p.switch_on);
         ui.set_page_switch_label(p.switch_label.as_str().into());
         ui.set_page_refresh(p.refresh);
-        ui.set_blocks(ModelRc::new(VecModel::from(blocks)));
+        live::set_blocks(&self.blocks, blocks);
         ui.set_sub_y(self.sub_y);
     }
 
@@ -774,6 +841,14 @@ impl ControlCenter {
         }
         self.rebuild(st);
         self.push_page(st);
+    }
+
+    /// A module's bottom-left on screen (a menu opened from the keyboard)
+    fn module_xy_of(&self, st: &State, id: &str) -> (f32, f32) {
+        let Some(p) = self.packed.iter().find(|p| p.id == id) else { return (0.0, 0.0) };
+        let (x, y, _, h) = place(p, Self::material(st));
+        let px = self.win.as_ref().map_or(0.0, |w| w.ui.get_panel_x());
+        (px + PAD + x, 34.0 + PAD + y + h)
     }
 
     /// A module's top on screen (the page's popover opens level with it)
@@ -817,8 +892,25 @@ impl ControlCenter {
         }
     }
 
+    /// One module's row again (a level just set)
+    fn show_level(&mut self, st: &State, id: &str) {
+        let material = Self::material(st);
+        let Some(k) = (0..self.model.row_count()).find(|&k| self.model.row_data(k).is_some_and(|r| r.id == id)) else { return };
+        let Some((i, p)) = self.packed.iter().enumerate().find(|(_, p)| p.id == id) else { return };
+        let r = self.model.row_data(k).unwrap();
+        let mut n = self.module(st, p, i, material);
+        n.sq_dx = r.sq_dx;
+        n.sq_dw = r.sq_dw;
+        if n != r {
+            self.model.set_row_data(k, n);
+        }
+    }
+
     fn slide(&mut self, st: &mut State, id: &str, v: f32) {
-        let v = v.clamp(0.0, 1.0) as f64;
+        let v = v.clamp(0.0, 1.0);
+        self.held.set(id, if id == "display" { v.max(0.01) } else { v });
+        self.show_level(st, id);
+        let v = v as f64;
         let snd = st.shell.get::<Sound>().cloned().unwrap_or_default();
         match id {
             "display" => {
@@ -854,6 +946,12 @@ impl ControlCenter {
             self.save(st, l);
             return;
         }
+        // (QSTile.act: an info tile's own button opens its page)
+        if let Some(d) = defs::def(id).filter(|d| d.kind == Kind::Info && !d.page.is_empty()) {
+            let y = self.module_y_of(st, id);
+            self.set_page(st, d.page, id, y, true);
+            return;
+        }
         match id {
             // (the microphone is the sound server's: here)
             "mic" => {
@@ -878,6 +976,8 @@ impl ControlCenter {
         if d.is_some_and(|d| d.menu) && !items.is_empty() {
             self.show_menu(MenuOf::Module(id.into()), items, x, y);
         } else if let Some(page) = d.map(|d| d.page).filter(|p| !p.is_empty()) {
+            // (the page beside the module, level with its top, not the pointer)
+            let y = self.module_y_of(st, id);
             self.set_page(st, page, id, y, true);
         } else if detail {
             self.act(st, id);
@@ -887,11 +987,19 @@ impl ControlCenter {
     fn show_menu(&mut self, of: MenuOf, items: Vec<MenuItem>, x: f32, y: f32) {
         let Some(w) = &self.win else { return };
         let rows: Vec<ui::CcMenuItem> = items.iter().map(|m| ui::CcMenuItem { text: m.text.as_str().into(), checked: m.checked, sep: m.separator, danger: m.danger }).collect();
-        w.ui.set_menu(ModelRc::new(VecModel::from(rows)));
+        w.menu.set(rows);
         w.ui.set_menu_x(x);
         w.ui.set_menu_y(y);
         w.ui.set_menu_open(true);
         self.menu = Some((of, items));
+        self.set_menu_kbd(-1);
+    }
+
+    fn set_menu_kbd(&mut self, k: i32) {
+        self.menu_kbd = k;
+        if let Some(w) = &self.win {
+            w.ui.set_menu_kbd(k);
+        }
     }
 
     fn hide_menu(&mut self) {
@@ -922,12 +1030,17 @@ impl ControlCenter {
         let page = self.page.clone();
         let what = if what == "seg" { format!("seg:{text}") } else { what.to_string() };
         // (a typed password goes to the shell's Wi-Fi, never anywhere else)
-        let text = if what == "commit" { text.to_string() } else { String::new() };
+        let text = if what == "commit" || what == "enter" || what == "btn" { text.to_string() } else { String::new() };
         shell::ask("cc.block", json!([page, b.id, what, text]));
     }
 
     fn block_slide(&mut self, st: &mut State, i: usize, v: f32) {
         let Some(b) = self.shown_page.blocks.get(i).cloned() else { return };
+        // (the row follows the pointer at once; the server's answer comes after)
+        self.held.set(&format!("block:{}", b.id), v);
+        if bridge::local(&self.page) {
+            self.push_page(st);
+        }
         if b.id == "mic" {
             self.slide(st, "mic", v);
         } else if let Some(n) = b.id.strip_prefix("app:").and_then(|n| n.parse::<u32>().ok()) {
@@ -983,7 +1096,7 @@ impl ControlCenter {
         let i = rows[a];
         if text == " " || is(Key::Return) {
             self.block(st, i, "click", "");
-        } else if is(Key::Menu) {
+        } else if is(Key::Menu) || (shift && is(Key::F10)) {
             let b = self.shown_page.blocks[i].clone();
             if !b.menu.is_empty() {
                 let (x, y) = self.win.as_ref().map_or((0.0, 0.0), |w| (w.ui.get_panel_x(), w.ui.get_panel_y() + 100.0));
@@ -1013,7 +1126,37 @@ impl ControlCenter {
             }
             return;
         }
-        if self.menu.is_some() {
+        if let Some(seps) = self.menu.as_ref().map(|(_, items)| items.iter().map(|m| m.separator).collect::<Vec<bool>>()) {
+            // (ContextMenu's keys: Up/Down skip separators, Home/End, Enter/Space pick)
+            let n = seps.len() as i32;
+            let usable = |k: i32| k >= 0 && k < n && !seps[k as usize];
+            let cur = self.menu_kbd;
+            let next = |from: i32, d: i32| -> i32 {
+                let mut k = from;
+                for _ in 0..n {
+                    k = (k + d).rem_euclid(n.max(1));
+                    if usable(k) {
+                        return k;
+                    }
+                }
+                from
+            };
+            let to = if is(Key::DownArrow) || is(Key::Tab) {
+                Some(next(if cur < 0 { -1 } else { cur }, 1))
+            } else if is(Key::UpArrow) || is(Key::Backtab) {
+                Some(next(if cur < 0 { n } else { cur }, -1))
+            } else if is(Key::Home) {
+                Some(next(-1, 1))
+            } else if is(Key::End) {
+                Some(next(n, -1))
+            } else {
+                None
+            };
+            if let Some(k) = to {
+                self.set_menu_kbd(k);
+            } else if (is(Key::Return) || text == " ") && usable(cur) {
+                self.message(st, Box::new(M::MenuPick(cur)));
+            }
             return;
         }
         if !self.page.is_empty() {
@@ -1025,13 +1168,42 @@ impl ControlCenter {
             return;
         }
         let cur = self.kbd;
-        let id = self.id_at(cur);
-        let kind = id.as_deref().and_then(defs::def).map(|d| d.kind);
+        // Past the modules, Tab reaches the footer (Settings, Power, Edit)
+        // or, editing in Material, Done and the controls to add
+        // (ControlCenterFooter's and QuickSettings' activeFocusOnTab)
+        let m3_editing = Self::material(st) && self.editing;
+        let extras = if m3_editing { 1 + self.gallery.len() as i32 } else { 3 };
         if is(Key::Tab) || is(Key::Backtab) {
             let step = if shift || is(Key::Backtab) { -1 } else { 1 };
-            self.set_kbd(if cur < 0 { 0 } else { (cur + step).rem_euclid(n) });
+            self.set_kbd(if cur < 0 { 0 } else { (cur + step).rem_euclid(n + extras) });
             return;
         }
+        if cur >= n {
+            let k = cur - n;
+            if text == " " || is(Key::Return) {
+                if m3_editing {
+                    if k == 0 {
+                        self.set_editing(st, false, true);
+                    } else if let Some(g) = self.gallery.get((k - 1) as usize).filter(|g| g.why.is_empty()) {
+                        let l = defs::add(&self.layout, &g.id);
+                        self.save(st, l);
+                    }
+                } else {
+                    match k {
+                        0 => self.message(st, Box::new(M::Settings)),
+                        1 => self.message(st, Box::new(M::Power)),
+                        _ => self.message(st, Box::new(M::ToggleEditing)),
+                    }
+                }
+            } else if is(Key::LeftArrow) || is(Key::UpArrow) {
+                self.set_kbd(if k == 0 { n - 1 } else { cur - 1 });
+            } else if is(Key::RightArrow) || is(Key::DownArrow) {
+                self.set_kbd(if k + 1 >= extras { cur } else { cur + 1 });
+            }
+            return;
+        }
+        let id = self.id_at(cur);
+        let kind = id.as_deref().and_then(defs::def).map(|d| d.kind);
         if cur < 0 {
             self.set_kbd(0);
             return;
@@ -1078,6 +1250,10 @@ impl ControlCenter {
             return;
         }
         let page = defs::def(&id).map(|d| d.page).unwrap_or("");
+        if id == "nowPlaying" && !self.editing && (text == " " || is(Key::Return)) {
+            self.message(st, Box::new(M::Media("toggle".into())));
+            return;
+        }
         if text == " " {
             if matches!(kind, Some(Kind::Toggle | Kind::Action)) || self.editing {
                 self.act(st, &id);
@@ -1094,8 +1270,16 @@ impl ControlCenter {
             } else {
                 self.act(st, &id);
             }
-        } else if is(Key::Menu) {
-            self.secondary(st, &id, 0.0, 0.0, false);
+        } else if is(Key::Menu) || (shift && is(Key::F10)) {
+            // (ModuleView: the Menu key opens the module's page, level with it;
+            // a module with choices only: its menu at the module)
+            if !page.is_empty() && !self.editing {
+                let y = self.module_y_of(st, &id);
+                self.set_page(st, page, &id, y, true);
+            } else {
+                let (x, y) = self.module_xy_of(st, &id);
+                self.secondary(st, &id, x, y, false);
+            }
         } else if self.editing && (is(Key::Delete) || is(Key::Backspace)) {
             let l = defs::remove(&self.layout, &id);
             self.save(st, l);
@@ -1108,7 +1292,7 @@ impl ControlCenter {
             let avatar = said.avatar != self.said.avatar;
             self.said = said;
             if avatar {
-                self.push_avatar();
+                self.push_avatar(st);
             }
             if self.open {
                 self.want_art(st);
@@ -1191,10 +1375,21 @@ fn block(b: &Block, first: bool, last: bool, material: bool, (caption, small): (
         gap,
         first,
         last,
+        graph: b.graph.as_str().into(),
     }
 }
 
 impl Part for ControlCenter {
+    // (the window it keeps while closed, made ahead and left unmapped)
+    fn prewarm(&mut self, st: &mut State) {
+        let Some(out) = st.likely_output() else { return };
+        if self.win.is_none() && !self.open && self.window(st, &out) {
+            if let Some(w) = &self.win {
+                w.surface.hide();
+            }
+        }
+    }
+
     fn name(&self) -> &'static str {
         NAME
     }
@@ -1325,6 +1520,10 @@ impl Part for ControlCenter {
                 }
             }
             M::Media(w) => {
+                if let Some(f) = w.strip_prefix("seek:").and_then(|f| f.parse::<f32>().ok()) {
+                    self.held.set("seek", f);
+                    self.push_footer(st);
+                }
                 let bus = st.shell.get::<Players>().and_then(|p| p.chosen()).map(|p| p.bus.clone());
                 let method = match w.as_str() {
                     "previous" => Some("Previous"),
@@ -1333,12 +1532,22 @@ impl Part for ControlCenter {
                     _ => None,
                 };
                 if w == "cast" {
-                    self.set_page(st, "cast", "nowPlaying", 0.0, true);
+                    let y = self.module_y_of(st, "nowPlaying");
+                    self.set_page(st, "cast", "nowPlaying", y, true);
                 } else if let (Some(bus), Some(m)) = (bus, method) {
                     mpris::control(&bus, m);
                 } else {
                     // (seeking: the shell's player knows the position)
                     shell::ask("cc.media", json!([w]));
+                }
+            }
+            M::Avatar(path, px) => {
+                let a = live::cached(&path, || px.map(slint::Image::from_rgba8));
+                if path == self.said.avatar {
+                    if let Some(w) = &self.win {
+                        w.ui.set_has_avatar(a.is_some());
+                        w.ui.set_avatar(a.unwrap_or_default());
+                    }
                 }
             }
             M::Art(url, px) => {
@@ -1435,6 +1644,11 @@ impl Part for ControlCenter {
         if !w.surface.mapped.get() {
             return;
         }
+        let hover = self.open && w.ui.get_page_hover();
+        if hover != self.page_hover {
+            self.page_hover = hover;
+            shell::ask("cc.hover", json!([hover]));
+        }
         let size = w.surface.logical_size();
         if self.open && size != w.region && size.0 > 0 {
             st.set_input_region(&w.surface, Some(&[(0, 30, size.0 as i32, size.1 as i32 - 30)]));
@@ -1489,7 +1703,7 @@ impl Part for ControlCenter {
                 shapes.push(theme::glass_shape(look, x, y, sw * k, sh * k, (36.0 + PAD) * k, o * s.min(1.0), 1.0));
             }
         }
-        let key = format!("{shapes:?}");
+        let key = tessera_core::theme::glass_key(&shapes);
         if key != w.glass_sent {
             st.shell.glass.set(&w.output, NS, &shapes);
             w.glass_sent = key;

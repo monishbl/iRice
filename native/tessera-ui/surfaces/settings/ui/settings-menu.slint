@@ -1,0 +1,170 @@
+// Settings' menu as its own popup window (ActionMenu.qml: a Popup, so a
+// Choice's list or a row's menu is never cut off by the window and can
+// reach past it). Rust opens it with State::prepare_popup next to the
+// control (lib.rs `open_menu`), sizes it from its items, and closes it on a
+// choice, Esc, or a click elsewhere (the popup's grab).
+// Keyboard: ↑ ↓ to move (skipping the disabled), Enter or Space to choose,
+// Esc to close. Material: 44 px items, a state layer on the one under the
+// pointer or the keys, the checked one in the tertiary container.
+
+import { Theme } from "@tessera/theme.slint";
+import { SOpt, SG, SM, SIcon } from "settings-kit.slint";
+
+export component SettingsMenu inherits Window {
+    in property <[SOpt]> items;
+    in property <length> radius: Theme.material ? 16px : 12px;
+    // the item the keys are on (-1: none yet)
+    in-out property <int> current: -1;
+    // 44/32 (ActionMenu) or 36/28 (Dropdown's list): Rust says
+    in property <length> item-h: Theme.material ? 44px : 32px;
+    // Dropdown.qml's list: lit (Glass: the accent) under the pointer or the
+    // keys, which start on the chosen one and follow the pointer; the
+    // chosen one in the tertiary container (Material); an 11 px check, the
+    // body size for every look
+    in property <bool> dropdown;
+    callback pick(int);
+    callback dismiss();
+    background: transparent;
+    default-font-family: Theme.font;
+    default-font-size: Theme.body;
+
+    // The checked one in view when it opens (ActionMenu.open's contentY)
+    public function settle(checked: int) {
+        list.content-y = -max(0px, min(checked * item-h - (list.height) / 2 + item-h / 2, items.length * item-h - list.height));
+    }
+    // (the keyboard's choice stays in view)
+    function keep-in-view() {
+        if current < 0 { return; }
+        let top = current * item-h;
+        if top < -list.content-y {
+            list.content-y = -top;
+        } else if top + item-h > -list.content-y + list.height {
+            list.content-y = -(top + item-h - list.height);
+        }
+    }
+    function step(d: int) {
+        let n = items.length;
+        if n == 0 { return; }
+        // (from the one we're on, the next usable one, round the list)
+        let start = current < 0 ? (d > 0 ? -1 : 0) : current;
+        let i1 = mod(start + d + n, n);
+        let i2 = mod(start + 2 * d + 2 * n, n);
+        let i3 = mod(start + 3 * d + 3 * n, n);
+        if !items[i1].off { current = i1; } else if !items[i2].off { current = i2; } else if !items[i3].off { current = i3; }
+        keep-in-view();
+    }
+
+    // A key from the Settings window (it kept the keyboard): as the menu's own
+    public function key(t: string) {
+        if t == Key.Escape { root.dismiss(); }
+        else if t == Key.DownArrow { step(1); }
+        else if t == Key.UpArrow { step(-1); }
+        else if t == Key.Home { current = -1; step(1); }
+        else if t == Key.End { current = items.length; step(-1); }
+        else if t == Key.Return || t == " " {
+            if current >= 0 && current < items.length && !items[current].off { root.pick(current); }
+        }
+    }
+    forward-focus: keys;
+    keys := FocusScope {
+        key-pressed(e) => {
+            if e.text == Key.Escape { root.dismiss(); return accept; }
+            if e.text == Key.DownArrow { step(1); return accept; }
+            if e.text == Key.UpArrow { step(-1); return accept; }
+            if e.text == Key.Home { current = -1; step(1); return accept; }
+            if e.text == Key.End { current = items.length; step(-1); return accept; }
+            if e.text == Key.Return || e.text == " " {
+                if current >= 0 && !items[current].off { root.pick(current); }
+                return accept;
+            }
+            reject
+        }
+    }
+
+    // The menu (GlassPopupBackground / Material's menu surface)
+    Rectangle {
+        border-radius: root.radius;
+        background: Theme.material ? Theme.m3-surface-container : Theme.menu-bg;
+        border-width: Theme.material ? 0 : 1px;
+        border-color: Theme.separator;
+        clip: true;
+        accessible-role: AccessibleRole.list;
+        list := Flickable {
+            x: 5px;
+            y: 5px;
+            width: parent.width - 10px;
+            height: parent.height - 10px;
+            content-height: lay.preferred-height;
+            lay := VerticalLayout {
+                for it[i] in items: VerticalLayout {
+                // (a separator above: the item's num is 1)
+                if it.num > 0.5: Rectangle {
+                    height: 9px;
+                    Rectangle {
+                        x: 8px;
+                        width: parent.width - 16px;
+                        height: 1px;
+                        background: Theme.material ? Theme.m3-outline-variant : Theme.separator;
+                    }
+                }
+                Rectangle {
+                    height: root.item-h;
+                    property <bool> lit: !it.off && (mta.has-hover || root.current == i);
+                    border-radius: Theme.material ? (it.on ? 12px : 8px) : root.dropdown ? 7px : 8px;
+                    background: Theme.material ? (it.on ? (root.dropdown ? Theme.m3-tertiary-container : Theme.m3-tertiary-container.mix(Theme.m3-on-tertiary-container, lit ? 0.92 : 1)) : lit ? (it.style == 2 ? Theme.m3-error : Theme.m3-on-surface).with-alpha(0.08) : transparent)
+                        : lit ? (it.style == 2 ? Theme.danger : Theme.accent) : transparent;
+                    accessible-role: AccessibleRole.list-item;
+                    accessible-label: it.text;
+                    accessible-checked: it.on;
+                    accessible-enabled: !it.off;
+                    accessible-action-default => { if !it.off { root.pick(i); } }
+                    property <color> ink: Theme.material ? (it.off ? Theme.m3-on-surface.with-alpha(0.38) : it.on ? Theme.m3-on-tertiary-container : it.style == 2 ? Theme.m3-error : Theme.m3-on-surface)
+                        : lit ? Theme.on-accent : it.off ? Theme.tertiary : it.style == 2 ? Theme.danger : Theme.label;
+                    if it.on || it.icon.p != "": SIcon {
+                        x: root.dropdown ? (Theme.material ? 8px : 6px) : Theme.material ? 12px : 8px;
+                        g: it.on ? SG.check : it.icon;
+                        bold: it.on && (!Theme.material || root.dropdown);
+                        size: root.dropdown ? 11px : Theme.material ? 20px : 12px;
+                        color: parent.ink;
+                    }
+                    Text {
+                        x: root.dropdown ? (Theme.material ? 28px : 24px) : Theme.material ? 44px : 28px;
+                        width: parent.width - self.x - 8px;
+                        height: parent.height;
+                        vertical-alignment: center;
+                        overflow: elide;
+                        text: it.text;
+                        color: parent.ink;
+                        font-size: Theme.material && !root.dropdown ? 14px : Theme.body;
+                        letter-spacing: Theme.material ? 0.1px : 0;
+                        accessible-role: AccessibleRole.none;
+                    }
+                    mta := TouchArea {
+                        enabled: !it.off;
+                        mouse-cursor: it.off ? default : pointer;
+                        clicked => { root.pick(i); }
+                        // (Dropdown.qml: the pointer moves the keys' item)
+                        changed has-hover => { if self.has-hover && root.dropdown { root.current = i; } }
+                    }
+                }
+                }
+            }
+        }
+        // (a long list scrolls inside the menu: its thin indicator)
+        if lay.preferred-height > list.height + 1px: Rectangle {
+            x: parent.width - 6px;
+            width: 4px;
+            border-radius: 2px;
+            height: max(24px, list.height * list.height / max(1px, lay.preferred-height));
+            y: 6px + (-list.content-y / max(1px, lay.preferred-height - list.height)) * (parent.height - 12px - self.height);
+            background: Theme.label.with-alpha(0.25);
+        }
+    }
+    // (Material: a thin outline in dark mode, where shadows don't read)
+    if Theme.material && Theme.dark: Rectangle {
+        border-radius: root.radius;
+        border-width: 1px;
+        border-color: Theme.m3-outline-variant.with-alpha(0.5);
+        background: transparent;
+    }
+}

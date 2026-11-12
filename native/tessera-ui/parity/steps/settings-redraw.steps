@@ -1,0 +1,52 @@
+# Big windows draw only what changed (latency.md steps 12 and 18): Settings'
+# sidebar pill at 60 fps, and no stale pixels after hovers, scrolls, menus,
+# typing, a look change and a resize. Compare frames/longest gap with the
+# QML; the reviewer also runs this once with TESSERA_UI_FULL_REDRAW=1 (Rust)
+# for the old way's numbers.
+look material
+ipc panels openSettings
+wait 3
+shot settings-open
+note find the sidebar's pages in settings-open; the ptr steps below assume the sidebar's rows at x 120, y 160 + 36 per row (adjust)
+rec pill-1 1.2 ptr move 120 196 click
+rec pill-2 1.2 ptr move 120 232 click
+rec pill-3 1.2 ptr move 120 268 click
+rec pill-4 1.2 ptr move 120 304 click
+rec pill-5 1.2 ptr move 120 160 click
+note pill recordings: frames ≥ 55 per second while it moves, longest gap ≤ QML's + 17 ms
+# hover rows, scroll the page, then look for leftovers
+ptr glide 600 300 300 glide 600 700 600 glide 120 400 300
+wait 0.5
+ptr move 700 500 scroll 0 5 sleep 200 scroll 0 5 sleep 200 scroll 0 -10
+wait 1
+shot after-hover-scroll
+# a menu inside Settings (right-click a row), then closed
+ptr move 700 400 sleep 100 click
+wait 0.6
+key -k Escape
+wait 0.6
+shot after-menu
+# typing in Settings' search
+ptr move 120 110 click
+key test
+wait 0.6
+key -k Escape
+wait 0.6
+shot after-typing
+# the look changes under it: Glass, then dark ↔ light by IPC
+setup python3 -I -c "import json,os;p=os.path.expanduser('~/.config/tessera/config.json');c=json.load(open(p));c['appearance']['look']='glass';json.dump(c,open(p,'w'),indent=4)"
+wait 3
+shot after-look-glass
+setup python3 -I -c "import json,os;p=os.path.expanduser('~/.config/tessera/config.json');c=json.load(open(p));c['appearance']['mode']='light';json.dump(c,open(p,'w'),indent=4)"
+wait 3
+shot after-light
+setup python3 -I -c "import json,os;p=os.path.expanduser('~/.config/tessera/config.json');c=json.load(open(p));c['appearance']['mode']='dark';c['appearance']['look']='material';json.dump(c,open(p,'w'),indent=4)"
+wait 3
+shot after-back
+# a resize (the window wider, then back)
+setup hyprctl dispatch 'hl.dsp.window.resize({ x = 200, y = 0, relative = true })'
+wait 1
+setup hyprctl dispatch 'hl.dsp.window.resize({ x = -200, y = 0, relative = true })'
+wait 1
+shot after-resize
+note no shot shows stale pixels (a hover tint, a caret, a menu's shadow or a glass edge left behind); after-back looks like settings-open

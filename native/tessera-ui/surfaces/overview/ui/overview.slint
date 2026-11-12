@@ -189,19 +189,39 @@ export component OverviewPanel inherits Window {
     public function focus-field() {
         field.focus();
     }
+    // (out and in again: the caret starts blinking now the window is active)
+    public function refocus() {
+        field.clear-focus();
+        field.focus();
+    }
 
     background: transparent;
     no-frame: true;
     title: "Overview";
     default-font-family: Theme.font;
 
-    // (opens on the shell's spring, closes quickly)
+    // Opens on the QML's SpringAnimation (spring Theme.motion.spring + 0.6,
+    // damping + 0.08; Qt steps 16 ms, so ω = √(62.5·spring), ζ = 62.5·damping / 2ω):
+    // Material 6.68 / 0.58 → ω 20.4, ζ 0.89 (Slint: 307 ms, bounce 0.11);
+    // Glass expressive 3.6 / 0.30 → ω 15, ζ 0.63 (419 ms, bounce 0.37).
+    // Closes in popover × 0.7 (154 ms) InCubic.
     animate openness {
-        duration: shown ? 520ms : 154ms;
-        easing: shown ? spring(0.4) : cubic-bezier(0.32, 0, 0.67, 0);
+        duration: shown ? (Theme.material ? 307ms : 419ms) : Theme.popover * 0.7;
+        easing: shown ? (Theme.material ? spring(0.11) : spring(0.37)) : cubic-bezier(0.32, 0, 0.67, 0);
     }
     changed openness => {
         if !shown && openness <= 0.001 { closed(); }
+    }
+    // A window's miniature glides to a new place (a re-tile while open) only
+    // once it's in place: 400 ms after opening (the QML's `settled`)
+    property <bool> settled;
+    changed shown => {
+        if !shown { settled = false; }
+    }
+    Timer {
+        interval: 400ms;
+        running: shown && !settled;
+        triggered => { settled = true; }
     }
 
     // Dim the screen behind (a click on it closes)
@@ -215,7 +235,9 @@ export component OverviewPanel inherits Window {
         transform-origin: { x: self.width / 2, y: self.height / 2 };
 
         // macOS style: the bar at the top (the compositor blurs behind it)
-        if mac: Rectangle {
+        // (kept, hidden, while not in use: the lists keep their elements)
+        Rectangle {
+            visible: mac;
             y: -(1 - min(1, openness)) * 40px;
             height: bar-h;
             background: Theme.material ? Theme.m3-surface-container : Theme.dark ? #1f1f24.with-alpha(0.6) : #ffffff.with-alpha(0.5);
@@ -246,7 +268,11 @@ export component OverviewPanel inherits Window {
                 opacity: dragged ? 0.85 : space-gone == t.id ? 0 : 1;
                 accessible-role: button;
                 accessible-label: t.title;
+                // (at the top: a child without x/y is centred, which put the
+                // wallpaper half the title's room, 11 px, too low)
                 Rectangle {
+                    x: 0;
+                    y: 0;
                     width: t.w;
                     height: t.h;
                     transform-scale: pressed-cell == t.id && !tile.dragged ? 0.97 : hover-cell == t.id ? 1.03 : 1;
@@ -331,7 +357,8 @@ export component OverviewPanel inherits Window {
         }
 
         // The grid: a row per display with several (labelled), or this display's
-        if !mac && results.length == 0: Rectangle {
+        Rectangle {
+            visible: !mac && results.length == 0;
             for l in labels: Rectangle {
                 x: l.x;
                 y: l.y;
@@ -369,6 +396,8 @@ export component OverviewPanel inherits Window {
                 // The space: a plain neutral container (Material: a card,
                 // the current space in secondaryContainer)
                 Rectangle {
+                    x: 0;
+                    y: 0;
                     width: c.w;
                     height: c.h;
                     border-radius: Theme.material ? Theme.radius-tile : 14px;
@@ -376,7 +405,12 @@ export component OverviewPanel inherits Window {
                     border-width: Theme.material ? 0 : cell.lit || cell.soft ? 2px : 1px;
                     border-color: cell.lit ? Theme.accent : c.current ? (rows-mode ? Theme.accent.with-alpha(0.55) : Theme.dark ? #36363C : #D4D4D8) : Theme.dark ? #26262A : #E4E4E7;
                     transform-scale: pressed-cell == c.id ? 0.97 : hover-cell == c.id ? 1.02 : 1;
-                    animate transform-scale { duration: 300ms; easing: spring(0.36); }
+                    // (SpringAnimation spring + 1, damping + 0.04: Material 7.08 / 0.54 → ω 21, ζ 0.80;
+                    // Glass expressive 4.0 / 0.26 → ω 15.8, ζ 0.51)
+                    animate transform-scale {
+                        duration: Theme.material ? 299ms : 397ms;
+                        easing: Theme.material ? spring(0.2) : spring(0.49);
+                    }
                     transform-origin: { x: self.width / 2, y: self.height / 2 };
                     clip: true;
                     if wallpapers: Rectangle {
@@ -405,6 +439,11 @@ export component OverviewPanel inherits Window {
                         y: w.y;
                         width: w.w;
                         height: w.h;
+                        // a new place glides there (once settled; not while dragged)
+                        animate x, y, width, height {
+                            duration: root.settled && drag-win != w.address ? 200ms : 0ms;
+                            easing: cubic-bezier(0.33, 1, 0.68, 1);
+                        }
                         radius: w.radius;
                         picture: w.picture;
                         has-picture: w.has-picture;

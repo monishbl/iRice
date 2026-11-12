@@ -1,0 +1,1446 @@
+// The calendar and the to-do list, shared (shell/modules/notifications/
+// CalendarWidget.qml and TodoWidget.qml): Notification Center's Calendar and
+// To-do tabs, and the desktop's large Calendar widget. Import them as
+//   import { CalendarTab, TodoTab, NcDay, NcItem, NcTodo, NcTarget, NcDraft } from "@tessera/calendar.slint";
+// Everything comes in through properties and goes out through callbacks: the
+// host (host/desktop/src/today: Calendar, Todos) owns the data and does the
+// writes; these only draw and edit.
+//
+// ── CalendarTab ─────────────────────────────────────────────────────────
+// in:
+//   title          "November 2026" (week: "2 Nov – 8 Nov")
+//   week           the week view (rows) instead of the month grid
+//   days [NcDay]   42 (month) or 7 (week), Monday first
+//   day-title      the chosen day ("Today", "Tomorrow", "Friday 13 November")
+//   day-key        the chosen day as "y-mm-dd"; day-short its "Fri 13 Nov"
+//   items [NcItem] what's on the chosen day (events, then to-dos); each
+//                  carries its fields for the editor (see NcItem)
+//   every-day      "Every day: …" under the grid ("" none)
+//   targets [NcTarget], target, target-label: where a new event can go
+//                  (value "" this computer), the default one and its name
+//   default-alert  minutes before (Calendar.defaultAlert)
+//   h24            24-hour clock (a new event starts "09:00", else "9:00 AM")
+//   undo           the title of the item just deleted ("" none): the Undo row
+//   outline        Material: today when chosen too (cookie9 path, 0..100 box)
+//   radius         the scrim's corners while the editor is open
+//   error (in-out) the editor's error line; the host sets it on a failed save
+// out (callbacks):
+//   step(n)            ‹ › and the wheel: n months (weeks in the week view)
+//   set-week(on)       Month | Week
+//   pick(key)          a date clicked
+//   todo-toggle(key)   a to-do's tick
+//   save(draft, every) the editor's Save / Enter in a field; every -1 not
+//                      asked yet, 0 this occurrence, 1 the whole series
+//   remove(key, every) Delete in the editor (the host offers Undo for 8 s)
+//   move(key, day, every) an item dropped on another date ("y-mm-dd")
+//   restore()          Undo
+// functions (the host may call them back):
+//   create(key, short) the editor for a new event or to-do on that day
+//   edit(item)         the editor on that item (read-only when not editable)
+//   close-editor()     after a save went through
+//   ask(what, day)     "this or all?" for a repeating event: 1 save, 2 remove,
+//                      3 move (to `day`); the choice calls the callback again
+//   fail(text)         the save failed: the editor again, with the error
+//
+// ── TodoTab ─────────────────────────────────────────────────────────────
+// in: todos [NcTodo], undo (the text of the one just deleted), ink (Glass:
+// the accent that reads on white). out: add(text), toggle(key), remove(key),
+// restore(), rename(key, text).
+//
+// Also exported: Segmented (Segmented.qml) and Tick (a tick box:
+// MaterialCheck.qml in Material).
+
+import { Theme, Icon } from "theme.slint";
+import { IconButton } from "widgets.slint";
+
+export struct NcItem {
+    event: bool,
+    title: string,
+    sub: string,
+    color: color,
+    done: bool,
+    key: string,
+    // for the editor and dragging
+    day: string, // its date ("y-mm-dd")
+    all-day: bool,
+    start: string, // "9:00 AM" ("" a to-do without a time)
+    end: string,
+    location: string,
+    notes: string,
+    alert: int, // minutes before; -1 none
+    editable: bool, // false: a subscribed (read-only) calendar's
+    movable: bool, // can be dragged to another date
+    recurring: bool,
+    account: bool, // an account's calendar (keeps a location)
+    info: string, // the read-only view's text (when, where, from which calendar)
+    cal-line: string, // an account event's "Calendar · account"
+}
+
+export struct NcDay {
+    label: string,
+    key: string,
+    today: bool,
+    selected: bool,
+    in-month: bool,
+    colors: [color], // up to three events' colours
+    todos: bool,
+    // the week view: its name ("Mon") and what's on (a few)
+    name: string,
+    lines: [NcItem],
+    more: int,
+    long: string, // "Fri 13 Nov" (the editor's "New on …")
+}
+
+export struct NcTodo {
+    key: string,
+    text: string,
+    done: bool,
+    due: string,
+    overdue: bool,
+}
+
+// A choice in a list: a calendar for a new event, an alert
+export struct NcTarget {
+    value: string,
+    label: string,
+}
+
+// What the editor saves
+export struct NcDraft {
+    key: string, // the item edited ("" a new one)
+    todo: bool,
+    day: string, // "y-mm-dd"
+    title: string,
+    all-day: bool,
+    start: string, // as typed ("9:30", "5pm")
+    end: string,
+    location: string,
+    notes: string,
+    alert: int,
+    target: string, // a new event's calendar ("" this computer)
+}
+
+// Segmented.qml: Glass, a track with a sliding pill; Material, a connected
+// button group (2 px apart, round ends, 8 px inside; the chosen one fills
+// and turns round). Segments share the width evenly.
+export component Segmented inherits Rectangle {
+    in property <[string]> options;
+    in property <int> current;
+    in property <string> label;
+    callback selected(int);
+    property <length> gap: Theme.material ? 2px : 0;
+    property <length> seg: (self.width - 4px - gap * (options.length - 1)) / max(1, options.length);
+    height: Theme.material ? 36px : 30px;
+    border-radius: self.height / 2;
+    background: Theme.material ? transparent : Theme.toggle-off;
+    accessible-role: tab-list;
+    accessible-label: label;
+    forward-focus: keys;
+    keys := FocusScope {
+        key-pressed(e) => {
+            if e.text == Key.LeftArrow && current > 0 { selected(current - 1); return accept; }
+            if e.text == Key.RightArrow && current < options.length - 1 { selected(current + 1); return accept; }
+            reject
+        }
+    }
+    if !Theme.material: Rectangle {
+        x: 2px + current * seg;
+        y: 2px;
+        width: seg;
+        height: parent.height - 4px;
+        border-radius: self.height / 2;
+        background: Theme.dark ? #ffffff33 : #ffffff;
+        animate x { duration: 280ms; easing: cubic-bezier(0.2, 0, 0, 1); }
+    }
+    for o[i] in options: Rectangle {
+        property <bool> chosen: i == current;
+        property <length> full: self.height / 2;
+        property <length> inner: chosen ? full : touch.pressed ? 4px : 8px;
+        x: 2px + i * (seg + gap);
+        width: seg;
+        height: parent.height;
+        border-top-left-radius: !Theme.material ? 0 : i == 0 ? full : inner;
+        border-bottom-left-radius: self.border-top-left-radius;
+        border-top-right-radius: !Theme.material ? 0 : i == options.length - 1 ? full : inner;
+        border-bottom-right-radius: self.border-top-right-radius;
+        animate border-top-left-radius, border-top-right-radius { duration: 200ms; easing: spring(0.6); }
+        background: !Theme.material ? transparent : chosen ? Theme.m3-primary.mix(Theme.m3-on-primary, touch.pressed ? 0.9 : touch.has-hover ? 0.92 : 1)
+            : Theme.m3-surface-container-highest.mix(Theme.m3-on-surface-variant, touch.pressed ? 0.9 : touch.has-hover ? 0.92 : 1);
+        animate background { duration: 150ms; }
+        accessible-role: tab;
+        accessible-label: o;
+        accessible-checked: chosen;
+        accessible-action-default => { selected(i); }
+        Text {
+            text: o;
+            color: Theme.material ? (chosen ? Theme.m3-on-primary : Theme.m3-on-surface-variant) : chosen ? Theme.label : Theme.secondary;
+            font-size: Theme.material ? Theme.body : Theme.small;
+            font-weight: Theme.material ? 500 : 600;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            overflow: elide;
+            accessible-role: none;
+        }
+        touch := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.selected(i); }
+        }
+    }
+}
+
+// A tick box: Glass a circle (accent when done), Material MaterialCheck.qml
+// (a rounded square, primary when checked)
+export component Tick inherits Rectangle {
+    in property <bool> checked;
+    in property <color> tint: Theme.accent;
+    in property <color> ring: Theme.tertiary; // Glass: the empty circle's edge
+    in property <bool> round: true;
+    in property <string> label;
+    callback toggled();
+    width: 18px;
+    height: 18px;
+    border-radius: Theme.material ? 4px : round ? 9px : 4px;
+    background: checked ? (Theme.material ? Theme.m3-primary : tint) : transparent;
+    border-width: checked ? 0 : Theme.material ? 2px : 1.5px;
+    border-color: Theme.material ? Theme.m3-on-surface-variant : ring;
+    accessible-role: checkbox;
+    accessible-checked: checked;
+    accessible-label: label;
+    accessible-action-default => { toggled(); }
+    if checked: Icon {
+        text: "\u{e182}"; // check
+        bold: true;
+        font-size: Theme.material ? 14px : 10px;
+        color: Theme.material ? Theme.m3-on-primary : Theme.on-accent;
+    }
+    TouchArea {
+        x: -6px;
+        y: -6px;
+        width: parent.width + 12px;
+        height: parent.height + 12px;
+        mouse-cursor: pointer;
+        clicked => { root.toggled(); }
+    }
+}
+
+// TextField.qml in the editor: Glass a fill outlined in the accent while
+// typing; Material FilledField's pill, outlined in primary
+component CalField inherits Rectangle {
+    in-out property <string> text <=> input.text;
+    in property <string> placeholder;
+    in property <bool> read-only;
+    callback committed();
+    public function focus-input() {
+        input.focus();
+    }
+    height: Theme.material ? 40px : 32px;
+    border-radius: Theme.material ? min(self.height / 2, 28px) : Theme.radius-control - 2px;
+    background: Theme.material ? Theme.m3-surface-container-highest : Theme.fill;
+    border-width: Theme.material ? (input.has-focus ? 2px : 0) : 1px;
+    border-color: Theme.material ? Theme.m3-primary : input.has-focus ? Theme.accent : Theme.separator;
+    opacity: read-only ? 0.6 : 1;
+    input := TextInput {
+        x: Theme.material ? 16px : 10px;
+        width: parent.width - 2 * self.x;
+        color: Theme.label;
+        font-size: Theme.body;
+        vertical-alignment: center;
+        single-line: true;
+        read-only: root.read-only;
+        selection-background-color: Theme.material ? Theme.m3-primary.with-alpha(0.3) : Theme.accent.with-alpha(0.4);
+        accessible-label: placeholder;
+        accepted => { root.committed(); }
+    }
+    Text {
+        x: input.x;
+        width: input.width;
+        visible: input.text == "" && !input.has-focus;
+        text: placeholder;
+        color: Theme.tertiary;
+        font-size: Theme.body;
+        vertical-alignment: center;
+        overflow: elide;
+        accessible-role: none;
+    }
+}
+
+// Switch.qml
+component CalSwitch inherits Rectangle {
+    in property <bool> checked;
+    in property <bool> enabled: true;
+    in property <string> label;
+    callback toggled();
+    width: Theme.material ? 52px : 38px;
+    height: Theme.material ? 32px : 22px;
+    opacity: enabled ? 1 : 0.4;
+    border-radius: self.height / 2;
+    background: Theme.material ? (checked ? Theme.m3-primary : Theme.m3-surface-container-highest) : checked ? Theme.accent : Theme.toggle-off;
+    animate background { duration: 150ms; }
+    border-width: Theme.material && !checked ? 2px : 0;
+    border-color: Theme.m3-outline;
+    accessible-role: checkbox;
+    accessible-checked: checked;
+    accessible-label: label;
+    accessible-action-default => { if enabled { toggled(); } }
+    if !Theme.material: Rectangle {
+        width: parent.height - 4px;
+        height: self.width;
+        y: 2px;
+        x: checked ? parent.width - self.width - 2px : 2px;
+        border-radius: self.width / 2;
+        background: #ffffff;
+        animate x { duration: 220ms; easing: cubic-bezier(0.2, 0, 0, 1); }
+    }
+    if Theme.material: Rectangle {
+        property <length> size: t.pressed ? 28px : checked ? 24px : 16px;
+        width: size;
+        height: size;
+        y: (parent.height - size) / 2;
+        x: checked ? parent.width - 16px - size / 2 : 16px - size / 2;
+        border-radius: size / 2;
+        background: checked ? Theme.m3-on-primary : t.has-hover || t.pressed ? Theme.m3-on-surface-variant : Theme.m3-outline;
+        animate x, width, height, y { duration: 300ms; easing: spring(0.54); }
+        animate background { duration: 150ms; }
+        if checked: Icon {
+            text: "\u{e182}";
+            bold: true;
+            font-size: 14px;
+            color: Theme.m3-primary;
+        }
+    }
+    t := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { if enabled { root.toggled(); } }
+    }
+}
+
+// Dropdown.qml's button (its list is the editor's: drawn over the card)
+component CalChoice inherits Rectangle {
+    in property <string> text;
+    in property <bool> open;
+    in property <string> label;
+    callback clicked();
+    callback step(int);
+    height: Theme.material ? 40px : 28px;
+    border-radius: Theme.material ? min(self.height / 2, 28px) : Theme.radius-control - 2px;
+    background: Theme.material ? Theme.m3-surface-container-highest.mix(Theme.m3-on-surface, t.has-hover ? 0.92 : 1) : t.has-hover || open ? Theme.fill-hover : Theme.fill;
+    border-width: Theme.material && open ? 2px : 0;
+    border-color: Theme.m3-primary;
+    accessible-role: combobox;
+    accessible-label: label;
+    accessible-value: text;
+    accessible-action-default => { clicked(); }
+    forward-focus: keys;
+    keys := FocusScope {
+        key-pressed(e) => {
+            if e.text == " " || e.text == Key.Return { root.clicked(); return accept; }
+            if e.text == Key.UpArrow { root.step(-1); return accept; }
+            if e.text == Key.DownArrow { root.step(1); return accept; }
+            reject
+        }
+    }
+    Text {
+        x: Theme.material ? 16px : 10px;
+        width: parent.width - self.x - 28px;
+        text: root.text;
+        color: Theme.label;
+        font-size: Theme.body;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+    Icon {
+        x: parent.width - self.width - (Theme.material ? 12px : 8px);
+        width: self.preferred-width;
+        text: Theme.material ? "\u{e136}" : "\u{e140}"; // caret-down, caret-up-down
+        bold: true;
+        font-size: Theme.material ? 14px : 11px;
+        color: Theme.secondary;
+        transform-rotation: Theme.material && open ? 180deg : 0deg;
+        animate transform-rotation { duration: 200ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+    }
+    t := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            keys.focus();
+            root.clicked();
+        }
+    }
+}
+
+// The editor's buttons: 0 Cancel (tonal; Material a text button), 1 Save
+// (filled), 2 Delete (red text)
+component CalButton inherits Rectangle {
+    in property <string> text;
+    in property <int> kind;
+    callback clicked();
+    width: label.preferred-width + (kind == 1 && Theme.material ? 32px : 24px);
+    height: Theme.material ? 40px : 32px;
+    border-radius: Theme.material ? self.height / 2 : Theme.radius-control;
+    background: kind == 2 ? (t.has-hover ? Theme.danger.with-alpha(Theme.material ? 0.08 : 0.15) : transparent)
+        : kind == 1 ? (Theme.material ? Theme.m3-primary.mix(Theme.m3-on-primary, t.pressed ? 0.9 : t.has-hover ? 0.92 : 1) : t.pressed ? Theme.accent.darker(0.2) : t.has-hover ? Theme.accent.darker(0.1) : Theme.accent)
+        : Theme.material ? (t.pressed ? Theme.m3-primary.with-alpha(0.1) : t.has-hover ? Theme.m3-primary.with-alpha(0.08) : transparent)
+        : t.pressed ? Theme.fill-pressed : t.has-hover ? Theme.fill-hover : Theme.fill;
+    animate background { duration: 150ms; }
+    accessible-role: button;
+    accessible-label: text;
+    accessible-action-default => { clicked(); }
+    label := Text {
+        text: root.text;
+        color: kind == 2 ? Theme.danger : kind == 1 ? (Theme.material ? Theme.m3-on-primary : Theme.on-accent) : Theme.material ? Theme.m3-primary : Theme.label;
+        font-size: Theme.material ? 14px : Theme.small;
+        font-weight: kind == 1 && !Theme.material ? 600 : 500;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        accessible-role: none;
+    }
+    t := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// ── The calendar (CalendarWidget.qml) ───────────────────────────────────────
+export component CalendarTab {
+    in property <string> outline; // Material: today, when chosen too, is a cookie
+    in property <string> title;
+    in property <bool> week;
+    in property <[NcDay]> days;
+    in property <string> day-title;
+    in property <string> day-key;
+    in property <string> day-short;
+    in property <[NcItem]> items;
+    in property <string> every-day;
+    in property <[NcTarget]> targets;
+    in property <string> target;
+    in property <string> target-label: "This computer";
+    in property <int> default-alert: 10;
+    in property <bool> h24;
+    in property <string> undo;
+    in property <color> ink: Theme.accent;
+    in property <length> radius: 18px;
+    in-out property <string> error;
+    callback step(int);
+    callback set-week(bool);
+    callback pick(string);
+    callback todo-toggle(string);
+    callback save(NcDraft, int);
+    callback remove(string, int);
+    callback move(string, string, int);
+    callback restore();
+
+    // The wheel (CalendarWidget 273-283): it adds up, one step per notch
+    // (a notch is 15 px here, Qt's 120), months or weeks; a touchpad's
+    // small deltas no longer step once each
+    property <length> wheel-acc;
+    function wheel(d: length) {
+        wheel-acc += d;
+        if wheel-acc <= -15px {
+            wheel-acc = 0;
+            step(1);
+        } else if wheel-acc >= 15px {
+            wheel-acc = 0;
+            step(-1);
+        }
+    }
+    property <length> cell: (self.width - 24px) / 7;
+    property <length> btn: Theme.material ? 32px : 24px;
+
+    // ── Dragging an item to another date (a ghost follows the pointer;
+    // the date under it lights up) ──
+    property <bool> dragging;
+    property <bool> drag-moved; // (the release isn't a click)
+    property <string> drag-key;
+    property <string> drag-title;
+    property <length> drag-gx; // the pointer, in the window
+    property <length> drag-gy;
+    property <string> drop-key;
+
+    // ── The editor (new / edit: an event or a to-do) ──
+    property <bool> ed-open;
+    property <NcItem> ed-item;
+    property <NcItem> blank;
+    property <string> ed-key;
+    property <bool> ed-todo;
+    property <bool> ed-readonly;
+    property <string> ed-day;
+    property <string> ed-day-short;
+    property <string> ed-title;
+    property <bool> ed-all-day;
+    property <string> ed-start;
+    property <string> ed-end;
+    property <string> ed-location;
+    property <string> ed-notes;
+    property <int> ed-alert;
+    property <string> ed-target;
+    property <string> ed-target-label;
+    // an account's calendar keeps a location
+    property <bool> ed-google: ed-key != "" ? ed-item.account : !ed-todo && ed-target != "";
+    property <int> asking; // 0 no; "this or all?" for 1 save, 2 remove, 3 move
+    property <string> ask-day;
+    property <int> menu; // the list open: 0 none, 1 calendars, 2 alerts
+    property <length> menu-x;
+    property <length> menu-y;
+    property <length> menu-w;
+    property <int> menu-hi;
+    property <[NcTarget]> alerts: [
+        { value: "-1", label: "None" },
+        { value: "0", label: "At the time" },
+        { value: "5", label: "5 min before" },
+        { value: "10", label: "10 min before" },
+        { value: "30", label: "30 min before" },
+        { value: "60", label: "1 hour before" },
+        { value: "1440", label: "1 day before" },
+    ];
+    function alert-index(a: int) -> int {
+        return a < 0 ? 0 : a == 0 ? 1 : a == 5 ? 2 : a == 10 ? 3 : a == 30 ? 4 : a == 60 ? 5 : a == 1440 ? 6 : 3;
+    }
+    function draft() -> NcDraft {
+        return {
+            key: ed-key,
+            todo: ed-todo,
+            day: ed-day,
+            title: ed-title,
+            all-day: ed-all-day,
+            start: ed-start,
+            end: ed-end,
+            location: ed-location,
+            notes: ed-notes,
+            alert: ed-alert,
+            target: ed-target,
+        };
+    }
+    function save-now() {
+        if ed-readonly || !ed-open { return; }
+        menu = 0;
+        root.save(draft(), -1);
+    }
+    function open-menu(which: int, x: length, y: length, w: length) {
+        if menu == which { menu = 0; return; }
+        menu-w = max(w, 200px);
+        menu-x = max(4px, x - (menu-w - w));
+        menu-y = y;
+        menu-hi = which == 2 ? alert-index(ed-alert) : 0;
+        menu = which;
+    }
+    function choose(which: int, o: NcTarget) {
+        if which == 1 {
+            ed-target = o.value;
+            ed-target-label = o.label;
+        } else {
+            ed-alert = o.value.to-float();
+        }
+        menu = 0;
+    }
+
+    public function create(key: string, short: string) {
+        pick(key);
+        ed-item = blank;
+        ed-key = "";
+        ed-readonly = false;
+        asking = 0;
+        menu = 0;
+        ed-day = key;
+        ed-day-short = short;
+        ed-todo = false;
+        ed-target = target;
+        ed-target-label = target-label;
+        ed-location = "";
+        ed-notes = "";
+        ed-title = "";
+        ed-all-day = false;
+        ed-start = h24 ? "09:00" : "9:00 AM";
+        ed-end = "10:00 AM";
+        ed-alert = default-alert;
+        error = "";
+        ed-open = true;
+        title-f.focus-input();
+    }
+    public function edit(it: NcItem) {
+        ed-item = it;
+        ed-key = it.key;
+        error = "";
+        asking = 0;
+        menu = 0;
+        ed-day = it.day;
+        ed-title = it.title;
+        ed-all-day = it.all-day;
+        if it.event {
+            ed-todo = false;
+            ed-readonly = !it.editable;
+            ed-location = it.location;
+            ed-notes = it.notes;
+            ed-start = it.start;
+            ed-end = it.end;
+            ed-alert = it.alert;
+        } else {
+            ed-todo = true;
+            ed-readonly = false;
+            ed-start = it.all-day ? "" : it.start;
+        }
+        ed-open = true;
+        ed-keys.focus();
+    }
+    public function close-editor() {
+        ed-open = false;
+        asking = 0;
+        menu = 0;
+    }
+    public function ask(what: int, day: string) {
+        asking = what;
+        ask-day = day;
+    }
+    public function fail(text: string) {
+        error = text;
+        asking = 0;
+        ed-open = true;
+    }
+
+    property <bool> ed-shown: editor.opacity > 0.01;
+    height: max(col.preferred-height + 24px, ed-shown ? card.height + 24px : 0);
+    col := VerticalLayout {
+        x: 12px;
+        y: 12px;
+        width: parent.width - 24px;
+        height: self.preferred-height;
+        spacing: 8px;
+        // Month yyyy, Month | Week, ‹ ›
+        HorizontalLayout {
+            height: Theme.material ? 32px : 26px;
+            spacing: 4px;
+            Text {
+                text: title;
+                color: Theme.label;
+                font-size: Theme.material ? 14px : Theme.body;
+                font-weight: 600;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+                overflow: elide;
+            }
+            Segmented {
+                y: (parent.height - self.height) / 2;
+                width: Theme.material ? 124px : 104px;
+                height: Theme.material ? 32px : 24px;
+                options: ["Month", "Week"];
+                current: week ? 1 : 0;
+                label: "Calendar view";
+                selected(i) => { set-week(i == 1); }
+            }
+            IconButton {
+                y: (parent.height - self.height) / 2;
+                width: btn;
+                height: btn;
+                icon: "\u{e138}"; // caret-left
+                icon-size: Theme.material ? 18px : 12px;
+                label: week ? "Previous week" : "Previous month";
+                clicked => { step(-1); }
+            }
+            IconButton {
+                y: (parent.height - self.height) / 2;
+                width: btn;
+                height: btn;
+                icon: "\u{e13a}"; // caret-right
+                icon-size: Theme.material ? 18px : 12px;
+                label: week ? "Next week" : "Next month";
+                clicked => { step(1); }
+            }
+        }
+        // The month: weekdays, then six weeks of dates (the wheel turns months)
+        if !week: Rectangle {
+            height: 16px + 6 * 32px;
+            TouchArea {
+                scroll-event(e) => {
+                    if e.delta-y == 0 { return reject; }
+                    wheel(e.delta-y);
+                    accept
+                }
+            }
+            for l[i] in ["M", "T", "W", "T", "F", "S", "S"]: Text {
+                x: i * cell;
+                y: 0;
+                width: cell;
+                height: 16px;
+                text: l;
+                color: Theme.tertiary;
+                font-size: Theme.caption;
+                font-weight: 600;
+                horizontal-alignment: center;
+                accessible-role: none;
+            }
+            for d[i] in days: Rectangle {
+                x: mod(i, 7) * cell;
+                y: 16px + floor(i / 7) * 32px;
+                width: cell;
+                height: 32px;
+                accessible-role: button;
+                accessible-label: d.key;
+                accessible-action-default => { pick(d.key); }
+                // (the date under a dragged item)
+                property <bool> drop-here: root.dragging && root.drag-gx >= self.absolute-position.x && root.drag-gx < self.absolute-position.x + self.width
+                    && root.drag-gy >= self.absolute-position.y && root.drag-gy < self.absolute-position.y + self.height;
+                changed drop-here => {
+                    if self.drop-here { root.drop-key = d.key; } else if root.drop-key == d.key { root.drop-key = ""; }
+                }
+                // Glass: today accent, the chosen day a fill; Material: today a
+                // primary circle (a cookie when chosen too), the chosen day a
+                // tonal square; hover and a drop target a state layer
+                Rectangle {
+                    y: (parent.height - self.height) / 2 - 3px;
+                    width: Theme.material ? 28px : 26px;
+                    height: self.width;
+                    x: (parent.width - self.width) / 2;
+                    border-radius: Theme.material && d.selected && !d.today ? 8px : self.width / 2;
+                    visible: Theme.material ? (d.today || d.selected ? !(d.today && d.selected) : touch.has-hover || parent.drop-here) : (d.today || d.selected || touch.has-hover || parent.drop-here);
+                    background: Theme.material ? (d.today ? Theme.m3-primary : d.selected ? Theme.m3-secondary-container : parent.drop-here ? Theme.accent.with-alpha(0.3) : Theme.m3-on-surface.with-alpha(0.08))
+                        : d.today ? Theme.accent : parent.drop-here ? Theme.accent.with-alpha(0.35) : d.selected ? Theme.fill-pressed : Theme.fill;
+                }
+                if Theme.material && d.today && d.selected: Path {
+                    x: (parent.width - 28px) / 2;
+                    y: (parent.height - 28px) / 2 - 3px;
+                    width: 28px;
+                    height: 28px;
+                    viewbox-width: 100;
+                    viewbox-height: 100;
+                    commands: outline;
+                    fill: Theme.m3-primary;
+                }
+                Text {
+                    y: (parent.height - self.height) / 2 - 3px;
+                    x: (parent.width - self.width) / 2;
+                    text: d.label;
+                    color: d.today ? (Theme.material ? Theme.m3-on-primary : Theme.on-accent) : Theme.material && d.selected ? Theme.m3-on-secondary-container : d.in-month ? Theme.label : Theme.tertiary;
+                    font-size: Theme.small;
+                    font-weight: d.today ? 700 : Theme.material && d.selected ? 600 : 400;
+                    accessible-role: none;
+                }
+                HorizontalLayout {
+                    y: parent.height - 5px;
+                    height: 4px;
+                    alignment: center;
+                    spacing: 2px;
+                    opacity: d.in-month ? 1 : 0.5;
+                    for c in d.colors: Rectangle {
+                        width: 4px;
+                        height: 4px;
+                        border-radius: 2px;
+                        background: c;
+                    }
+                    if d.todos: Rectangle {
+                        width: 4px;
+                        height: 4px;
+                        border-radius: 1px;
+                        background: Theme.material ? Theme.m3-tertiary : #ff9f0a;
+                    }
+                }
+                touch := TouchArea {
+                    clicked => { pick(d.key); }
+                    double-clicked => { root.create(d.key, d.long); }
+                }
+            }
+        }
+        // The week: a row a day, with what's on
+        if week: VerticalLayout {
+            spacing: 2px;
+            for d in days: Rectangle {
+                property <bool> drop-here: root.dragging && root.drag-gx >= self.absolute-position.x && root.drag-gx < self.absolute-position.x + self.width
+                    && root.drag-gy >= self.absolute-position.y && root.drag-gy < self.absolute-position.y + self.height;
+                changed drop-here => {
+                    if self.drop-here { root.drop-key = d.key; } else if root.drop-key == d.key { root.drop-key = ""; }
+                }
+                min-height: max(40px, wl.preferred-height + 10px);
+                border-radius: Theme.material ? 12px : 8px;
+                background: self.drop-here ? Theme.accent.with-alpha(0.25)
+                    : Theme.material ? (d.selected ? Theme.m3-secondary-container : wtouch.has-hover ? Theme.m3-on-surface.with-alpha(0.08) : transparent)
+                    : d.selected ? Theme.fill : wtouch.has-hover ? Theme.fill.with-alpha(0.5) : transparent;
+                wtouch := TouchArea {
+                    clicked => { pick(d.key); }
+                    double-clicked => { root.create(d.key, d.long); }
+                    scroll-event(e) => {
+                        if e.delta-y == 0 { return reject; }
+                        wheel(e.delta-y);
+                        accept
+                    }
+                }
+                VerticalLayout {
+                    x: 8px;
+                    width: 44px;
+                    alignment: center;
+                    Text {
+                        text: d.name;
+                        color: Theme.secondary;
+                        font-size: Theme.caption;
+                        font-weight: 600;
+                    }
+                    Text {
+                        text: d.label;
+                        color: d.today ? Theme.accent : Theme.label;
+                        font-size: Theme.body;
+                        font-weight: d.today ? 700 : 500;
+                    }
+                }
+                wl := VerticalLayout {
+                    x: 56px;
+                    width: parent.width - 64px;
+                    alignment: center;
+                    spacing: 1px;
+                    for e in d.lines: HorizontalLayout {
+                        spacing: 6px;
+                        Rectangle {
+                            width: 3px;
+                            border-radius: 1.5px;
+                            background: e.event ? e.color : #ff9f0a;
+                        }
+                        Text {
+                            text: e.title + (e.sub != "" ? " · " + e.sub : "");
+                            color: Theme.label;
+                            font-size: Theme.small;
+                            overflow: elide;
+                        }
+                    }
+                    if d.more > 0: Text {
+                        text: "+" + d.more + " more";
+                        color: Theme.tertiary;
+                        font-size: Theme.caption;
+                    }
+                    if d.lines.length == 0: Text {
+                        text: "Nothing on";
+                        color: Theme.tertiary;
+                        font-size: Theme.small;
+                    }
+                }
+            }
+        }
+        if every-day != "": HorizontalLayout {
+            spacing: 6px;
+            Icon {
+                text: "\u{e3f6}"; // repeat
+                font-size: 12px;
+                color: Theme.tertiary;
+            }
+            Text {
+                text: "Every day: " + every-day;
+                color: Theme.tertiary;
+                font-size: Theme.caption;
+                overflow: elide;
+                horizontal-stretch: 1;
+            }
+        }
+        // The chosen day, and + (add to it)
+        HorizontalLayout {
+            height: Theme.material ? 32px : 22px;
+            Text {
+                text: day-title;
+                color: Theme.secondary;
+                font-size: Theme.material ? Theme.body : Theme.caption;
+                font-weight: Theme.material ? 500 : 600;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+            }
+            IconButton {
+                width: Theme.material ? 32px : 22px;
+                height: self.width;
+                icon: "\u{e3d4}"; // plus
+                icon-size: Theme.material ? 18px : 12px;
+                label: "Add to this day";
+                clicked => { root.create(day-key, day-short); }
+            }
+        }
+        if items.length == 0 && undo == "": Text {
+            text: "Nothing on this day. Double-click a date to add something.";
+            color: Theme.tertiary;
+            font-size: Theme.small;
+            wrap: word-wrap;
+        }
+        if items.length > 0: VerticalLayout {
+            spacing: Theme.material ? 4px : 8px;
+            for it in items: Rectangle {
+                property <bool> lifted: root.dragging && root.drag-key == it.key;
+                height: Theme.material ? 44px : 36px;
+                border-radius: Theme.material ? 12px : 8px;
+                background: Theme.material ? (rt.has-hover ? Theme.fill-hover : Theme.fill) : rt.has-hover ? Theme.fill : transparent;
+                opacity: lifted ? 0.5 : 1;
+                // click: edit; drag (the movable ones): to another date
+                rt := TouchArea {
+                    x: it.event ? 0 : Theme.material ? 34px : 24px;
+                    width: parent.width - self.x;
+                    mouse-cursor: root.dragging ? grabbing : it.movable ? grab : pointer;
+                    pointer-event(e) => {
+                        if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
+                            root.drag-moved = false;
+                        }
+                        if e.kind == PointerEventKind.up && root.dragging && root.drag-key == it.key {
+                            root.dragging = false;
+                            if root.drop-key != "" && root.drop-key != it.day {
+                                root.move(it.key, root.drop-key, -1);
+                            }
+                            root.drop-key = "";
+                        }
+                    }
+                    moved => {
+                        if !it.movable || !self.pressed { return; }
+                        if !root.dragging && (abs(self.mouse-x - self.pressed-x) > 10px || abs(self.mouse-y - self.pressed-y) > 10px) {
+                            root.dragging = true;
+                            root.drag-moved = true;
+                            root.drag-key = it.key;
+                            root.drag-title = it.title;
+                            root.drop-key = "";
+                        }
+                        if root.dragging {
+                            root.drag-gx = self.absolute-position.x + self.mouse-x;
+                            root.drag-gy = self.absolute-position.y + self.mouse-y;
+                        }
+                    }
+                    clicked => {
+                        if root.drag-moved { root.drag-moved = false; return; }
+                        root.edit(it);
+                    }
+                }
+                if it.event: Rectangle {
+                    x: Theme.material ? 10px : 6px;
+                    y: Theme.material ? 10px : 5px;
+                    width: Theme.material ? 4px : 3px;
+                    height: parent.height - 2 * self.y;
+                    border-radius: 2px;
+                    background: it.color;
+                }
+                if !it.event: Tick {
+                    x: Theme.material ? 10px : 4px;
+                    y: (parent.height - self.height) / 2;
+                    checked: it.done;
+                    tint: #ff9f0a;
+                    ring: #ff9f0a;
+                    label: it.title;
+                    toggled => { todo-toggle(it.key); }
+                }
+                VerticalLayout {
+                    x: Theme.material ? (it.event ? 22px : 38px) : it.event ? 16px : 28px;
+                    width: parent.width - self.x - 8px;
+                    alignment: center;
+                    it-title := Text {
+                        text: it.title;
+                        color: !it.event && it.done ? Theme.tertiary : Theme.label;
+                        font-size: Theme.small;
+                        font-weight: 500;
+                        overflow: elide;
+                        stroke-width: 0;
+                        // (a done to-do: struck through, as the To-do tab's)
+                        if !it.event && it.done: Rectangle {
+                            y: parent.height / 2;
+                            width: min(parent.width, it-title.preferred-width);
+                            height: 1px;
+                            background: Theme.tertiary;
+                        }
+                    }
+                    Text {
+                        text: it.sub;
+                        color: Theme.secondary;
+                        font-size: Theme.caption;
+                        overflow: elide;
+                    }
+                }
+            }
+        }
+        // Deleted: offer it back (8 s)
+        if undo != "": HorizontalLayout {
+            spacing: 8px;
+            alignment: start;
+            Text {
+                text: "Deleted “" + undo + "”";
+                color: Theme.secondary;
+                font-size: Theme.small;
+                overflow: elide;
+            }
+            Text {
+                text: "Undo";
+                color: Theme.material ? Theme.m3-primary : root.ink;
+                font-size: Theme.small;
+                font-weight: 600;
+                accessible-role: button;
+                accessible-label: "Undo";
+                accessible-action-default => { restore(); }
+                TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { restore(); }
+                }
+            }
+        }
+    }
+
+    // While dragging: the item follows the pointer, and is what drops
+    if dragging: Rectangle {
+        x: root.drag-gx - root.absolute-position.x - 20px;
+        y: root.drag-gy - root.absolute-position.y - 18px;
+        width: 180px;
+        height: Theme.material ? 36px : 30px;
+        border-radius: Theme.material ? 12px : 8px;
+        background: Theme.material ? Theme.m3-surface-container-highest : Theme.dark ? #2C2C31 : #FFFFFF;
+        border-width: Theme.material ? 2px : 1px;
+        border-color: Theme.accent;
+        Text {
+            x: 10px;
+            width: parent.width - 20px;
+            text: root.drag-title;
+            color: Theme.label;
+            font-size: Theme.small;
+            font-weight: 500;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+
+    // ── New / edit: an event or a to-do (a scrim, its card centred) ──
+    editor := Rectangle {
+        width: parent.width;
+        height: parent.height;
+        border-radius: root.radius;
+        background: Theme.material ? Theme.m3-scrim.with-alpha(0.32) : #00000059;
+        opacity: ed-open ? 1 : 0;
+        animate opacity { duration: 150ms; }
+        visible: self.opacity > 0.01;
+        // outside the card closes it
+        TouchArea {
+            clicked => { root.close-editor(); }
+        }
+        ed-keys := FocusScope {
+            key-pressed(e) => {
+                if !ed-open { return reject; }
+                if e.text == Key.Escape {
+                    if menu != 0 { menu = 0; } else { root.close-editor(); }
+                    return accept;
+                }
+                reject
+            }
+            card := Rectangle {
+                x: 12px;
+                y: (root.height - self.height) / 2;
+                width: root.width - 24px;
+                height: form.preferred-height + 28px;
+                // (Material: a dialog, surfaceContainerHigh with 28 px corners;
+                // Glass: frosted)
+                border-radius: Theme.material ? 28px : 16px;
+                background: Theme.material ? Theme.m3-surface-container-high : Theme.dark ? #1c1c21c7 : #f7f7fcd1;
+                border-width: Theme.material ? 0 : 1px;
+                border-color: Theme.dark ? #ffffff24 : #0000001a;
+                // (clicks inside stay inside)
+                TouchArea { }
+                form := VerticalLayout {
+                    x: 14px;
+                    y: 14px;
+                    width: parent.width - 28px;
+                    height: self.preferred-height;
+                    spacing: 10px;
+                    Text {
+                        text: ed-readonly ? "Event" : ed-key != "" ? (ed-todo ? "Edit To-do" : "Edit Event") : "New on " + ed-day-short;
+                        color: Theme.label;
+                        // (Material: a dialog's headline)
+                        font-size: Theme.material ? 22px : Theme.title;
+                        font-weight: Theme.material ? 400 : 600;
+                    }
+                    if ed-key == "": Segmented {
+                        options: ["Event", "To-do"];
+                        current: ed-todo ? 1 : 0;
+                        label: "Event or to-do";
+                        selected(i) => {
+                            ed-todo = i == 1;
+                            ed-start = ed-todo ? "" : h24 ? "09:00" : "9:00 AM";
+                        }
+                    }
+                    if ed-key == "" && !ed-todo && targets.length > 1: CalChoice {
+                        text: ed-target-label;
+                        open: menu == 1;
+                        label: "Calendar";
+                        clicked => { root.open-menu(1, self.absolute-position.x - editor.absolute-position.x, self.absolute-position.y + self.height + 4px - editor.absolute-position.y, self.width); }
+                    }
+                    title-f := CalField {
+                        text <=> ed-title;
+                        read-only: ed-readonly;
+                        placeholder: ed-todo ? "What to do" : "Title";
+                        committed => { root.save-now(); }
+                    }
+                    // Event: all day, or from–to; to-do: an optional time
+                    if !ed-todo: HorizontalLayout {
+                        spacing: 8px;
+                        alignment: start;
+                        Text {
+                            text: "All day";
+                            color: Theme.label;
+                            font-size: Theme.small;
+                            vertical-alignment: center;
+                        }
+                        CalSwitch {
+                            y: (parent.height - self.height) / 2;
+                            checked: ed-all-day;
+                            enabled: !ed-readonly;
+                            label: "All day";
+                            toggled => { ed-all-day = !ed-all-day; }
+                        }
+                    }
+                    if ed-todo: CalField {
+                        text <=> ed-start;
+                        read-only: ed-readonly;
+                        placeholder: "Time (optional), e.g. 5pm";
+                        committed => { root.save-now(); }
+                    }
+                    if !ed-todo && !ed-all-day: HorizontalLayout {
+                        spacing: 8px;
+                        CalField {
+                            horizontal-stretch: 1;
+                            text <=> ed-start;
+                            read-only: ed-readonly;
+                            placeholder: "Starts";
+                            committed => { root.save-now(); }
+                        }
+                        Text {
+                            width: 8px;
+                            text: "–";
+                            color: Theme.secondary;
+                            font-size: Theme.body;
+                            vertical-alignment: center;
+                            horizontal-alignment: center;
+                        }
+                        CalField {
+                            horizontal-stretch: 1;
+                            text <=> ed-end;
+                            read-only: ed-readonly;
+                            placeholder: "Ends";
+                            committed => { root.save-now(); }
+                        }
+                    }
+                    if ed-google && !ed-readonly: CalField {
+                        text <=> ed-location;
+                        placeholder: "Location";
+                        committed => { root.save-now(); }
+                    }
+                    if !ed-todo && !ed-readonly: CalField {
+                        text <=> ed-notes;
+                        placeholder: "Notes";
+                        committed => { root.save-now(); }
+                    }
+                    if !ed-todo && !ed-all-day && !ed-readonly && !ed-google: HorizontalLayout {
+                        spacing: 8px;
+                        alignment: start;
+                        Text {
+                            text: "Alert";
+                            color: Theme.label;
+                            font-size: Theme.small;
+                            vertical-alignment: center;
+                        }
+                        CalChoice {
+                            width: 150px;
+                            text: alerts[alert-index(ed-alert)].label;
+                            open: menu == 2;
+                            label: "Alert";
+                            clicked => { root.open-menu(2, self.absolute-position.x - editor.absolute-position.x, self.absolute-position.y + self.height + 4px - editor.absolute-position.y, self.width); }
+                            step(d) => { ed-alert = alerts[max(0, min(alerts.length - 1, alert-index(ed-alert) + d))].value.to-float(); }
+                        }
+                    }
+                    if ed-readonly: Text {
+                        text: ed-item.info;
+                        color: Theme.secondary;
+                        font-size: Theme.small;
+                        wrap: word-wrap;
+                    }
+                    if !ed-readonly && ed-item.cal-line != "": Text {
+                        text: ed-item.cal-line;
+                        color: Theme.secondary;
+                        font-size: Theme.small;
+                        overflow: elide;
+                    }
+                    if asking != 0: Text {
+                        text: "This is a repeating event. Change only this event, or all events in the series?";
+                        color: Theme.label;
+                        font-size: Theme.small;
+                        wrap: word-wrap;
+                    }
+                    if error != "": Text {
+                        text: error;
+                        color: Theme.danger;
+                        font-size: Theme.small;
+                        wrap: word-wrap;
+                    }
+                    // This event, or all of them?
+                    if asking != 0: HorizontalLayout {
+                        spacing: 8px;
+                        alignment: end;
+                        CalButton {
+                            text: "Cancel";
+                            clicked => { asking = 0; }
+                        }
+                        CalButton {
+                            text: "This event";
+                            clicked => {
+                                let w = asking;
+                                asking = 0;
+                                if w == 1 { root.save(draft(), 0); } else if w == 2 { root.remove(ed-key, 0); } else { root.move(ed-key, ask-day, 0); }
+                            }
+                        }
+                        CalButton {
+                            text: "All events";
+                            clicked => {
+                                let w = asking;
+                                asking = 0;
+                                if w == 1 { root.save(draft(), 1); } else if w == 2 { root.remove(ed-key, 1); } else { root.move(ed-key, ask-day, 1); }
+                            }
+                        }
+                    }
+                    // Delete (when editing) on the left; Cancel and Save on the right
+                    if asking == 0: HorizontalLayout {
+                        spacing: 8px;
+                        if ed-key != "" && !ed-readonly: CalButton {
+                            kind: 2;
+                            text: ed-todo ? "Delete To-do" : "Delete Event";
+                            clicked => { root.remove(ed-key, -1); }
+                        }
+                        Rectangle {
+                            horizontal-stretch: 1;
+                        }
+                        CalButton {
+                            text: ed-readonly ? "Close" : "Cancel";
+                            clicked => { root.close-editor(); }
+                        }
+                        if !ed-readonly: CalButton {
+                            kind: 1;
+                            text: ed-key != "" ? "Save Changes" : ed-todo ? "Add To-do" : "Add Event";
+                            clicked => { root.save-now(); }
+                        }
+                    }
+                }
+            }
+        }
+        // A list (Dropdown.qml's): over the card, its right edge on the button's
+        if menu != 0: Rectangle {
+            property <[NcTarget]> options: menu == 1 ? targets : alerts;
+            property <length> item-h: Theme.material ? 36px : 28px;
+            TouchArea {
+                clicked => { menu = 0; }
+            }
+            Rectangle {
+                x: menu-x;
+                y: menu-y;
+                width: menu-w;
+                height: min(280px, options.length * item-h + 10px);
+                border-radius: Theme.material ? 16px : Theme.menu-radius;
+                background: Theme.material ? Theme.m3-surface-container : Theme.menu-bg;
+                border-width: 1px;
+                border-color: Theme.material ? transparent : Theme.separator;
+                drop-shadow-blur: 16px;
+                drop-shadow-offset-y: 4px;
+                drop-shadow-color: #00000033;
+                TouchArea { }
+                menu-keys := FocusScope {
+                    init => { self.focus(); }
+                    key-pressed(e) => {
+                        if e.text == Key.UpArrow { menu-hi = max(0, menu-hi - 1); return accept; }
+                        if e.text == Key.DownArrow { menu-hi = min(options.length - 1, menu-hi + 1); return accept; }
+                        if e.text == Key.Home { menu-hi = 0; return accept; }
+                        if e.text == Key.End { menu-hi = options.length - 1; return accept; }
+                        if e.text == Key.Return || e.text == " " { root.choose(menu, options[menu-hi]); ed-keys.focus(); return accept; }
+                        if e.text == Key.Escape { menu = 0; ed-keys.focus(); return accept; }
+                        reject
+                    }
+                }
+                for o[i] in options: Rectangle {
+                    property <bool> lit: ot.has-hover || i == menu-hi;
+                    property <bool> chosen: menu == 1 ? o.value == ed-target : o.value.to-float() == ed-alert;
+                    x: 5px;
+                    y: 5px + i * item-h;
+                    width: parent.width - 10px;
+                    height: item-h;
+                    border-radius: Theme.material ? (chosen ? 12px : 8px) : 7px;
+                    background: Theme.material ? (chosen ? Theme.m3-tertiary-container : lit ? Theme.m3-on-surface.with-alpha(0.08) : transparent) : lit ? Theme.accent : transparent;
+                    accessible-role: list-item;
+                    accessible-label: o.label;
+                    accessible-action-default => { root.choose(menu, o); }
+                    Text {
+                        x: 10px;
+                        width: parent.width - 20px;
+                        text: o.label;
+                        color: Theme.material ? (chosen ? Theme.m3-on-tertiary-container : Theme.label) : lit ? Theme.on-accent : Theme.label;
+                        font-size: Theme.body;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                    ot := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.choose(menu, o); }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ── To-do (TodoWidget.qml) ──────────────────────────────────────────────────
+export component TodoTab {
+    in property <[NcTodo]> todos;
+    in property <string> undo; // the text of the one just deleted, "" none
+    callback add(string);
+    callback toggle(string);
+    callback remove(string);
+    callback restore();
+    callback rename(string, string);
+    in property <color> ink: Theme.accent; // (Glass: the accent that reads on white)
+    // the one being renamed (double-click; Enter or clicking away keeps it,
+    // Esc cancels)
+    property <string> renaming;
+    height: col.preferred-height + 24px;
+    col := VerticalLayout {
+        x: 12px;
+        y: 12px;
+        width: parent.width - 24px;
+        height: self.preferred-height;
+        spacing: 6px;
+        Rectangle {
+            height: Theme.material ? 40px : 32px;
+            border-radius: Theme.material ? self.height / 2 : Theme.radius-control;
+            background: Theme.fill;
+            border-width: Theme.material && input.has-focus ? 2px : 0;
+            border-color: Theme.material ? Theme.m3-primary : Theme.accent;
+            Icon {
+                x: Theme.material ? 14px : 10px;
+                width: self.preferred-width;
+                text: "\u{e3d4}"; // plus
+                bold: !Theme.material;
+                font-size: Theme.material ? 18px : 12px;
+                color: Theme.secondary;
+            }
+            input := TextInput {
+                x: Theme.material ? 42px : 30px;
+                width: parent.width - self.x - (Theme.material ? 16px : 10px);
+                color: Theme.label;
+                font-size: Theme.body;
+                vertical-alignment: center;
+                single-line: true;
+                accessible-label: "Add a to-do";
+                accepted => {
+                    if self.text != "" {
+                        root.add(self.text);
+                        self.text = "";
+                    }
+                }
+            }
+            Text {
+                x: input.x;
+                width: input.width;
+                visible: input.text == "";
+                text: "Add a to-do (e.g. call mum tomorrow 6pm)";
+                color: Theme.tertiary;
+                font-size: Theme.body;
+                vertical-alignment: center;
+                overflow: elide;
+                accessible-role: none;
+            }
+        }
+        if todos.length == 0 && undo == "": Text {
+            height: self.preferred-height + 16px;
+            text: "Nothing to do. Nice.";
+            color: Theme.secondary;
+            font-size: Theme.small;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+        for t in todos: Rectangle {
+            height: t.due != "" ? (Theme.material ? 48px : 40px) : Theme.material ? 40px : 30px;
+            th := TouchArea {
+                double-clicked => { renaming = t.key; }
+            }
+            Tick {
+                x: 0;
+                y: (parent.height - self.height) / 2;
+                checked: t.done;
+                round: true;
+                tint: Theme.accent;
+                label: t.text;
+                toggled => { toggle(t.key); }
+            }
+            VerticalLayout {
+                x: 18px + (Theme.material ? 14px : 10px);
+                width: parent.width - self.x - 24px;
+                alignment: center;
+                if renaming != t.key: Text {
+                    text: t.text;
+                    color: t.done ? Theme.tertiary : Theme.label;
+                    font-size: Theme.material ? 14px : Theme.body;
+                    overflow: elide;
+                }
+                if renaming == t.key: TextInput {
+                    text: t.text;
+                    color: Theme.label;
+                    font-size: Theme.material ? 14px : Theme.body;
+                    single-line: true;
+                    selection-background-color: Theme.accent.with-alpha(0.4);
+                    accessible-label: "Rename " + t.text;
+                    init => {
+                        self.focus();
+                        self.select-all();
+                    }
+                    accepted => {
+                        if self.text != "" && self.text != t.text { root.rename(t.key, self.text); }
+                        renaming = "";
+                    }
+                    changed has-focus => {
+                        if !self.has-focus && renaming == t.key {
+                            if self.text != "" && self.text != t.text { root.rename(t.key, self.text); }
+                            renaming = "";
+                        }
+                    }
+                    key-pressed(e) => {
+                        if e.text == Key.Escape { renaming = ""; return accept; }
+                        reject
+                    }
+                }
+                if t.due != "": Text {
+                    text: t.due;
+                    color: t.overdue ? Theme.danger : Theme.secondary;
+                    font-size: Theme.small;
+                }
+            }
+            // (done: struck through)
+            if t.done && renaming != t.key: Rectangle {
+                x: 18px + (Theme.material ? 14px : 10px);
+                y: t.due != "" ? parent.height / 2 - 8px : parent.height / 2;
+                width: min(parent.width - self.x - 24px, done-w.preferred-width);
+                height: 1px;
+                background: Theme.tertiary;
+                done-w := Text {
+                    visible: false;
+                    text: t.text;
+                    font-size: Theme.material ? 14px : Theme.body;
+                }
+            }
+            if th.has-hover && renaming != t.key: IconButton {
+                x: parent.width - self.width + 6px;
+                y: (parent.height - self.height) / 2;
+                width: 24px;
+                height: 24px;
+                icon: "\u{e4f6}"; // x
+                icon-size: Theme.material ? 18px : 12px;
+                icon-color: Theme.tertiary;
+                label: "Delete " + t.text;
+                clicked => { remove(t.key); }
+            }
+        }
+        if undo != "": HorizontalLayout {
+            spacing: 8px;
+            alignment: start;
+            Text {
+                text: "Deleted “" + undo + "”";
+                color: Theme.secondary;
+                font-size: Theme.small;
+                overflow: elide;
+            }
+            Text {
+                text: "Undo";
+                color: Theme.material ? Theme.m3-primary : root.ink;
+                font-size: Theme.small;
+                font-weight: 600;
+                accessible-role: button;
+                accessible-label: "Undo";
+                accessible-action-default => { restore(); }
+                TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { restore(); }
+                }
+            }
+        }
+    }
+}

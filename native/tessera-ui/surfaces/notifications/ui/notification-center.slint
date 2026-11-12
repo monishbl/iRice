@@ -9,11 +9,13 @@
 
 import { Theme, Icon } from "@tessera/theme.slint";
 import { IconButton, StateShape } from "@tessera/widgets.slint";
+import { CalendarTab, TodoTab, Segmented, NcDay, NcItem, NcTodo, NcTarget, NcDraft } from "@tessera/calendar.slint";
 import { Banner, GlassCard, MaterialCard, Expander, Frost } from "notifications.slint";
 
 export struct NcRow {
     kind: int, // 0 a notification, 1 an island alert, 2 an open group's header
     group: string, // its app ("Tessera": the alerts)
+    gkey: string, // its group's key (what toggles and clears it: two groups may share a name)
     count: int, // how many its card stands for (collapsed), else 1
     open: bool,
     edges: int, // Glass: a collapsed stack's edges below (0..2)
@@ -23,108 +25,9 @@ export struct NcRow {
     b: Banner,
 }
 
-export struct NcItem {
-    event: bool,
-    title: string,
-    sub: string,
-    color: color,
-    done: bool,
-    key: string,
-}
-
-export struct NcDay {
-    label: string,
-    key: string,
-    today: bool,
-    selected: bool,
-    in-month: bool,
-    colors: [color], // up to three events' colours
-    todos: bool,
-    // the week view: its name ("Mon") and what's on (a few)
-    name: string,
-    lines: [NcItem],
-    more: int,
-}
-
-export struct NcTodo {
-    key: string,
-    text: string,
-    done: bool,
-    due: string,
-    overdue: bool,
-}
-
 export struct NcLap {
     name: string,
     time: string,
-}
-
-// Segmented.qml: Glass, a track with a sliding pill; Material, a connected
-// button group (2 px apart, round ends, 8 px inside; the chosen one fills
-// and turns round). Segments share the width evenly.
-component Segmented inherits Rectangle {
-    in property <[string]> options;
-    in property <int> current;
-    in property <string> label;
-    callback selected(int);
-    property <length> gap: Theme.material ? 2px : 0;
-    property <length> seg: (self.width - 4px - gap * (options.length - 1)) / max(1, options.length);
-    height: Theme.material ? 36px : 30px;
-    border-radius: self.height / 2;
-    background: Theme.material ? transparent : Theme.toggle-off;
-    accessible-role: tab-list;
-    accessible-label: label;
-    forward-focus: keys;
-    keys := FocusScope {
-        key-pressed(e) => {
-            if e.text == Key.LeftArrow && current > 0 { selected(current - 1); return accept; }
-            if e.text == Key.RightArrow && current < options.length - 1 { selected(current + 1); return accept; }
-            reject
-        }
-    }
-    if !Theme.material: Rectangle {
-        x: 2px + current * seg;
-        y: 2px;
-        width: seg;
-        height: parent.height - 4px;
-        border-radius: self.height / 2;
-        background: Theme.dark ? #ffffff33 : #ffffff;
-        animate x { duration: 280ms; easing: cubic-bezier(0.2, 0, 0, 1); }
-    }
-    for o[i] in options: Rectangle {
-        property <bool> chosen: i == current;
-        property <length> full: self.height / 2;
-        property <length> inner: chosen ? full : touch.pressed ? 4px : 8px;
-        x: 2px + i * (seg + gap);
-        width: seg;
-        height: parent.height;
-        border-top-left-radius: !Theme.material ? 0 : i == 0 ? full : inner;
-        border-bottom-left-radius: self.border-top-left-radius;
-        border-top-right-radius: !Theme.material ? 0 : i == options.length - 1 ? full : inner;
-        border-bottom-right-radius: self.border-top-right-radius;
-        animate border-top-left-radius, border-top-right-radius { duration: 200ms; easing: spring(0.6); }
-        background: !Theme.material ? transparent : chosen ? Theme.m3-primary.mix(Theme.m3-on-primary, touch.pressed ? 0.9 : touch.has-hover ? 0.92 : 1)
-            : Theme.m3-surface-container-highest.mix(Theme.m3-on-surface-variant, touch.pressed ? 0.9 : touch.has-hover ? 0.92 : 1);
-        animate background { duration: 150ms; }
-        accessible-role: tab;
-        accessible-label: o;
-        accessible-checked: chosen;
-        accessible-action-default => { selected(i); }
-        Text {
-            text: o;
-            color: Theme.material ? (chosen ? Theme.m3-on-primary : Theme.m3-on-surface-variant) : chosen ? Theme.label : Theme.secondary;
-            font-size: Theme.material ? Theme.body : Theme.small;
-            font-weight: Theme.material ? 500 : 600;
-            horizontal-alignment: center;
-            vertical-alignment: center;
-            overflow: elide;
-            accessible-role: none;
-        }
-        touch := TouchArea {
-            mouse-cursor: pointer;
-            clicked => { root.selected(i); }
-        }
-    }
 }
 
 // CircleToggle.qml: the focus timer's round buttons
@@ -157,41 +60,6 @@ component CircleButton inherits Rectangle {
     }
 }
 
-// A tick box: Glass a circle (accent when done), Material MaterialCheck.qml
-// (a rounded square, primary when checked)
-component Tick inherits Rectangle {
-    in property <bool> checked;
-    in property <color> tint: Theme.accent;
-    in property <color> ring: Theme.tertiary; // Glass: the empty circle's edge
-    in property <bool> round: true;
-    in property <string> label;
-    callback toggled();
-    width: 18px;
-    height: 18px;
-    border-radius: Theme.material ? 4px : round ? 9px : 4px;
-    background: checked ? (Theme.material ? Theme.m3-primary : tint) : transparent;
-    border-width: checked ? 0 : Theme.material ? 2px : 1.5px;
-    border-color: Theme.material ? Theme.m3-on-surface-variant : ring;
-    accessible-role: checkbox;
-    accessible-checked: checked;
-    accessible-label: label;
-    accessible-action-default => { toggled(); }
-    if checked: Icon {
-        text: "\u{e182}"; // check
-        bold: true;
-        font-size: Theme.material ? 14px : 10px;
-        color: Theme.material ? Theme.m3-on-primary : Theme.on-accent;
-    }
-    TouchArea {
-        x: -6px;
-        y: -6px;
-        width: parent.width + 12px;
-        height: parent.height + 12px;
-        mouse-cursor: pointer;
-        clicked => { root.toggled(); }
-    }
-}
-
 // A piece of the list or a widget's card behind its content (Platter.qml):
 // Glass, the platter (bare: a glass chip of its own, a white veil and edge);
 // Material, its tonal surface
@@ -208,468 +76,6 @@ component Platter inherits Rectangle {
         background: Theme.material ? Theme.m3-surface-container-high.with-alpha(Theme.blur ? 1 - 0.4 * (1 - Theme.panel-alpha) / 0.55 : 1) : chip ? (Theme.dark ? #ffffff12 : #ffffff47) : Theme.platter;
         border-width: chip && !Theme.material ? 1px : 0;
         border-color: Theme.dark ? #ffffff0f : #ffffff4d;
-    }
-}
-
-// ── The calendar (CalendarWidget.qml) ───────────────────────────────────────
-component CalendarTab {
-    in property <string> outline; // Material: today, when chosen too, is a cookie
-    in property <string> title;
-    in property <bool> week;
-    in property <[NcDay]> days;
-    in property <string> day-title;
-    in property <[NcItem]> items;
-    in property <string> every-day;
-    callback step(int);
-    callback set-week(bool);
-    callback pick(string);
-    callback todo-toggle(string);
-    property <length> cell: (self.width - 24px) / 7;
-    property <length> btn: Theme.material ? 32px : 24px;
-    height: col.preferred-height + 24px;
-    col := VerticalLayout {
-        x: 12px;
-        y: 12px;
-        width: parent.width - 24px;
-        height: self.preferred-height;
-        spacing: 8px;
-        // Month yyyy, Month | Week, ‹ ›
-        HorizontalLayout {
-            height: Theme.material ? 32px : 26px;
-            spacing: 4px;
-            Text {
-                text: title;
-                color: Theme.label;
-                font-size: Theme.material ? 14px : Theme.body;
-                font-weight: 600;
-                vertical-alignment: center;
-                horizontal-stretch: 1;
-                overflow: elide;
-            }
-            Segmented {
-                y: (parent.height - self.height) / 2;
-                width: Theme.material ? 124px : 104px;
-                height: Theme.material ? 32px : 24px;
-                options: ["Month", "Week"];
-                current: week ? 1 : 0;
-                label: "Calendar view";
-                selected(i) => { set-week(i == 1); }
-            }
-            IconButton {
-                y: (parent.height - self.height) / 2;
-                width: btn;
-                height: btn;
-                icon: "\u{e138}"; // caret-left
-                icon-size: Theme.material ? 18px : 12px;
-                label: week ? "Previous week" : "Previous month";
-                clicked => { step(-1); }
-            }
-            IconButton {
-                y: (parent.height - self.height) / 2;
-                width: btn;
-                height: btn;
-                icon: "\u{e13a}"; // caret-right
-                icon-size: Theme.material ? 18px : 12px;
-                label: week ? "Next week" : "Next month";
-                clicked => { step(1); }
-            }
-        }
-        // The month: weekdays, then six weeks of dates (the wheel turns months)
-        if !week: Rectangle {
-            height: 16px + 6 * 32px;
-            TouchArea {
-                scroll-event(e) => {
-                    if e.delta-y < 0 { step(1); return accept; }
-                    if e.delta-y > 0 { step(-1); return accept; }
-                    reject
-                }
-            }
-            for l[i] in ["M", "T", "W", "T", "F", "S", "S"]: Text {
-                x: i * cell;
-                y: 0;
-                width: cell;
-                height: 16px;
-                text: l;
-                color: Theme.tertiary;
-                font-size: Theme.caption;
-                font-weight: 600;
-                horizontal-alignment: center;
-                accessible-role: none;
-            }
-            for d[i] in days: Rectangle {
-                x: mod(i, 7) * cell;
-                y: 16px + floor(i / 7) * 32px;
-                width: cell;
-                height: 32px;
-                accessible-role: button;
-                accessible-label: d.key;
-                accessible-action-default => { pick(d.key); }
-                // Glass: today accent, the chosen day a fill; Material: today a
-                // primary circle (a cookie when chosen too), the chosen day a
-                // tonal square; hover a state layer
-                Rectangle {
-                    y: (parent.height - self.height) / 2 - 3px;
-                    width: Theme.material ? 28px : 26px;
-                    height: self.width;
-                    x: (parent.width - self.width) / 2;
-                    border-radius: Theme.material && d.selected && !d.today ? 8px : self.width / 2;
-                    visible: Theme.material ? !(d.today && d.selected) && (d.today || d.selected || touch.has-hover) : (d.today || d.selected || touch.has-hover);
-                    background: Theme.material ? (d.today ? Theme.m3-primary : d.selected ? Theme.m3-secondary-container : Theme.m3-on-surface.with-alpha(0.08))
-                        : d.today ? Theme.accent : d.selected ? Theme.fill-pressed : Theme.fill;
-                }
-                if Theme.material && d.today && d.selected: Path {
-                    x: (parent.width - 28px) / 2;
-                    y: (parent.height - 28px) / 2 - 3px;
-                    width: 28px;
-                    height: 28px;
-                    viewbox-width: 100;
-                    viewbox-height: 100;
-                    commands: outline;
-                    fill: Theme.m3-primary;
-                }
-                Text {
-                    y: (parent.height - self.height) / 2 - 3px;
-                    x: (parent.width - self.width) / 2;
-                    text: d.label;
-                    color: d.today ? (Theme.material ? Theme.m3-on-primary : Theme.on-accent) : Theme.material && d.selected ? Theme.m3-on-secondary-container : d.in-month ? Theme.label : Theme.tertiary;
-                    font-size: Theme.small;
-                    font-weight: d.today ? 700 : Theme.material && d.selected ? 600 : 400;
-                    accessible-role: none;
-                }
-                HorizontalLayout {
-                    y: parent.height - 5px;
-                    height: 4px;
-                    alignment: center;
-                    spacing: 2px;
-                    opacity: d.in-month ? 1 : 0.5;
-                    for c in d.colors: Rectangle {
-                        width: 4px;
-                        height: 4px;
-                        border-radius: 2px;
-                        background: c;
-                    }
-                    if d.todos: Rectangle {
-                        width: 4px;
-                        height: 4px;
-                        border-radius: 1px;
-                        background: Theme.material ? Theme.m3-tertiary : #ff9f0a;
-                    }
-                }
-                touch := TouchArea {
-                    clicked => { pick(d.key); }
-                }
-            }
-        }
-        // The week: a row a day, with what's on
-        if week: VerticalLayout {
-            spacing: 2px;
-            for d in days: Rectangle {
-                min-height: max(40px, wl.preferred-height + 10px);
-                border-radius: Theme.material ? 12px : 8px;
-                background: Theme.material ? (d.selected ? Theme.m3-secondary-container : wtouch.has-hover ? Theme.m3-on-surface.with-alpha(0.08) : transparent)
-                    : d.selected ? Theme.fill : wtouch.has-hover ? Theme.fill.with-alpha(0.5) : transparent;
-                wtouch := TouchArea {
-                    clicked => { pick(d.key); }
-                }
-                VerticalLayout {
-                    x: 8px;
-                    width: 44px;
-                    alignment: center;
-                    Text {
-                        text: d.name;
-                        color: Theme.secondary;
-                        font-size: Theme.caption;
-                        font-weight: 600;
-                    }
-                    Text {
-                        text: d.label;
-                        color: d.today ? Theme.accent : Theme.label;
-                        font-size: Theme.body;
-                        font-weight: d.today ? 700 : 500;
-                    }
-                }
-                wl := VerticalLayout {
-                    x: 56px;
-                    width: parent.width - 64px;
-                    alignment: center;
-                    spacing: 1px;
-                    for e in d.lines: HorizontalLayout {
-                        spacing: 6px;
-                        Rectangle {
-                            width: 3px;
-                            border-radius: 1.5px;
-                            background: e.event ? e.color : #ff9f0a;
-                        }
-                        Text {
-                            text: e.title + (e.sub != "" ? " · " + e.sub : "");
-                            color: Theme.label;
-                            font-size: Theme.small;
-                            overflow: elide;
-                        }
-                    }
-                    if d.more > 0: Text {
-                        text: "+" + d.more + " more";
-                        color: Theme.tertiary;
-                        font-size: Theme.caption;
-                    }
-                    if d.lines.length == 0: Text {
-                        text: "Nothing on";
-                        color: Theme.tertiary;
-                        font-size: Theme.small;
-                    }
-                }
-            }
-        }
-        if every-day != "": HorizontalLayout {
-            spacing: 6px;
-            Icon {
-                text: "\u{e3f6}"; // repeat
-                font-size: 12px;
-                color: Theme.tertiary;
-            }
-            Text {
-                text: "Every day: " + every-day;
-                color: Theme.tertiary;
-                font-size: Theme.caption;
-                overflow: elide;
-                horizontal-stretch: 1;
-            }
-        }
-        // The chosen day
-        Text {
-            height: Theme.material ? 32px : 22px;
-            text: day-title;
-            color: Theme.secondary;
-            font-size: Theme.material ? Theme.body : Theme.caption;
-            font-weight: Theme.material ? 500 : 600;
-            vertical-alignment: center;
-        }
-        if items.length == 0: Text {
-            text: "Nothing on this day.";
-            color: Theme.tertiary;
-            font-size: Theme.small;
-            wrap: word-wrap;
-        }
-        if items.length > 0: VerticalLayout {
-            spacing: Theme.material ? 4px : 8px;
-            for it in items: Rectangle {
-                height: Theme.material ? 44px : 36px;
-                border-radius: Theme.material ? 12px : 8px;
-                background: Theme.material ? (rt.has-hover ? Theme.fill-hover : Theme.fill) : rt.has-hover ? Theme.fill : transparent;
-                rt := TouchArea { }
-                if it.event: Rectangle {
-                    x: Theme.material ? 10px : 6px;
-                    y: Theme.material ? 10px : 5px;
-                    width: Theme.material ? 4px : 3px;
-                    height: parent.height - 2 * self.y;
-                    border-radius: 2px;
-                    background: it.color;
-                }
-                if !it.event: Tick {
-                    x: Theme.material ? 10px : 4px;
-                    y: (parent.height - self.height) / 2;
-                    checked: it.done;
-                    tint: #ff9f0a;
-                    ring: #ff9f0a;
-                    label: it.title;
-                    toggled => { todo-toggle(it.key); }
-                }
-                VerticalLayout {
-                    x: Theme.material ? (it.event ? 22px : 38px) : it.event ? 16px : 28px;
-                    width: parent.width - self.x - 8px;
-                    alignment: center;
-                    Text {
-                        text: it.title;
-                        color: Theme.label;
-                        font-size: Theme.small;
-                        font-weight: 500;
-                        overflow: elide;
-                        stroke-width: 0;
-                    }
-                    Text {
-                        text: it.sub;
-                        color: Theme.secondary;
-                        font-size: Theme.caption;
-                        overflow: elide;
-                    }
-                }
-            }
-        }
-    }
-}
-
-// ── To-do (TodoWidget.qml) ──────────────────────────────────────────────────
-component TodoTab {
-    in property <[NcTodo]> todos;
-    in property <string> undo; // the text of the one just deleted, "" none
-    callback add(string);
-    callback toggle(string);
-    callback remove(string);
-    callback restore();
-    callback rename(string, string);
-    // the one being renamed (double-click; Enter or clicking away keeps it,
-    // Esc cancels)
-    property <string> renaming;
-    height: col.preferred-height + 24px;
-    col := VerticalLayout {
-        x: 12px;
-        y: 12px;
-        width: parent.width - 24px;
-        height: self.preferred-height;
-        spacing: 6px;
-        Rectangle {
-            height: Theme.material ? 40px : 32px;
-            border-radius: Theme.material ? self.height / 2 : Theme.radius-control;
-            background: Theme.fill;
-            border-width: Theme.material && input.has-focus ? 2px : 0;
-            border-color: Theme.material ? Theme.m3-primary : Theme.accent;
-            Icon {
-                x: Theme.material ? 14px : 10px;
-                width: self.preferred-width;
-                text: "\u{e3d4}"; // plus
-                bold: !Theme.material;
-                font-size: Theme.material ? 18px : 12px;
-                color: Theme.secondary;
-            }
-            input := TextInput {
-                x: Theme.material ? 42px : 30px;
-                width: parent.width - self.x - (Theme.material ? 16px : 10px);
-                color: Theme.label;
-                font-size: Theme.body;
-                vertical-alignment: center;
-                single-line: true;
-                accessible-label: "Add a to-do";
-                accepted => {
-                    if self.text != "" {
-                        root.add(self.text);
-                        self.text = "";
-                    }
-                }
-            }
-            Text {
-                x: input.x;
-                width: input.width;
-                visible: input.text == "";
-                text: "Add a to-do (e.g. call mum tomorrow 6pm)";
-                color: Theme.tertiary;
-                font-size: Theme.body;
-                vertical-alignment: center;
-                overflow: elide;
-                accessible-role: none;
-            }
-        }
-        if todos.length == 0 && undo == "": Text {
-            height: self.preferred-height + 16px;
-            text: "Nothing to do. Nice.";
-            color: Theme.secondary;
-            font-size: Theme.small;
-            horizontal-alignment: center;
-            vertical-alignment: center;
-        }
-        for t in todos: Rectangle {
-            height: t.due != "" ? (Theme.material ? 48px : 40px) : Theme.material ? 40px : 30px;
-            th := TouchArea {
-                double-clicked => { renaming = t.key; }
-            }
-            Tick {
-                x: 0;
-                y: (parent.height - self.height) / 2;
-                checked: t.done;
-                round: true;
-                tint: Theme.accent;
-                label: t.text;
-                toggled => { toggle(t.key); }
-            }
-            VerticalLayout {
-                x: 18px + (Theme.material ? 14px : 10px);
-                width: parent.width - self.x - 24px;
-                alignment: center;
-                if renaming != t.key: Text {
-                    text: t.text;
-                    color: t.done ? Theme.tertiary : Theme.label;
-                    font-size: Theme.material ? 14px : Theme.body;
-                    overflow: elide;
-                }
-                if renaming == t.key: TextInput {
-                    text: t.text;
-                    color: Theme.label;
-                    font-size: Theme.material ? 14px : Theme.body;
-                    single-line: true;
-                    selection-background-color: Theme.accent.with-alpha(0.4);
-                    accessible-label: "Rename " + t.text;
-                    init => {
-                        self.focus();
-                        self.select-all();
-                    }
-                    accepted => {
-                        if self.text != "" && self.text != t.text { root.rename(t.key, self.text); }
-                        renaming = "";
-                    }
-                    changed has-focus => {
-                        if !self.has-focus && renaming == t.key {
-                            if self.text != "" && self.text != t.text { root.rename(t.key, self.text); }
-                            renaming = "";
-                        }
-                    }
-                    key-pressed(e) => {
-                        if e.text == Key.Escape { renaming = ""; return accept; }
-                        reject
-                    }
-                }
-                if t.due != "": Text {
-                    text: t.due;
-                    color: t.overdue ? Theme.danger : Theme.secondary;
-                    font-size: Theme.small;
-                }
-            }
-            // (done: struck through)
-            if t.done && renaming != t.key: Rectangle {
-                x: 18px + (Theme.material ? 14px : 10px);
-                y: t.due != "" ? parent.height / 2 - 8px : parent.height / 2;
-                width: min(parent.width - self.x - 24px, done-w.preferred-width);
-                height: 1px;
-                background: Theme.tertiary;
-                done-w := Text {
-                    visible: false;
-                    text: t.text;
-                    font-size: Theme.material ? 14px : Theme.body;
-                }
-            }
-            if th.has-hover && renaming != t.key: IconButton {
-                x: parent.width - self.width + 6px;
-                y: (parent.height - self.height) / 2;
-                width: 24px;
-                height: 24px;
-                icon: "\u{e4f6}"; // x
-                icon-size: Theme.material ? 18px : 12px;
-                icon-color: Theme.tertiary;
-                label: "Delete " + t.text;
-                clicked => { remove(t.key); }
-            }
-        }
-        if undo != "": HorizontalLayout {
-            spacing: 8px;
-            alignment: start;
-            Text {
-                text: "Deleted “" + undo + "”";
-                color: Theme.secondary;
-                font-size: Theme.small;
-                overflow: elide;
-            }
-            Text {
-                text: "Undo";
-                color: Theme.material ? Theme.m3-primary : Theme.accent;
-                font-size: Theme.small;
-                font-weight: 600;
-                accessible-role: button;
-                accessible-label: "Undo";
-                accessible-action-default => { restore(); }
-                TouchArea {
-                    mouse-cursor: pointer;
-                    clicked => { restore(); }
-                }
-            }
-        }
     }
 }
 
@@ -846,6 +252,15 @@ export component Center inherits Window {
     in property <string> day-title;
     in property <[NcItem]> day-items;
     in property <string> every-day;
+    in property <string> day-key;
+    in property <string> day-short;
+    in property <[NcTarget]> cal-targets;
+    in property <string> cal-target;
+    in property <string> cal-target-label: "This computer";
+    in property <int> cal-default-alert: 10;
+    in property <bool> cal-h24;
+    in property <string> cal-undo;
+    in-out property <string> cal-error;
     // to-do
     in property <[NcTodo]> todos;
     in property <string> todo-undo;
@@ -904,6 +319,23 @@ export component Center inherits Window {
     callback todo-remove(string);
     callback todo-restore();
     callback todo-rename(string, string);
+    callback cal-save(NcDraft, int);
+    callback cal-remove(string, int);
+    callback cal-move(string, string, int);
+    callback cal-restore();
+    // the calendar's editor, from Rust
+    public function cal-close() {
+        cal.close-editor();
+    }
+    public function cal-ask(what: int, day: string) {
+        cal.ask(what, day);
+    }
+    public function cal-edit(it: NcItem) {
+        cal.edit(it);
+    }
+    public function cal-fail(text: string) {
+        cal.fail(text);
+    }
     callback focus-mode-set(int);
     callback act(string);
     callback card(int, length, length, length, length); // a row's card as laid out: index, y in the list, height (Glass's chips), width, edges' height
@@ -1120,7 +552,7 @@ export component Center inherits Window {
                                     background: less-t.has-hover ? Theme.fill-hover : Theme.fill;
                                     accessible-role: button;
                                     accessible-label: "Show less";
-                                    accessible-action-default => { toggle-group(r.group); }
+                                    accessible-action-default => { toggle-group(r.gkey); }
                                     less-l := Text {
                                         text: "Show less";
                                         color: Theme.label;
@@ -1131,7 +563,7 @@ export component Center inherits Window {
                                     }
                                     less-t := TouchArea {
                                         mouse-cursor: pointer;
-                                        clicked => { toggle-group(r.group); }
+                                        clicked => { toggle-group(r.gkey); }
                                     }
                                 }
                                 IconButton {
@@ -1141,7 +573,7 @@ export component Center inherits Window {
                                     icon: "\u{e4f6}";
                                     icon-size: 11px;
                                     label: r.kind == 1 || r.b.alert ? "Clear Tessera alerts" : "Clear " + r.group;
-                                    clicked => { clear-group(r.group); }
+                                    clicked => { clear-group(r.gkey); }
                                 }
                             }
                             Rectangle {
@@ -1184,7 +616,7 @@ export component Center inherits Window {
                                     }
                                     // a collapsed stack expands instead
                                     if r.count > 1 && !r.open: TouchArea {
-                                        clicked => { toggle-group(r.group); }
+                                        clicked => { toggle-group(r.gkey); }
                                     }
                                 }
                             }
@@ -1195,7 +627,15 @@ export component Center inherits Window {
                                 property <length> live: swipe.current-position.x - swipe.pressed-position.x;
                                 in-out property <length> off: 0;
                                 property <length> dx: swipe.swiping ? live : off;
-                                animate dx { duration: swipe.swiping ? 0ms : 200ms; easing: cubic-bezier(0.3, 0, 0.8, 0.15); }
+                                // (back on the default spring; off in 150 ms, InCubic)
+                                animate dx { duration: swipe.swiping ? 0ms : off != 0 ? 150ms : 322ms; easing: off != 0 ? cubic-bezier(0.32, 0, 0.67, 0) : spring(0.5); }
+                                // the pointer's speed (px per ms), for a fling
+                                property <length> last-x;
+                                property <duration> last-t;
+                                property <float> vel;
+                                // (a row now showing another card: back in place)
+                                property <int> rid: r.b.id;
+                                changed rid => { self.off = 0; }
                                 property <bool> loose: swipe.swiping || dx != 0;
                                 y: r.gap;
                                 x: dx;
@@ -1209,11 +649,11 @@ export component Center inherits Window {
                                 border-bottom-right-radius: self.border-bottom-left-radius;
                                 animate border-top-left-radius, border-bottom-left-radius { duration: 150ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
                                 fly := Timer {
-                                    interval: 200ms;
+                                    interval: 150ms;
                                     running: false;
                                     triggered => {
                                         self.running = false;
-                                        if r.count > 1 { clear-group(r.group); } else if r.b.alert { alert-close(r.b.id); } else { row-close(r.b.id); }
+                                        if r.count > 1 { clear-group(r.gkey); } else if r.b.alert { alert-close(r.b.id); } else { row-close(r.b.id); }
                                     }
                                 }
                                 // Swipe sideways to dismiss: past a third of the way it
@@ -1222,8 +662,15 @@ export component Center inherits Window {
                                     enabled: Theme.material && r.kind != 2;
                                     handle-swipe-left: true;
                                     handle-swipe-right: true;
+                                    moved => {
+                                        let dt = max(1, (animation-tick() - seg.last-t) / 1ms);
+                                        seg.vel = (seg.live - seg.last-x) / 1px / dt;
+                                        seg.last-x = seg.live;
+                                        seg.last-t = animation-tick();
+                                    }
+                                    // (past a third, or flung over 900 px/s its way)
                                     swiped => {
-                                        if abs(live) > seg.width / 3 {
+                                        if abs(live) > seg.width / 3 || (abs(seg.vel) > 0.9 && seg.vel * live / 1px > 0) {
                                             seg.off = (live > 0 ? 1 : -1) * (seg.width + 24px);
                                             fly.running = true;
                                         } else {
@@ -1240,7 +687,7 @@ export component Center inherits Window {
                                             group-count: r.count;
                                             group-open: r.open;
                                             tap-expands: r.count > 1;
-                                            group-toggled => { toggle-group(r.group); }
+                                            group-toggled => { toggle-group(r.gkey); }
                                             activated => { root.row-activated(r.b.id); }
                                             close => { if r.b.alert { root.alert-close(r.b.id); } else { root.row-close(r.b.id); } }
                                             action(k) => { root.action(r.b.id, k); }
@@ -1256,7 +703,7 @@ export component Center inherits Window {
                                 if r.kind == 2: Rectangle {
                                     TouchArea {
                                         mouse-cursor: pointer;
-                                        clicked => { toggle-group(r.group); }
+                                        clicked => { toggle-group(r.gkey); }
                                     }
                                     Text {
                                         x: 16px;
@@ -1277,14 +724,14 @@ export component Center inherits Window {
                                         icon-size: 18px;
                                         icon-color: Theme.m3-on-surface-variant;
                                         label: r.b.alert ? "Clear Tessera alerts" : "Clear " + r.group;
-                                        clicked => { clear-group(r.group); }
+                                        clicked => { clear-group(r.gkey); }
                                     }
                                     Expander {
                                         x: parent.width - 12px - self.width;
                                         y: (parent.height - self.height) / 2;
                                         count: r.count;
                                         open: true;
-                                        clicked => { toggle-group(r.group); }
+                                        clicked => { toggle-group(r.gkey); }
                                     }
                                 }
                             }
@@ -1377,6 +824,21 @@ export component Center inherits Window {
                     day-title: day-title;
                     items: day-items;
                     every-day: every-day;
+                    day-key: day-key;
+                    day-short: day-short;
+                    targets: cal-targets;
+                    target: cal-target;
+                    target-label: cal-target-label;
+                    default-alert: cal-default-alert;
+                    h24: cal-h24;
+                    undo: cal-undo;
+                    ink: accent-ink;
+                    radius: Theme.material ? 24px : 36px;
+                    error <=> cal-error;
+                    save(d, every) => { cal-save(d, every); }
+                    remove(k, every) => { cal-remove(k, every); }
+                    move(k, day, every) => { cal-move(k, day, every); }
+                    restore => { cal-restore(); }
                     step(n) => { cal-step(n); }
                     set-week(w) => { cal-week-set(w); }
                     pick(k) => { cal-pick(k); }
@@ -1388,6 +850,7 @@ export component Center inherits Window {
                     visible: tab == 1;
                     todos: todos;
                     undo: todo-undo;
+                    ink: accent-ink;
                     add(t) => { todo-add(t); }
                     toggle(k) => { todo-toggle(k); }
                     remove(k) => { todo-remove(k); }

@@ -1,0 +1,22 @@
+# Share feed (sandbox).
+ipc sharingdemo peers
+wait 1
+# MANUAL: open the share sheet (ShareSheet plan) and hover device 4 (needs a pointer on a layer surface)
+ptr move 1100 540 sleep 300 glide 1100 540 50
+ipc sharingdemo sending 30
+ipc sharingdemo sending 50
+ipc sharingdemo sending 20
+ipc sharingdemo sending 70
+ipc sharingdemo sending 40
+wait 1
+shot feed-sending
+note Only device 1's status and ring change with each update; the hovered device (4) keeps its hover fill throughout (same as QML). NOTE: click on layer surfaces may not register in the harness.
+# MANUAL: Click "Copy" on a file share: wl-paste -l lists text/uri-list and the sheet closes
+ipc sharingdemo ask
+wait 1
+shot feed-ask
+note The incoming card is shown; click Accept (about (1027,645)) and the card should go to receiving (the answer reached the shell).
+ptr move 1027 645 click
+wait 1
+shot feed-accepted
+note The card shows "receiving" (progress) after Accept, as in QML. NOTE: click on layer surfaces may not register in the harness.

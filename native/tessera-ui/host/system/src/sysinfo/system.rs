@@ -589,7 +589,9 @@ impl Service for System {
             }
             // [style id]: the font of an emoji style, from the AUR in a terminal (EmojiFont.install)
             "installEmoji" => {
-                let pkg = match args.get(0).and_then(Value::as_str).unwrap_or("") {
+                // (no style: the configured one, EmojiFont.install's default)
+                let style = args.get(0).and_then(Value::as_str).filter(|s| !s.is_empty()).map(str::to_string).unwrap_or_else(|| h.cfg()["emoji"]["style"].as_str().unwrap_or("android").to_string());
+                let pkg = match style.as_str() {
                     "android" => "noto-fonts-emoji",
                     "apple" => "ttf-apple-emoji",
                     "windows" => "ttf-fluent-emoji",

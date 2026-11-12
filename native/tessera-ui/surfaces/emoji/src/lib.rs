@@ -36,6 +36,7 @@ use tessera_core::wayland::{Spec, State, Surface};
 use data::{Data, Remembered};
 use slint::platform::Key;
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
+use tessera_core::rows::Rows;
 use smithay_client_toolkit::shell::wlr_layer::{Anchor, KeyboardInteractivity, Layer};
 use smithay_client_toolkit::shell::WaylandSurface;
 use std::any::Any;
@@ -46,8 +47,10 @@ use view::{Kind, Mode, View};
 
 const NAME: &str = "emoji";
 pub const NS: &str = "tessera:emoji";
-/// how long it stays closed before its window goes (made again on opening)
-const RETIRE_SECS: u64 = 10;
+/// how long it stays closed before its window goes (made again on opening):
+/// five minutes, as EmojiSlots.qml's linger, so reopening within them is
+/// instant (a new window draws every emoji glyph again)
+const RETIRE_SECS: u64 = 300;
 const PANEL_W: f32 = 420.0;
 const PANEL_H: f32 = 428.0;
 const LIST_TOP: f32 = 36.0 + 8.0 + 32.0 + 4.0; // in the content, under the tabs
@@ -136,7 +139,7 @@ fn k(key: Key) -> String {
 /// The keys the picker handles itself (the field gets the rest): Return,
 /// arrows, Tab, Esc (the tone chooser, when open, takes the same ones)
 pub fn handles(text: &str) -> bool {
-    let nav = [Key::Escape, Key::Return, Key::LeftArrow, Key::RightArrow, Key::UpArrow, Key::DownArrow, Key::Tab, Key::Backtab];
+    let nav = [Key::Escape, Key::Return, Key::LeftArrow, Key::RightArrow, Key::UpArrow, Key::DownArrow, Key::Tab, Key::Backtab, Key::Menu];
     nav.iter().any(|&n| text == k(n))
 }
 
@@ -197,6 +200,15 @@ struct Win {
     screen: (f64, f64, f64, f64),
     /// its content has been drawn once (fonts loaded, glyphs in the atlas)
     warmed: bool,
+    /// the grid's rows, handed to the window once (changed in place)
+    rows: Rows<ui::ERow>,
+    /// each row slot's cells (the same model for the slot, changed in place)
+    cells: Vec<Rows<ui::ECell>>,
+    /// the tone chooser's six forms
+    tone_forms: Rows<SharedString>,
+    /// the key hints (changed in place)
+    hint_insert: Rows<SharedString>,
+    hint_copy: Rows<SharedString>,
 }
 
 struct Gifs {
@@ -211,11 +223,13 @@ struct Gifs {
     gen: u64,
     sel: usize,
     model: Rc<VecModel<ui::GifCell>>,
+    /// the KLIPY key the list was fetched with (a new one starts over)
+    key: String,
 }
 
 impl Default for Gifs {
     fn default() -> Self {
-        Self { status: klipy::Status::Idle, list: Vec::new(), query: None, page: 0, has_next: false, loading_more: false, serial: 0, gen: 0, sel: 0, model: Rc::new(VecModel::default()) }
+        Self { status: klipy::Status::Idle, list: Vec::new(), query: None, page: 0, has_next: false, loading_more: false, serial: 0, gen: 0, sel: 0, model: Rc::new(VecModel::default()), key: String::new() }
     }
 }
 
@@ -373,9 +387,28 @@ impl Emoji {
         on!(on_state_act, |s| M::StateAct(s));
         on!(on_dismissed, | | M::Dismissed);
         on!(on_closed, | | M::Closed);
+        let (rows, tone_forms) = (Rows::new(), Rows::new());
+        ui.set_rows(rows.model());
+        ui.set_tone_forms(tone_forms.model());
+        let (hint_insert, hint_copy) = (Rows::new(), Rows::new());
+        ui.set_hint_insert(hint_insert.model());
+        ui.set_hint_copy(hint_copy.model());
         ui.show().expect("show emoji");
         let a11y = crate::a11y::A11y::new(&surface, st.tx.clone());
-        self.win = Some(Win { output: output.into(), surface, ui, a11y, glass_sent: String::new(), screen: (ox as f64, oy as f64, sw as f64, sh as f64), warmed: false });
+        self.win = Some(Win {
+            output: output.into(),
+            surface,
+            ui,
+            a11y,
+            glass_sent: String::new(),
+            screen: (ox as f64, oy as f64, sw as f64, sh as f64),
+            warmed: false,
+            rows,
+            cells: Vec::new(),
+            tone_forms,
+            hint_insert,
+            hint_copy,
+        });
         self.settings(st);
         true
     }
@@ -385,9 +418,9 @@ impl Emoji {
         let Some(w) = &self.win else { return };
         w.ui.set_emoji_font(emoji_font(&st.shell.cfg, &self.fonts).into());
         let (ins, copy) = key_names(&st.shell.cfg);
-        let m = |v: Vec<String>| ModelRc::new(VecModel::from(v.into_iter().map(SharedString::from).collect::<Vec<_>>()));
-        w.ui.set_hint_insert(m(ins));
-        w.ui.set_hint_copy(m(copy));
+        let m = |v: Vec<String>| v.into_iter().map(SharedString::from).collect::<Vec<_>>();
+        w.hint_insert.set(m(ins));
+        w.hint_copy.set(m(copy));
     }
 
     fn load(&mut self, st: &State) {
@@ -573,13 +606,12 @@ impl Emoji {
         };
         self.view = View::build(d, &self.mem, self.tab, &self.query, crate::util::now_ms());
         self.sel = self.sel.min(self.view.flat.len().saturating_sub(1));
-        let Some(w) = &self.win else { return };
-        let rows: Vec<ui::ERow> = self
-            .view
-            .rows
-            .iter()
-            .map(|r| {
-                let (kind, title, start, cols, cells) = match &r.kind {
+        let Some(w) = self.win.as_mut() else { return };
+        let mem = &self.mem;
+        let mut rows: Vec<ui::ERow> = Vec::with_capacity(self.view.rows.len());
+        for (slot, r) in self.view.rows.iter().enumerate() {
+            {
+                let (kind, title, start, cols, cells): (i32, String, usize, usize, Vec<ui::ECell>) = match &r.kind {
                     view::RowKind::Header(t) => (0, t.clone(), 0, 0, Vec::new()),
                     view::RowKind::Hint(t) => (1, t.clone(), 0, 0, Vec::new()),
                     view::RowKind::Items { cols, start, cells } => (
@@ -592,7 +624,7 @@ impl Emoji {
                             .map(|c| match c.kind {
                                 Kind::Emoji => {
                                     let e = &d.emoji[c.i];
-                                    ui::ECell { text: self.mem.display(e).into(), name: e.n.as_str().into(), emoji: true, toned: e.toned() }
+                                    ui::ECell { text: mem.display(e).into(), name: e.n.as_str().into(), emoji: true, toned: e.toned() }
                                 }
                                 Kind::Kaomoji => {
                                     let it = &d.kaomoji_flat[c.i];
@@ -606,10 +638,16 @@ impl Emoji {
                             .collect(),
                     ),
                 };
-                ui::ERow { kind, y: r.y, h: r.h, title: title.into(), start: start as i32, cols: cols as i32, cells: ModelRc::new(VecModel::from(cells)) }
-            })
-            .collect();
-        w.ui.set_rows(ModelRc::new(VecModel::from(rows)));
+                // (a row slot keeps one cells model: its row stays equal, and
+                // only the cells that differ change)
+                if w.cells.len() <= slot {
+                    w.cells.push(Rows::new());
+                }
+                w.cells[slot].set(cells);
+                rows.push(ui::ERow { kind, y: r.y, h: r.h, title: title.into(), start: start as i32, cols: cols as i32, cells: w.cells[slot].model() });
+            }
+        }
+        w.rows.set(rows);
         w.ui.set_rows_height(self.view.height);
     }
 
@@ -621,7 +659,7 @@ impl Emoji {
         ui.set_sel(self.sel as i32);
         ui.set_gif_mode(gif);
         ui.set_tab(self.tab as i32);
-        ui.set_placeholder(if gif { "Search GIFs" } else { "Search emoji, kaomoji and symbols" }.into());
+        ui.set_placeholder(if gif { "Search KLIPY" } else { "Search emoji, kaomoji and symbols" }.into());
         // the state area
         let (kind, spin, icon, title, body, action, secondary): (&str, bool, &str, String, String, &str, &str) = if gif {
             let g = &self.gifs;
@@ -700,7 +738,7 @@ impl Emoji {
             (Some(e), Some(d)) => {
                 let e = &d.emoji[e];
                 let forms: Vec<SharedString> = (0..6).map(|t| e.with_tone(t).into()).collect();
-                ui.set_tone_forms(ModelRc::new(VecModel::from(forms)));
+                w.tone_forms.set(forms);
                 ui.set_tone_open(true);
             }
             _ => ui.set_tone_open(false),
@@ -877,8 +915,12 @@ impl Emoji {
                 self.reveal();
                 self.push(st);
             }
+        } else if is(Key::Menu) {
+            if !gif {
+                self.tone_for(st, self.sel);
+            }
         } else if is(Key::Return) {
-            let action = self.win.as_ref().is_some_and(|w| !w.ui.get_state_action().is_empty() && !w.ui.get_state_kind().is_empty());
+            let action =self.win.as_ref().is_some_and(|w| !w.ui.get_state_action().is_empty() && !w.ui.get_state_kind().is_empty());
             if action {
                 self.state_act(st, false);
             } else if gif {
@@ -955,6 +997,7 @@ impl Emoji {
         let key = klipy::key(&st.shell.cfg);
         let filter = st.shell.cfg["emoji"]["gifFilter"].as_str().unwrap_or("medium").to_string();
         let g = &mut self.gifs;
+        g.key = key.clone();
         g.serial += 1;
         if page == 1 {
             g.status = klipy::Status::Loading;
@@ -1004,14 +1047,25 @@ impl Emoji {
         self.push(st);
     }
 
+    /// The arrows (GridView's moveCurrentIndex…: no move past an edge, no
+    /// wrapping)
     fn gif_move(&mut self, st: &State, d: i32) {
-        let n = self.gifs.list.len() as i32;
-        if n == 0 {
+        let s = self.gifs.sel as i32 + d;
+        if s < 0 || s >= self.gifs.list.len() as i32 {
             return;
         }
-        let s = (self.gifs.sel as i32 + d).clamp(0, n - 1) as usize;
+        self.gif_select(st, s as usize);
+    }
+
+    /// A GIF chosen (by key or pointer): the next page when it's among the
+    /// last six, and kept in view (the GridView follows its currentIndex)
+    fn gif_select(&mut self, st: &State, s: usize) {
+        let n = self.gifs.list.len();
+        if s >= n {
+            return;
+        }
         self.gifs.sel = s;
-        if s + 6 >= n as usize {
+        if s + 6 >= n {
             self.gif_more(st);
         }
         // keep it in view (rows of 104 in 272)
@@ -1065,6 +1119,26 @@ impl Part for Emoji {
             }
         }
         self.settings(st);
+        // A new KLIPY key: start over (Klipy.qml's onKeyChanged)
+        let key = klipy::key(&st.shell.cfg);
+        if key != self.gifs.key {
+            let g = &mut self.gifs;
+            g.key = key;
+            g.serial += 1; // (an answer for the old key is dropped)
+            g.gen += 1;
+            g.list.clear();
+            g.model.set_vec(Vec::new());
+            g.query = None;
+            g.status = klipy::Status::Idle;
+            g.loading_more = false;
+            g.has_next = false;
+            g.sel = 0;
+            if self.open && self.mode() == Mode::Gif {
+                let q = self.query.clone();
+                self.gif_fetch(st, &q);
+            }
+            self.push(st);
+        }
     }
 
     fn plugin_changed(&mut self, st: &mut State) {
@@ -1192,8 +1266,9 @@ impl Part for Emoji {
                 }
             }
             M::GifHovered(i) => {
-                self.gifs.sel = i.max(0) as usize;
-                self.push(st);
+                if i >= 0 && i as usize != self.gifs.sel {
+                    self.gif_select(st, i as usize);
+                }
             }
             M::GifActivate(i, c) => self.gif_activate(i.max(0) as usize, c),
             M::GifScrolled(y, h) => {
@@ -1269,7 +1344,7 @@ impl Part for Emoji {
         let y = ui.get_body_y() + ph * (1.0 - s) / 2.0;
         let o = ui.get_body_opacity();
         let shape = theme::glass_shape(&st.shell.look, x, y, pw * s, ph * s, 22.0 * s, o, 1.0);
-        let key = format!("{shape:?}");
+        let key = tessera_core::theme::glass_key(&shape);
         if key != w.glass_sent {
             st.shell.glass.set(&w.output, NS, if o > 0.002 { std::slice::from_ref(&shape) } else { &[] });
             w.glass_sent = key;

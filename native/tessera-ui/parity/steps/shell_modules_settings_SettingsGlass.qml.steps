@@ -1,0 +1,33 @@
+# Settings window: Material 1040x700 at 440,205 (page column from x~772); Glass 860x620 at 530,230. Sidebar rows (Material, x=560): Appearance 335, Wallpaper 385, Desktop 435, Menu bar 485, Lock 535, Notifications 626, Focus 676, Windows 767, Displays 858.
+# Click coordinates inside pages are not known in advance: those steps are MANUAL unless a keyboard path exists. Check in each look.
+look glass
+ipc panels settings appearance
+wait 2
+shot glass-open
+note Glass window 860x620 centred at 530,230; sidebar rows 32 px + 2 px apart under headings.
+ptr move 700 500 scroll 0 5
+wait 1
+shot g2-fold
+note G2 scrolling the sidebar folds the search to a magnifier in 150 ms (was failing: hover did not open it).
+ptr move 700 500 sleep 200 glide 560 300 200
+wait 1
+shot g2-hover
+note G2 FAIL before: hovering the magnifier must open the search field; QML opens it on hover.
+ptr move 1100 600 scroll 0 3
+wait 0.4
+shot g4-scroll
+note G4 scroll indicator thumb visible while scrolling.
+ptr move 1900 1000 sleep 1500 glide 1900 1000 100
+wait 1.5
+shot g4-idle
+note G4 FAIL before: page and sidebar thumbs must be hidden about 900 ms after the scroll and with the pointer outside the window (QML shows none).
+key -k Tab -k Down -k Down -k End
+wait 0.5
+shot g3-keys
+note G3 keys: After Down, Down, End the last page (About) is selected (as Material M3: Wallpaper, Desktop & Widgets, About).
+key -k Home
+wait 0.5
+shot g3-home
+note G3 Home returns to Appearance.
+# MANUAL: G1 switch timing: Settings.qml T1 with Glass rows' points and tools/page-switch.py region 231 52 629 568; PASS as T1 (QML 861 ms vs Rust 860 ms before)
+# MANUAL: G2 drag the sidebar indicator to scroll; folds to magnifier in 150 ms and re-opens on hover, folds on leave

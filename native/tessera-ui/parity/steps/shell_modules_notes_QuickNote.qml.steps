@@ -1,0 +1,39 @@
+# QuickNote. Both looks.
+rec qn-open 1 ipc panels open quickNote IRICE-TEST
+note Material settles in about 0.3 s with at most 1 % overshoot; Glass about 0.4 s with a little more overshoot. Compare QML within 1 frame.
+wait 1
+shot empty
+note Quick note card open with an empty editor; Save button disabled (Material 12 % fill / 38 % text). Same as QML.
+rec qn-close 0.4 key -k Escape
+note Escape closes in 192 ms, same as QML.
+wait 1
+ipc panels open quickNote IRICE-TEST
+wait 1
+key hello
+key -k Escape
+wait 1
+ipc panels open quickNote IRICE-TEST
+wait 1
+shot reopen
+note Reopened: "hello" is back in the editor, caret at the end. Save enabled.
+# NOTE: Save button at the card's bottom right (position assumed); click on layer surfaces may not register
+rec qn-save-press 0.6 ptr move 1180 700 sleep 100 down sleep 400 glide 900 400 100 up
+note Material: pressing Save: corners go to 8 and it swells about 6 % in 0.22-0.29 s; Glass: 97 %. Released away so it does not save. Same as QML.
+key -M ctrl -k Return -m ctrl
+wait 1
+shot saved
+note Ctrl+Enter saves (a file in the notes folder) and closes the dialog.
+ipc panels open quickNote IRICE-TEST
+wait 1
+shot empty-again
+note After saving, the reopened note is empty.
+# FAB at the editor's bottom right (position assumed)
+ptr move 1180 620 sleep 200 click
+wait 1
+rec qn-fab 0.8 ptr move 1180 620 sleep 100 click
+note Material FAB: it rounds and the + turns into x with a small overshoot; the items spring out nearest first. Glass has no FAB (nothing happens). Click again: items go back together.
+wait 1
+shot fab
+note FAB state (Material): items visible when open; compare with QML.
+ptr move 1180 620 sleep 100 click
+ipc panels close

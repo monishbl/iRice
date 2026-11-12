@@ -1,0 +1,21 @@
+# Arena IRICE-TEST 1920x1080 scale 1, the user's config (expressive motion, Colloid, their 4 widgets).
+# Each file runs top to bottom from a fresh desktop. `static NAME x y w h`: that region must not change
+# from there until the next `shot`, `rec` or `look` (the no-reload blocks end with their last close).
+# Right-clicks: `ptr ... down up` lines marked (right button) need the runner's right button.
+
+look glass
+rec di-magnify 2.5 ptr move 760 1000 glide 760 1040 200 glide 1160 1040 1600
+note each icon grows to 1.6x as the pointer passes, cosine falloff over 2.5 icons; follows the pointer with no lag
+ptr move 970 1038 sleep 300
+shot di-label
+note "Downloads" label on a frosted pill above
+rec di-squish 1 ptr move 970 1038 down sleep 400 up
+note press: 0.9 on a spring (~320 ms); release springs back
+shot di-icons
+note Apps: Colloid coloured grid on white tile; Downloads: blue Colloid folder, no dark tile; Trash: grey can
+setup foot &
+wait 1.5
+shot di-running
+note running dot under foot
+setup hyprctl dispatch 'hl.dsp.window.close({ window = "class:foot" })'
+wait 1

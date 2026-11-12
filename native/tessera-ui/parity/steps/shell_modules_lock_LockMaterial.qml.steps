@@ -1,0 +1,74 @@
+look material
+# LockMaterial. Password "mock" (Rust only; QML leaves via ipc lock unlock).
+# Step 1: light reveal
+wait 1
+rec reveal 1.5 ipc lock lock
+note FAILED earlier: Rust showed black frames with the clock already faded in, then the wallpaper circle within ~3 frames (50-100 ms, no visible opening); QML opens the circle (with the clock inside) from the centre over ~0.7 s. PASS needs: black with a circle opening from the centre over ~450 ms (emphasized), the clock thickening from thin.
+wait 1
+# Step 2: pill
+shot pill-closed
+note Pill closed: avatar cookie + name only.
+ptr move 900 400 sleep 300 glide 900 500 300 sleep 700
+shot pill-open
+note Pointer glide opens the pill to 360 px (spring) with placeholder "Enter password" (PASS earlier; spring width not measured, compare opening with QML).
+wait 11
+shot pill-closed-again
+note About 10 s idle later the pill is closed again (PASS earlier).
+key x
+wait 0.5
+shot pill-typed
+note A key opens the pill with one dot.
+key -k BackSpace
+wait 11
+shot pill-closed-3
+note Closed again about 10 s after the backspace.
+ptr move 960 700 sleep 200 click down up
+# NOTE: click on layer surfaces may not register in the harness (it worked once earlier)
+wait 1
+shot pill-click
+note A click on the closed pill opens it.
+# Step 3: wrong password
+key nope
+wait 0.3
+rec wrong 2 key -k Return
+note Spinner in the send slot, avatar turns 40 degrees, then an error pill above the pill ("Incorrect password. Try again."), pill border red, the pill shakes (decaying spring ~0.7 s), pill stays open (text/pill PASS earlier; avatar turn and shake NOT inspected).
+wait 1.5
+# Step 5: fingerprint
+ipc lock demo finger
+wait 0.8
+shot finger
+note Target circle (secondaryContainer) beside the arrow pulses, round target springs from 1.15 (PASS earlier).
+ipc lock demo miss
+wait 0.5
+shot miss
+note errorContainer circle, shake, line "Not recognised. Try again" (PASS earlier).
+ipc lock demo match
+wait 0.4
+shot match
+note Cookie + check + ripple ring growing to 280 px over 600 ms (ring timing NOT measured earlier).
+ipc lock demo off
+# Step 6: face
+ipc lock demo face
+wait 0.8
+shot face
+note NOT RUN earlier: the lock icon at the top becomes the loading indicator; line "Looking for your face..." with the smiley.
+ipc lock demo off
+# Step 7: clock faces
+# MANUAL: for lock.clockFace in stacked, dynamic, wide, overlap, analog, weather: lock + shot. FAILED earlier: in overlap and weather Rust draws the date line ("Saturday 7 November") UNDER/behind the notification shelf and clipped; QML keeps the date above the shelf. Stacked, dynamic (24h "7 Nov", 12h "PM"), wide, analog (hands at the time) were fine.
+# MANUAL: lock.clockSize "small": the clock springs into the top-left (record; compare duration with QML; cross-over animation not captured earlier)
+shot clock-default
+note Default clock face as QML (stacked: thin big clock, date line above the notification shelf, nothing overlapping). Check the date line is NOT drawn under the shelf.
+# Step 8: Now Playing
+# MANUAL: with a player with a length: card above the pill; timeline visible within 1 s and wavy, moving while playing; pause: button rounds, timeline flat; position advances each second (NOT RUN earlier)
+# Step 9: notifications
+setup notify-send -a Firefox -i firefox 'Download finished' 'report.pdf'
+setup notify-send -a Files -i org.gnome.Nautilus 'Copied' '3 files'
+wait 1.5
+shot notes
+note Material shapes: shelf as a 52 px pill, cards 72 px (shelf shows, PASS partly earlier; sizes not measured). Icons real Colloid icons.
+# Step 10: minute tick
+# NOTE: needs a minute change; the runner may need to start this near :59
+wait 1
+ipc lock demo off
+ipc lock unlock
+wait 2

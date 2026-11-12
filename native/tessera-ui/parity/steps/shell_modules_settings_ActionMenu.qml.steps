@@ -1,0 +1,42 @@
+# ActionMenu popup, tested through a Choice on the Notifications Style row or Appearance page. Failed in batch 1: A2 (keys), A6 (look).
+ipc panels settings notifications
+wait 2
+shot page
+note Settings open on Notifications and Island; find the Style Choice (Material pill near 1325,580). Positions below are guesses: read from this shot.
+ptr move 1325 580 sleep 300 glide 1325 580 100 click
+wait 1
+shot a1-open
+note A1 list under the control, right edges lined up, 4 px gap, checked item marked (Material tertiary-container row, Glass accent fill with white text). Rust must not extend past the screen.
+note A6 look: Style list rows 36 px (Material) / 28 px (Glass), as wide as the control (at least 200, at most 280 tall), opens with the chosen item lit. Batch 1 found Rust rows 44 px vs QML 36 px, menu 236 vs 200 wide, Glass checked item only a check mark without accent fill and no pointer highlight.
+key -k Down
+key -k Down
+wait 1
+shot a2-down
+note A2 FAILED before: Down did not move the highlight (went to the Choice and toggled the list). Now two Downs must move the highlight two rows below the checked item and the menu stays open.
+key -k Return
+wait 1
+shot a2-chosen
+note The item two below the first usable one is chosen, the menu is closed and the Choice shows it.
+ptr move 1325 580 sleep 300 glide 1325 580 100 click
+wait 1
+key -k Escape
+wait 1
+shot a2-esc
+note A2 FAILED before: Escape did not close the menu. Now Escape closes only the menu, nothing chosen, the Settings window stays open.
+ptr move 1325 580 sleep 300 glide 1325 580 100 click
+wait 1
+ptr move 560 676 sleep 300 glide 560 676 100 click
+wait 1
+shot a3-outside
+note A3 click on the sidebar closes the menu; QML may also open Focus with that click: report both shells.
+ptr move 1325 580 sleep 300 glide 1325 580 100 click
+wait 1
+ptr move 1325 580 sleep 300 glide 1325 580 100 click
+wait 1
+shot a4-toggle
+note A4 clicking the Choice again closes the menu (Choice toggles); no menu visible.
+# NOTE: click on layer surfaces may not register in the harness (Settings is a normal window so it likely does)
+# MANUAL: A1 move the Settings window with hyprctl so the control is near the bottom; list must open above or slide inside the screen (QML clips at the window)
+# MANUAL: A5 long list (Default Apps Terminal or Keyboard layout): at most 360/320 px tall, scrolls with wheel/drag, checked one in view
+# MANUAL: ActionMenu itself (a row's "...", Keyboard page default app) rows 44/32 px
+ipc panels close

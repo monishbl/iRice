@@ -1,0 +1,31 @@
+# Translation card. Needs network and translate-shell for the result: not testable here, but the card and the error show. Check in each look.
+setup foot & 
+wait 2
+ipc screen region translate
+wait 1
+ptr move 100 200 sleep 100 down glide 500 260 300 up
+wait 2
+shot tr-card
+note Card at x 100, y 268, 400 wide: "Translating..." then the result or "Couldn't translate..." in red (no network: the error is expected in both shells).
+key -k Escape
+wait 1
+ipc screen region translate
+wait 1
+ptr move 4 200 sleep 100 down glide 500 260 300 up
+wait 2
+shot tr-left-edge
+note Drag started at (4,200): the card's left edge is at x 24 in both shells (Rust was at 4 before the fix).
+ptr move 1020 255 sleep 300 glide 1020 255 50
+wait 1
+shot tr-hover
+note Hover on the Copy / Close buttons at the heading's right end: Glass fillHover, Material state layer (compare with QML).
+ptr move 1020 255 sleep 200 down
+shot tr-press
+note Material: pressed Close is swelled (about 34 px) with r 8 (position approximate: use the button at the heading's right end); Glass: 97 %. NOTE: click on layer surfaces may not register in the harness.
+ptr move 1020 255 up
+wait 1
+ptr move 600 300 click
+key -k Escape
+wait 1
+shot tr-closed
+note Clicking into the card then Escape closes the card; no card remains.

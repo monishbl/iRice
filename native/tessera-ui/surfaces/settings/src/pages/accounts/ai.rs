@@ -307,6 +307,11 @@ pub fn page(cx: &mut Ctx, p: &mut Page) {
     };
     let note_act = cx.on(|cx, a| {
         let t: String = a.s.chars().take(MAX_NOTE).collect();
+        // (typed past the end: the field shows the cut text, ai.qml 310)
+        if a.s.chars().count() > MAX_NOTE {
+            let rev = cx.local.get("ai.noteRev").and_then(Value::as_i64).unwrap_or(0) + 1;
+            cx.local_set("ai.noteRev", rev);
+        }
         if a.i == 1 {
             cx.set("ai.customInstructions", clean(&t));
             cx.local.remove("ai.note");
@@ -324,7 +329,10 @@ pub fn page(cx: &mut Ctx, p: &mut Page) {
     g.row(Row::new("Your note").detail(format!("How it should answer: tone, length, what to call you. Tessera's own rules stay in place. {} of {MAX_NOTE}", note.chars().count())));
     // (a few lines, in the group: settings-accounts.slint's "note")
     // (num: its place in the group, for Material's tile: 2 the last)
-    g.row(Row::custom("accounts", "note").id(note_act).text_value(note).placeholder("For example: answer in British English, and keep it short.").num(2.0));
+    let mut nr = Row::custom("accounts", "note").id(note_act).text_value(note).placeholder("For example: answer in British English, and keep it short.").num(2.0);
+    // (bumped when the text was cut: the field takes it again)
+    nr.step = cx.local.get("ai.noteRev").and_then(Value::as_i64).unwrap_or(0) as f32;
+    g.row(nr);
 
     // ── Chat history: deleting them all asks first, here ──
     let keep = cx.b("ai.keepHistory");

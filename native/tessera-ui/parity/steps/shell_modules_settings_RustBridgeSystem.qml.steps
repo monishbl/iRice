@@ -1,0 +1,23 @@
+# Settings window: Material 1040x700 at 440,205 (page column from x~772); Glass 860x620 at 530,230. Sidebar rows (Material, x=560): Appearance 335, Wallpaper 385, Desktop 435, Menu bar 485, Lock 535, Notifications 626, Focus 676, Windows 767, Displays 858.
+# Click coordinates inside pages are not known in advance: those steps are MANUAL unless a keyboard path exists. Check in each look.
+ipc panels settings security
+wait 3
+shot s1
+note S1 fingerprint reader state, enrolled fingers, PAM switches, face rows, firewall/root helper notice, Quick Share trust switch as QML.
+ipc panels settings power
+wait 2
+shot s3
+note S3 battery, energy mode choices (Low Power/Balanced/Performance availability), apps' energy list, priority row as QML.
+ipc panels settings power/cooldown
+wait 2
+shot s5
+note S5 cool-down active/why as QML.
+ipc panels settings accessibility
+wait 2
+shot s6
+note S6 live captions row (installed, model, languages) as QML.
+# MANUAL: S2 only with a reader: click Add a fingerprint, touch once well and once badly; Cancel
+# MANUAL: S4 pick Low Power then back: menu bar battery shows Low Power then not
+# MANUAL: S5 toggle Cool-down on then off: status follows
+# MANUAL: S7 on Security if a firewall error shows click Retry: error clears or updates
+# MANUAL: never fpRemove, fpSetPam, installs, faceClear, captions install/download, quitApp, shellPriority

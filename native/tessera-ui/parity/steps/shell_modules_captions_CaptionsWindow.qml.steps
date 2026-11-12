@@ -1,0 +1,23 @@
+# CaptionsWindow: all three placements; only the configured one can run. Check in each look.
+# MANUAL: repeat with config captions placement bar, strip and video (use_config); this file runs the current placement only
+setup foot &
+wait 2
+ipc captions on
+wait 1
+ipc captions demo "Before." "Now speaking"
+wait 1
+shot place
+note Captions are in the place of the configured placement: bar centred above the Dock; strip full width at the bottom with windows shrunk; video over the focused window's bottom. Same as QML.
+# quiet dim: wait for it, record 1 s
+wait 6
+rec quiet-dim 1 ipc captions demo "Before." "Now speaking"
+note Recording after the demo text: after the quiet delay the bar dims to 35 % / strip 50 % / video fades out over 500 ms OutCubic; compare timing with QML within 1 frame.
+wait 8
+shot dimmed
+note Quiet dim reached: bar at 35 % opacity, strip at 50 %, video placement gone. Same as QML.
+# MANUAL: video placement: click on the captions -> the click reaches the window below (click-through)
+ipc captions demo "Before." "A much longer sentence that keeps going so that the bar has to wrap onto two lines and cut the oldest words at the start of the text"
+wait 1
+shot long
+note Bar placement: long text shows two lines, older words cut at the start, newest kept; same as QML.
+ipc captions off

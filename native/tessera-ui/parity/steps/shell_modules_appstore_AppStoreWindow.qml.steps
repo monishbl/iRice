@@ -1,0 +1,80 @@
+# App Store window. Never install/remove/update. Run in both looks (Material 1040x720 at about 440,180; Glass 980x660 at about 470,210: read from shots).
+ipc panels appStore
+wait 1
+rec open 3 ipc panels appStore
+wait 2
+shot open
+note Window centred at 1040x720 (Material) or 980x660 (Glass); Discover selected, sections loading or loaded, search field has the caret. Compare window position and size with QML.
+note Opening time (see rec open): Rust must not be slower than QML to first frame.
+# Hover: place rows (left column), a card, a chip, the pill search
+ptr move 520 330 sleep 400 glide 520 330 100
+shot hover-place
+note Hovered place row has the same tint as QML.
+ptr move 900 500 sleep 400 glide 900 500 100
+shot hover-card
+note Hovered card has the same hover tint as QML.
+ptr move 1100 290 sleep 400 glide 1100 290 100
+shot hover-search
+note Search pill keeps its tint while the pointer is over its text area (known not done in Rust: hover over the text); report the difference vs QML.
+# Places
+ptr move 520 400 sleep 300 glide 520 400 100 click
+wait 1
+shot place-dev
+note After clicking a place (Development) heading and subtitle changed, loading shows, list scrolled to top, selected pill moved. Positions approximate: read the real place rows from the shot. NOTE: click on layer surfaces may not register in the harness
+ptr move 520 330 sleep 300 glide 520 330 100 click
+wait 1
+shot place-discover
+note Back on Discover: heading and subtitle changed back, selected pill moved. NOTE: click on layer surfaces may not register in the harness
+# Typing
+key -k Escape
+ipc panels appStore
+wait 2
+key firefox
+wait 1
+shot typed
+note Heading says Results for "firefox"; chips show; loading text names the repos and Flathub. Same words as QML.
+key x
+key x
+wait 1
+note Typed fast: only one load must follow (debounce); compare with QML.
+key -k Escape
+wait 1
+shot esc-clear
+note Esc clears the field and Discover returns after about 300 ms. Same as QML.
+key aur: yay
+wait 1
+shot aur
+note AUR chip is on and the subtitle says "Community packages from the AUR". Material: the chip width change is 150 ms OutCubic.
+key -M ctrl -k a -m ctrl -k BackSpace
+key zzzzqqq
+wait 2
+shot empty
+note Empty state "No apps found for "zzzzqqq"" with the AUR hint. Same as QML.
+key -M ctrl -k a -m ctrl -k BackSpace
+wait 1
+# Keyboard
+key -k Tab
+key -k Tab
+key -k Tab
+shot tab-focus
+note A focus ring is visible on the focused place row, chip or card, like QML.
+# Card page
+ptr move 900 500 sleep 300 glide 900 500 100 click
+wait 1
+shot app-page
+note App page shows logo, name, summary, chip, developer. Glass: Get or Open (plus Remove if installed). Material: split button and "About this app". NOTE: click on layer surfaces may not register in the harness
+# Split menu (Material)
+ptr move 1330 330 sleep 300 glide 1330 330 100 click
+wait 1
+shot split-menu
+note Material only: menu opens below the caret, right-aligned, 8 px gap, with "Open the website" (if it has one) and "Copy the name"; the caret turns. Own popup, not clipped by the window.
+key -k Escape
+wait 1
+shot split-closed
+note Esc closes only the menu; the window stays.
+# MANUAL: Tab through all places/chips/cards and Return opens; focus rings like QML (partly covered by tab-focus)
+# MANUAL: split menu: click outside closes it, "Copy the name" closes it, focus lead button and Down twice must keep it open in QML
+# MANUAL: AUR result page shows the warning card with votes and popularity (needs network)
+# MANUAL: switch the look while the window is open (Settings > Appearance) and check it restyles
+# MANUAL: close the window with Super+Q or hyprctl closewindow, then ipc panels appStore must open a fresh window
+ipc panels close

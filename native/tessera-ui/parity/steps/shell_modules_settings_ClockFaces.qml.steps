@@ -1,0 +1,25 @@
+# Clock-face carousel on the Lock page. Material only: Glass has no carousel.
+ipc panels settings lock
+wait 2
+shot faces
+note C1 carousel is the first row of the page column (from x about 772, read y from the shot): chosen face centred and ringed, neighbours smaller (QML scales the drawing to 84 percent) and fainter on both sides, wallpaper behind each, names at the bottom. In Glass there is NO Clock group or carousel (C5, check in the Glass run).
+ptr move 1150 400 sleep 300 glide 1150 400 100 click
+wait 1
+rec slide 1 ptr move 1150 400 sleep 100 glide 1150 400 100 click
+wait 1
+shot faces-click
+note C2 clicking the right neighbour slides the carousel 184 px in about 320 ms; new face ringed; lock.clockFace changes. In the recording the old face must shrink and fade DURING the slide, not jump at the start. Click x/y is a guess: read neighbour x from the faces shot.
+key -k Left
+wait 1
+shot faces-left
+note C3 Left chooses the previous face and centres it.
+key -k Right
+wait 1
+shot faces-right
+note C3 Right chooses the next face; at the ends nothing moves.
+ptr move 960 400 sleep 200 down glide 760 400 300 up
+wait 1
+shot faces-drag
+note C4 drag: the list followed the pointer and snapped to a card; that face is now the choice (batch 4: drag or flick follows, settles on nearest, neighbours shrink/fade continuously).
+# MANUAL: not done in Rust: tertiary-fixed for the third clock colour (no such theme colour)
+ipc panels close

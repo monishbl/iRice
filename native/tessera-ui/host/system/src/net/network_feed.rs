@@ -179,6 +179,15 @@ impl NetworkFeed {
         }
     }
 
+    /// The list for Settings -> Network (bus "WifiList": the same rows, live,
+    /// with this feed's own connect state; DevicesBridge adds WifiJoin's)
+    fn publish_list(&self) {
+        let nets: Vec<Value> = sorted(&self.aps, &self.known).iter().map(|n| {
+            json!({"name": n.name, "signal": n.signal, "connected": n.connected, "known": self.known.contains(&n.name), "open": n.open, "enterprise": n.enterprise})
+        }).collect();
+        crate::bus::put("WifiList", json!({"networks": nets, "connecting": self.connecting, "failed": self.failed}));
+    }
+
     fn wifi(&self, h: &Host) -> Value {
         let st = h.st.shell.get::<Wifi>().cloned().unwrap_or_default();
         let unmanaged = !Self::nm_running();
@@ -240,6 +249,11 @@ impl Service for NetworkFeed {
         } else {
             return;
         };
+        // (Settings -> Network's scanner: a fresh list on the bus, the menu untold)
+        if str_arg(&a, 0) == "list" {
+            self.list(h);
+            return;
+        }
         let name = str_arg(&a, 1);
         let flag = |i: usize| a.get(i).and_then(Value::as_bool).unwrap_or(false);
         match str_arg(&a, 0).as_str() {
@@ -268,6 +282,7 @@ impl Service for NetworkFeed {
                         self.failed.clear();
                     }
                     self.connecting = name.clone();
+                    self.publish_list();
                     let send = h.sender(NAME);
                     let n2 = name.clone();
                     capture_then(vec!["nmcli".into(), "-w".into(), "45".into(), "dev".into(), "wifi".into(), "connect".into(), name], None, move |code, _| send(Box::new(M::Connected(n2, code == 0))));
@@ -344,6 +359,7 @@ impl Service for NetworkFeed {
                 if self.shown.is_empty() {
                     self.refresh(true);
                 }
+                self.publish_list();
                 if self.open {
                     self.send(h, false);
                 }
@@ -357,6 +373,7 @@ impl Service for NetworkFeed {
                 } else if self.failed == name {
                     self.failed.clear();
                 }
+                self.publish_list();
                 self.list(h);
                 if self.open {
                     self.send(h, false);

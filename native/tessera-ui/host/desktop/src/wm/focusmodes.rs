@@ -70,6 +70,8 @@ pub struct FocusModes {
     restore: Value,
     loaded: bool,
     clock24: bool,
+    /// the id of the mode Settings last added (RustBridgeNotify's `added`)
+    added: String,
 }
 
 impl FocusModes {
@@ -128,6 +130,11 @@ impl FocusModes {
         h.set_state("focus.icon", json!(m.as_ref().and_then(|m| m["icon"].as_str()).unwrap_or("moon")));
         h.set_state("focus.name", json!(m.as_ref().and_then(|m| m["name"].as_str()).unwrap_or("Focus")));
         h.set_state("focus.status", json!(self.status()));
+    }
+
+    /// Settings → Focus's side (RustBridgeNotify.qml's `focus`)
+    pub fn settings_feed(&self) -> Value {
+        json!({"on": self.on(), "active": self.active, "statusText": self.status(), "modes": self.modes, "added": self.added})
     }
 
     // ── effects ──────────────────────────────────────────────────────────────
@@ -231,6 +238,7 @@ impl FocusModes {
     pub fn add_mode(&mut self, h: &mut Host, io: &mut Io, name: &str) {
         let slug: String = name.to_lowercase().chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
         let id = format!("{slug}-{}", now_ms());
+        self.added = id.clone();
         self.modes.push(json!({"id": id, "name": name, "icon": "circle", "allowApps": [], "wallpaper": "", "appearance": "", "schedule": {"enabled": false, "from": "09:00", "to": "17:00", "days": [1, 2, 3, 4, 5]}}));
         self.changed(h, io);
     }

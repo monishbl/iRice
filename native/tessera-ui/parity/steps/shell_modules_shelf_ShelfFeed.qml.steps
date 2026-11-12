@@ -1,0 +1,19 @@
+# NOTE: click on layer surfaces may not register in the harness
+ipc shelf open
+wait 1
+shot feed-open
+note The shelf card appears on the right (opened reached the Rust surface).
+ipc shelf close
+wait 1
+shot feed-closed
+note The card has faded away; desktop shows no shelf.
+ipc shelf zone
+wait 1
+shot feed-zone
+note The drop zone appears on the focused screen under the menu bar.
+ptr click 960 30
+wait 1
+shot feed-zone-cancel
+note Click cancels the zone (cancelZone): zone is gone.
+# MANUAL: with items on the shelf (needs a drag source): Clear (click 1856,66) empties the shell's Shelf and the card shows the empty state
+# MANUAL: with items on the shelf: Share (click 1826,66) opens the share sheet with the shelf's files

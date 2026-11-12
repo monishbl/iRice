@@ -53,7 +53,8 @@ use tessera_core::shell::Part;
 use tessera_core::theme;
 use tessera_core::wayland::{Spec, State, Surface};
 use motion::{Frame, Target, Timeline};
-use slint::{ComponentHandle, ModelRc, VecModel};
+use slint::ComponentHandle;
+use tessera_core::rows::Rows;
 use smithay_client_toolkit::shell::wlr_layer::{Anchor, KeyboardInteractivity, Layer};
 use smithay_client_toolkit::shell::WaylandSurface;
 use std::any::{Any, TypeId};
@@ -85,6 +86,13 @@ struct Win {
     ui: ui::TodayScreen,
     a11y: Option<crate::a11y::A11y>,
     glass_sent: String,
+    // The lists, handed to the window once and changed in place (a refresh
+    // each minute or on a calendar, to-do or weather change keeps the rows
+    // that stay: no row appears again)
+    events: Rows<ui::TEvent>,
+    events_five: Rows<ui::TEvent>,
+    todos: Rows<ui::TTodo>,
+    hours: Rows<ui::THour>,
 }
 
 pub struct Today {
@@ -178,10 +186,6 @@ fn color(hex: &str) -> slint::Color {
     }
 }
 
-fn model<T: Clone + 'static>(v: Vec<T>) -> ModelRc<T> {
-    ModelRc::new(VecModel::from(v))
-}
-
 /// $XDG_CACHE_HOME/tessera (Paths.cache; iRice's while the settings are)
 fn cache_dir() -> std::path::PathBuf {
     let base = std::env::var_os("XDG_CACHE_HOME").map(std::path::PathBuf::from).unwrap_or_else(|| std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".cache"));
@@ -234,9 +238,14 @@ impl Today {
         on!(on_set_name, |t| M::Name(t.to_string()));
         on!(on_set_chime, |b| M::Chime(b));
         d.set_cookie_shape(shape("cookie12").into());
+        let (events, events_five, todos, hours) = (Rows::new(), Rows::new(), Rows::new(), Rows::new());
+        d.set_events(events.model());
+        d.set_events_five(events_five.model());
+        d.set_todos(todos.model());
+        d.set_hours(hours.model());
         ui.show().expect("show Today");
         let a11y = crate::a11y::A11y::new(&surface, st.tx.clone());
-        self.win = Some(Win { output: output.into(), surface, ui, a11y, glass_sent: String::new() });
+        self.win = Some(Win { output: output.into(), surface, ui, a11y, glass_sent: String::new(), events, events_five, todos, hours });
         true
     }
 
@@ -412,9 +421,10 @@ impl Today {
             .into_iter()
             .map(|r| ui::TEvent { time: r.time.into(), title: r.title.into(), color: color(&r.color), past: r.past })
             .collect();
-        d.set_events_five(model(rows.iter().take(5).cloned().collect()));
-        d.set_events(model(rows));
-        d.set_todos(model(model::todo_rows(&open, now, s.clock24).into_iter().map(|r| ui::TTodo { key: r.key.into(), text: r.text.into(), due: r.due.into(), overdue: r.overdue }).collect()));
+        w.events_five.set(rows.iter().take(5).cloned().collect());
+        w.events.set(rows);
+        // (by key: a to-do ticked off leaves; the rest keep their rows)
+        w.todos.set_keyed(model::todo_rows(&open, now, s.clock24).into_iter().map(|r| ui::TTodo { key: r.key.into(), text: r.text.into(), due: r.due.into(), overdue: r.overdue }).collect(), |t| t.key.clone());
         d.set_todos_empty(model::todos_empty(!all.is_empty()).into());
 
         let wx = st.shell.get::<Weather>().cloned().unwrap_or_default();
@@ -426,12 +436,12 @@ impl Today {
         d.set_weather_rain(if wx.rain_chance > 0 { format!("{}% rain", wx.rain_chance) } else { String::new() }.into());
         d.set_weather_line(format!("H {}° · L {}°{}", wx.high, wx.low, if wx.rain_chance > 0 { format!(" · {}% rain", wx.rain_chance) } else { String::new() }).into());
         d.set_weather_problem(model::weather_problem(&wx.error).into());
-        d.set_hours(model(
+        w.hours.set(
             wx.hourly
                 .iter()
                 .map(|h| ui::THour { time: model::hour(h.hour, s.clock24).into(), icon: glyph(h.icon, material).into(), rain: if h.rain >= 20 { format!("{}%", h.rain) } else { String::new() }.into(), temp: format!("{}°", h.temp).into() })
                 .collect(),
-        ));
+        );
         d.set_sun_shape(shape(if wx.ready { "verySunny" } else { "cookie4" }).into());
         d.set_rain_color(color(&theme::accent_hex("blue", st.shell.look.dark)));
         d.set_pin_shown(!s.widget_always());

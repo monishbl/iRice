@@ -56,9 +56,14 @@ local function uiBinary()
     return nil
 end
 local UI = uiBinary()
--- A shell shortcut by name: the global one, or (standalone) the IPC call
+-- A shell shortcut by name: Hyprland's global shortcut, both shells. tessera-ui
+-- registers every name itself (hyprland-global-shortcuts-v1, as Quickshell does
+-- for the QML: core/src/global_shortcuts.rs), so a key press reaches it on an
+-- open connection; it once ran `tessera-ui ipc call shortcut <name>`, a whole
+-- process per press (and per left click: pointerDown/pointerUp below).
+-- Standalone still differs in what a release runs (superTapRelease: no
+-- onReleased handler as the QML's GlobalShortcut has).
 local function shortcut(name)
-    if UI then return hl.dsp.exec_cmd("'" .. UI .. "' ipc call shortcut " .. name) end
     return hl.dsp.global("tessera:" .. name)
 end
 

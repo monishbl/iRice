@@ -1,0 +1,17 @@
+# Settings window: Material 1040x700 at 440,205 (page column from x~772); Glass 860x620 at 530,230. Sidebar rows (Material, x=560): Appearance 335, Wallpaper 385, Desktop 435, Menu bar 485, Lock 535, Notifications 626, Focus 676, Windows 767, Displays 858.
+# Click coordinates inside pages are not known in advance: those steps are MANUAL unless a keyboard path exists. Check in each look.
+ipc panels settings wallpaper
+wait 2
+shot wp
+note P1 preview <= 420 wide, 16:9, rounded 28 (Material) / 14 (Glass), shows the same picture as the desktop; 'Picture' row with 'Choose Picture...'.
+note P2 if the wallpaper folder has sets: tiles 150x90, pairs split light|dark, current one with 3 px accent border.
+ptr move 1100 600 scroll 0 10
+wait 1
+shot wp-grid
+note P5 thumbnails grid visible with the current one bordered; same as QML.
+# MANUAL: P2 click another set: border moves, Dynamic becomes 'Light & dark' or 'Time of day', Light/Dark or Pictures rows show
+# MANUAL: P3 Dynamic: 'Time of day' footer 'Follows sunrise and sunset...' + Pictures row placeholder 'Built-in set'; 'Light & dark' two rows 'Built-in day'/'Built-in dusk'; 'Off' footer empty, rows gone
+# MANUAL: P4 Video path of a real mp4 + Return: detail 'An .mp4, .webm or .mkv file' (batch 3 fixed poster); bad path: "Couldn't read this video..."; clear afterwards
+# MANUAL: P5 click a thumbnail: border moves, preview and desktop change, Dynamic Off
+# MANUAL: P6 'Use wallpaper' (if installed): footer 'Sandbox: would copy this wallpaper to the login screen.'
+# MANUAL: P7 More options: Folder row placeholder '~/Pictures/Wallpapers'; Pause on battery toggles

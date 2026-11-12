@@ -1,0 +1,20 @@
+# focus: Focus modes page. Check in each look.
+ipc panels settings focus
+wait 2
+shot focus-top
+note F1: mode rows with icons on the right (first one accent), "Add a mode" field, the first mode's group; same texts in both shells.
+ptr move 1100 420 sleep 300 glide 1100 430 200
+wait 1
+shot focus-hover
+note F2: pointer over a mode row. Glass: NO fill on hover (QML), Rust must match. Material: the tile lightens in both. (Pointer is at 1100,430, which should be over the mode list; if not over a row, say so.)
+ptr move 1100 600 scroll 0 5
+wait 1
+shot focus-scroll
+note F5: Icon row below the mode's fields: Material 2 rows of 6 icons, 28 px each, about 178 px wide; Delete is a red text link "Delete" with no box (QML), Rust must match.
+# MANUAL: F3 click the second mode: its icon fills in accent, group title and fields show it.
+# MANUAL: F4 click the Add field, type "Reading", Return: a mode "Reading" appears, is selected, field empty.
+# MANUAL: F5 click "book-open" icon: the mode's icon changes in the list.
+# MANUAL: F6 Schedule on: From, To, Days rows appear; "7:5" + Enter in From: nothing changes; "07:30" + Enter: list detail "Scheduled 7:30 AM-..." (07:30 with 24-hour clock); click M and W: chips fill.
+# MANUAL: F7 on "Reading" click red "Delete": mode gone, first selected, "Deleted "Reading"" with accent text "Undo" (no button box, no group box in Glass); Undo within 8 s: mode back and selected; again wait 9 s: Undo row gone.
+# MANUAL: F8 select the second mode, open another page, back to Focus: first mode selected again.
+ipc panels close

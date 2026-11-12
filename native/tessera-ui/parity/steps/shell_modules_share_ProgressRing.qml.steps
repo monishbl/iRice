@@ -1,0 +1,22 @@
+# Progress ring (Glass, sandbox).
+look glass
+ipc sharingdemo peers
+wait 1
+# MANUAL: open the share sheet (ShareSheet plan) so that peers are shown; steps below assume it is open
+ipc sharingdemo sending 25
+wait 1
+shot ring-25
+note Device 1 (centre about (812,486)): accent arc from the top to 3 o'clock, round ends, grey track; compare QML vs Rust (+-1 px stroke).
+ipc sharingdemo sending 75
+wait 1
+shot ring-75
+note Arc from the top round to 9 o'clock; same stroke and track as QML.
+ipc sharingdemo sending 100
+wait 1
+shot ring-100
+note A full ring with no gap wider than 1 px.
+ipc sharingdemo ask
+ipc sharingdemo progress 50
+wait 1
+shot ring-card
+note Incoming card: a 4 px ring half way round the 84 px avatar (QML vs Rust).

@@ -7,7 +7,47 @@
 // keys; this draws it.
 
 import { Theme, Icon } from "@tessera/theme.slint";
-import { SearchField, IconButton, KeyHint, Busy, StateShape, TextButton } from "@tessera/widgets.slint";
+import { SearchField, IconButton, KeyHint, Busy, StateShape } from "@tessera/widgets.slint";
+
+// PickerButton.qml: the states' text buttons, primary (accent) or secondary
+// (fill), 36 px. Glass: squishes to 97 % on a press (Theme.motion.press, 100
+// ms). Material: a 40 px pill, filled or tonal with state layers; while held
+// it swells (ElasticControl: min(6 %, 10 px), on springPress 7.5 / 0.3: ω
+// 21.7, ζ 0.43 → 290 ms spring(0.57)) and its corners tighten to 12 px on
+// springFast (12.8 / 0.54: ω 28.3, ζ 0.60 → 222 ms spring(0.4))
+component PickerButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> primary;
+    callback clicked();
+    property <color> ink: Theme.material ? (primary ? Theme.m3-on-primary : Theme.m3-on-secondary-container) : primary ? Theme.on-accent : Theme.label;
+    width: label.preferred-width + (Theme.material ? 40px : 32px);
+    height: Theme.material ? 40px : 36px;
+    border-radius: Theme.material ? (touch.pressed ? 12px : self.height / 2) : Theme.radius-control;
+    animate border-radius { duration: 222ms; easing: spring(0.4); }
+    background: Theme.material ? (primary ? Theme.m3-primary : Theme.m3-secondary-container).mix(ink, touch.pressed ? 0.9 : touch.has-hover ? 0.92 : 1)
+        : primary ? (touch.pressed ? Theme.accent.darker(0.2) : touch.has-hover ? Theme.accent.darker(0.1) : Theme.accent) : touch.pressed ? Theme.fill-pressed : touch.has-hover ? Theme.fill-hover : Theme.fill;
+    animate background { duration: Theme.hover; }
+    property <float> swell: Theme.material && touch.pressed ? 1 + min(0.06, 10px / max(self.width, self.height)) : 1;
+    animate swell { duration: 290ms; easing: spring(0.57); }
+    property <float> squish: !Theme.material && touch.pressed ? 0.97 : 1;
+    animate squish { duration: 100ms; }
+    transform-scale: swell * squish;
+    transform-origin: { x: self.width / 2, y: self.height / 2 };
+    accessible-role: button;
+    accessible-label: text;
+    accessible-action-default => { clicked(); }
+    label := Text {
+        text: root.text;
+        color: ink;
+        font-size: Theme.body;
+        font-weight: 500;
+        accessible-role: none;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
 
 export struct ECell {
     text: string,
@@ -55,7 +95,6 @@ export component EmojiPicker inherits Window {
     in property <length> rows-height;
     in-out property <length> list-y; // the list's content-y (0 or less)
     in property <int> sel;
-    in property <int> pressed-index: -1;
     // The footer: the selected item, large, with its name
     in property <bool> footer-shown;
     in property <int> footer-kind; // 0 emoji, 1 kaomoji, 2 symbol, 3 GIF
@@ -118,9 +157,14 @@ export component EmojiPicker inherits Window {
     title: "Emoji";
     default-font-family: Theme.font;
 
+    // PickerWindow.qml: opens on a SpringAnimation of Theme.motion.spring + 0.8,
+    // damping + 0.06 (Qt steps 16 ms: ω = √(62.5·spring), ζ = 62.5·damping / 2ω);
+    // Material 6.88 / 0.56: ω 20.7, ζ 0.84 → 303 ms spring(0.16); Glass
+    // (subtle) 4.6 / 0.38: ω 17.0, ζ 0.70 → 370 ms spring(0.3). Closes in
+    // Theme.motion.popover × 0.7 on the look's exit curve.
     animate openness {
-        duration: shown ? 380ms : 154ms;
-        easing: shown ? spring(0.2) : cubic-bezier(0.4, 0, 1, 1);
+        duration: shown ? (Theme.material ? 303ms : 370ms) : Theme.popover * 0.7;
+        easing: shown ? (Theme.material ? spring(0.16) : spring(0.3)) : Theme.material ? cubic-bezier(0.3, 0, 0.8, 0.15) : cubic-bezier(0.4, 0, 1, 1);
     }
     changed openness => {
         if !shown && openness <= 0.001 { closed(); }
@@ -214,19 +258,30 @@ export component EmojiPicker inherits Window {
                         font-size: Theme.body;
                         vertical-alignment: center;
                     }
-                    if near && r.kind == 2: Rectangle {
+                    if near && r.kind == 2: cr := Rectangle {
                         property <length> cw: content-w / max(1, r.cols);
                         property <int> on: root.sel - r.start;
-                        // the selection (Material: secondary container, rounder pressed)
+                        // the column pressed (the QML's pressCol; -1 none)
+                        property <int> press-col: ta.pressed ? ta.down-col : -1;
+                        // Material (ElasticControl, driven by the row's press): the
+                        // selection and the row's glyphs swell ~6 % while held, on
+                        // the press spring (springPress 7.5 / 0.3: ω 21.7, ζ 0.43 →
+                        // 290 ms spring(0.57)), springing back past their size
+                        property <float> swell: Theme.material && ta.pressed ? 1.06 : 1;
+                        animate swell { duration: 290ms; easing: spring(0.57); }
+                        // the selection (Material: secondary container, round while pressed)
                         if on >= 0 && on < r.cells.length: Rectangle {
-                            x: on * cw + 1px;
+                            x: cr.on * cr.cw + 1px;
                             y: 1px;
-                            width: cw - 2px;
-                            height: parent.height - 2px;
-                            border-radius: Theme.material && root.pressed-index == root.sel ? self.height / 2 : Theme.radius-control;
-                            animate border-radius { duration: 250ms; easing: spring(0.3); }
-                            background: Theme.material ? Theme.m3-secondary-container.mix(Theme.m3-on-secondary-container, root.pressed-index == root.sel ? 0.9 : 1)
-                                : root.pressed-index == root.sel ? Theme.fill-pressed : Theme.accent.with-alpha(Theme.dark ? 0.32 : 0.16);
+                            width: cr.cw - 2px;
+                            height: cr.height - 2px;
+                            transform-scale: cr.swell;
+                            transform-origin: { x: self.width / 2, y: self.height / 2 };
+                            border-radius: Theme.material && cr.press-col == cr.on ? self.height / 2 : Theme.radius-control;
+                            // (springFast 12.8 / 0.54: ω 28.3, ζ 0.60)
+                            animate border-radius { duration: 222ms; easing: spring(0.4); }
+                            background: Theme.material ? Theme.m3-secondary-container.mix(Theme.m3-on-secondary-container, cr.press-col == cr.on ? 0.9 : 1)
+                                : cr.press-col == cr.on ? Theme.fill-pressed : Theme.accent.with-alpha(Theme.dark ? 0.32 : 0.16);
                         }
                         for c[ci] in r.cells: Rectangle {
                             x: ci * cw;
@@ -236,16 +291,21 @@ export component EmojiPicker inherits Window {
                             accessible-item-selectable: true;
                             accessible-item-selected: root.sel == r.start + ci;
                             accessible-action-default => { activate(r.start + ci, false); }
-                            Text {
-                                width: parent.width - 8px;
-                                text: c.text;
-                                horizontal-alignment: center;
-                                vertical-alignment: center;
-                                overflow: c.emoji ? clip : elide;
-                                color: Theme.material && root.sel == r.start + ci ? Theme.m3-on-secondary-container : Theme.label;
-                                font-family: c.emoji ? root.emoji-font : Theme.font;
-                                font-size: c.emoji ? 28px : r.cols == 3 ? Theme.body : 20px;
-                                accessible-role: none;
+                            // the glyph: 90 % while pressed (both looks), times the swell
+                            Rectangle {
+                                transform-scale: cr.swell * (cr.press-col == ci ? 0.9 : 1);
+                                transform-origin: { x: self.width / 2, y: self.height / 2 };
+                                Text {
+                                    width: parent.width - 8px;
+                                    text: c.text;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                    overflow: c.emoji ? clip : elide;
+                                    color: Theme.material && root.sel == r.start + ci ? Theme.m3-on-secondary-container : Theme.label;
+                                    font-family: c.emoji ? root.emoji-font : Theme.font;
+                                    font-size: c.emoji ? 28px : r.cols == 3 ? Theme.body : 20px;
+                                    accessible-role: none;
+                                }
                             }
                             // has skin tones (right-click or hold)
                             if c.toned: Rectangle {
@@ -261,24 +321,32 @@ export component EmojiPicker inherits Window {
                             mouse-cursor: idx >= 0 ? pointer : default;
                             property <int> cix: floor(self.mouse-x / cw);
                             property <int> idx: self.has-hover && cix >= 0 && cix < r.cells.length ? r.start + cix : -1;
-                            property <bool> held;
+                            property <bool> held; // the hold opened the tones: the release doesn't pick
+                            property <bool> hold-done; // (this press's hold has fired)
+                            property <int> down-col: -1;
                             changed idx => { if idx >= 0 { hovered(idx); } }
                             pointer-event(e) => {
                                 if e.kind == PointerEventKind.down {
                                     held = false;
+                                    hold-done = false;
+                                    down-col = cix >= 0 && cix < r.cells.length ? cix : -1;
                                     if e.button == PointerEventButton.right && idx >= 0 { tone-for(idx); }
                                 }
                                 if e.kind == PointerEventKind.up && e.button == PointerEventButton.left && idx >= 0 && !held {
                                     activate(idx, e.modifiers.shift);
                                 }
                             }
-                            // hold: the tones
+                            // hold (450 ms, the QML's pressAndHoldInterval): the tones,
+                            // for an emoji that has them (else the release still picks)
                             Timer {
                                 interval: 450ms;
-                                running: ta.pressed && ta.idx >= 0 && !ta.held;
+                                running: ta.pressed && ta.idx >= 0 && !ta.hold-done;
                                 triggered => {
-                                    ta.held = true;
-                                    tone-for(ta.idx);
+                                    ta.hold-done = true;
+                                    if r.cells[ta.cix].toned {
+                                        ta.held = true;
+                                        tone-for(ta.idx);
+                                    }
                                 }
                             }
                         }
@@ -395,12 +463,12 @@ export component EmojiPicker inherits Window {
                     alignment: center;
                     padding-top: 8px;
                     spacing: 8px;
-                    TextButton {
+                    PickerButton {
                         text: state-action;
                         primary: true;
                         clicked => { state-act(false); }
                     }
-                    if state-secondary != "": TextButton {
+                    if state-secondary != "": PickerButton {
                         text: state-secondary;
                         clicked => { state-act(true); }
                     }
@@ -493,7 +561,7 @@ export component EmojiPicker inherits Window {
                     height: 30px;
                     border-radius: Theme.radius-control - 2px;
                     background: tt.pressed ? Theme.fill-pressed : active ? Theme.fill : tt.has-hover ? Theme.fill.with-alpha(Theme.fill.alpha * 0.6) : transparent;
-                    animate background { duration: 150ms; }
+                    animate background { duration: Theme.hover; }
                 }
                 // Material: the navigation indicator, a pill that grows out
                 // from the middle of the chosen tab
@@ -504,8 +572,9 @@ export component EmojiPicker inherits Window {
                     border-radius: 16px;
                     background: active ? Theme.m3-secondary-container.mix(Theme.m3-on-secondary-container, tt.pressed ? 0.9 : tt.has-hover ? 0.92 : 1)
                         : Theme.m3-on-surface-variant.with-alpha(tt.pressed ? 0.1 : tt.has-hover ? 0.08 : 0);
-                    animate width { duration: 300ms; easing: spring(0.25); }
-                    animate background { duration: 150ms; }
+                    // (springFast 12.8 / 0.54: ω 28.3, ζ 0.60)
+                    animate width { duration: 222ms; easing: spring(0.4); }
+                    animate background { duration: Theme.hover; }
                 }
                 if t.icon != "": Icon {
                     text: t.icon;
@@ -526,7 +595,7 @@ export component EmojiPicker inherits Window {
                     height: 2px;
                     border-radius: 1px;
                     background: Theme.accent;
-                    animate width { duration: 150ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+                    animate width { duration: Theme.hover; easing: cubic-bezier(0.33, 1, 0.68, 1); }
                 }
                 tt := TouchArea {
                     mouse-cursor: pointer;
@@ -560,10 +629,10 @@ export component EmojiPicker inherits Window {
             }
 
             // While choosing a tone, a click elsewhere just closes the chooser
+            // (on the press, either button, as the QML's onPressed)
             if tone-open: TouchArea {
-                clicked => { tone-close(); }
                 pointer-event(e) => {
-                    if e.kind == PointerEventKind.down && e.button == PointerEventButton.right { tone-close(); }
+                    if e.kind == PointerEventKind.down { tone-close(); }
                 }
             }
 
@@ -578,9 +647,6 @@ export component EmojiPicker inherits Window {
                 background: Theme.material ? Theme.m3-surface-container-highest : Theme.glass-solid;
                 border-width: Theme.material ? 0 : 1px;
                 border-color: Theme.separator;
-                drop-shadow-blur: 16px;
-                drop-shadow-offset-y: 4px;
-                drop-shadow-color: #00000040;
                 accessible-role: AccessibleRole.list;
                 accessible-label: "Skin tone";
                 HorizontalLayout {

@@ -97,22 +97,63 @@ component Spinner {
 
 // A round header button (AiChat.qml's HeaderButton): tonal in Material
 // (squaring while pressed), the fill in Glass
-component HeaderButton inherits Rectangle {
+// The keyboard focus ring (FocusRing.qml): 2 px accent, 2 px outside
+// (Material 3 px secondary); only for focus that came from the keyboard
+// (the buttons take no focus on click: focus-on-click false)
+component Ring inherits Rectangle {
+    in property <length> r;
+    in property <length> pw;
+    in property <length> ph;
+    x: Theme.material ? -5px : -4px;
+    y: self.x;
+    width: pw - 2 * self.x;
+    height: ph - 2 * self.y;
+    border-radius: r;
+    border-width: Theme.material ? 3px : 2px;
+    border-color: Theme.material ? Theme.m3-secondary : Theme.accent;
+    background: transparent;
+}
+
+// Press feel (ElasticControl.qml): Glass squishes (Theme.motion.squish:
+// 0.97 snappy, 0.9 expressive, else 0.95; the rubber-band pull of a few px
+// is left out), Material swells by pressGrow (≤ 6% or 10 px) on the press
+// spring (ζ 0.3), off with Reduce motion
+global Press {
+    out property <float> squish: Theme.snappy ? 0.97 : Theme.expressive ? 0.9 : 0.95;
+}
+
+// AiChat.qml's HeaderButton: round, tonal in Material, the fill in Glass;
+// Material squares to 8 px while held. Tab reaches it, Space/Enter press it
+component HeaderButton inherits FocusScope {
     in property <Glyph> icon;
     in property <string> label;
     callback clicked();
+    focus-on-click: false;
     width: self.height;
-    border-radius: Theme.material && t.pressed ? 8px : self.height / 2;
-    animate border-radius { duration: 250ms; easing: spring(0.6); }
-    background: Theme.material ? Theme.m3-secondary-container.mix(Theme.m3-on-secondary-container, t.pressed ? 0.9 : t.has-hover ? 0.92 : 1) : t.pressed ? Theme.fill-pressed : t.has-hover ? Theme.fill-hover : Theme.fill;
-    animate background { duration: M.hover; }
     accessible-role: button;
     accessible-label: label;
     accessible-action-default => { clicked(); }
-    SIcon {
-        g: icon;
-        size: 15px;
-        color: Theme.material ? Theme.m3-on-secondary-container : Theme.label;
+    key-pressed(e) => {
+        if !e.repeat && (e.text == " " || e.text == Key.Return) {
+            clicked();
+            return accept;
+        }
+        reject
+    }
+    Rectangle {
+        transform-origin: { x: self.width / 2, y: self.height / 2 };
+        transform-scale: Theme.material && Theme.press-bounce && t.pressed ? 1 + min(0.06, 10px / self.width) : 1;
+        animate transform-scale { duration: 420ms; easing: spring(0.3); }
+        border-radius: Theme.material && t.pressed ? 8px : self.height / 2;
+        animate border-radius { duration: 250ms; easing: spring(0.6); }
+        background: Theme.material ? Theme.m3-secondary-container.mix(Theme.m3-on-secondary-container, t.pressed ? 0.9 : t.has-hover ? 0.92 : 1) : t.pressed ? Theme.fill-pressed : t.has-hover ? Theme.fill-hover : Theme.fill;
+        animate background { duration: M.hover; }
+        SIcon {
+            g: icon;
+            size: 15px;
+            color: Theme.material ? Theme.m3-on-secondary-container : Theme.label;
+        }
+        if root.has-focus: Ring { pw: parent.width; ph: parent.height; r: parent.border-radius + 4px; }
     }
     t := TouchArea {
         x: -6px;
@@ -124,82 +165,128 @@ component HeaderButton inherits Rectangle {
     }
 }
 
-// Ghost icon button (shell/common/IconButton.qml)
-component GhostButton inherits Rectangle {
+// Ghost icon button (shell/common/IconButton.qml): transparent, the fill on
+// hover; Material round, squaring off while pressed. Tab reaches it (when
+// enabled), Space/Enter press it; the press feel is ElasticControl's
+component GhostButton inherits FocusScope {
     in property <Glyph> icon;
     in property <length> icon-size: 16px;
     in property <color> icon-color: Theme.secondary;
     in property <bool> fill;
     in property <bool> bold;
     in property <string> label;
-    in property <bool> enabled: true;
     out property <bool> hovered: t.has-hover;
+    out property <bool> pressed: t.pressed;
     callback clicked();
     callback right-clicked();
+    callback long-pressed();
+    focus-on-click: false;
     width: 28px;
     height: 28px;
-    opacity: enabled ? 1 : 0.4;
-    border-radius: Theme.material ? (t.pressed ? min(8px, self.height / 2) : self.height / 2) : Theme.radius-control - 2px;
-    animate border-radius { duration: 150ms; easing: ease-out; }
-    background: !enabled ? transparent : Theme.material ? Theme.m3-on-surface-variant.with-alpha(t.pressed ? 0.1 : t.has-hover ? 0.08 : 0) : t.pressed ? Theme.fill-pressed : t.has-hover ? Theme.fill : transparent;
-    animate background { duration: M.hover; }
     accessible-role: button;
     accessible-label: label;
-    accessible-enabled: enabled;
-    accessible-action-default => { if enabled { clicked(); } }
-    SIcon {
-        g: icon;
-        size: icon-size;
-        color: icon-color;
-        fill: root.fill;
-        bold: root.bold;
+    accessible-enabled: root.enabled;
+    accessible-action-default => { if root.enabled { clicked(); } }
+    key-pressed(e) => {
+        if !e.repeat && (e.text == " " || e.text == Key.Return) {
+            clicked();
+            return accept;
+        }
+        reject
     }
+    body := Rectangle {
+        transform-origin: { x: self.width / 2, y: self.height / 2 };
+        transform-scale: t.pressed ? (Theme.material ? (Theme.press-bounce ? 1 + min(0.06, 10px / max(self.width, self.height)) : 1) : Press.squish) : 1;
+        animate transform-scale { duration: Theme.material ? 420ms : 180ms; easing: Theme.material ? spring(0.3) : spring(0.5); }
+        border-radius: Theme.material ? (t.pressed ? min(8px, self.height / 2) : self.height / 2) : Theme.radius-control - 2px;
+        animate border-radius { duration: 150ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+        background: Theme.material ? Theme.m3-on-surface-variant.with-alpha(t.pressed ? 0.1 : t.has-hover ? 0.08 : 0) : t.pressed ? Theme.fill-pressed : t.has-hover ? Theme.fill : transparent;
+        animate background { duration: M.hover; }
+        SIcon {
+            g: icon;
+            size: icon-size;
+            color: icon-color;
+            fill: root.fill;
+            bold: root.bold;
+        }
+        if root.has-focus: Ring { pw: parent.width; ph: parent.height; r: parent.border-radius + 4px; }
+    }
+    // (a press held 500 ms still: TapHandler's long press)
+    hold := Timer {
+        interval: 500ms;
+        running: false;
+        triggered => { self.running = false; held = true; root.long-pressed(); }
+    }
+    property <bool> held;
     t := TouchArea {
         enabled: root.enabled;
         mouse-cursor: pointer;
-        clicked => { root.clicked(); }
+        clicked => { if !held { root.clicked(); } held = false; }
         pointer-event(e) => {
             if e.button == PointerEventButton.right && e.kind == PointerEventKind.up { root.right-clicked(); }
+            if e.button == PointerEventButton.left && e.kind == PointerEventKind.down { held = false; hold.running = true; }
+            if e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel { hold.running = false; }
+        }
+        moved => {
+            if abs(self.mouse-x - self.pressed-x) > 8px || abs(self.mouse-y - self.pressed-y) > 8px { hold.running = false; }
         }
     }
 }
 
 // A labelled button in the chat (ChatButton.qml): tonal, or filled in the
 // accent (`primary`); busy: a spinner in place of its icon
-export component ChatButton inherits Rectangle {
+// ChatButton.qml: tonal, or the accent for the one to press (`primary`);
+// busy a spinner in its icon's place and not pressable. Tab reaches it,
+// Space/Enter press it. Glass squishes to 0.97 (100 ms); Material is a pill
+// that squares to 12 px while held and swells (ElasticControl, pressBounce)
+export component ChatButton inherits FocusScope {
     in property <Glyph> icon;
     in property <string> label;
     in property <bool> primary;
     in property <bool> busy;
     callback clicked();
     property <color> ink: primary ? Theme.on-accent : Theme.material ? Theme.m3-on-secondary-container : Theme.label;
+    focus-on-click: false;
     width: row.preferred-width + (Theme.material ? 32px : 24px);
     height: Theme.material ? 40px : 32px;
-    border-radius: Theme.material ? (t.pressed ? 12px : self.height / 2) : Theme.radius-control;
-    animate border-radius { duration: 250ms; easing: spring(0.6); }
-    background: primary ? (Theme.material ? Theme.m3-primary.mix(Theme.m3-on-primary, t.pressed ? 0.9 : t.has-hover ? 0.92 : 1) : t.pressed ? Theme.accent.darker(0.15) : t.has-hover ? Theme.accent.darker(0.07) : Theme.accent)
-        : Theme.material ? Theme.m3-secondary-container.mix(Theme.m3-on-secondary-container, t.pressed ? 0.9 : t.has-hover ? 0.92 : 1)
-        : t.pressed ? Theme.fill-pressed : t.has-hover ? Theme.fill-hover : Theme.fill;
-    animate background { duration: M.hover; }
     accessible-role: button;
     accessible-label: label;
     accessible-action-default => { if !busy { clicked(); } }
-    row := HorizontalLayout {
-        alignment: center;
-        spacing: Theme.material ? 8px : 6px;
-        Rectangle {
-            width: Theme.material ? 18px : 14px;
-            if !busy: SIcon { g: icon; size: parent.width; color: ink; }
-            if busy: Spinner { size: parent.width; color: ink; }
+    key-pressed(e) => {
+        if !busy && !e.repeat && (e.text == " " || e.text == Key.Return) {
+            clicked();
+            return accept;
         }
-        Text {
-            text: label;
-            color: ink;
-            font-size: Theme.material ? M.body : Theme.small;
-            font-weight: Theme.material ? 500 : 600;
-            vertical-alignment: center;
-            accessible-role: none;
+        reject
+    }
+    body := Rectangle {
+        transform-origin: { x: self.width / 2, y: self.height / 2 };
+        transform-scale: t.pressed ? (Theme.material ? (Theme.press-bounce ? 1 + min(0.06, 10px / max(self.width, self.height)) : 1) : 0.97) : 1;
+        animate transform-scale { duration: Theme.material ? 420ms : 100ms; easing: Theme.material ? spring(0.3) : linear; }
+        border-radius: Theme.material ? (t.pressed ? 12px : self.height / 2) : Theme.radius-control;
+        animate border-radius { duration: 250ms; easing: spring(0.6); }
+        background: primary ? (Theme.material ? Theme.m3-primary.mix(Theme.m3-on-primary, t.pressed ? 0.9 : t.has-hover ? 0.92 : 1) : t.pressed ? Theme.accent.darker(0.15) : t.has-hover ? Theme.accent.darker(0.07) : Theme.accent)
+            : Theme.material ? Theme.m3-secondary-container.mix(Theme.m3-on-secondary-container, t.pressed ? 0.9 : t.has-hover ? 0.92 : 1)
+            : t.pressed ? Theme.fill-pressed : t.has-hover ? Theme.fill-hover : Theme.fill;
+        animate background { duration: M.hover; }
+        row := HorizontalLayout {
+            alignment: center;
+            spacing: Theme.material ? 8px : 6px;
+            Rectangle {
+                width: Theme.material ? 18px : 14px;
+                if !busy: SIcon { g: icon; size: parent.width; color: ink; }
+                if busy: Spinner { size: parent.width; color: ink; }
+            }
+            Text {
+                text: label;
+                color: ink;
+                font-size: Theme.material ? M.body : Theme.small;
+                font-weight: Theme.material ? 500 : 600;
+                vertical-alignment: center;
+                accessible-role: none;
+            }
         }
+        if root.has-focus: Ring { pw: parent.width; ph: parent.height; r: parent.border-radius + 4px; }
     }
     t := TouchArea {
         y: -6px;
@@ -741,6 +828,9 @@ export struct ChatEntry {
 
 // The shell's bar for a chat just deleted, or a note (UndoBar.qml): inverse;
 // Material, a snackbar
+// UndoBar.qml: a chat just deleted (with Undo) or a note about past chats.
+// Inverse; Material a snackbar. Fades in rising 8 px (200 ms out-cubic;
+// leaving 140 ms in-cubic). Undo: Tab reaches it, Space/Enter press it
 component UndoBar inherits Rectangle {
     in property <string> message;
     in property <bool> can-undo;
@@ -748,51 +838,73 @@ component UndoBar inherits Rectangle {
     property <bool> shown: message != "";
     property <color> ink: Theme.material ? Theme.m3-inverse-on-surface : Theme.dark ? #EDEDEF : #FAFAFA;
     height: max(Theme.material ? 48px : 44px, lt.preferred-height + 24px);
-    border-radius: Theme.material ? 4px : 14px;
-    background: Theme.material ? Theme.m3-inverse-surface : Theme.dark ? #3A3A40 : #18181B;
-    border-width: Theme.dark && !Theme.material ? 1px : 0px;
-    border-color: #ffffff29;
+    background: transparent;
     opacity: shown ? 1 : 0;
     animate opacity { duration: shown ? 200ms : 140ms; easing: shown ? cubic-bezier(0.33, 1, 0.68, 1) : cubic-bezier(0.32, 0, 0.67, 0); }
+    visible: self.opacity > 0;
     accessible-role: text;
     accessible-label: message;
-    lt := Text {
-        x: 16px;
-        width: parent.width - 32px - (can-undo ? ub.width + 8px - 16px : 0px);
-        height: parent.height;
-        text: message;
-        wrap: can-undo ? no-wrap : word-wrap;
-        overflow: elide;
-        vertical-alignment: center;
-        color: ink;
-        font-size: Theme.material ? 14px : M.body;
-        letter-spacing: Theme.material ? 0.25px : 0px;
-    }
-    ub := Rectangle {
-        visible: can-undo;
-        x: parent.width - self.width - 8px;
-        y: (parent.height - self.height) / 2;
-        width: ul.preferred-width + (Theme.material ? 24px : 20px);
-        height: Theme.material ? 40px : 28px;
-        border-radius: Theme.material ? 20px : Theme.radius-control;
-        background: Theme.material ? Theme.m3-inverse-primary.with-alpha(ut.pressed ? 0.1 : ut.has-hover ? 0.08 : 0) : ut.pressed ? #ffffff33 : ut.has-hover ? #ffffff1f : transparent;
-        accessible-role: button;
-        accessible-label: "Undo delete";
-        accessible-action-default => { undo(); }
-        ul := Text {
-            text: "Undo";
-            color: Theme.material ? Theme.m3-inverse-primary : ink;
-            font-size: Theme.material ? 14px : Theme.small;
-            font-weight: Theme.material ? 500 : 600;
-            horizontal-alignment: center;
+    bar := Rectangle {
+        y: shown ? 0px : 8px;
+        animate y { duration: 200ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+        border-radius: Theme.material ? 4px : 14px;
+        background: Theme.material ? Theme.m3-inverse-surface : Theme.dark ? #3A3A40 : #18181B;
+        border-width: Theme.dark && !Theme.material ? 1px : 0px;
+        border-color: #ffffff29;
+        lt := Text {
+            x: 16px;
+            width: parent.width - 32px - (can-undo ? ub.width + 8px - 16px : 0px);
+            height: parent.height;
+            text: message;
+            wrap: can-undo ? no-wrap : word-wrap;
+            overflow: elide;
             vertical-alignment: center;
-            accessible-role: none;
+            color: ink;
+            font-size: Theme.material ? 14px : M.body;
+            letter-spacing: Theme.material ? 0.25px : 0px;
         }
-        ut := TouchArea {
-            y: -8px;
-            height: parent.height + 16px;
-            mouse-cursor: pointer;
-            clicked => { undo(); }
+        ub := FocusScope {
+            visible: can-undo;
+            enabled: can-undo;
+            focus-on-click: false;
+            x: parent.width - self.width - 8px;
+            y: (parent.height - self.height) / 2;
+            width: ul.preferred-width + (Theme.material ? 24px : 20px);
+            height: Theme.material ? 40px : 28px;
+            accessible-role: button;
+            accessible-label: "Undo delete";
+            accessible-action-default => { undo(); }
+            key-pressed(e) => {
+                if !e.repeat && (e.text == " " || e.text == Key.Return) {
+                    undo();
+                    return accept;
+                }
+                reject
+            }
+            ubody := Rectangle {
+                transform-origin: { x: self.width / 2, y: self.height / 2 };
+                transform-scale: ut.pressed ? (Theme.material ? (Theme.press-bounce ? 1 + min(0.06, 10px / self.width) : 1) : 0.97) : 1;
+                animate transform-scale { duration: Theme.material ? 420ms : 100ms; easing: Theme.material ? spring(0.3) : linear; }
+                border-radius: Theme.material ? 20px : Theme.radius-control;
+                background: Theme.material ? Theme.m3-inverse-primary.with-alpha(ut.pressed ? 0.1 : ut.has-hover ? 0.08 : 0) : ut.pressed ? #ffffff33 : ut.has-hover ? #ffffff1f : transparent;
+                animate background { duration: M.hover; }
+                ul := Text {
+                    text: "Undo";
+                    color: Theme.material ? Theme.m3-inverse-primary : ink;
+                    font-size: Theme.material ? 14px : Theme.small;
+                    font-weight: Theme.material ? 500 : 600;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    accessible-role: none;
+                }
+                if ub.has-focus: Ring { pw: parent.width; ph: parent.height; r: parent.border-radius + 4px; }
+            }
+            ut := TouchArea {
+                y: -8px;
+                height: parent.height + 16px; // (44 px to hit)
+                mouse-cursor: pointer;
+                clicked => { undo(); }
+            }
         }
     }
 }
@@ -979,6 +1091,24 @@ component History inherits Rectangle {
         height: parent.height - self.y - (can-undo || undo-message != "" ? ubar.height + 8px : 0px);
         content-height: col.preferred-height;
         interactive: true;
+        property <length> sel-y;
+        property <bool> sel-pinned;
+        property <bool> hold-fired;
+        property <string> hold-id;
+        property <bool> hold-pinned;
+        property <length> hold-y;
+        hold := Timer {
+            interval: 500ms;
+            running: false;
+            triggered => {
+                self.running = false;
+                list.hold-fired = true;
+                selected = list.hold-id;
+                menu-pinned = list.hold-pinned;
+                menu-y = list.hold-y;
+                menu-for = list.hold-id;
+            }
+        }
         keys := FocusScope {
             key-pressed(e) => {
                 by-keys = true;
@@ -987,6 +1117,12 @@ component History inherits Rectangle {
                 if e.text == Key.Return && selected != "" { open(selected); return accept; }
                 if e.text == Key.Delete && selected != "" { delete(selected); return accept; }
                 if e.text == Key.F2 && selected != "" { renaming = selected; return accept; }
+                if (e.text == Key.Menu || (e.text == Key.F10 && e.modifiers.shift)) && selected != "" {
+                    menu-pinned = list.sel-pinned;
+                    menu-y = list.sel-y;
+                    menu-for = selected;
+                    return accept;
+                }
                 if e.text == Key.Escape { back(); return accept; }
                 reject
             }
@@ -996,6 +1132,10 @@ component History inherits Rectangle {
             for c[i] in chats: Rectangle {
                 height: c.header != "" ? (c.first ? 0px : 8px) + (Theme.material ? 36px : 26px) : (Theme.material ? 60px : 46px);
                 property <bool> sel: c.id != "" && c.id == selected;
+                // (where the selected row's menu opens from the keyboard)
+                changed sel => {
+                    if self.sel { list.sel-y = self.y + list.content-y + list.y + self.height; list.sel-pinned = c.pinned; }
+                }
                 if c.header != "": Text {
                     x: Theme.material ? 16px : 10px;
                     y: parent.height - self.height - (Theme.material ? 8px : 6px);
@@ -1032,8 +1172,20 @@ component History inherits Rectangle {
                     rt := TouchArea {
                         mouse-cursor: pointer;
                         enabled: renaming != c.id;
-                        clicked => { by-keys = false; open(c.id); }
+                        clicked => { if !list.hold-fired { by-keys = false; open(c.id); } list.hold-fired = false; }
+                        // (TapHandler's long press: held 500 ms still, its menu)
+                        moved => {
+                            if abs(self.mouse-x - self.pressed-x) > 8px || abs(self.mouse-y - self.pressed-y) > 8px { hold.running = false; }
+                        }
                         pointer-event(e) => {
+                            if e.button == PointerEventButton.left && e.kind == PointerEventKind.down {
+                                list.hold-fired = false;
+                                list.hold-id = c.id;
+                                list.hold-pinned = c.pinned;
+                                list.hold-y = parent.y + list.content-y + list.y + self.mouse-y;
+                                hold.running = true;
+                            }
+                            if e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel { hold.running = false; }
                             if e.button == PointerEventButton.right && e.kind == PointerEventKind.up {
                                 selected = c.id;
                                 menu-pinned = c.pinned;
@@ -1123,6 +1275,7 @@ component History inherits Rectangle {
                         width: Theme.material ? 40px : 28px;
                         height: self.width;
                         opacity: Theme.material || hot || c.open || sel ? 1 : 0;
+                        focus-on-tab-navigation: false; // (the list's keys reach it: Menu, F2, Delete)
                         icon: G.dots;
                         icon-size: Theme.material ? 20px : 16px;
                         icon-color: Theme.material && c.open ? Theme.m3-on-secondary-container : Theme.secondary;
@@ -1322,7 +1475,7 @@ component Translate inherits Rectangle {
     callback target(string);
     callback swap();
     callback copy-result();
-    property <int> list-open: 0; // 1 from, 2 to
+    in-out property <int> list-open: 0; // 1 from, 2 to
     property <bool> copied;
     property <length> bar-h: Theme.material ? 40px : 30px;
     property <length> half: (self.height - bar-h - 20px) / 2;
@@ -1355,6 +1508,9 @@ component Translate inherits Rectangle {
         height: bar-h;
         border-radius: Theme.material && sw.pressed ? 12px : self.height / 2;
         animate border-radius { duration: 250ms; easing: spring(0.6); }
+        transform-origin: { x: self.width / 2, y: self.height / 2 };
+        transform-scale: Theme.material && Theme.press-bounce && sw.pressed ? 1 + min(0.06, 10px / max(self.width, self.height)) : 1;
+        animate transform-scale { duration: 420ms; easing: spring(0.3); }
         opacity: source-auto ? (Theme.material ? 0.38 : 0.4) : 1;
         background: Theme.material ? Theme.m3-secondary-container.mix(Theme.m3-on-secondary-container, sw.pressed ? 0.9 : sw.has-hover ? 0.92 : 1) : sw.has-hover ? Theme.fill-hover : Theme.fill;
         accessible-role: button;
@@ -1364,7 +1520,6 @@ component Translate inherits Rectangle {
         SIcon { g: G.arrows-lr; size: Theme.material ? 18px : 14px; color: Theme.material ? Theme.m3-on-secondary-container : Theme.label; }
         sw := TouchArea {
             enabled: !source-auto;
-            mouse-cursor: pointer;
             clicked => { swap(); }
         }
     }
@@ -1444,6 +1599,9 @@ component Translate inherits Rectangle {
             height: Theme.material ? 36px : 28px;
             border-radius: Theme.material && ct.pressed ? 8px : self.height / 2;
             animate border-radius { duration: 250ms; easing: spring(0.6); }
+            transform-origin: { x: self.width / 2, y: self.height / 2 };
+            transform-scale: Theme.material && Theme.press-bounce && ct.pressed ? 1 + min(0.06, 10px / max(self.width, self.height)) : 1;
+            animate transform-scale { duration: 420ms; easing: spring(0.3); }
             background: Theme.material ? Theme.m3-primary.mix(Theme.m3-on-primary, ct.pressed ? 0.9 : ct.has-hover ? 0.92 : 1) : ct.has-hover ? Theme.fill-hover : Theme.fill;
             accessible-role: button;
             accessible-label: "Copy translation";
@@ -1460,7 +1618,6 @@ component Translate inherits Rectangle {
                 accessible-role: none;
             }
             ct := TouchArea {
-                mouse-cursor: pointer;
                 clicked => {
                     copy-result();
                     copied = true;
@@ -1694,8 +1851,8 @@ component Booru inherits Rectangle {
                 height: parent.height - 2 * m;
                 border-radius: Theme.material ? (it.pressed ? 8px : 16px) : 12px;
                 animate border-radius { duration: 250ms; easing: spring(0.6); }
-                transform-scale: Theme.material && it.pressed ? 0.96 : 1;
-                animate transform-scale { duration: 250ms; easing: spring(0.6); }
+                transform-scale: Theme.material && Theme.press-bounce && it.pressed ? 1 + min(0.06, 10px / max(self.width, self.height)) : 1;
+                animate transform-scale { duration: 420ms; easing: spring(0.3); }
                 background: Theme.material ? Theme.m3-surface-container-high : Theme.fill;
                 clip: true;
                 accessible-role: button;
@@ -1784,6 +1941,7 @@ export component Sidebar inherits Window {
     in property <string> blind-text;
     in property <string> switch-label;
     in property <bool> switch-add;
+    in property <bool> drop-over; // files dragged over the chat
     in property <string> blind-lens; // a circled picture among them
     in property <bool> blind-lens-busy;
     in property <string> blind-lens-note;
@@ -1918,6 +2076,8 @@ export component Sidebar inherits Window {
         key-pressed(e) => {
             if e.text == Key.Escape {
                 if model-menu || shot-menu { model-menu = false; shot-menu = false; return accept; }
+                // (a language list closes first: its Popup's CloseOnEscape)
+                if tab == 1 && tr.list-open != 0 { tr.list-open = 0; return accept; }
                 if history-open { show-history(false); return accept; }
                 dismiss();
                 return accept;
@@ -2307,6 +2467,7 @@ export component Sidebar inherits Window {
                                 enabled: can-attach;
                                 clicked => { shot-screen(); }
                                 right-clicked => { model-menu = false; shot-menu = !shot-menu; }
+                                long-pressed => { model-menu = false; shot-menu = true; }
                             }
                             GhostButton {
                                 width: 18px;
@@ -2375,6 +2536,10 @@ export component Sidebar inherits Window {
                             height: self.width;
                             border-radius: Theme.material && st.pressed ? 10px : self.width / 2;
                             animate border-radius { duration: 250ms; easing: spring(0.6); }
+                            // (Material: ElasticControl's swell; Glass doesn't move)
+                            transform-origin: { x: self.width / 2, y: self.height / 2 };
+                            transform-scale: Theme.material && Theme.press-bounce && st.pressed ? 1.06 : 1;
+                            animate transform-scale { duration: 420ms; easing: spring(0.3); }
                             background: busy || can-send ? (Theme.material ? Theme.m3-primary.mix(Theme.m3-on-primary, st.pressed ? 0.9 : st.has-hover ? 0.92 : 1) : Theme.accent) : Theme.material ? Theme.m3-on-surface.with-alpha(0.12) : Theme.toggle-off;
                             accessible-role: button;
                             accessible-label: busy ? "Stop" : "Send";
@@ -2388,7 +2553,6 @@ export component Sidebar inherits Window {
                                 color: busy || can-send ? Theme.on-accent : Theme.material ? Theme.m3-on-surface.with-alpha(0.38) : Theme.tertiary;
                             }
                             st := TouchArea {
-                                mouse-cursor: pointer;
                                 clicked => { submit(); }
                             }
                         }
@@ -2400,6 +2564,21 @@ export component Sidebar inherits Window {
                         message: undo-message;
                         can-undo: root.can-undo;
                         undo => { undo(); }
+                    }
+
+                    // Files dragged over the chat (AiChat.qml's DropArea: core's
+                    // data device tells the part, which sets drop-over)
+                    if drop-over && !history-open: Rectangle {
+                        border-radius: Theme.material ? 24px : 16px;
+                        background: Theme.material ? Theme.m3-primary.with-alpha(0.08) : Theme.accent.with-alpha(0.08);
+                        border-width: 2px;
+                        border-color: Theme.material ? Theme.m3-primary : Theme.accent;
+                        Text {
+                            text: "Drop pictures to add them";
+                            color: Theme.material ? Theme.m3-primary : Theme.accent-ink;
+                            font-size: M.body;
+                            font-weight: 500;
+                        }
                     }
 
                     // Past chats

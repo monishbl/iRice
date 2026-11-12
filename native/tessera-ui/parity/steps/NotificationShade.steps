@@ -1,0 +1,15 @@
+# Notification Center: panel at the right under the bar (x≈1530..1912 Material, 1544..1912 Glass); read rows from the first shot
+look material
+wait 2
+setup notify-send -a Firefox -i firefox 'Download finished' 'report.pdf'
+setup notify-send -a Firefox -i firefox 'Download finished' 'slides.pdf'
+setup notify-send -a Files -i org.gnome.Nautilus -A open=Open 'Copied' '3 files'
+wait 1
+ipc panels open notificationCenter IRICE-TEST
+wait 1
+shot nc-open
+note card rows from the shot; for the first card (centre cx, cy):
+note drag 1/4 of its width right and release: springs back (~300 ms)
+note flick: glide 120 px in 80 ms then up: dismissed
+note drag past 1/3: flies off in 150 ms, gone
+ipc panels close

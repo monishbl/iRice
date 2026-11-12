@@ -1,0 +1,28 @@
+# LoginIntro: play the intro (both looks; check in each look).
+setup foot &
+wait 2
+rec play 2.5 ipc loginIntro play
+note FAILED earlier. Glass: QML = black, wallpaper blurred and sharpening from 106 % over ~1 s, then the cover fades (650-1250 ms) revealing the desktop, total ~1083-1300 ms; Rust = one dark frame, wallpaper already sharp, desktop fades in, total only 433 ms, no blur-to-sharp settle. Material: cookie mark with the badge, opening into a growing window that morphs to a circle and spins 90 degrees, gone by ~1.0 s after start; Rust is shorter (617 ms of change starting 0.75 s after recording start, vs QML 950 ms starting 0.45 s).
+wait 2
+shot after-intro
+note The desktop (foot window) is back at rest and no intro cover remains.
+# Mid-intro click
+ipc loginIntro play
+wait 0.5
+ptr move 300 300 sleep 100 click down up
+wait 2.5
+shot click-through
+note Clicks during the intro reach the desktop (NOT RUN earlier): the foot window or desktop item under the pointer reacts. NOTE: click on layer surfaces may not register in the harness.
+# Step 3: slowed pace
+# MANUAL: restart the arena shell with TESSERA_INTRO_PACE=10 and compare frame timings with QML (Glass end ~13 s) (NOT RUN)
+# Step 4: reduce motion
+# MANUAL: with appearance.reduceMotion true, Settings -> Play Intro does nothing (NOT RUN)
+# Step 5: lock while playing
+ipc loginIntro play
+wait 0.4
+ipc lock lock
+wait 1
+shot lock-over-intro
+note The intro is gone at once and the lock shows (NOT RUN earlier).
+ipc lock unlock
+wait 2

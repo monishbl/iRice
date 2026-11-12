@@ -1,0 +1,27 @@
+# More options pill/caret on About.
+ipc panels settings about
+wait 2
+shot m1
+note M1 read the "More options" position (bottom of the page, maybe after scrolling).
+ptr move 1100 600 sleep 200 scroll 0 30
+wait 1
+rec m2 3 ptr move 1200 600 sleep 300 glide 1200 600 100 click sleep 1000 click
+wait 1
+note M2 caret turns over in about 150 ms, fast start and slow end (OutCubic) like the QML; groups appear and go; label flips (More/Fewer options). Click coordinates are guesses: read from the m1 shot.
+ptr move 1200 600 sleep 300 glide 1200 600 100 click
+wait 1
+shot m2-open
+note M2 More options open: extra groups appear below the button, label flipped, caret turned.
+ptr move 1100 300 sleep 500 glide 1100 300 100
+wait 1
+shot m3-off
+note M3 hover: the pill's Material layer / Glass fill fades about 150 ms (look at the hover recording if possible).
+ipc panels settings appearance
+wait 2
+ipc panels settings about
+wait 2
+shot m4
+note M4 after visiting another page and back, More options is closed again.
+# MANUAL: M5 type a row label that lives inside More options in the settings search, click the result: More options opens and the row flashes
+# MANUAL: M6 Tab to the button and press space: toggles; focus ring 2 px out (Glass 2 px wide, Material 3 px)
+ipc panels close

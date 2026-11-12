@@ -9,7 +9,7 @@
 
 import { Theme } from "@tessera/theme.slint";
 import { Busy } from "@tessera/widgets.slint";
-import { SIc, SOpt, SetRow, SBlock, SSection, SResult, SBus, SG, SM, SIcon, SFocusRing, SSwitch, SSlider, SWordSlider, SSegmented, SChoice, SButton, SField, SChip, SSwatch, SFilled } from "settings-kit.slint";
+import { SIc, SOpt, SetRow, SBlock, SPage, SSection, SResult, SBus, SG, SM, SIcon, SFocusRing, SSwitch, SSlider, SWordSlider, SSegmented, SChoice, SButton, SField, SChip, SSwatch, SFilled } from "settings-kit.slint";
 import { LookBlock, LookCtl } from "settings-look.slint";
 import { NotifyBlock, NotifyCtl } from "settings-notify.slint";
 import { DevicesBlock, DevicesCtl } from "settings-devices.slint";
@@ -18,7 +18,7 @@ import { AccountsBlock, AccountsCtl } from "settings-accounts.slint";
 import { SystemBlock, SystemCtl } from "settings-system.slint";
 import { AboutBlock, AboutCtl } from "settings-about.slint";
 
-export { SIc, SOpt, SetRow, SBlock, SSection, SResult, SBus }
+export { SIc, SOpt, SetRow, SBlock, SPage, SSection, SResult, SBus }
 
 // ── A row's control (Row.qml's slot) ────────────────────────────────────
 component Control {
@@ -48,6 +48,8 @@ component Control {
             enabled: r.enabled;
             label: r.label;
             moved(v) => { SBus.act(r.id, 0, v, ""); }
+            // (let go: i 1, the page may act on it: a sound at the level)
+            released(v) => { SBus.act(r.id, 1, v, ""); }
         }
         if r.control == "slider" && (r.low != "" || r.high != ""): SWordSlider {
             width: w;
@@ -60,6 +62,7 @@ component Control {
             enabled: r.enabled;
             label: r.label;
             moved(v) => { SBus.act(r.id, 0, v, ""); }
+            released(v) => { SBus.act(r.id, 1, v, ""); }
         }
         if r.control == "segmented": SSegmented {
             width: r.width > 0 ? r.width : self.preferred-width;
@@ -76,6 +79,7 @@ component Control {
             current: r.index;
             placeholder: r.placeholder != "" ? r.placeholder : "Choose";
             enabled: r.enabled;
+            dropdown: mod(r.style, 16) >= 8;
             open: root.menu-open == r.id;
             label: r.label;
         }
@@ -86,6 +90,7 @@ component Control {
             busy: r.busy;
             enabled: r.enabled;
             label: r.label;
+            compact: r.secret;
             clicked => { SBus.act(r.id, 0, 0, ""); }
         }
         if r.control == "buttons": HorizontalLayout {
@@ -130,14 +135,16 @@ component Control {
             VerticalLayout {
                 alignment: center;
                 SButton {
-                    text: r.busy ? "Choosing…" : "Choose…";
-                    enabled: r.enabled && !r.busy;
+                    text: r.busy || SBus.picker-busy ? "Choosing…" : "Choose…";
+                    enabled: r.enabled && !r.busy && !SBus.picker-busy;
                     label: r.label;
                     clicked => { SBus.act(r.id, 2, 0, ""); }
                 }
             }
         }
-        if r.control == "chips": HorizontalLayout {
+        // (style: 1 solid chips, 2 wrapped onto lines (a QML Flow) within
+        // the row's width: each chip's line in its num, the lines in r.num)
+        if r.control == "chips" && mod(r.style, 4) < 2: HorizontalLayout {
             spacing: 6px;
             alignment: end;
             for o[i] in r.opts: VerticalLayout {
@@ -145,8 +152,29 @@ component Control {
                 SChip {
                     text: o.text;
                     on: o.on;
+                    solid: mod(r.style, 2) == 1;
                     enabled: r.enabled && !o.off;
                     clicked => { SBus.act(r.id, i, 0, ""); }
+                }
+            }
+        }
+        if r.control == "chips" && mod(r.style, 4) >= 2: VerticalLayout {
+            width: w;
+            spacing: 6px;
+            for line in round(r.num): HorizontalLayout {
+                // (no spacing: the other lines' chips leave empty places)
+                spacing: 0;
+                alignment: start;
+                for o[i] in r.opts: VerticalLayout {
+                    alignment: center;
+                    padding-right: round(o.num) == line ? 6px : 0;
+                    if round(o.num) == line: SChip {
+                        text: o.text;
+                        on: o.on;
+                        solid: mod(r.style, 2) == 1;
+                        enabled: r.enabled && !o.off;
+                        clicked => { SBus.act(r.id, i, 0, ""); }
+                    }
                 }
             }
         }
@@ -244,6 +272,7 @@ component RowView {
         animate background { duration: SM.hover; }
     }
     hover := TouchArea {
+        opacity: r.faded ? 0.5 : 1;
         mouse-cursor: link ? MouseCursor.pointer : MouseCursor.default;
         clicked => { if link && r.enabled { SBus.act(r.id, 0, 0, ""); } }
         // (in a layout, so the row grows with what it holds: a TouchArea
@@ -287,11 +316,11 @@ component RowView {
                     spacing: 2px;
                     padding-top: Theme.material ? 12px : 10px;
                     padding-bottom: Theme.material ? 12px : 10px;
-                    padding-right: r.control != "" || link ? (Theme.material ? 16px : 12px) : 0;
+                    padding-right: link ? 12px : r.control != "" ? (Theme.material ? 16px : 12px) : 0;
                     Text {
                         text: r.label;
                         wrap: word-wrap;
-                        color: r.tone == 1 ? Theme.secondary : r.tone == 2 ? Theme.danger : r.tone == 3 ? Theme.success : Theme.label;
+                        color: r.tone == 1 ? Theme.secondary : r.tone == 2 ? Theme.danger : r.tone == 3 ? Theme.success : r.tone == 4 ? (Theme.material ? Theme.m3-primary : Theme.accent-ink) : Theme.label;
                         font-size: Theme.material ? 16px : Theme.body;
                     }
                     if r.detail != "": Text {
@@ -335,6 +364,15 @@ component RowView {
         accessible-label: r.label;
         accessible-description: r.detail;
         accessible-action-default => { SBus.act(r.id, 0, 0, ""); }
+    }
+    if link: Rectangle {
+        lfs := FocusScope {
+            key-pressed(e) => {
+                if r.enabled && !e.repeat && (e.text == Key.Return || e.text == " ") { SBus.act(r.id, 0, 0, ""); return accept; }
+                reject
+            }
+        }
+        SFocusRing { shown: lfs.has-focus; radius: Theme.material ? 4px : 8px; }
     }
     Flash { on: r.flash; }
 }
@@ -425,7 +463,7 @@ component MoreButton {
                 size: 12px;
                 color: Theme.material ? Theme.m3-on-secondary-container : Theme.accent-ink;
                 transform-rotation: b.on ? 180deg : 0deg;
-                animate transform-rotation { duration: SM.hover; easing: ease-out; }
+                animate transform-rotation { duration: SM.hover; easing: cubic-bezier(0.33, 1, 0.68, 1); }
             }
         }
         ta := TouchArea {
@@ -477,17 +515,82 @@ component BlockView inherits VerticalLayout {
     if b.kind == "custom" && b.group == "about": AboutBlock { b: b; }
 }
 
-// A thin scroll indicator (ScrollIndicator.qml) while there's more
+// ── A page: its blocks. Kept once made (hidden while another shows), so
+// going back to a page is instant; only the shown one sizes the scroller ──
+component PageView inherits VerticalLayout {
+    in property <bool> shown;
+    in property <[SBlock]> blocks;
+    in property <string> menu-open;
+    alignment: start;
+    property <length> h: self.preferred-height;
+    changed h => { if shown { SBus.page-h = h; } }
+    changed shown => { if shown { SBus.page-h = h; } }
+    init => { if shown { SBus.page-h = h; } }
+    for b in blocks: BlockView { b: b; menu-open: root.menu-open; }
+}
+
+// A thin overlay scrollbar (ScrollIndicator.qml): shown while the content
+// scrolls (and 900 ms after) or the pointer is on it, fading out after;
+// hidden when everything fits. Drag the thumb or click the track to move.
 component ScrollBar inherits Rectangle {
-    in property <length> content-y;
+    in-out property <length> content-y; // (two-way with the Flickable's content-y)
     in property <length> viewport-h;
     in property <length> visible-h;
     property <bool> needed: viewport-h > visible-h + 1px;
-    width: 4px;
-    border-radius: 2px;
-    background: needed ? Theme.label.with-alpha(0.25) : transparent;
-    height: needed ? max(24px, visible-h * visible-h / viewport-h) : 0;
-    y: needed ? (-content-y / (viewport-h - visible-h)) * (visible-h - self.height) : 0;
+    property <length> span: max(1px, viewport-h - visible-h);
+    property <bool> recent;
+    property <bool> active: ta.has-hover || ta.pressed || recent;
+    property <length> grab; // where in the thumb it was taken
+    // (the list scrolled by a person: shown, and hidden 900 ms after)
+    public function poke() {
+        recent = true;
+        idle.restart();
+    }
+    idle := Timer {
+        interval: 900ms;
+        running: false;
+        triggered => {
+            recent = false;
+            self.running = false;
+        }
+    }
+    width: 12px;
+    background: transparent;
+    visible: needed;
+    thumb := Rectangle {
+        x: (parent.width - self.width) / 2;
+        width: ta.has-hover || ta.pressed ? 8px : 6px;
+        animate width { duration: 150ms; }
+        height: max(28px, parent.height * visible-h / max(1px, viewport-h));
+        y: (parent.height - self.height) * max(0, min(1, -content-y / span));
+        border-radius: self.width / 2;
+        background: (Theme.dark ? #ffffff : #000000).with-alpha(ta.pressed ? 0.5 : 0.32);
+        opacity: active ? 1 : 0;
+        animate opacity { duration: active ? 150ms : 400ms; easing: ease-out; }
+    }
+    ta := TouchArea {
+        function to(y: length) {
+            content-y = -max(0px, min(span, (y - grab) / max(1px, root.height - thumb.height) * span));
+        }
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down {
+                // (on the thumb: dragged from where it was taken; on the
+                // track: the thumb centres there)
+                if self.mouse-y >= thumb.y && self.mouse-y <= thumb.y + thumb.height {
+                    grab = self.mouse-y - thumb.y;
+                } else {
+                    grab = thumb.height / 2;
+                    to(self.mouse-y);
+                }
+            }
+        }
+        moved => {
+            if self.pressed {
+                to(self.mouse-y);
+                poke();
+            }
+        }
+    }
 }
 
 // ── The window ──────────────────────────────────────────────────────────
@@ -498,27 +601,32 @@ export component SettingsWindow inherits Window {
     in property <[SSection]> sections;
     in property <[SResult]> results;
     in property <bool> searching; // a query is typed: results in place of the sections
-    in property <[SBlock]> blocks;
+    in property <[SPage]> pages; // the pages made so far, one shown
     in property <string> page-title; // the page's (a subpage's pageTitle, else its section's name)
     in property <string> crumb; // the section's name, on a subpage
     in property <bool> is-sub;
     in property <bool> can-back;
     in property <bool> can-forward;
     in property <string> section-id;
-    // the window's menu (a Choice's list, ActionMenu.qml)
+    // the menu open (a Choice's list, ActionMenu.qml: its own popup,
+    // settings-menu.slint): whose it is, so that Choice shows itself open
     in property <bool> menu-open;
     in property <string> menu-id;
-    in property <[SOpt]> menu-items;
-    in property <length> menu-x;
-    in property <length> menu-y;
-    in property <length> menu-w;
-    in property <length> menu-h;
     // the toast (Toast.qml)
     in property <string> toast-text;
     in property <bool> toast-undo;
     in property <bool> toast-shown;
     in property <bool> spin: true; // (Material's open page cookie turns; not with Reduce motion)
     in property <string> cookie; // Material's cookie9 outline (shapes.rs), 0..100
+    // the cookie's turn (24 s a round), stepped by Rust a few times a second:
+    // animation-tick() redrew the whole window every frame while it was open
+    in property <angle> spin-angle;
+    // Material: where the open page's pill sits in the list (it springs
+    // there when you change page, and is simply put there when the list is made)
+    property <length> pill-y;
+    // the search result the arrow keys are on (-1: none)
+    property <int> res-cur: -1;
+    property <bool> pill-placed;
     callback go(string);
     callback query(string);
     callback query-commit();
@@ -531,6 +639,9 @@ export component SettingsWindow inherits Window {
     callback close-window();
     callback drag(length, length);
     callback key-nav(int); // the sidebar's keys: -1 up, 1 down, -2 home, 2 end
+    // a key for the open menu (it's its own popup; when the compositor
+    // leaves the keyboard with this window, they come here)
+    callback menu-key(string);
 
     public function page-changed() {
         page-scroll.content-y = 0;
@@ -558,9 +669,13 @@ export component SettingsWindow inherits Window {
         page-scroll.content-y = -max(0px, min(page-scroll.content-height - page-scroll.height, top - 80px));
     }
 
-    forward-focus: keys;
+    forward-focus: side-keys;
     keys := FocusScope {
         key-pressed(e) => {
+            if menu-open && (e.text == Key.Escape || e.text == Key.UpArrow || e.text == Key.DownArrow || e.text == Key.Return || e.text == " " || e.text == Key.Home || e.text == Key.End) {
+                root.menu-key(e.text);
+                return accept;
+            }
             if e.modifiers.alt && e.text == Key.LeftArrow { root.back(); return accept; }
             if e.modifiers.alt && e.text == Key.RightArrow { root.forward(); return accept; }
             if e.modifiers.control && e.text == "f" { search-input.focus(); return accept; }
@@ -570,12 +685,11 @@ export component SettingsWindow inherits Window {
                 root.close-window();
                 return accept;
             }
-            if e.text == Key.UpArrow && !searching { root.key-nav(-1); return accept; }
-            if e.text == Key.DownArrow && !searching { root.key-nav(1); return accept; }
             reject
         }
-    }
 
+    // (everything inside the window's keys: what a control doesn't take
+    // comes up to them; the pages list's arrows are its own, side-keys)
     frame := Rectangle {
         clip: true;
         border-radius: root.radius;
@@ -632,14 +746,38 @@ export component SettingsWindow inherits Window {
                             selection-background-color: Theme.material ? Theme.m3-primary.with-alpha(0.3) : Theme.accent.with-alpha(0.4);
                             font-size: Theme.material ? 16px : Theme.body;
                             accessible-label: "Search settings";
-                            edited => { root.query(self.text); }
-                            accepted => { root.query-commit(); }
+                            edited => {
+                                root.res-cur = -1;
+                                root.query(self.text);
+                            }
+                            // (Enter: the result the keys are on, else the first)
+                            accepted => {
+                                if root.res-cur >= 0 && root.res-cur < results.length {
+                                    SBus.act("search:" + results[root.res-cur].page, results[root.res-cur].section ? 1 : 0, 0, results[root.res-cur].text);
+                                } else {
+                                    root.query-commit();
+                                }
+                            }
                             key-pressed(e) => {
+                                // Down: into the results, or (no query) to the pages
+                                if e.text == Key.DownArrow {
+                                    if searching {
+                                        root.res-cur = min(root.res-cur + 1, results.length - 1);
+                                    } else {
+                                        self.clear-focus();
+                                        side-keys.focus();
+                                    }
+                                    return accept;
+                                }
+                                if e.text == Key.UpArrow && searching && root.res-cur >= 0 {
+                                    root.res-cur -= 1;
+                                    return accept;
+                                }
                                 if e.text == Key.Escape {
                                     self.text = "";
                                     root.query("");
                                     self.clear-focus();
-                                    keys.focus();
+                                    side-keys.focus();
                                     return accept;
                                 }
                                 reject
@@ -682,15 +820,31 @@ export component SettingsWindow inherits Window {
                     width: 28px;
                     height: 28px;
                     border-radius: Theme.radius-control - 2px;
-                    background: mag.has-hover ? Theme.fill : transparent;
+                    background: fold-hover.has-hover ? Theme.fill : transparent;
                     accessible-role: AccessibleRole.button;
                     accessible-label: "Search";
+                    accessible-action-default => { search-input.focus(); }
                     SIcon { g: SG.search; size: 16px; color: Theme.secondary; }
-                    mag := TouchArea { clicked => { search-input.focus(); } }
+                    // (no TouchArea of its own: the search's, under it, sees the
+                    // hover, and the search opens as the pointer comes, as the QML)
                 }
             }
 
+            // The pages list's keys (one Tab stop: Up, Down, Home, End open
+            // the previous, next, first, last page)
+            side-keys := FocusScope {
+                width: 0;
+                height: 0;
+                key-pressed(e) => {
+                    if e.text == Key.UpArrow { root.key-nav(-1); return accept; }
+                    if e.text == Key.DownArrow { root.key-nav(1); return accept; }
+                    if e.text == Key.Home { root.key-nav(-2); return accept; }
+                    if e.text == Key.End { root.key-nav(2); return accept; }
+                    reject
+                }
+            }
             side-scroll := Flickable {
+                flicked => { side-bar.poke(); }
                 y: search.y + search.height + (Theme.material ? 12px : 10px);
                 height: parent.height - self.y;
                 content-height: side-list.preferred-height + 16px;
@@ -700,7 +854,18 @@ export component SettingsWindow inherits Window {
                     alignment: start;
                     spacing: 2px;
                     // The pages, under their group headings
-                    if !searching: Rectangle {
+                    if !searching: side-holder := Rectangle {
+                        // Material: the open page's pill, springing from page
+                        // to page (SettingsMaterial.qml's indicator)
+                        if Theme.material: Rectangle {
+                            y: root.pill-y;
+                            height: 48px;
+                            border-radius: 24px;
+                            background: Theme.m3-secondary-container;
+                            // (SpringAnimation spring 12.8, damping 0.54: settles in about
+                            // 200 ms, a touch past; measured 140–220 ms in the QML)
+                            animate y { duration: root.pill-placed ? 200ms : 0ms; easing: cubic-bezier(0.3, 1.25, 0.5, 1); }
+                        }
                         VerticalLayout {
                             spacing: 2px;
                             for s[i] in sections: VerticalLayout {
@@ -719,8 +884,22 @@ export component SettingsWindow inherits Window {
                                 item := Rectangle {
                                     height: Theme.material ? 48px : 32px;
                                     border-radius: Theme.material ? 24px : 8px;
-                                    background: Theme.material ? (s.current ? Theme.m3-secondary-container : transparent)
+                                    // (Material: the pill above is the open page's fill)
+                                    background: Theme.material ? transparent
                                         : s.current ? Theme.accent : ita.has-hover ? Theme.fill : transparent;
+                                    property <bool> cur: s.current;
+                                    changed cur => {
+                                        if cur {
+                                            root.pill-placed = true;
+                                            root.pill-y = self.absolute-position.y - side-holder.absolute-position.y;
+                                        }
+                                    }
+                                    init => {
+                                        if cur {
+                                            root.pill-placed = false;
+                                            root.pill-y = self.absolute-position.y - side-holder.absolute-position.y;
+                                        }
+                                    }
                                     accessible-role: AccessibleRole.tab;
                                     accessible-label: s.name;
                                     accessible-item-selected: s.current;
@@ -759,8 +938,7 @@ export component SettingsWindow inherits Window {
                                             viewbox-height: 100;
                                             commands: root.cookie;
                                             fill: Theme.m3-primary;
-                                            property <duration> t: animation-tick();
-                                            transform-rotation: root.spin ? mod(t / 24s, 1) * 360deg : 0deg;
+                                            transform-rotation: root.spin ? root.spin-angle : 0deg;
                                         }
                                         SIcon {
                                             g: s.icon;
@@ -781,10 +959,12 @@ export component SettingsWindow inherits Window {
                                         font-weight: s.current ? 600 : 400;
                                         accessible-role: AccessibleRole.none;
                                     }
+                                    // (the list is one Tab stop: the open page, ringed)
+                                    SFocusRing { shown: side-keys.has-focus && s.current; radius: Theme.material ? 28px : 10px; }
                                     ita := TouchArea {
                                         mouse-cursor: pointer;
                                         clicked => {
-                                            keys.focus();
+                                            side-keys.focus();
                                             root.go(s.id);
                                         }
                                     }
@@ -796,10 +976,12 @@ export component SettingsWindow inherits Window {
                     if searching: Rectangle {
                         VerticalLayout {
                             spacing: 2px;
-                            for res in results: Rectangle {
+                            for res[ri] in results: Rectangle {
+                                property <bool> keyed: ri == root.res-cur && search-input.has-focus;
                                 min-height: Theme.material ? 56px : 36px;
                                 border-radius: Theme.material ? min(28px, self.height / 2) : 8px;
-                                background: Theme.material ? Theme.m3-on-surface.with-alpha(rta.pressed ? 0.1 : rta.has-hover ? 0.08 : 0) : rta.has-hover ? Theme.fill : transparent;
+                                background: Theme.material ? Theme.m3-on-surface.with-alpha(rta.pressed ? 0.1 : rta.has-hover || self.keyed ? 0.08 : 0) : rta.has-hover || self.keyed ? Theme.fill : transparent;
+                                SFocusRing { shown: parent.keyed; radius: Theme.material ? 32px : 10px; }
                                 animate background { duration: SM.hover; }
                                 accessible-role: AccessibleRole.list-item;
                                 accessible-label: res.text;
@@ -873,10 +1055,11 @@ export component SettingsWindow inherits Window {
                     }
                 }
             }
-            ScrollBar {
-                x: parent.width - 5px;
+            side-bar := ScrollBar {
+                x: parent.width - 12px - 2px;
                 y: side-scroll.y;
-                content-y: side-scroll.content-y;
+                height: side-scroll.height;
+                content-y <=> side-scroll.content-y;
                 viewport-h: side-scroll.content-height;
                 visible-h: side-scroll.height;
             }
@@ -893,6 +1076,7 @@ export component SettingsWindow inherits Window {
             property <bool> collapsed: Theme.material && page-scroll.content-y < -(headline.y + headline.height - 8px);
 
             page-scroll := Flickable {
+                flicked => { page-bar.poke(); }
                 y: pane.bar-h;
                 height: parent.height - pane.bar-h;
                 content-height: page.preferred-height + 64px;
@@ -937,13 +1121,27 @@ export component SettingsWindow inherits Window {
                             accessible-role: AccessibleRole.text;
                         }
                     }
-                    for b in blocks: BlockView { b: b; menu-open: root.menu-open ? root.menu-id : ""; }
+                    Rectangle {
+                        min-height: SBus.page-h;
+                        preferred-height: SBus.page-h;
+                        for pg in pages: PageView {
+                            x: 0;
+                            y: 0;
+                            width: parent.width;
+                            height: self.preferred-height;
+                            visible: pg.shown;
+                            shown: pg.shown;
+                            blocks: pg.blocks;
+                            menu-open: root.menu-open ? root.menu-id : "";
+                        }
+                    }
                 }
             }
-            ScrollBar {
-                x: parent.width - 6px;
+            page-bar := ScrollBar {
+                x: parent.width - 12px - 2px;
                 y: page-scroll.y;
-                content-y: page-scroll.content-y;
+                height: page-scroll.height;
+                content-y <=> page-scroll.content-y;
                 viewport-h: page-scroll.content-height;
                 visible-h: page-scroll.height;
             }
@@ -1058,83 +1256,18 @@ export component SettingsWindow inherits Window {
             background: Theme.separator;
         }
 
-        // ── The menu (ActionMenu.qml): a Choice's list, over everything ──
-        if menu-open: TouchArea {
-            clicked => { root.menu-dismiss(); }
-        }
-        if menu-open: menu := Rectangle {
-            property <length> item-h: Theme.material ? 44px : 32px;
-            property <length> full: min(Theme.material ? 360px : 320px, menu-items.length * item-h + 10px);
-            property <bool> up: root.height - (menu-y + menu-h + 4px) - 8px < full && menu-y - 12px > root.height - (menu-y + menu-h + 4px) - 8px;
-            width: max(Theme.material ? 240px : 220px, menu-w);
-            height: max(min(full, 2 * item-h + 10px), min(full, up ? menu-y - 12px : root.height - (menu-y + menu-h + 4px) - 8px));
-            x: max(8px, min(root.width - self.width - 8px, menu-x + menu-w - self.width));
-            y: up ? menu-y - self.height - 4px : menu-y + menu-h + 4px;
-            border-radius: Theme.material ? 16px : 12px;
-            background: Theme.material ? Theme.m3-surface-container : Theme.menu-bg;
-            border-width: Theme.material ? 0 : 1px;
-            border-color: Theme.separator;
-            drop-shadow-blur: 16px;
-            drop-shadow-offset-y: 4px;
-            drop-shadow-color: #00000033;
-            accessible-role: AccessibleRole.list;
-            Flickable {
-                x: 5px;
-                y: 5px;
-                width: parent.width - 10px;
-                height: parent.height - 10px;
-                content-height: menu-items.length * menu.item-h;
-                VerticalLayout {
-                    for it[i] in menu-items: Rectangle {
-                        height: menu.item-h;
-                        property <bool> lit: !it.off && mta.has-hover;
-                        border-radius: Theme.material ? (it.on ? 12px : 8px) : 8px;
-                        background: Theme.material ? (it.on ? Theme.m3-tertiary-container.mix(Theme.m3-on-tertiary-container, lit ? 0.92 : 1) : lit ? (it.style == 2 ? Theme.m3-error : Theme.m3-on-surface).with-alpha(0.08) : transparent)
-                            : lit ? (it.style == 2 ? Theme.danger : Theme.accent) : transparent;
-                        accessible-role: AccessibleRole.list-item;
-                        accessible-label: it.text;
-                        accessible-checked: it.on;
-                        accessible-action-default => { root.menu-pick(i); }
-                        property <color> ink: Theme.material ? (it.off ? Theme.m3-on-surface.with-alpha(0.38) : it.on ? Theme.m3-on-tertiary-container : it.style == 2 ? Theme.m3-error : Theme.m3-on-surface)
-                            : lit ? Theme.on-accent : it.off ? Theme.tertiary : it.style == 2 ? Theme.danger : Theme.label;
-                        if it.on || it.icon.p != "": SIcon {
-                            x: Theme.material ? 12px : 8px;
-                            g: it.on ? SG.check : it.icon;
-                            bold: it.on && !Theme.material;
-                            size: Theme.material ? 20px : 12px;
-                            color: parent.ink;
-                        }
-                        Text {
-                            x: Theme.material ? 44px : 28px;
-                            width: parent.width - self.x - 8px;
-                            height: parent.height;
-                            vertical-alignment: center;
-                            overflow: elide;
-                            text: it.text;
-                            color: parent.ink;
-                            font-size: Theme.material ? 14px : Theme.body;
-                            accessible-role: AccessibleRole.none;
-                        }
-                        mta := TouchArea {
-                            enabled: !it.off;
-                            mouse-cursor: pointer;
-                            clicked => { root.menu-pick(i); }
-                        }
-                    }
-                }
-            }
-        }
+        // (the menu, ActionMenu.qml, is its own popup window: settings-menu.slint)
 
         // ── The toast (Toast.qml): what just changed, with Undo ──
         toast := Rectangle {
             property <float> p: toast-shown ? 1 : 0;
-            animate p { duration: toast-shown ? 200ms : 140ms; easing: toast-shown ? ease-out : ease-in; }
+            animate p { duration: toast-shown ? 200ms : 140ms; easing: toast-shown ? cubic-bezier(0.33, 1, 0.68, 1) : cubic-bezier(0.32, 0, 0.67, 0); }
             visible: self.p > 0.01;
             opacity: self.p;
-            width: Theme.material ? max(288px, min(560px, toast-row.preferred-width + 32px)) : min(520px, toast-row.preferred-width + 32px);
+            width: Theme.material ? max(288px, min(560px, toast-row.preferred-width)) : min(520px, toast-row.preferred-width);
             height: Theme.material ? 48px : 44px;
             x: (parent.width - self.width) / 2;
-            y: parent.height - self.height - 24px + (Theme.material ? (1 - self.p) * 8px : 0);
+            y: parent.height - self.height - 24px + (Theme.material && toast-shown ? (1 - self.p) * 8px : 0);
             border-radius: Theme.material ? 4px : 14px;
             background: Theme.material ? Theme.m3-inverse-surface : Theme.dark ? #3a3a40 : #18181b;
             border-width: Theme.dark && !Theme.material ? 1px : 0;
@@ -1161,6 +1294,10 @@ export component SettingsWindow inherits Window {
                         height: Theme.material ? 40px : 28px;
                         border-radius: Theme.material ? 20px : Theme.radius-control;
                         background: Theme.material ? Theme.m3-inverse-primary.with-alpha(uta.pressed ? 0.1 : uta.has-hover ? 0.08 : 0) : #ffffff.with-alpha(uta.pressed ? 0.2 : uta.has-hover ? 0.12 : 0);
+                        animate background { duration: SM.hover; }
+                        // (pressed: Material swells, Glass gives a little)
+                        transform-scale: uta.pressed ? (Theme.material ? 1.06 : 0.97) : 1;
+                        animate transform-scale { duration: uta.pressed ? SM.press : 300ms; easing: uta.pressed ? ease-out : cubic-bezier(0.3, 1.6, 0.5, 1); }
                         accessible-role: AccessibleRole.button;
                         accessible-label: "Undo";
                         accessible-action-default => { root.undo(); }
@@ -1179,6 +1316,7 @@ export component SettingsWindow inherits Window {
                 }
             }
         }
+    }
     }
     // (a thin edge, as a window's border, over everything)
     Rectangle {

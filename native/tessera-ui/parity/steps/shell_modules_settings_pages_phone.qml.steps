@@ -1,0 +1,14 @@
+# phone: Phone page. Check in each look.
+# Never pair a real phone: start pairing only to see the code, then Cancel.
+ipc panels settings phone
+wait 2
+shot ph-top
+note P1: same groups, rows, texts, footers in both shells (the arena has no phone: "No phone connected"); gaps of 24 between groups. P4: Webcam rows (not ready: "Phone camera" with Install / Set Up) same text and button; do not click Install.
+ptr move 1100 600 scroll 0 5
+wait 1
+shot ph-scroll
+note P1/P4/P5 cont.: lower groups and More options row ("Show the phone in the Dock") same as QML.
+# MANUAL: P2 (needs adb and qrencode) click "Pair": label "Scan this code on your phone", a white 176 px square with a sharp black QR code (Rust must show the code, crisp modules, not blurred); click Cancel: label "Pair with a QR code", the square gone.
+# MANUAL: P3 only with an unauthorised phone plugged in: "Allow this computer on your phone" in the accent colour.
+# MANUAL: P5 More options: toggle "Show the phone in the Dock": config phone.dock follows.
+ipc panels close

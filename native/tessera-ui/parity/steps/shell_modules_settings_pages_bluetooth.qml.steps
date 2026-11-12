@@ -1,0 +1,14 @@
+# bluetooth: lands on Network scrolled to Bluetooth. Check in each look.
+# Never click the Bluetooth switch, Look again, the fix button or any device.
+ipc panels settings bluetooth
+wait 2
+shot bt-top
+note B1: the page lands on Network scrolled to Bluetooth in both shells; the row says the same (likely "Not available" or a broken-state title/reason) with the same buttons visible: fix button primary, no switch when the adapter is broken.
+ptr move 1100 600 scroll 0 3
+wait 1
+shot bt-scroll
+note B1 cont.: the rest of the Bluetooth section (Fast Pair "Show earbuds nearby" switch, device lists) reads the same in both shells.
+# MANUAL: B2 hover the fix / Look again button (read x,y from the shot), shot: hover state in both; do not click.
+# MANUAL: B3 click the "Show earbuds nearby" switch twice (config only, safe): it toggles and returns in both.
+# MANUAL: B4 only if the arena shows devices: hover a row (Material tint, inner corners), right-click it: menu at the pointer with a separator before "Copy address" (QML; report Rust), Esc. Never press-and-hold in Rust.
+ipc panels close

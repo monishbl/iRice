@@ -133,6 +133,8 @@ pub struct NetworkAlerts {
     last: Option<Conns>,
     watch: Option<Watch>,
     settle: slint::Timer,
+    /// what Settings → Notifications was last told (networkCanWatch, networkReason)
+    sent: Option<String>,
 }
 
 impl NetworkAlerts {
@@ -172,10 +174,13 @@ impl NetworkAlerts {
             }
         }
         self.on = on;
-        crate::bus::put(
-            NAME,
-            json!({"mode": self.mode, "canWatch": !self.mode.is_empty(), "reason": if self.mode.is_empty() { "Needs NetworkManager, or the ip command (install iproute2)" } else { "" }, "on": on}),
-        );
+        let reason = if self.mode.is_empty() { "Needs NetworkManager, or the ip command (install iproute2)" } else { "" };
+        crate::bus::put(NAME, json!({"mode": self.mode, "canWatch": !self.mode.is_empty(), "reason": reason, "on": on}));
+        // Settings → Notifications' network alert row (RustBridgeNotify's networkCanWatch, networkReason)
+        if self.sent.as_deref() != Some(reason) {
+            self.sent = Some(reason.to_string());
+            h.ask("settings.feed", json!(["notify", {"networkCanWatch": !self.mode.is_empty(), "networkReason": reason}]));
+        }
     }
 
     fn look(&mut self, h: &mut Host) {

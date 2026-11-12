@@ -1,0 +1,22 @@
+# Accessibility page. Never press Install or Download.
+ipc panels settings accessibility
+wait 2
+shot acc-top
+note A1 same rows, texts and footers as QML; the Segmented is greyed when not installed in both shells.
+ptr move 1100 600 sleep 200 scroll 0 30
+wait 1
+shot acc-more
+note A1 bottom of the page: More options area same as QML. Click More options (y from the shot) and compare.
+ptr move 1100 600 sleep 200 scroll 0 -30
+wait 1
+ptr move 1330 450 sleep 200 glide 1330 450 100 click
+wait 1
+shot acc-lang
+note A3 Language dropdown open: "Automatic" first; QML item heights 36/28; compare Rust. Dropdown position is a guess.
+key -k Escape
+wait 1
+shot acc-lang-closed
+note A3 Esc closes the list and nothing is picked.
+# MANUAL: A2 if the Segmented is enabled (installed): click Island then Off: detail "In the island at the top..." then "Off"; captions.enabled false, placement stays island; leave as it was
+# MANUAL: A4 click the Pointer link: Mouse and Trackpad opens scrolled to "Shake to find the pointer"; value text equals that page's style
+ipc panels close

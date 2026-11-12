@@ -82,6 +82,10 @@ enum M {
     Remove,
     Website,
     MenuPick(i32),
+    /// the split button wants its menu: (x, y) its bottom right in the
+    /// window, only-open (Down; else it toggles)
+    MenuToggle(f32, f32, bool),
+    MenuDismiss,
     Catalogue,
     Image(String, Option<Pixels>),
 }
@@ -119,6 +123,13 @@ pub struct AppStore {
     debounce: slint::Timer,
     images: HashMap<String, Option<slint::Image>>,
     pending: HashSet<String>,
+    /// the split button's menu, its own popup (SplitButton.qml's Popup)
+    menu: Option<(Rc<Surface>, ui::AsMenu)>,
+    menu_rows: tessera_core::rows::Rows<ui::AsMenuItem>,
+    /// when a click elsewhere closed it: that click on the button mustn't reopen it
+    menu_dismissed: Option<std::time::Instant>,
+    /// menus hidden where the State couldn't be borrowed mutably, dropped next turn
+    stale_menus: Vec<Rc<Surface>>,
 }
 
 fn glyphs() -> ui::AsGlyphs {
@@ -159,14 +170,20 @@ fn styled_md(s: &str) -> StyledText {
 /// rows only: the cards under the pointer stay), else a new one
 fn update<T: Clone + PartialEq + 'static>(current: &ModelRc<T>, rows: Vec<T>) -> Option<ModelRc<T>> {
     if let Some(vm) = current.as_any().downcast_ref::<VecModel<T>>() {
-        if vm.row_count() == rows.len() {
-            for (i, r) in rows.into_iter().enumerate() {
+        // (by position, as tessera_core::rows::Rows: a list that grows or
+        // shrinks keeps the cards it still has instead of making all anew)
+        let n = rows.len();
+        for (i, r) in rows.into_iter().enumerate() {
+            if i < vm.row_count() {
                 if vm.row_data(i).as_ref() != Some(&r) {
                     vm.set_row_data(i, r);
                 }
+            } else {
+                vm.push(r);
             }
-        } else {
-            vm.set_vec(rows);
+        }
+        while vm.row_count() > n {
+            vm.remove(vm.row_count() - 1);
         }
         return None;
     }
@@ -224,6 +241,7 @@ impl AppStore {
         on!(on_remove, | | M::Remove);
         on!(on_website, | | M::Website);
         on!(on_menu_pick, |i| M::MenuPick(i));
+        on!(on_menu_toggle, |x, y, o| M::MenuToggle(x, y, o));
         on!(on_install_catalogue, | | M::Catalogue);
         ui.show().expect("show the App Store");
         let a11y = crate::a11y::A11y::new(&surface, st.tx.clone());
@@ -244,7 +262,54 @@ impl AppStore {
         }
     }
 
+    /// The split button's menu by the button's right end (x, y: its bottom
+    /// right), right edges lined up, 8 px under it; 200 wide at least,
+    /// 44 px a row and 8 above and below
+    fn open_menu(&mut self, st: &mut State, x: f32, y: f32) {
+        let Some(w) = &self.win else { return };
+        let n = self.menu_rows.len();
+        if n == 0 {
+            return;
+        }
+        let longest = (0..n).filter_map(|i| self.menu_rows.get(i)).map(|m| m.text.chars().count()).max().unwrap_or(0);
+        let mw = ((longest as f32 * 7.6 + 16.0 + 20.0 + 12.0 + 16.0).max(200.0)).ceil() as u32;
+        let mh = (n as u32) * 44 + 16;
+        let spec = tessera_core::wayland::PopupSpec {
+            namespace: "tessera:appstore-menu",
+            anchor: (x.round() as i32 - 1, y.round() as i32 - 1, 1, 1),
+            size: (mw, mh),
+            offset: (1 - mw as i32, 8),
+            above: false,
+            grab: true,
+        };
+        let Some(surface) = st.prepare_popup(&w.surface, spec) else { return };
+        let ui = ui::AsMenu::new().expect("AsMenu");
+        st.shell.apply_theme(&ui.global::<ui::Theme>());
+        ui.set_items(self.menu_rows.model());
+        let to = st.shell.sender(NAME);
+        {
+            let to = to.clone();
+            ui.on_pick(move |i| to(Box::new(M::MenuPick(i))));
+        }
+        ui.on_dismiss(move || to(Box::new(M::MenuDismiss)));
+        ui.show().expect("show the App Store menu");
+        w.ui.set_menu_open(true);
+        self.menu = Some((surface, ui));
+    }
+
+    fn close_menu(&mut self, st: &mut State) {
+        if let Some((surface, ui)) = self.menu.take() {
+            let _ = ui.hide();
+            surface.hide();
+            st.drop_surface(&surface);
+        }
+        if let Some(w) = &self.win {
+            w.ui.set_menu_open(false);
+        }
+    }
+
     fn close_window(&mut self, st: &mut State) {
+        self.close_menu(st);
         self.debounce.stop();
         if let Some(w) = self.win.take() {
             // (hidden first: Slint keeps a shown window, and with it the surface, alive)
@@ -313,9 +378,9 @@ impl AppStore {
 
     fn show_page(&mut self, st: &mut State, app: Value) {
         self.detail = Some(app);
+        self.close_menu(st);
         if let Some(w) = &self.win {
             w.ui.set_page_y(0.0);
-            w.ui.set_menu_open(false);
         }
         self.push(st);
     }
@@ -437,19 +502,28 @@ impl AppStore {
         let sections_now = self.sections.clone();
         let secs: Vec<(String, Vec<ui::AsApp>)> = sections_now.iter().map(|(t, a)| (t.clone(), a.iter().map(|x| self.as_app(st, x, card)).collect())).collect();
         let current = ui.get_sections();
-        let same = current.row_count() == secs.len() && current.as_any().downcast_ref::<VecModel<ui::AsSection>>().is_some();
-        if same {
+        // (sections changed in place, by position, each one's cards too: a
+        // new Discover load keeps the cards it still has)
+        if let Some(vm) = current.as_any().downcast_ref::<VecModel<ui::AsSection>>() {
+            let n = secs.len();
             for (i, (t, rows)) in secs.into_iter().enumerate() {
-                let Some(mut s) = current.row_data(i) else { continue };
-                let changed_title = s.title.as_str() != t;
-                if let Some(n) = update(&s.apps, rows) {
-                    s.apps = n;
-                    s.title = t.into();
-                    current.set_row_data(i, s);
-                } else if changed_title {
-                    s.title = t.into();
-                    current.set_row_data(i, s);
+                match vm.row_data(i) {
+                    Some(mut s) => {
+                        let changed_title = s.title.as_str() != t;
+                        if let Some(m) = update(&s.apps, rows) {
+                            s.apps = m;
+                            s.title = t.into();
+                            vm.set_row_data(i, s);
+                        } else if changed_title {
+                            s.title = t.into();
+                            vm.set_row_data(i, s);
+                        }
+                    }
+                    None => vm.push(ui::AsSection { title: t.into(), apps: ModelRc::new(VecModel::from(rows)) }),
                 }
+            }
+            while vm.row_count() > n {
+                vm.remove(vm.row_count() - 1);
             }
         } else {
             let model: Vec<ui::AsSection> = secs.into_iter().map(|(t, rows)| ui::AsSection { title: t.into(), apps: ModelRc::new(VecModel::from(rows)) }).collect();
@@ -497,8 +571,14 @@ impl AppStore {
                 menu.push(ui::AsMenuItem { text: "Open the website".into(), icon: g("globe"), danger: false, enabled: true, id: 1 });
             }
             menu.push(ui::AsMenuItem { text: "Copy the name".into(), icon: g("copy"), danger: false, enabled: true, id: 2 });
-            ui.set_menu_items(ModelRc::new(VecModel::from(menu)));
+            self.menu_rows.set(menu);
         } else {
+            // (no app's page: its menu goes too)
+            if let Some((surface, m)) = self.menu.take() {
+                let _ = m.hide();
+                surface.hide();
+                self.stale_menus.push(surface);
+            }
             ui.set_menu_open(false);
         }
     }
@@ -659,7 +739,19 @@ impl Part for AppStore {
                     }
                 }
             }
+            M::MenuToggle(x, y, only_open) => {
+                let just = self.menu_dismissed.take().is_some_and(|t| t.elapsed() < std::time::Duration::from_millis(300));
+                if self.menu.is_some() {
+                    if !only_open {
+                        self.close_menu(st);
+                    }
+                } else if !just && (x > 0.0 || y > 0.0) {
+                    self.open_menu(st, x, y);
+                }
+            }
+            M::MenuDismiss => self.close_menu(st),
             M::MenuPick(id) => {
+                self.close_menu(st);
                 let Some(app) = self.detail.clone() else { return };
                 match id {
                     0 if self.busy_with(&logic::text(&app, "key")).is_empty() => crate::shell::ask(NAME, json!(["remove", app])),
@@ -684,6 +776,12 @@ impl Part for AppStore {
 
     /// Closed by the compositor (Super+Q, its close button): Panels follows
     fn surface_closed(&mut self, st: &mut State, s: &Rc<Surface>) {
+        // (the menu: a click elsewhere)
+        if self.menu.as_ref().is_some_and(|m| Rc::ptr_eq(&m.0, s)) {
+            self.menu_dismissed = Some(std::time::Instant::now());
+            self.close_menu(st);
+            return;
+        }
         if self.win.as_ref().is_some_and(|w| Rc::ptr_eq(&w.surface, s)) {
             self.close_window(st);
             self.feed.open = false;
@@ -692,6 +790,9 @@ impl Part for AppStore {
     }
 
     fn after_frame(&mut self, st: &mut State) {
+        for s in std::mem::take(&mut self.stale_menus) {
+            st.drop_surface(&s);
+        }
         let kbd = st.keyboard_surface();
         let Some(w) = &mut self.win else { return };
         let f = kbd.as_ref().is_some_and(|k| Rc::ptr_eq(k, &w.surface));

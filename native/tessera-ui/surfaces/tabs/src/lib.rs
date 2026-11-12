@@ -27,10 +27,10 @@ use tessera_core::services::clients::{Client, Monitor};
 use tessera_core::services::hypr::request;
 use tessera_core::services::icons::Icons;
 use tessera_core::shell::Part;
-use tessera_core::wm::{self, AppIcons, IconsDone};
+use tessera_core::wm::{AppIcons, IconsDone};
 use tessera_core::wayland::{Spec, State, Surface};
 use serde::Deserialize;
-use slint::{ComponentHandle, ModelRc, VecModel};
+use slint::ComponentHandle;
 use smithay_client_toolkit::shell::wlr_layer::{Anchor, KeyboardInteractivity, Layer};
 use smithay_client_toolkit::shell::WaylandSurface;
 use std::any::Any;
@@ -131,6 +131,9 @@ struct Bar {
     strip: Strip,
     surface: Rc<Surface>,
     ui: ui::TabBar,
+    /// the tabs, changed in place (a new model on every title change lost the
+    /// hover on a tab and its × button)
+    tabs: tessera_core::rows::Rows<ui::TbTab>,
 }
 
 #[derive(Default)]
@@ -265,13 +268,15 @@ impl Tabs {
                         ui.on_close_tab(move |i| to(Box::new(M::Close(n, i))));
                     }
                     ui.on_new_tab(move || to(Box::new(M::New(n))));
+                    let tabs = tessera_core::rows::Rows::new();
+                    ui.set_tabs(tabs.model());
                     ui.show().expect("show tabs");
                     surface.show(s.w.max(1) as u32, BAR_H as u32);
                     if self.bars.is_empty() && keep.is_empty() {
                         let t = ui.global::<ui::Theme>();
                         self.icons.restyle(st, t.get_accent(), t.get_m3_primary_container(), t.get_m3_on_primary_container());
                     }
-                    Bar { strip: s, surface, ui }
+                    Bar { strip: s, surface, ui, tabs }
                 }
             };
             keep.push(bar);
@@ -312,7 +317,7 @@ impl Tabs {
                 })
                 .collect();
             let b = &self.bars[i];
-            b.ui.set_tabs(ModelRc::new(VecModel::from(tabs)));
+            b.tabs.set(tabs);
             b.ui.set_settled(self.settled);
         }
         self.icons.flush(send(st));

@@ -1,0 +1,15 @@
+# ShapedArt: steps from parity/shell_modules_menubar_ShapedArt.qml.md (batches 1-5). Screen IRICE-TEST 1920x1080 scale 1;
+# the island is centred at x 960 (closed y ~14, open ~392 wide); the bar is 30 px tall.
+# Each block runs in both looks: the file runs top to bottom, Material first, then Glass.
+
+look material
+setup python3 sandbox/tools/fakeplayer.py /usr/share/pixmaps/archlinux-logo.png &
+wait 2
+ipc panels open nowPlaying IRICE-TEST
+wait 1
+shot cookie
+note playing: the art is a nine-scalloped cookie
+setup playerctl pause
+wait 1
+shot square
+note paused: a 16 px-cornered square (crossfade ~300 ms)

@@ -1,0 +1,20 @@
+# WindowPreview: miniatures in the Overview GRID style. Needs overview.style = "grid" in the config.
+# Earlier run FAILED: badge. QML shows a ~20 px app icon badge bottom-right of each miniature; Rust showed a tiny dot (Glass) or an unfilled coloured disc (Material) without the icon.
+# MANUAL: set overview.style = "grid" (use_config) before this file; the runner cannot change the config
+setup foot & foot & foot &
+wait 2
+rec wp-fade 1 ipc panels open overview IRICE-TEST
+note Cell 1 spans x 162..462, y 444..612. Each window shows its icon first if the picture is late, then the picture fades in over ~150 ms OutCubic (9 +- 1 frames at 60 fps); compare frame count with QML. The recorder may die at Overview open (earlier run).
+wait 1
+shot wp-badge
+note Bottom-right of each miniature: the foot icon (Colloid) about 20 px (Material: on a round chip). FAILED earlier: Rust showed only a dot / empty disc, no icon. A miniature smaller than 40x32 has no badge.
+ptr move 300 520 sleep 300 glide 310 525 100
+wait 1
+shot wp-hover
+note Hovered miniature outline turns accent (Glass 2 px, Material 3 px); QML accent is orange #FF9F0A, earlier Rust showed red #FF453A (FAIL, accent colour). Off the miniature the outline goes back.
+ptr move 960 900 sleep 300 glide 970 900 100
+wait 1
+shot wp-unhover
+note Outline back to normal (Glass 1 px #36363C dark / #E4E4E7 light, Material none).
+# MANUAL: Failed state: kill a foot right after opening the Overview (or an Xwayland window): icon stays in the middle with "foot" under it when the miniature is >= 72x56
+# MANUAL: Live (previews = live): focus a foot, open the Overview, type in it with wtype; its miniature updates at <= 30/s; with snapshot it doesn't

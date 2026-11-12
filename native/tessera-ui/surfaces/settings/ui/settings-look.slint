@@ -15,7 +15,7 @@
 
 import { Theme } from "@tessera/theme.slint";
 import { Busy } from "@tessera/widgets.slint";
-import { SIc, SOpt, SetRow, SBlock, SBus, SG, SM, SIcon, SFocusRing, SSwitch, SSlider, SSegmented, SChoice, SButton, SField, SChip, SSwatch, SFilled } from "settings-kit.slint";
+import { SIc, SOpt, SetRow, SBlock, SBus, SG, SM, SIcon, SFocusRing, SSwitch, SSlider, SSegmented, SChoice, SButton, SField, SChip, SSwatch, SFilled, STip } from "settings-kit.slint";
 
 global LG {
     out property <SIc> reset: { p: "\u{e038}", m: "\u{e166}" };
@@ -559,8 +559,17 @@ component ClockFaces inherits Rectangle {
     height: 212px;
     clip: true;
     accessible-role: AccessibleRole.list;
-    accessible-label: "Clock style";
-    forward-focus: fs;
+    accessible-label: "Clock style: " + (r.index >= 0 && r.index < r.data.length ? r.data[r.index].text : "");
+    // Where it is: the chosen one (animated, as the ListView's highlight
+    // move), less what a drag has pulled it (ClockFaces.qml's ListView)
+    property <int> chosen: r.index;
+    property <float> pos: r.index;
+    property <bool> snapping;
+    animate pos { duration: snapping ? 0ms : 320ms; easing: cubic-bezier(0.2, 0, 0, 1); }
+    changed chosen => { pos = chosen; }
+    property <length> drag;
+    property <length> grab-x;
+    property <float> shown: pos - drag / 184px;
     fs := FocusScope {
         key-pressed(e) => {
             if e.text == Key.LeftArrow && r.index > 0 { SBus.act(r.id, r.index - 1, 0, ""); return accept; }
@@ -569,13 +578,15 @@ component ClockFaces inherits Rectangle {
         }
     }
     for f[i] in r.data: card := Rectangle {
-        property <float> off: abs(i - r.index);
+        // (smaller and fainter the further from the centre, as it slides)
+        property <float> off: abs(i - root.shown);
         width: 176px;
         height: parent.height - 24px;
-        x: (parent.width - 176px) / 2 + (i - r.index) * 184px;
+        x: (parent.width - 176px) / 2 + (i - root.shown) * 184px;
         y: 12px;
-        animate x { duration: 320ms; easing: cubic-bezier(0.2, 0, 0, 1); }
         opacity: max(0.55, 1 - off * 0.45);
+        // (the whole card scales, its clock and name too)
+        transform-scale: s;
         accessible-role: AccessibleRole.list-item;
         accessible-label: f.text;
         accessible-item-selected: f.on;
@@ -592,10 +603,10 @@ component ClockFaces inherits Rectangle {
             border-color: Theme.m3-primary;
         }
         Rectangle {
-            x: 6px + (parent.width - 12px) * (1 - s) / 2;
-            y: 6px + (parent.height - 12px) * (1 - s) / 2;
-            width: (parent.width - 12px) * s;
-            height: (parent.height - 12px) * s;
+            x: 6px;
+            y: 6px;
+            width: parent.width - 12px;
+            height: parent.height - 12px;
             border-radius: 28px;
             clip: true;
             background: Theme.m3-surface-container-highest;
@@ -620,12 +631,38 @@ component ClockFaces inherits Rectangle {
                 font-weight: 500;
             }
         }
-        TouchArea {
-            mouse-cursor: pointer;
-            clicked => {
+    }
+    // Drag or flick it: it follows, then settles on the nearest face and
+    // chooses it (onMovementEnded); a click chooses the face under it
+    TouchArea {
+        mouse-cursor: pointer;
+        pointer-event(e) => {
+            if e.button != PointerEventButton.left { return; }
+            if e.kind == PointerEventKind.down {
                 fs.focus();
-                SBus.act(r.id, i, 0, "");
+                root.grab-x = self.mouse-x;
+                root.drag = 0;
             }
+            if e.kind == PointerEventKind.up {
+                let pulled = root.drag;
+                // (from where it is now, on to the face it settles on)
+                root.snapping = true;
+                root.pos = root.shown;
+                root.drag = 0;
+                root.snapping = false;
+                let at = abs(pulled) > 8px
+                    ? round(root.pos)
+                    : round(root.pos + (self.mouse-x - root.width / 2) / 184px);
+                let to = max(0, min(r.data.length - 1, at));
+                if to != r.index {
+                    SBus.act(r.id, to, 0, "");
+                } else {
+                    root.pos = r.index;
+                }
+            }
+        }
+        moved => {
+            if self.pressed { root.drag = self.mouse-x - root.grab-x; }
         }
     }
 }
@@ -648,6 +685,14 @@ component BootCards inherits Rectangle {
         accessible-label: c.text;
         accessible-checked: c.on;
         accessible-action-default => { SBus.act(r.id, i, 0, ""); }
+        // Keyboard: a Tab stop each; Space or Return choose it (BootAnimations.qml 37–42)
+        cfs := FocusScope {
+            key-pressed(e) => {
+                if usable && !e.repeat && (e.text == " " || e.text == Key.Return) { SBus.act(r.id, i, 0, ""); return accept; }
+                reject
+            }
+        }
+        SFocusRing { y: 0; height: 85px; shown: cfs.has-focus; radius: Theme.material ? 16px : Theme.radius-control; }
         // the chosen one: a ring outside the picture
         if c.on: Rectangle {
             x: Theme.material ? -5px : -4px;
@@ -692,7 +737,18 @@ component BootCards inherits Rectangle {
             // being set: the password, then the rebuild
             if c.num > 0: Rectangle {
                 background: #00000080;
-                Busy {}
+                // (24 px, light: BootAnimations.qml 86–90)
+                Rectangle {
+                    width: 24px;
+                    height: 24px;
+                    SIcon {
+                        g: { p: "\u{eb44}", m: "" };
+                        size: 24px;
+                        color: #EDEDEF;
+                        property <duration> t: animation-tick();
+                        transform-rotation: mod(t / 800ms, 1) * 360deg;
+                    }
+                }
             }
             Rectangle {
                 border-radius: parent.border-radius;
@@ -712,7 +768,10 @@ component BootCards inherits Rectangle {
         }
         ta := TouchArea {
             mouse-cursor: usable ? MouseCursor.pointer : MouseCursor.default;
-            clicked => { SBus.act(r.id, i, 0, ""); }
+            clicked => {
+                cfs.focus();
+                SBus.act(r.id, i, 0, "");
+            }
         }
     }
 }
@@ -820,17 +879,19 @@ component AdvancedSlider inherits VerticalLayout {
 
 // Advanced… (appearance-glass.qml's popover, here under the Glass group):
 // the custom material's amounts, the optics with their preview, Reset
-component Advanced inherits HorizontalLayout {
+export component Advanced inherits HorizontalLayout {
     in property <SBlock> b;
+    // (in its popover, settings-popover.slint, which draws the panel)
+    in property <bool> bare;
     alignment: end;
     Rectangle {
         width: 300px;
         border-radius: Theme.radius-control + 16px;
-        background: Theme.menu-bg;
-        border-width: 1px;
+        background: bare ? transparent : Theme.menu-bg;
+        border-width: bare ? 0 : 1px;
         border-color: Theme.separator;
-        drop-shadow-blur: 16px;
-        drop-shadow-offset-y: 4px;
+        drop-shadow-blur: bare ? 0 : 16px;
+        drop-shadow-offset-y: bare ? 0 : 4px;
         drop-shadow-color: #00000033;
         // (spaced by padding, not spacing: the sliders' loops leave empty
         // places for the other half)
@@ -1085,6 +1146,8 @@ export component LookCtl inherits VerticalLayout {
                 mouse-cursor: pointer;
                 clicked => { SBus.act(r.id, i, 0, ""); }
             }
+            // (its name after 600 ms: appearance.qml 429–431)
+            STip { text: o.text; hovered: ita.has-hover; }
         }
     }
     // Emoji: Install font while it's missing, and the style
@@ -1118,14 +1181,17 @@ export component LookCtl inherits VerticalLayout {
         }
         VerticalLayout {
             alignment: center;
-            Rectangle {
+            adv := Rectangle {
                 width: al.preferred-width + 20px;
                 height: 28px;
                 border-radius: 14px;
                 background: ata.has-hover || r.on ? Theme.fill-hover : Theme.fill;
                 accessible-role: AccessibleRole.button;
                 accessible-label: "Advanced…";
-                accessible-action-default => { SBus.act(r.id, 100, 0, ""); }
+                accessible-action-default => {
+                    SBus.anchor(adv.absolute-position.x, adv.absolute-position.y, adv.width, adv.height);
+                    SBus.act(r.id, 100, 0, "");
+                }
                 al := Text {
                     text: "Advanced…";
                     color: Theme.label;
@@ -1134,7 +1200,11 @@ export component LookCtl inherits VerticalLayout {
                 }
                 ata := TouchArea {
                     mouse-cursor: pointer;
-                    clicked => { SBus.act(r.id, 100, 0, ""); }
+                    clicked => {
+                        // (its popover opens by it: settings-popover.slint)
+                        SBus.anchor(adv.absolute-position.x, adv.absolute-position.y, adv.width, adv.height);
+                        SBus.act(r.id, 100, 0, "");
+                    }
                 }
             }
         }

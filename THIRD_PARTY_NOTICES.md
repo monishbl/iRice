@@ -8,6 +8,7 @@ Tessera is licensed under the GNU General Public License, version 3 or (at your 
 | Tessera Sans Flex (Google Sans Flex, renamed) | OFL-1.1 | `material/assets/fonts/LICENSE-google-sans-flex`, [LICENSES/OFL-1.1.txt](LICENSES/OFL-1.1.txt) |
 | Tessera Symbols (Material Symbols Rounded, subset and renamed) | Apache-2.0 | `material/assets/fonts/LICENSE-material-symbols`, [LICENSES/Apache-2.0.txt](LICENSES/Apache-2.0.txt) |
 | material-color-utilities 0.4.0 | Apache-2.0 | [LICENSES/Apache-2.0.txt](LICENSES/Apache-2.0.txt) |
+| femtovg 0.27.0 (vendored in `native/tessera-ui/vendor/femtovg`, changed: a screen clip in `src/renderer/opengl.rs`) | MIT or Apache-2.0 | `native/tessera-ui/vendor/femtovg/LICENSE-MIT`, `LICENSE-APACHE` |
 | Google Nearby and UKEY2 protocol definitions | Apache-2.0 | [LICENSES/Apache-2.0.txt](LICENSES/Apache-2.0.txt) |
 | Unicode emoji data and CLDR annotations | Unicode License v3 | [LICENSES/Unicode-3.0.txt](LICENSES/Unicode-3.0.txt) |
 | emojibase-data shortcodes | MIT | below |

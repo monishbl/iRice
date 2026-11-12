@@ -1,0 +1,36 @@
+# Link share card (sandbox demo). Card x 800..1120, centred. Check in each look.
+setup qrencode -o /tmp/qr.png https://example.org || magick -size 200x200 xc:white /tmp/qr.png
+rec ln-enter 0.5 ipc linkshare demo ready /tmp/qr.png
+note Fade plus scale 0.96 -> 1 in 300 ms OutCubic; the code is crisp (no smoothing); compare QML vs Rust.
+wait 1
+shot ln-ready
+note Card with the QR code (sharp pixels, not blurred) and the Stop Sharing button.
+ipc linkshare demo busy /tmp/qr.png
+wait 1
+shot ln-busy
+note "Sending... 40%" in the label colour and the button "Stop Sharing".
+ipc linkshare demo loading x
+wait 1
+shot ln-loading
+note A spinner turning once per 0.8 s (compare two shots a moment apart if possible).
+ipc linkshare demo error x
+wait 1
+shot ln-error
+note Red "Making the code needs qrencode." and an "Install qrencode" chip (do NOT click it: it installs).
+ipc linkshare demo ready /tmp/qr.png
+wait 1
+ptr move 960 700 sleep 200 down
+shot ln-press
+note Button pressed: 0.97 scale in 100 ms (rec equivalent not possible with a held step). NOTE: click on layer surfaces may not register in the harness. (Button y approximate: take from ln-ready.)
+ptr move 960 700 up
+wait 1
+shot ln-after-press
+note After release the card closes.
+ipc linkshare demo ready /tmp/qr.png
+wait 1
+ptr move 960 540 click
+key -k Escape
+wait 1
+shot ln-esc
+note After clicking the card body, Escape closes it.
+# MANUAL: A phone scanning the code is not testable here

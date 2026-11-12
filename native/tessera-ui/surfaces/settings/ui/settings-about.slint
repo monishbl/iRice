@@ -108,6 +108,15 @@ component LogBox inherits Rectangle {
             accessible-role: AccessibleRole.none;
         }
     }
+    // (a thin indicator while there's more: LogView.qml 116–119)
+    if flick.content-height > flick.height + 1px: Rectangle {
+        x: parent.width - 6px;
+        width: 4px;
+        border-radius: 2px;
+        height: max(24px, flick.height * flick.height / flick.content-height);
+        y: 10px + (-flick.content-y / max(1px, flick.content-height - flick.height)) * (flick.height - self.height);
+        background: (Theme.material ? Theme.m3-inverse-on-surface : #d4d4d8).with-alpha(0.35);
+    }
 }
 
 // One of the bug report's boxes: a label over a few lines of text
@@ -116,6 +125,8 @@ component TextBox inherits VerticalLayout {
     in property <string> hint;
     in property <string> value;
     callback edited(string);
+    // (the form cleared by the page: the box too; typing broke its binding)
+    changed value => { if value == "" { area.text = ""; } }
     spacing: 6px;
     Text {
         text: label;
@@ -125,20 +136,31 @@ component TextBox inherits VerticalLayout {
     Rectangle {
         height: 88px;
         border-radius: Theme.material ? 20px : Theme.radius-control;
-        background: Theme.material ? (area.has-focus ? Theme.m3-surface-container-highest : Theme.m3-surface-container-highest) : Theme.fill;
+        background: Theme.material ? (area.has-focus ? Theme.m3-surface-container-highest : box-ta.has-hover ? Theme.m3-surface-container-highest.mix(Theme.m3-on-surface, 0.92) : Theme.m3-surface-container-highest) : Theme.fill;
         border-width: Theme.material ? (area.has-focus ? 2px : 0) : 1px;
         border-color: Theme.material ? Theme.m3-primary : area.has-focus ? Theme.accent : Theme.separator;
         clip: true;
-        TouchArea {
+        box-ta := TouchArea {
             mouse-cursor: MouseCursor.text;
             clicked => { area.focus(); }
         }
-        area := TextInput {
+        // (longer than the box: it scrolls, following the caret)
+        scroll := Flickable {
             x: 12px;
             y: 10px;
             width: parent.width - 24px;
             height: parent.height - 20px;
+            content-height: max(self.height, area.preferred-height);
+        area := TextInput {
+            width: scroll.width;
             text: root.value;
+            cursor-position-changed(p) => {
+                if p.y + 22px > -scroll.content-y + scroll.height {
+                    scroll.content-y = -(p.y + 22px - scroll.height);
+                } else if p.y < -scroll.content-y {
+                    scroll.content-y = -p.y;
+                }
+            }
             single-line: false;
             wrap: word-wrap;
             color: Theme.label;
@@ -146,6 +168,7 @@ component TextBox inherits VerticalLayout {
             font-size: Theme.body;
             accessible-label: root.label;
             edited => { root.edited(self.text); }
+        }
         }
         if area.text == "": Text {
             x: 12px;

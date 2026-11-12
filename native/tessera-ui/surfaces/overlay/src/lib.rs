@@ -77,6 +77,10 @@ struct Win {
     region: Option<Vec<(i32, i32, i32, i32)>>,
     glass_sent: String,
     settled: bool,
+    /// the toolbar's widgets and the mixer's sliders, handed to the window once
+    /// (a new model per sound change dropped a slider being dragged)
+    tools: tessera_core::rows::Rows<ui::OvTool>,
+    sliders: tessera_core::rows::Rows<ui::OvSlider>,
 }
 
 #[derive(Default)]
@@ -185,9 +189,13 @@ impl Overlay {
             ui.set_icons(ModelRc::new(VecModel::from(model::WIDGETS.iter().map(|w| gl(w.2)).collect::<Vec<_>>())));
             ui.global::<ui::OvG>().set_bar_icons(ModelRc::new(VecModel::from(["cursor-click", "push-pin", "x", "arrows-out-simple"].iter().map(|n| gl(n)).collect::<Vec<_>>())));
             ui.set_swatches(ModelRc::new(VecModel::from(model::COLORS.iter().map(|c| hex(c)).collect::<Vec<_>>())));
+            let tools = tessera_core::rows::Rows::new();
+            let sliders = tessera_core::rows::Rows::new();
+            ui.set_tools(tools.model());
+            ui.set_sliders(sliders.model());
             ui.show().expect("show overlay");
             let a11y = crate::a11y::A11y::new(&surface, st.tx.clone());
-            self.win = Some(Win { output: output.clone(), surface, ui, a11y, region: Some(vec![(-1, -1, -1, -1)]), glass_sent: String::new(), settled: false });
+            self.win = Some(Win { output: output.clone(), surface, ui, a11y, region: Some(vec![(-1, -1, -1, -1)]), glass_sent: String::new(), settled: false, tools, sliders });
         }
         self.load_notes();
         self.push(st);
@@ -246,7 +254,7 @@ impl Overlay {
         ui.set_crosshair_w(w("crosshair"));
         ui.set_fps_w(w("fps"));
         let tools: Vec<ui::OvTool> = model::ids(g).iter().map(|id| ui::OvTool { id: (*id).into(), icon: gl(model::WIDGETS.iter().find(|x| x.0 == *id).map_or("x", |x| x.2)), on: self.widget(id).open, name: model::WIDGETS.iter().find(|x| x.0 == *id).map_or("", |x| x.1).into() }).collect();
-        ui.set_tools(ModelRc::new(VecModel::from(tools)));
+        win.tools.set(tools);
         ui.set_cross(ui::OvCross { enabled: cross.enabled && g, color: hex(&cross.color), hex: cross.color.clone().into(), size: cross.size as f32, thickness: cross.thickness as f32, gap: cross.gap as f32, dot: cross.dot });
         ui.set_recording(self.recording);
         ui.set_has_image(!self.image.is_empty());
@@ -256,7 +264,7 @@ impl Overlay {
         }
         // (the mixer, from the sound server)
         let sliders = self.sliders(st);
-        win.ui.set_sliders(ModelRc::new(VecModel::from(sliders)));
+        win.sliders.set(sliders);
         // input and keyboard
         let rects = model::input_rects(open, &self.widgets, g);
         let win = self.win.as_mut().unwrap();
@@ -419,7 +427,7 @@ impl Part for Overlay {
         if what == TypeId::of::<Sound>() {
             if let Some(w) = &self.win {
                 let s = self.sliders(st);
-                w.ui.set_sliders(ModelRc::new(VecModel::from(s)));
+                w.sliders.set(s);
             }
         }
     }
@@ -590,7 +598,7 @@ impl Part for Overlay {
             }
         }
         let _ = M;
-        let key = format!("{shapes:?}");
+        let key = tessera_core::theme::glass_key(&shapes);
         if key != w.glass_sent {
             st.shell.glass.set(&w.output, NS, &shapes);
             w.glass_sent = key;

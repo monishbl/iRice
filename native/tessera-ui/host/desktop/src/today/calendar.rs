@@ -14,7 +14,7 @@
 use super::common::*;
 use super::parse;
 use serde_json::{json, Value};
-use std::collections::{BTreeMap, HashSet};
+use std::collections::HashSet;
 use tessera_core::host::Host;
 use tessera_core::services::calendar::{self as cal, Calendar, Event};
 
@@ -141,6 +141,99 @@ pub fn restore(e: &Value) {
     }
 }
 
+// ── Notification Center's editor (CalendarWidget.qml's editor, moveTo, remove) ──
+
+/// "y-mm-dd" -> (y, month 0-11, d)
+fn ymd(day: &str) -> Option<(i32, i32, i32)> {
+    let mut p = day.split('-').map(|x| x.parse::<i32>());
+    Some((p.next()?.ok()?, p.next()?.ok()? - 1, p.next()?.ok()?))
+}
+
+/// editor.save: `{key, todo, day, title, allDay, start, end (minutes; a
+/// to-do's start -1 for no time), alert, notes, location, target}`; your own
+/// events and to-dos (the accounts' are the system host's: an error says so)
+pub fn nc_save(h: &mut Host, e: &Value) -> Result<(), String> {
+    let (y, mo, d) = ymd(e["day"].as_str().unwrap_or("")).ok_or("That date isn't valid.")?;
+    let title = e["title"].as_str().unwrap_or("").trim().to_string();
+    let key = e["key"].as_str().unwrap_or("");
+    let n = |k: &str| e[k].as_i64().unwrap_or(-1) as i32;
+    if e["todo"].as_bool().unwrap_or(false) {
+        let t = n("start");
+        let due = if t < 0 { cal::make(y, mo, d, 23, 59, 0) } else { cal::make(y, mo, d, 0, t, 0) };
+        let patch = json!({"text": title, "due": due, "allDay": t < 0});
+        let saved = if key.is_empty() {
+            let mut item = patch;
+            item["done"] = json!(false);
+            super::todos::add_item(h, item)
+        } else {
+            super::todos::update(key, &patch)
+        };
+        return if saved { Ok(()) } else { Err("Could not save the task.".into()) };
+    }
+    let all_day = e["allDay"].as_bool().unwrap_or(false);
+    let (start, end) = if all_day { (cal::make(y, mo, d, 0, 0, 0), cal::make(y, mo, d + 1, 0, 0, 0)) } else { (cal::make(y, mo, d, 0, n("start"), 0), cal::make(y, mo, d, 0, n("end").max(n("start")), 0)) };
+    let alert = if all_day { -1 } else { e["alert"].as_i64().unwrap_or_else(default_alert) };
+    let notes = e["notes"].as_str().unwrap_or("");
+    if !key.is_empty() {
+        let id = key.strip_prefix("local:").ok_or("This calendar is read-only here. Change the event in its own calendar.")?;
+        update(id, &json!({"title": title, "start": start, "end": end, "allDay": all_day, "alert": alert, "notes": notes}));
+        return Ok(());
+    }
+    if !e["target"].as_str().unwrap_or("").is_empty() {
+        return Err("That calendar isn't available. Choose another one.".into());
+    }
+    add(&title, start, end, all_day, Some(alert), notes);
+    if cfg_get("google.newEventCalendar").as_str().is_some_and(|c| !c.is_empty()) {
+        cfg_set("google.newEventCalendar", json!(""));
+    }
+    Ok(())
+}
+
+/// remove: your event or to-do, kept for Undo (`{kind, item, title}`)
+pub fn nc_remove(key: &str) -> Result<Value, String> {
+    if let Some(id) = key.strip_prefix("local:") {
+        let e = remove(id).ok_or("That event is gone already.")?;
+        let title = e["title"].clone();
+        return Ok(json!({"kind": "event", "item": e, "title": title}));
+    }
+    if key.starts_with("local/") {
+        let t = super::todos::remove(key).ok_or("That to-do is gone already.")?;
+        let title = t["text"].clone();
+        return Ok(json!({"kind": "todo", "item": t, "title": title}));
+    }
+    Err("This calendar is read-only here.".into())
+}
+
+/// Undo
+pub fn nc_restore(u: &Value) {
+    if u["kind"] == "event" {
+        restore(&u["item"]);
+    } else {
+        super::todos::restore(&u["item"]);
+    }
+}
+
+/// moveTo: to another day, keeping its time
+pub fn nc_move(key: &str, day: &str) -> Result<(), String> {
+    let (y, mo, d) = ymd(day).ok_or("That date isn't valid.")?;
+    if let Some(id) = key.strip_prefix("local:") {
+        let src = local_raw().into_iter().find(|e| e["id"].as_str() == Some(id)).ok_or("That event is gone.")?;
+        let num = |v: &Value| v.as_f64().map_or(0, |f| f as i64);
+        let (s0, e0) = (num(&src["start"]), num(&src["end"]));
+        let t = cal::local(s0);
+        let shift = cal::make(y, mo, d, t.h, t.mi, 0) - s0;
+        update(id, &json!({"start": s0 + shift, "end": (if e0 != 0 { e0 } else { s0 }) + shift}));
+        return Ok(());
+    }
+    if key.starts_with("local/") {
+        let t = super::todos::find(key).ok_or("That to-do is gone.")?;
+        let at = cal::local(t.due);
+        super::todos::update(key, &json!({"due": cal::make(y, mo, d, at.h, at.mi, 0)}));
+        return Ok(());
+    }
+    Err("This calendar is read-only here.".into())
+}
+
 /// "ddd h:mm AP"
 fn when_text(ms: i64) -> String {
     tessera_core::util::strftime("%a %-I:%M %p", ms.div_euclid(1000))
@@ -182,43 +275,9 @@ pub fn time_text(e: &Event) -> String {
     format!("{}{}", hm(e.start), if e.end > e.start { format!(" – {}", hm(e.end)) } else { String::new() })
 }
 
-/// The calendar an event belongs to ("Reminders" for your own)
-pub fn name_of(c: &Calendar, e: &Event) -> String {
-    if e.key.starts_with("local:") {
-        return "Reminders".into();
-    }
-    let url = e.key.rsplitn(3, '|').nth(2).unwrap_or("");
-    c.sources.iter().find(|s| s.url == url).map(|s| s.name.clone()).unwrap_or_default()
-}
-
-/// Calendar.seriesOf: the event's series (its key without the instance)
-pub fn series_of(e: &Event) -> String {
-    e.key.rfind('|').map(|i| e.key[..i].to_string()).unwrap_or_default()
-}
-
-/// Calendar.dailyIn: series on at least 80% of the days (a week or more)
-/// -> title (listed once as "Every day" instead of dotting each day)
-pub fn daily_in(list: &[Event], from: i64, to: i64) -> BTreeMap<String, String> {
-    let days = ((to - from) as f64 / DAY as f64).round() as i64;
-    let mut out = BTreeMap::new();
-    if days < 7 {
-        return out;
-    }
-    let mut seen: BTreeMap<String, (String, HashSet<i64>)> = BTreeMap::new();
-    for e in list {
-        let s = series_of(e);
-        if s.is_empty() {
-            continue;
-        }
-        seen.entry(s).or_insert_with(|| (e.title.clone(), HashSet::new())).1.insert(cal::day_bounds(e.start).0);
-    }
-    for (s, (title, d)) in seen {
-        if d.len() as f64 >= days as f64 * 0.8 {
-            out.insert(s, title);
-        }
-    }
-    out
-}
+// (the calendar an event belongs to, its series and the "Every day" ones:
+// core's, shared with the lock's Bedside calendar)
+pub use cal::{daily_in, name_of, series_of};
 
 // ── Alerts ──────────────────────────────────────────────────────────────
 
@@ -274,6 +333,13 @@ mod tests {
         assert_eq!(m.len(), 1);
         assert!(daily_in(&list[..3], from, from + 3 * DAY).is_empty());
         assert_eq!(series_of(&ev("u|uid|99", 0)), "u|uid");
+    }
+
+    #[test]
+    fn days_read() {
+        assert_eq!(ymd("2026-11-07"), Some((2026, 10, 7)));
+        assert_eq!(ymd("nope"), None);
+        assert!(nc_remove("u|uid|1").is_err());
     }
 
     #[test]

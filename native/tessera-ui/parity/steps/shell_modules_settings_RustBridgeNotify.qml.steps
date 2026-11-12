@@ -1,0 +1,24 @@
+# Settings window: Material 1040x700 at 440,205 (page column from x~772); Glass 860x620 at 530,230. Sidebar rows (Material, x=560): Appearance 335, Wallpaper 385, Desktop 435, Menu bar 485, Lock 535, Notifications 626, Focus 676, Windows 767, Displays 858.
+# Click coordinates inside pages are not known in advance: those steps are MANUAL unless a keyboard path exists. Check in each look.
+setup notify-send A a; notify-send B b
+wait 1
+ipc panels settings notifications
+wait 2
+shot n1
+note N1 Clear All row says 2; Focus switch state matches QML; network alert row enabled as QML.
+ipc panels settings notifications/island
+wait 2
+shot n3
+note N3 Island page: CPU temperature shows non-zero as QML.
+ipc panels settings focus
+wait 2
+shot n4
+note N4 same modes listed as QML, the active one marked, status text.
+ipc panels settings windowrules
+wait 2
+shot n7
+note N7 title-bar plugin row as QML (loaded: no Install button), no rules error unless QML shows one.
+# MANUAL: N2 click a sound's play button: sound plays, log shows no 'no act'
+# MANUAL: N5 toggle Do Not Disturb on then off: menu bar moon shows then hides; switch follows
+# MANUAL: N6 Focus: add mode Test (type + Add): new mode selected as in QML; remove + Undo brings it back; remove again
+# MANUAL: never installHyprbars; clearAll only on the test notifications

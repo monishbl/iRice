@@ -28,6 +28,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use tessera_core::rows::Rows;
 
 const NS_THUMB: &str = "tessera:shotThumbnail";
 const NS_EDITOR: &str = "tessera:shotEditor";
@@ -160,8 +161,15 @@ pub struct Core {
     start_crop: Rect,
     pressed: bool,
     pub live: Live,
-    glow_timer: slint::Timer,
+    glow_timer: Rc<slint::Timer>,
     live_said: slint::Timer,
+    // ── the lists handed to the editor once (changed in place: rows.rs) ──
+    anns: Rows<ui::StAnn>,
+    width_tips: Rows<SharedString>,
+    lt_boxes: Rows<ui::LtBox>,
+    lt_chips: Rows<ui::LtChip>,
+    /// the redactions' blocks, made once per mark (the same picture after)
+    pix_cache: RefCell<Vec<([u32; 5], slint::Image)>>,
 }
 
 impl Default for Core {
@@ -212,8 +220,13 @@ impl Default for Core {
             start_crop: Rect::default(),
             pressed: false,
             live: Live::new(),
-            glow_timer: slint::Timer::default(),
+            glow_timer: Rc::new(slint::Timer::default()),
             live_said: slint::Timer::default(),
+            anns: Rows::new(),
+            width_tips: Rows::new(),
+            lt_boxes: Rows::new(),
+            lt_chips: Rows::new(),
+            pix_cache: RefCell::new(Vec::new()),
         }
     }
 }
@@ -470,6 +483,7 @@ impl Core {
             self.status = 0;
             self.img = (0, 0);
             self.base_img = slint::Image::default();
+            self.pix_cache.borrow_mut().clear();
             if let Some(tx) = self.tx.clone() {
                 std::thread::spawn(move || {
                     let img = image::open(&key.0).ok().map(|i| i.to_rgba8());
@@ -1081,11 +1095,18 @@ impl Core {
 
     fn glow(&mut self) {
         let weak = self.ed.clone();
+        let me = Rc::downgrade(&self.glow_timer);
         let t0 = Instant::now();
         self.glow_timer.start(slint::TimerMode::Repeated, Duration::from_millis(16), move || {
             let ms = t0.elapsed().as_secs_f32() * 1000.0;
             if let Some(ui) = weak.as_ref().and_then(|w| w.upgrade()) {
                 ui.set_glow(ltui::glow_at(ms));
+            }
+            // (done: no more frames once it's gone, as the QML's animation ends)
+            if ms >= 1000.0 {
+                if let Some(t) = me.upgrade() {
+                    t.stop();
+                }
             }
         });
     }
@@ -1098,8 +1119,10 @@ impl Core {
         let Some(ui) = self.eui() else { return };
         let s = self.shown();
         let (vw, vh) = self.view();
-        ui.set_boxes(ltui::boxes(&self.live, (s.x, s.y, s.w, s.h), vw, vh));
-        ui.set_lt(ltui::bar(&self.live, &self.ocr, self.material, self.geo.canvas_w - 380.0));
+        // (the word boxes and the chips change in place: a drag across the
+        // words doesn't make every box again, a hovered chip keeps its hover)
+        ltui::set_boxes(&self.lt_boxes, &self.live, (s.x, s.y, s.w, s.h), vw, vh);
+        ui.set_lt(ltui::bar_in(&self.live, &self.ocr, self.material, self.geo.canvas_w - 380.0, &self.lt_chips));
     }
 
     // ── Into the window ──────────────────────────────────────────────
@@ -1164,19 +1187,56 @@ impl Core {
                 o.y = y;
                 o.w = r.w * f;
                 o.h = r.h * f;
-                if let Some(base) = &self.base {
-                    let (cw, ch, px) = draw::pixelate(base, *r, *block);
-                    o.img = slint::Image::from_rgba8(SharedPixelBuffer::clone_from_slice(&px, cw, ch));
-                }
+                o.img = self.pixel_image(*r, *block);
             }
         }
         o
     }
 
+    /// A redaction's blocks as a picture: the one made for this mark before
+    /// (a draft's, every move, made anew)
+    fn pixel_image(&self, r: Rect, block: f32) -> slint::Image {
+        let k = pixel_key(r, block);
+        if let Some((_, img)) = self.pix_cache.borrow().iter().find(|(kk, _)| *kk == k) {
+            return img.clone();
+        }
+        match &self.base {
+            Some(base) => {
+                let (cw, ch, px) = draw::pixelate(base, r, block);
+                slint::Image::from_rgba8(SharedPixelBuffer::clone_from_slice(&px, cw, ch))
+            }
+            None => slint::Image::default(),
+        }
+    }
+
+    /// The marks into the editor's one list (only the rows that differ change;
+    /// the QML's Repeater over the session's items)
     fn push_anns(&self) {
-        let Some(ui) = self.eui() else { return };
+        // (the redactions' blocks: kept for the marks still there, made for new ones)
+        {
+            let old = std::mem::take(&mut *self.pix_cache.borrow_mut());
+            let mut keep: Vec<([u32; 5], slint::Image)> = Vec::new();
+            if let Some(base) = &self.base {
+                for a in &self.s.items {
+                    let Ann::Pixelate { r, block } = a else { continue };
+                    let k = pixel_key(*r, *block);
+                    if keep.iter().any(|(kk, _)| *kk == k) {
+                        continue;
+                    }
+                    let img = match old.iter().find(|(kk, _)| *kk == k) {
+                        Some((_, i)) => i.clone(),
+                        None => {
+                            let (cw, ch, px) = draw::pixelate(base, *r, *block);
+                            slint::Image::from_rgba8(SharedPixelBuffer::clone_from_slice(&px, cw, ch))
+                        }
+                    };
+                    keep.push((k, img));
+                }
+            }
+            *self.pix_cache.borrow_mut() = keep;
+        }
         let v: Vec<ui::StAnn> = self.s.items.iter().map(|a| self.ann_ui(a)).collect();
-        ui.set_anns(ModelRc::new(VecModel::from(v)));
+        self.anns.set(v);
     }
 
     fn push_draft(&self) {
@@ -1226,7 +1286,7 @@ impl Core {
             "pixelate" => ["Fine blocks", "Medium blocks", "Coarse blocks"],
             _ => ["Thin", "Medium", "Thick"],
         };
-        ui.set_width_tips(ModelRc::new(VecModel::from(tips.iter().map(|x| SharedString::from(*x)).collect::<Vec<_>>())));
+        self.width_tips.set(tips.iter().map(|x| SharedString::from(*x)).collect());
         let f = g.fit;
         let p = self.pending_crop;
         ui.set_crop_x((p.x - s.x) * f);
@@ -1253,6 +1313,10 @@ impl Core {
 
     fn setup_editor(&self, ui: &ui::ShotEditor) {
         let m = self.material;
+        // (the lists, once: every change after goes into them in place)
+        ui.set_anns(self.anns.model());
+        ui.set_width_tips(self.width_tips.model());
+        ui.set_boxes(self.lt_boxes.model());
         let tools: Vec<ui::StToolBtn> = TOOLS.iter().map(|t| ui::StToolBtn { icon: ic(t.1, m), label: t.2.into(), key: t.3.into() }).collect();
         ui.set_tool_list(ModelRc::new(VecModel::from(tools)));
         let pal: Vec<slint::Color> = PALETTE.iter().map(|c| {
@@ -1276,6 +1340,11 @@ impl Core {
         ui.set_ic_caret(ic("caret-down", m));
         ui.set_empty_shape(crate::surfaces::shapes::outline("cookie9").into());
     }
+}
+
+/// A redaction's identity: its box and block size
+fn pixel_key(r: Rect, block: f32) -> [u32; 5] {
+    [r.x.to_bits(), r.y.to_bits(), r.w.to_bits(), r.h.to_bits(), block.to_bits()]
 }
 
 /// Constrained by Shift: squares, circles, 45° arrows
@@ -1411,7 +1480,10 @@ impl Shots {
         {
             let mut c = self.core.borrow_mut();
             c.ocr = b.ocr.clone();
-            if b.ocr != old.ocr {
+            // (Tesseract just installed: read it now, as LiveTextLayer.qml's onAvailableChanged)
+            if c.live.status == "missing" && b.ocr.available && !old.ocr.available {
+                c.live_start();
+            } else if b.ocr != old.ocr {
                 c.push_live();
             }
         }
@@ -1503,6 +1575,7 @@ impl Shots {
                                 c.img = (w, h);
                                 c.base_img = slint::Image::from_rgba8(SharedPixelBuffer::clone_from_slice(img.as_raw(), w, h));
                                 c.base = Some(Arc::new(img));
+                                c.pix_cache.borrow_mut().clear();
                                 c.status = 1;
                                 if c.s.tool == "crop" {
                                     c.pending_crop = if c.s.crop.w > 0.0 { c.s.crop } else { c.full() };
@@ -1523,6 +1596,12 @@ impl Shots {
                     if c.t_leaving {
                         c.t_leaving = false;
                         c.t_visible = false;
+                        // (a swipe's offset goes back while it's hidden: the
+                        // next one slides in from its place, as the QML's enter())
+                        c.t_offset = 0.0;
+                        if let Some(ui) = c.tui() {
+                            ui.set_offset(0.0);
+                        }
                         if let Some(g) = c.s.thumb_gone() {
                             trash(g);
                         }

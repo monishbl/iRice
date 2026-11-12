@@ -1,9 +1,17 @@
 //! EGL on Wayland for Slint's FemtoVG renderer: one display and context for
 //! the process, one window surface per layer surface. libEGL is loaded at run
 //! time (khronos-egl "dynamic"), as Mesa ships it.
+//!
+//! A frame redraws only what changed (when the driver says how old the back
+//! buffer is, EGL_EXT_buffer_age): FemtoVG draws everything every frame, so
+//! the vendored femtovg (vendor/femtovg) scissors its screen drawing to the
+//! box that changed in this frame and the frames since the back buffer was
+//! last drawn (src/damage.rs finds what changed). A big window whose small
+//! part animates fills only that part. TESSERA_UI_FULL_REDRAW=1 turns it off.
 
 use khronos_egl as egl;
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
+use std::collections::VecDeque;
 use std::error::Error;
 use std::ffi::{c_void, CStr};
 use std::num::NonZeroU32;
@@ -19,9 +27,14 @@ pub struct Egl {
     /// eglSwapBuffersWithDamageKHR (or EXT), when the driver has it: the
     /// compositor hears which part of a frame changed (src/damage.rs)
     swap_with_damage: Option<SwapWithDamage>,
+    /// EGL_EXT_buffer_age (with the damage above): frames redraw only what changed
+    buffer_age: bool,
 }
 
 type SwapWithDamage = unsafe extern "system" fn(egl::EGLDisplay, egl::EGLSurface, *const egl::Int, egl::Int) -> egl::Boolean;
+
+/// EGL_BUFFER_AGE_EXT
+const BUFFER_AGE: egl::Int = 0x313D;
 
 impl Egl {
     pub fn new(wl_display: *mut c_void) -> Result<Rc<Self>, Box<dyn Error>> {
@@ -48,7 +61,11 @@ impl Egl {
             .filter(|(ext, _)| has(ext) && !crate::env::is_set("FULL_DAMAGE"))
             .find_map(|(_, f)| api.get_proc_address(f))
             .map(|f| unsafe { std::mem::transmute::<extern "system" fn(), SwapWithDamage>(f) });
-        Ok(Rc::new(Self { api, display, config, context, swap_with_damage }))
+        let buffer_age = has("EGL_EXT_buffer_age") && swap_with_damage.is_some() && !crate::env::is_set("UI_FULL_REDRAW");
+        if crate::env::is_set("DEBUG") {
+            eprintln!("debug: egl: damage {} buffer age {}", swap_with_damage.is_some(), buffer_age);
+        }
+        Ok(Rc::new(Self { api, display, config, context, swap_with_damage, buffer_age }))
     }
 
     /// Frames can say which part of them changed
@@ -65,7 +82,12 @@ pub struct GlSurface {
     interval_set: Cell<bool>,
     /// what changed in the frame being drawn: rectangles in buffer pixels,
     /// top-left origin, and the buffer's height (None: all of it)
-    pub damage: Rc<std::cell::RefCell<Option<(Vec<[i32; 4]>, i32)>>>,
+    pub damage: Rc<RefCell<Option<(Vec<[i32; 4]>, i32)>>>,
+    /// a frame starts (Surface::render): the next ensure_current sets its clip
+    pub frame: Rc<Cell<bool>>,
+    /// the last frames' changed boxes, newest first, in GL's window
+    /// coordinates (x, y from the bottom; None: all of it)
+    history: RefCell<VecDeque<Option<[i32; 4]>>>,
 }
 
 impl GlSurface {
@@ -74,8 +96,48 @@ impl GlSurface {
         let surface = unsafe {
             egl.api.create_window_surface(egl.display, egl.config, window.ptr() as egl::NativeWindowType, None)?
         };
-        Ok(Self { egl, window, surface, interval_set: Cell::new(false), damage: Default::default() })
+        Ok(Self { egl, window, surface, interval_set: Cell::new(false), damage: Default::default(), frame: Default::default(), history: Default::default() })
     }
+
+    /// The frame about to be drawn redraws only what changed in it and in the
+    /// frames since this back buffer was drawn (its age), as one box; all of
+    /// it when that isn't known (the first frames, a new size, no age)
+    fn set_clip(&self) {
+        let now = self.damage.borrow().as_ref().map(|(rects, h)| bbox(&egl_rects(rects, *h)));
+        let mut hist = self.history.borrow_mut();
+        let clip = if self.egl.buffer_age {
+            let age = self.egl.api.query_surface(self.egl.display, self.surface, BUFFER_AGE).unwrap_or(0).max(0) as usize;
+            clip_for(now, &hist, age)
+        } else {
+            None
+        };
+        hist.push_front(now);
+        hist.truncate(4);
+        femtovg::renderer::set_screen_clip(clip);
+    }
+}
+
+/// What a frame must redraw: this frame's box and the `age - 1` before it
+/// (age 1: the back buffer is the last frame); None: all of it
+fn clip_for(now: Option<[i32; 4]>, hist: &VecDeque<Option<[i32; 4]>>, age: usize) -> Option<[i32; 4]> {
+    if age == 0 || age - 1 > hist.len() {
+        return None;
+    }
+    hist.iter().take(age - 1).try_fold(now?, |a, f| f.map(|b| union(a, b)))
+}
+
+fn bbox(r: &[i32]) -> [i32; 4] {
+    let mut b = [i32::MAX, i32::MAX, i32::MIN, i32::MIN];
+    for q in r.chunks(4) {
+        b = [b[0].min(q[0]), b[1].min(q[1]), b[2].max(q[0] + q[2]), b[3].max(q[1] + q[3])];
+    }
+    [b[0], b[1], (b[2] - b[0]).max(0), (b[3] - b[1]).max(0)]
+}
+
+fn union(a: [i32; 4], b: [i32; 4]) -> [i32; 4] {
+    let (x0, y0) = (a[0].min(b[0]), a[1].min(b[1]));
+    let (x1, y1) = ((a[0] + a[2]).max(b[0] + b[2]), (a[1] + a[3]).max(b[1] + b[3]));
+    [x0, y0, x1 - x0, y1 - y0]
 }
 
 /// Damage rectangles for EGL: x, y from the bottom-left, w, h (EGL's buffer
@@ -96,11 +158,16 @@ unsafe impl slint::platform::femtovg_renderer::OpenGLInterface for GlSurface {
             // Never block in eglSwapBuffers: frames are paced by wl_surface.frame
             e.api.swap_interval(e.display, 0)?;
         }
+        // (once per frame, as it begins: other calls make the context current too)
+        if self.frame.replace(false) {
+            self.set_clip();
+        }
         Ok(())
     }
     fn swap_buffers(&self) -> Res<()> {
-        // Only what changed is damaged (the whole frame is drawn either way):
-        // Hyprland then repaints that part of the screen, not all of it
+        femtovg::renderer::set_screen_clip(None);
+        // Only what changed is damaged: Hyprland then repaints that part of
+        // the screen, not all of it (and the frame drew only that: set_clip)
         if let (Some(f), Some((rects, h))) = (self.egl.swap_with_damage, self.damage.borrow_mut().take()) {
             let r = egl_rects(&rects, h);
             if unsafe { f(self.egl.display.as_ptr(), self.surface.as_ptr(), r.as_ptr(), (r.len() / 4) as egl::Int) } == egl::TRUE {
@@ -111,6 +178,8 @@ unsafe impl slint::platform::femtovg_renderer::OpenGLInterface for GlSurface {
     }
     fn resize(&self, width: NonZeroU32, height: NonZeroU32) -> Res<()> {
         self.window.resize(width.get() as i32, height.get() as i32, 0, 0);
+        // (a new size: no old frame to keep)
+        self.history.borrow_mut().clear();
         Ok(())
     }
     fn get_proc_address(&self, name: &CStr) -> *const c_void {
@@ -124,5 +193,26 @@ unsafe impl slint::platform::femtovg_renderer::OpenGLInterface for GlSurface {
 impl Drop for GlSurface {
     fn drop(&mut self) {
         let _ = self.egl.api.destroy_surface(self.egl.display, self.surface);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_frame_redraws_what_changed_since_its_buffer() {
+        let h: VecDeque<Option<[i32; 4]>> = [Some([0, 0, 10, 10]), Some([50, 50, 10, 10]), None].into_iter().collect();
+        // (unknown age, or older than what's remembered: all)
+        assert_eq!(clip_for(Some([5, 5, 5, 5]), &h, 0), None);
+        assert_eq!(clip_for(Some([5, 5, 5, 5]), &h, 9), None);
+        // the last frame is the buffer: only now
+        assert_eq!(clip_for(Some([5, 5, 5, 5]), &h, 1), Some([5, 5, 5, 5]));
+        // two frames back: now and the last
+        assert_eq!(clip_for(Some([5, 5, 5, 5]), &h, 2), Some([0, 0, 10, 10]));
+        assert_eq!(clip_for(Some([5, 5, 5, 5]), &h, 3), Some([0, 0, 60, 60]));
+        // a frame that was all new in between: all
+        assert_eq!(clip_for(Some([5, 5, 5, 5]), &h, 4), None);
+        assert_eq!(clip_for(None, &h, 1), None);
     }
 }

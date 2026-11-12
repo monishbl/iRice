@@ -1,0 +1,43 @@
+# IslandLevels: steps from parity/shell_modules_menubar_IslandLevels.qml.md (batches 1-5). Screen IRICE-TEST 1920x1080 scale 1;
+# the island is centred at x 960 (closed y ~14, open ~392 wide); the bar is 30 px tall.
+# Each block runs in both looks: the file runs top to bottom, Material first, then Glass.
+
+look material
+setup pactl load-module module-null-sink sink_name=test
+setup wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+
+wait 0.5
+ptr glide 1150 20 300
+ptr click
+wait 0.6
+shot levels
+note under the volume row: the outputs (default bold, checked), and any app playing with its own level; the caret is now caret-up
+ptr glide 900 80 200
+ptr click
+wait 0.6
+shot switched
+note the clicked output is now checked (pactl get-default-sink agrees)
+ptr glide 1150 20 200
+ptr click
+wait 0.4
+shot closed
+note the list closed
+
+look glass
+setup pactl load-module module-null-sink sink_name=test
+setup wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+
+wait 0.5
+ptr glide 1150 20 300
+ptr click
+wait 0.6
+shot levels
+note under the volume row: the outputs (default bold, checked), and any app playing with its own level; the caret is now caret-up
+ptr glide 900 80 200
+ptr click
+wait 0.6
+shot switched
+note the clicked output is now checked (pactl get-default-sink agrees)
+ptr glide 1150 20 200
+ptr click
+wait 0.4
+shot closed
+note the list closed

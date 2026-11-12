@@ -12,6 +12,7 @@ doctest = false # (comments' code blocks are prose, not examples)
 [dependencies]
 slint.workspace = true
 i-slint-core.workspace = true
+femtovg.workspace = true # (egl.rs: the screen clip of the vendored copy)
 smithay-client-toolkit.workspace = true
 wayland-egl.workspace = true
 khronos-egl.workspace = true

@@ -1,0 +1,29 @@
+# Welcome (first-run wizard), both looks.
+setup foot &
+wait 1
+rec open 1.5 ipc welcome open
+note Backdrop and card fade in over ~300 ms, card rises 12 px; NO drop shadow under the card (FAIL if a dark halo is visible below it).
+wait 1
+shot step1
+note Step 1 of the welcome card, same layout as QML.
+rec step2 1 key -k Return
+note Enter moves to step 2: the new page slides in from the right (24 px, 250 ms) and fades (200 ms). Check the slide in the recording.
+wait 0.6
+key -k Escape
+wait 0.6
+shot back
+note Esc goes back one step; the previous step slides in from the LEFT.
+# Step 3: Dark
+# MANUAL: Tab to "Dark" and press Space: the desktop behind switches to dark at once (config.json appearance.mode "dark")
+# Step 4: wallpapers
+# MANUAL: step 3 of the wizard: click "Dusk": ring moves to it and the wallpaper changes behind; hover another tile: faint ring (0.35); "Choose a picture..." opens the file picker (close it) (click on layer surfaces may not register in the harness)
+# Step 5: finish
+# MANUAL: last step: "Start using Tessera" fades out (~200 ms) and welcome.done is true; if the look changed, switch-look runs
+# Step 6: later
+# MANUAL: reopen, "Set up later" closes it, done = true
+key -k Escape
+wait 1
+shot closed
+note Welcome is closed or at its first step after Esc; compare with QML (Esc at step 1).
+# Step 7: reduce motion
+# MANUAL: appearance.reduceMotion true: open appears at once, steps change without sliding

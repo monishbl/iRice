@@ -170,10 +170,11 @@ component DeviceItem inherits Rectangle {
         y: 4px;
         width: 68px;
         height: 68px;
-        // (Glass shrinks on press; Material swells: ElasticControl)
+        // (Glass shrinks on press, 100 ms linear; Material swells: ElasticControl,
+        // 1 + min(6 %, 10 px) on springPress 7.5/0.3 → ω 21.7, ζ 0.43: 290 ms spring(0.57))
         transform-scale: Theme.material ? (down ? 1.06 : 1) : (down ? 0.94 : 1);
         transform-origin: { x: self.width / 2, y: self.height / 2 };
-        animate transform-scale { duration: Theme.material ? 350ms : 100ms; easing: Theme.material ? spring(0.3) : cubic-bezier(0.33, 1, 0.68, 1); }
+        animate transform-scale { duration: Theme.material ? 290ms : 100ms; easing: Theme.material ? spring(0.57) : cubic-bezier(0, 0, 1, 1); }
         if focused: Ring2 { pw: parent.width; ph: parent.height; radius: 38px; }
         // Material: the device on a shape, its kind telling which; a hover morphs it
         if Theme.material: Path {
@@ -477,12 +478,13 @@ export component ShareSheet inherits Window {
                     height: self.width;
                     x: parent.width - self.width;
                     y: 0;
+                    // (QML: no Behavior on its radius: it squares off at once)
                     border-radius: Theme.material && close-ta.pressed ? 12px : self.width / 2;
-                    animate border-radius { duration: 250ms; easing: spring(0.3); }
                     background: close-ta.pressed ? Theme.fill-pressed : close-ta.has-hover ? Theme.fill-hover : Theme.fill;
+                    // (ElasticControl: springPress, 290 ms spring(0.57))
                     transform-scale: Theme.material && close-ta.pressed ? 1.06 : 1;
                     transform-origin: { x: self.width / 2, y: self.height / 2 };
-                    animate transform-scale { duration: 350ms; easing: spring(0.3); }
+                    animate transform-scale { duration: 290ms; easing: spring(0.57); }
                     accessible-role: button;
                     accessible-label: "Close";
                     accessible-action-default => { dismissed(); }
@@ -619,12 +621,15 @@ component CardButton inherits Rectangle {
     height: 40px;
     property <color> ink: Theme.material ? (b.primary ? Theme.m3-on-primary : Theme.m3-on-secondary-container) : b.primary ? Theme.on-accent : Theme.label;
     border-radius: Theme.material && ta.pressed ? 12px : 20px;
-    animate border-radius { duration: 250ms; easing: spring(0.3); }
+    // (MaterialSpring fast: springFast 12.8/0.54 → 222 ms spring(0.4))
+    animate border-radius { duration: 222ms; easing: spring(0.4); }
     background: Theme.material ? (b.primary ? Theme.m3-primary : Theme.m3-secondary-container).mix(ink, ta.pressed ? 0.9 : ta.has-hover ? 0.92 : 1)
         : b.primary ? (ta.pressed ? Theme.accent.darker(0.13) : Theme.accent) : ta.pressed ? Theme.fill-pressed : ta.has-hover ? Theme.fill-hover : Theme.fill;
-    transform-scale: ta.pressed ? (Theme.material ? 1.04 : 0.97) : 1;
+    // (Material: ElasticControl's swell, 1 + min(6 %, 10 px / its width), on
+    // springPress, 290 ms spring(0.57); Glass: 0.97, 100 ms linear)
+    transform-scale: ta.pressed ? (Theme.material ? 1 + min(0.06, 10px / max(1px, self.width)) : 0.97) : 1;
     transform-origin: { x: self.width / 2, y: self.height / 2 };
-    animate transform-scale { duration: Theme.material ? 350ms : 100ms; easing: Theme.material ? spring(0.3) : cubic-bezier(0.33, 1, 0.68, 1); }
+    animate transform-scale { duration: Theme.material ? 290ms : 100ms; easing: Theme.material ? spring(0.57) : cubic-bezier(0, 0, 1, 1); }
     accessible-role: button;
     accessible-label: b.label;
     accessible-action-default => { clicked(); }
@@ -676,7 +681,8 @@ export component ShareCard inherits Window {
 
     animate shown {
         duration: up ? 320ms * motion : 0ms;
-        easing: cubic-bezier(0.34, 1.45, 0.64, 1);
+        // (Easing.OutBack, overshoot 1.2: peaks ≈ 5.3 % over)
+        easing: cubic-bezier(0.34, 1.4, 0.64, 1);
     }
 
     public function enter() {

@@ -201,7 +201,8 @@ impl HostPart {
     fn each(&mut self, st: &mut State, mut f: impl FnMut(&mut dyn Service, &mut Host)) {
         for s in self.services.iter_mut() {
             let mut h = Host { st, state: &mut self.state, state_dirty: &mut self.state_dirty, pending: &mut self.pending };
-            f(s.as_mut(), &mut h);
+            let n = s.name();
+            crate::perf::time(|| format!("host {n}"), || f(s.as_mut(), &mut h));
         }
         self.settle(st);
     }
@@ -209,13 +210,14 @@ impl HostPart {
     fn one(&mut self, st: &mut State, pick: impl Fn(&dyn Service) -> bool, f: impl FnOnce(&mut dyn Service, &mut Host)) -> bool {
         let Some(s) = self.services.iter_mut().find(|s| pick(s.as_ref())) else { return false };
         let mut h = Host { st, state: &mut self.state, state_dirty: &mut self.state_dirty, pending: &mut self.pending };
-        f(s.as_mut(), &mut h);
+        let n = s.name();
+            crate::perf::time(|| format!("host {n}"), || f(s.as_mut(), &mut h));
         true
     }
 
     fn answer(&mut self, st: &mut State, a: Ask) {
         let p = prefix(&a.call).to_string();
-        let found = self.one(st, |s| s.calls().contains(&p.as_str()), |s, h| s.call(h, &a.call, &a.args));
+        let found = crate::perf::time(|| format!("ask {}", a.call), || self.one(st, |s| s.calls().contains(&p.as_str()), |s, h| s.call(h, &a.call, &a.args)));
         if !found {
             eprintln!("tessera-ui: host: nothing answers {} (args {})", a.call, a.args);
         }
@@ -235,7 +237,8 @@ impl HostPart {
             }
             for s in self.services.iter_mut() {
                 let mut h = Host { st, state: &mut self.state, state_dirty: &mut self.state_dirty, pending: &mut self.pending };
-                s.settled(&mut h);
+                let n = s.name();
+                crate::perf::time(|| format!("settled {n}"), || s.settled(&mut h));
             }
             if self.pending.is_empty() {
                 break;
@@ -246,7 +249,10 @@ impl HostPart {
             let mut v = self.state.clone();
             v["src"] = json!("shell");
             v["kind"] = json!("state");
-            let _ = st.tx.send(Msg::Line(v.to_string()));
+            // (as the line RustUi.qml writes would arrive, but not written out
+            // and read back in: the same queue, so it still comes after the
+            // commands this turn said)
+            let _ = st.tx.send(Msg::Data(Box::new(crate::services::bridge::ShellState(v))));
         }
     }
 }
@@ -261,7 +267,7 @@ impl crate::shell::Part for HostPart {
             let t = std::time::Instant::now();
             s.start(h);
             let ms = t.elapsed().as_millis();
-            if ms >= 200 {
+            if ms >= 25 {
                 eprintln!("tessera-ui: slow start: host {} {ms} ms", s.name());
             }
         });
@@ -294,6 +300,9 @@ impl crate::shell::Part for HostPart {
                 let (target, func) = (i.args.first().cloned().unwrap_or_default(), i.args.get(1).cloned().unwrap_or_default());
                 let rest: Vec<String> = i.args.iter().skip(2).cloned().collect();
                 let mut out = None;
+                if crate::perf::on() {
+                    eprintln!("debug: ipc {}", i.args.join(" "));
+                }
                 let found = self.one(st, |s| s.ipc_targets().contains(&target.as_str()), |s, h| out = s.ipc(h, &target, &func, &rest));
                 if !found {
                     eprintln!("tessera-ui: host: no ipc target {target} ({func})");

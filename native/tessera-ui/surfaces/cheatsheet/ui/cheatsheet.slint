@@ -76,8 +76,10 @@ component Tabs inherits Rectangle {
         border-bottom-left-radius: self.border-top-left-radius;
         border-top-right-radius: !Theme.material ? 0 : i == 1 ? full : inner;
         border-bottom-right-radius: self.border-top-right-radius;
+        // (Segmented.qml: the inner corners on springFast)
+        animate border-top-left-radius, border-top-right-radius { duration: 222ms; easing: spring(0.4); }
         background: !Theme.material ? transparent : chosen ? Theme.m3-primary : Theme.m3-surface-container-highest;
-        animate background { duration: 150ms; }
+        animate background { duration: Theme.hover; }
         accessible-role: tab;
         accessible-label: i == 0 ? a : b;
         accessible-item-selectable: true;
@@ -171,8 +173,10 @@ export component Cheatsheet inherits Window {
     property <float> progress: shown ? 1 : 0;
     property <int> hovered: -1;
     animate progress {
-        duration: shown ? 520ms : 192ms;
-        easing: shown ? spring(0.4) : cubic-bezier(0.4, 0.0, 1.0, 1.0);
+        // (Dialog.qml: Material ω 20.1 ζ 0.90, Glass ω 16.2 ζ 0.77; closes in
+        // panel × 0.6 on the look's exit curve)
+        duration: shown ? (Theme.material ? 312ms : 388ms) : 192ms;
+        easing: shown ? (Theme.material ? spring(0.1) : spring(0.23)) : Theme.material ? cubic-bezier(0.3, 0, 0.8, 0.15) : cubic-bezier(0.4, 0.0, 1.0, 1.0);
     }
     changed progress => {
         if !shown && progress <= 0.001 { closed(); }
@@ -275,7 +279,7 @@ export component Cheatsheet inherits Window {
                             width: cell - 2px;
                             height: cell - 2px;
                             border-radius: Theme.material ? (hot ? self.width / 2 : 8px) : 6px;
-                            animate border-radius { duration: 250ms; easing: spring(0.6); }
+                            animate border-radius { duration: 222ms; easing: spring(0.4); } // (springFast)
                             background: e.tint.with-alpha(hot ? 0.45 : 0.18);
                             border-width: hot ? (Theme.material ? 2px : 1px) : 0;
                             border-color: e.tint;

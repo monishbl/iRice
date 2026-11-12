@@ -19,6 +19,24 @@ pub const LOCK_WAKE: u32 = 2;
 pub const SCREEN_TIME: u32 = 3;
 /// Google.qml and CloudAccounts.qml: 5 minutes without input skips syncs
 pub const LONG: u32 = 4;
+/// The wallpaper (a live wallpaper pauses while nobody is there); the
+/// number it used privately before ids lived here ("WALL")
+pub const WALLPAPER: u32 = 0x5741_4C4C;
+/// Every id a part or service may use is a constant here (one list: two
+/// watches with one id would answer each other's questions). A new watch:
+/// the next free number, its line above.
+pub const ALL: &[u32] = &[STANDBY, LOCK_WAKE, SCREEN_TIME, LONG, WALLPAPER];
+
+#[cfg(test)]
+mod ids {
+    #[test]
+    fn idle_ids_are_unique() {
+        let mut v = super::ALL.to_vec();
+        v.sort();
+        v.dedup();
+        assert_eq!(v.len(), super::ALL.len());
+    }
+}
 
 /// What every watch last said (true: idle). Newest picture replaces the old.
 #[derive(Clone, Debug, Default, PartialEq)]

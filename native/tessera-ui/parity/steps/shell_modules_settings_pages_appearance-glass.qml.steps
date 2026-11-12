@@ -1,0 +1,36 @@
+# Appearance > Glass / Match apps page. Plan: Glass look for most steps (G11 is Material).
+look glass
+ipc panels settings appearance/glass
+wait 2
+shot top
+note G1 Material row (Glass/Frost/Solid segmented, Advanced... pill to the right, about x 1400 y 330): footer text follows the chosen option; with the plugin missing and Glass chosen: "Glass needs the tessera-glass...".
+ptr move 1400 330 sleep 300 glide 1400 330 100 click
+wait 1
+shot advanced
+note G2 FAILED before (inline under the group): Advanced opens as a 300 px wide glass popover just under the pill, 8 px gap, its right edge lined up with the pill's, floating over the Motion/Window corners rows (they must not move); the pill stays lit. Batch 2 made it its own popup.
+note G3 contents: "Custom material"; Glass, Frost, Solid, Tint sliders with NN% readings and hints (Tint hint "How much it darkens what's behind" in dark, "How milky it is" in light); "Optics"; stripes preview with "Aa" centred (Rust: frosted rectangle, known difference); Index of refraction "1.50", Refraction "100%", Dispersion "35%"; "Reset to Glass" button. Readings equal the material shown before opening (sliders do not jump).
+ptr move 1100 450 sleep 200 down glide 1060 450 400 up
+wait 1
+shot frost
+note G4 dragging the Frost slider to about 30 percent: reading follows, the Material segmented gains "Custom" (300 wide) and selects it; footer "Your own mix...". Slider position is a guess: read from the advanced shot.
+key -k Escape
+wait 1
+shot esc
+note G6 Esc closes the popover and Settings stays open.
+ptr move 1400 330 sleep 200 glide 1400 330 100 click
+wait 1
+ptr move 800 600 sleep 200 glide 800 600 100 click
+wait 1
+shot outside
+note G6 clicking on the page left of the popover (about 800,600) closes it.
+ptr move 1400 330 sleep 200 glide 1400 330 100 click sleep 150 click
+wait 1
+shot double
+note G6 clicking the pill twice quickly: QML ends open (closes on press, reopens on click); Rust must end the same way (batch 2: a click that just closed it does not reopen it - note any difference).
+# MANUAL: G4 drag Dispersion to the left end: reading "None", Material stays as it was; G5 click "Reset to Glass": Material = Glass, readings 100/75/0/75 percent, 1.50, 100 percent, 35 percent, "Custom" leaves the segmented
+# MANUAL: G7 move the Settings window so its bottom is near the screen bottom (or resize to 1040x500); popover stays inside the window with a 12 px margin and scrolls inside when taller
+# MANUAL: G8 Motion options, Window corners drag ("N px, continuous curve" whole numbers), Rounded screen corners toggle
+# MANUAL: G9 with matugen installed Colours from is enabled; Accent shows 4 target switches and footer "Apps get colours from your accent colour..."; Off removes them, footer "Apps keep their own colours."; without matugen disabled + "Install matugen..."
+# MANUAL: G10 More options: Lens row only for Glass; Compositor glass shows "Active: Hyprland draws the glass" + green check with the plugin, else "Build plugin..." accent pill; Frost over windows only with the plugin
+# MANUAL: G11 Material look: title "Match apps", info row + "Show looks" (click goes to Appearance), Match apps group enabled, More options (needs the Material run of this page)
+ipc panels close

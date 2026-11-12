@@ -176,7 +176,19 @@ pub fn set(v: f64) {
                     &("backlight", name.as_str(), raw),
                 );
                 if let Err(e) = r {
-                    eprintln!("tessera-ui: brightness: {e}");
+                    // (logind finds the session by the caller: a shell started
+                    // outside one is refused; brightnessctl, as Brightness.qml
+                    // uses, may still be allowed through its udev rule)
+                    let ok = std::process::Command::new("brightnessctl")
+                        .args(["-q", "-d", &name, "set", &raw.to_string()])
+                        .stdin(std::process::Stdio::null())
+                        .stdout(std::process::Stdio::null())
+                        .stderr(std::process::Stdio::null())
+                        .status()
+                        .is_ok_and(|s| s.success());
+                    if !ok {
+                        eprintln!("tessera-ui: brightness: {e}");
+                    }
                     bus = None;
                 }
             }

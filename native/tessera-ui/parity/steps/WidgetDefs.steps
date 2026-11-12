@@ -1,0 +1,12 @@
+# Arena IRICE-TEST 1920x1080 scale 1, the user's config (expressive motion, Colloid, their 4 widgets).
+# Each file runs top to bottom from a fresh desktop. `static NAME x y w h`: that region must not change
+# from there until the next `shot`, `rec` or `look` (the no-reload blocks end with their last close).
+# Right-clicks: `ptr ... down up` lines marked (right button) need the runner's right button.
+
+look glass
+shot wd-idle
+note the user's 4 widgets at clock (32,54) stack (32,234) batteries (32,414) shortcuts (392,54); Material cards in their containers
+
+look material
+shot wd-idle
+note the user's 4 widgets at clock (32,54) stack (32,234) batteries (32,414) shortcuts (392,54); Material cards in their containers

@@ -1,0 +1,27 @@
+# Marquee: steps from parity/shell_modules_menubar_Marquee.qml.md (batches 1-5). Screen IRICE-TEST 1920x1080 scale 1;
+# the island is centred at x 960 (closed y ~14, open ~392 wide); the bar is 30 px tall.
+# Each block runs in both looks: the file runs top to bottom, Material first, then Glass.
+
+look material
+ipc timer toggle
+wait 1
+static pill 880 0 160 30
+rec pill 5 ptr move 1500 600
+note the time counts down; its width is stable (nothing beside it moves)
+ipc timer reset
+setup FAKEPLAYER_TRACK="A very long song title that does not fit in the pill at all|Artist" python3 sandbox/tools/fakeplayer.py &
+wait 2
+rec marquee 8 ptr move 1500 600
+note with music.scroll on, the title rests ~1.8 s, scrolls to its end, rests, scrolls back
+
+look glass
+ipc timer toggle
+wait 1
+static pill 880 0 160 30
+rec pill 5 ptr move 1500 600
+note the time counts down; its width is stable (nothing beside it moves)
+ipc timer reset
+setup FAKEPLAYER_TRACK="A very long song title that does not fit in the pill at all|Artist" python3 sandbox/tools/fakeplayer.py &
+wait 2
+rec marquee 8 ptr move 1500 600
+note with music.scroll on, the title rests ~1.8 s, scrolls to its end, rests, scrolls back

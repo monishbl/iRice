@@ -1,0 +1,21 @@
+# HoverTip: steps from parity/shell_modules_menubar_HoverTip.qml.md (batches 1-5). Screen IRICE-TEST 1920x1080 scale 1;
+# the island is centred at x 960 (closed y ~14, open ~392 wide); the bar is 30 px tall.
+# Each block runs in both looks: the file runs top to bottom, Material first, then Glass.
+
+look material
+ptr move 1500 600
+rec tip 1.5 ptr glide 1760 15 150
+note per-item tip: appears ~500 ms after arriving, fades in 220 ms OutCubic with a 4 px drop
+ptr glide 1500 600 150
+wait 0.2
+shot gone
+note gone at once (no fade-out) ~120 ms after leaving
+
+look glass
+ptr move 1500 600
+rec tip 1.5 ptr glide 1760 15 150
+note per-item tip: appears ~500 ms after arriving, fades in 220 ms OutCubic with a 4 px drop
+ptr glide 1500 600 150
+wait 0.2
+shot gone
+note gone at once (no fade-out) ~120 ms after leaving

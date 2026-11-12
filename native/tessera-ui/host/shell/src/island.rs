@@ -368,7 +368,17 @@ impl Island {
 
     fn publish_history(&self, h: &mut Host) {
         h.set_state("island.history", json!(self.history.len()));
-        h.set_state("island.list", Value::Array(self.history.clone()));
+        // (each line says whether its button is still remembered: a click on it runs it)
+        let list: Vec<Value> = self
+            .history
+            .iter()
+            .map(|l| {
+                let mut l = l.clone();
+                l["act"] = json!(l["hid"].as_i64().is_some_and(|hid| self.history_acts.contains_key(&hid)));
+                l
+            })
+            .collect();
+        h.set_state("island.list", Value::Array(list));
     }
 
     // ── Hover hold ──────────────────────────────────────────────────────
@@ -440,6 +450,95 @@ impl Island {
         }
     }
 
+    /// Island.activities' own kinds, from what the host's services say:
+    /// recording (Recorder), the timer and the stopwatch (Timers), with
+    /// LiveInfo's icon, title, time, detail, progress and controls
+    fn derive_live(&mut self, h: &mut Host) {
+        let dark = h.st.shell.look.dark;
+        let accent = |n: &str| tessera_core::theme::accent_hex(n, dark);
+        let fmt = |secs: i64| {
+            let s = secs.max(0);
+            format!("{}:{:02}", s / 60, s % 60)
+        };
+        let ctl = |piece: &str, icon: &str, fill: bool, on: bool, danger: bool, act: Value| json!({"piece": piece, "icon": icon, "fill": fill, "on": on, "danger": danger, "act": act});
+        let nc = |a: &str| json!({"call": "nc", "args": [{"act": a}]});
+        let ipc = |t: &str, f: &str| json!({"ipc": [t, f]});
+        let mut want: Vec<(&str, Option<Value>)> = Vec::new();
+        // recording
+        let r = h.state("recorder").clone();
+        if r["recording"].as_bool().unwrap_or(false) {
+            let paused = r["paused"].as_bool().unwrap_or(false);
+            let now = now_ms();
+            let started = r["started"].as_i64().unwrap_or(now);
+            let upto = if paused { r["pausedAt"].as_i64().unwrap_or(now) } else { now };
+            let secs = (upto - started) / 1000;
+            let mut controls = vec![ctl("discard", "trash", false, true, false, ipc("recorder", "discard"))];
+            if !cfg_str(h.cfg(), "recorder.mic", "").is_empty() {
+                let muted = r["micMuted"].as_bool().unwrap_or(false);
+                controls.push(ctl("mute", if muted { "microphone-slash" } else { "microphone" }, true, true, false, ipc("recorder", "toggleMic")));
+            }
+            if r["canPause"].as_bool().unwrap_or(false) {
+                controls.push(ctl("pause", if paused { "play" } else { "pause" }, true, true, false, ipc("recorder", "pause")));
+            }
+            controls.push(ctl("stop", "stop", true, true, true, json!({"call": "screen.stopRecording", "args": []})));
+            want.push(("recording", Some(json!({
+                "icon": if paused { "pause-circle" } else { "record" },
+                "color": if paused { "#8cffffff".to_string() } else { accent("red") },
+                "title": if paused { "Recording paused" } else { "Recording" },
+                "time": fmt(secs), "detail": fmt(secs), "progress": -1.0, "controls": controls,
+            }))));
+        } else {
+            want.push(("recording", None));
+        }
+        // the timer and the stopwatch
+        let t = h.state("timers").clone();
+        let remaining = t["remaining"].as_i64().unwrap_or(0);
+        let length = t["phaseLength"].as_i64().unwrap_or(0).max(1);
+        let running = t["running"].as_bool().unwrap_or(false);
+        if t["started"].as_bool().unwrap_or(false) {
+            let focus = t["phase"].as_str().unwrap_or("focus") == "focus";
+            want.push(("timer", Some(json!({
+                "icon": if focus { "timer" } else { "coffee" }, "color": accent("orange"),
+                "title": if focus { "Focus" } else { "Break" },
+                "time": fmt(remaining), "detail": format!("{} left", fmt(remaining)),
+                "progress": (1.0 - remaining as f64 / length as f64).clamp(0.0, 1.0),
+                "controls": [
+                    ctl("reset", "arrow-counter-clockwise", false, true, false, nc("timer.reset")),
+                    ctl("play", if running { "pause" } else { "play" }, true, true, false, nc("timer.toggle")),
+                    ctl("skip", "skip-forward", true, true, false, nc("timer.skip")),
+                ],
+            }))));
+        } else {
+            want.push(("timer", None));
+        }
+        let sw = &t["sw"];
+        if sw["started"].as_bool().unwrap_or(false) {
+            let on = sw["running"].as_bool().unwrap_or(false);
+            let secs = sw["elapsed"].as_i64().unwrap_or(0) / 1000;
+            want.push(("stopwatch", Some(json!({
+                "icon": "timer", "color": accent("green"), "title": "Stopwatch",
+                "time": fmt(secs), "detail": fmt(secs), "progress": -1.0,
+                "controls": [
+                    ctl("reset", "arrow-counter-clockwise", false, !on, false, nc("sw.reset")),
+                    ctl("lap", "flag", false, on, false, nc("sw.lap")),
+                    ctl("play", if on { "pause" } else { "play" }, true, true, false, nc("sw.toggle")),
+                ],
+            }))));
+        } else {
+            want.push(("stopwatch", None));
+        }
+        for (kind, a) in want {
+            match a {
+                Some(a) => {
+                    self.live.insert(kind.to_string(), a);
+                }
+                None => {
+                    self.live.remove(kind);
+                }
+            }
+        }
+    }
+
     /// RustBridge.pushLive: the activities as the pill shows them
     fn push_live(&mut self, h: &mut Host) {
         let mut acts = Vec::new();
@@ -451,10 +550,19 @@ impl Island {
             } else {
                 a["controls"].as_array().map(|l| l.iter().filter(|b| self.shows(h, kind, b["piece"].as_str().unwrap_or(""))).map(|b| json!({"icon": b["icon"], "fill": b["fill"].as_bool().unwrap_or(false), "on": b["on"].as_bool().unwrap_or(true), "danger": b["danger"].as_bool().unwrap_or(false)})).collect()).unwrap_or_default()
             };
+            // (every control, for the stacked rows and the open card: LiveInfo.controls)
+            let all: Vec<Value> = if music {
+                vec![]
+            } else {
+                a["controls"].as_array().map(|l| l.iter().map(|b| json!({"piece": b["piece"], "icon": b["icon"], "fill": b["fill"].as_bool().unwrap_or(false), "on": b["on"].as_bool().unwrap_or(true), "danger": b["danger"].as_bool().unwrap_or(false)})).collect()).unwrap_or_default()
+            };
             acts.push(json!({
                 "kind": kind, "icon": a["icon"], "color": a["color"].as_str().unwrap_or(""),
                 "title": if music { json!("") } else { a["title"].clone() },
                 "time": if music { json!("") } else { a["time"].clone() },
+                "detail": a["detail"].as_str().unwrap_or(""),
+                "progress": a["progress"].as_f64().unwrap_or(-1.0),
+                "all": all,
                 "lead": self.shows(h, kind, if music { "art" } else { "icon" }),
                 "name": self.shows(h, kind, if music { "title" } else if *kind == "timer" { "label" } else { "name" }),
                 "clock": !music && self.shows(h, kind, "time"),
@@ -616,21 +724,40 @@ impl Island {
     }
 
     fn publish(&self, h: &mut Host) {
-        h.set_state("island", json!({"pinned": cfg_bool(h.cfg(), "island.pinned", false), "hot": self.hot || self.hot_preview, "fsMode": self.fs_mode(h), "history": self.history.len()}));
+        // (field by field: the whole object would wipe island.list, the Recent lines)
+        h.set_state("island.pinned", json!(cfg_bool(h.cfg(), "island.pinned", false)));
+        h.set_state("island.hot", json!(self.hot || self.hot_preview));
+        h.set_state("island.fsMode", json!(self.fs_mode(h)));
+        h.set_state("island.history", json!(self.history.len()));
     }
 
     /// Island.hud: volume, brightness and mic, when the HUD lives in the island
     fn hud(&mut self, h: &mut Host, kind: &str, device: &str) {
+        // (the levels as Osd.qml read them, Audio's and Brightness's: the
+        // sound server's and the backlight's newest readings; the shell's
+        // state "hud.*" only when those aren't there)
+        use tessera_core::services::{audio::Sound, brightness::Backlight};
         let v = |p: &str| h.state(p).as_f64().unwrap_or(0.0);
+        let snd = h.st.shell.get::<Sound>().filter(|s| s.up).cloned();
         let (value, icon, title) = match kind {
-            "brightness" => (v("hud.brightness"), "sun".to_string(), if device.is_empty() { "Display".to_string() } else { device.to_string() }),
+            "brightness" => {
+                let level = h.st.shell.get::<Backlight>().filter(|b| b.present).map_or_else(|| v("hud.brightness"), |b| b.value);
+                (level, "sun".to_string(), if device.is_empty() { "Display".to_string() } else { device.to_string() })
+            }
             "mic" => {
-                let muted = h.state("audio.micMuted").as_bool().unwrap_or(false);
-                (if muted { 0.0 } else { v("hud.mic") }, if muted { "microphone-slash".into() } else { "microphone".into() }, if !device.is_empty() { device.to_string() } else if muted { "Microphone off".into() } else { "Microphone on".into() })
+                let muted = snd.as_ref().map_or_else(|| h.state("audio.micMuted").as_bool().unwrap_or(false), |s| s.mic_muted());
+                let level = snd.as_ref().map_or_else(|| v("hud.mic"), |s| s.mic_volume());
+                (if muted { 0.0 } else { level }, if muted { "microphone-slash".into() } else { "microphone".into() }, if !device.is_empty() { device.to_string() } else if muted { "Microphone off".into() } else { "Microphone on".into() })
             }
             _ => {
-                let muted = h.state("audio.muted").as_bool().unwrap_or(false);
-                (if muted { 0.0 } else { v("hud.volume") }, h.state("audio.icon").as_str().unwrap_or("speaker-high").to_string(), if device.is_empty() { "Sound".into() } else { device.to_string() })
+                let muted = snd.as_ref().map_or_else(|| h.state("audio.muted").as_bool().unwrap_or(false), |s| s.muted());
+                let level = snd.as_ref().map_or_else(|| v("hud.volume"), |s| s.volume());
+                let icon = match &snd {
+                    // (Audio.icon: muted or silent, then by thirds)
+                    Some(s) => (if s.muted() || s.volume() == 0.0 { "speaker-x" } else if s.volume() < 0.34 { "speaker-none" } else if s.volume() < 0.67 { "speaker-low" } else { "speaker-high" }).to_string(),
+                    None => h.state("audio.icon").as_str().unwrap_or("speaker-high").to_string(),
+                };
+                (if muted { 0.0 } else { level.min(1.0) }, icon, if device.is_empty() { "Sound".into() } else { device.to_string() })
             }
         };
         self.post(h, json!({"kind": "hud", "hud": kind, "icon": icon, "title": title, "value": value, "device": device, "color": "#FFFFFF"}), if device.is_empty() { 1600 } else { 2500 });
@@ -641,6 +768,9 @@ impl Island {
         if let Some(a) = act {
             if let Some(call) = a["call"].as_str() {
                 h.ask(call, a["args"].clone());
+            } else if let Some(ipc) = a["ipc"].as_array() {
+                let args: Vec<String> = ipc.iter().map(|x| x.as_str().unwrap_or("").to_string()).collect();
+                tessera_core::host::route_ipc(&args, None);
             }
         }
     }
@@ -712,6 +842,10 @@ impl Service for Island {
         self.ask_resources(h);
         // (the battery now comes as data: Service::data below, no 3 s look)
     }
+    fn settled(&mut self, h: &mut Host) {
+        self.derive_live(h);
+        self.push_live(h);
+    }
     fn data(&mut self, h: &mut Host, what: std::any::TypeId) {
         if what == std::any::TypeId::of::<tessera_core::services::status::Battery>() {
             self.watch_battery(h);
@@ -729,6 +863,7 @@ impl Service for Island {
                 Tick::Sweep => self.sweep(h),
                 Tick::Live => {
                     self.live_sent.clear();
+                    self.derive_live(h);
                     self.push_live(h);
                 }
             },
@@ -819,7 +954,8 @@ impl Service for Island {
             // <kind> <index>: a live activity's control
             "live" => {
                 let (kind, i) = (text(0), text(1).parse::<usize>().unwrap_or(usize::MAX));
-                let c = self.live.get(&kind).and_then(|a| a["controls"].as_array().cloned()).unwrap_or_default().into_iter().filter(|b| self.shows(h, &kind, b["piece"].as_str().unwrap_or(""))).nth(i);
+                let every = text(2) == "all";
+                let c = self.live.get(&kind).and_then(|a| a["controls"].as_array().cloned()).unwrap_or_default().into_iter().filter(|b| every || self.shows(h, &kind, b["piece"].as_str().unwrap_or(""))).nth(i);
                 if let Some(c) = c {
                     if c["on"].as_bool().unwrap_or(true) {
                         self.run(h, &c.get("act").cloned());

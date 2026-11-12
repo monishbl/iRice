@@ -1,0 +1,119 @@
+# IslandFocusCard: steps from parity/shell_modules_menubar_IslandFocusCard.qml.md (batches 1-5). Screen IRICE-TEST 1920x1080 scale 1;
+# the island is centred at x 960 (closed y ~14, open ~392 wide); the bar is 30 px tall.
+# Each block runs in both looks: the file runs top to bottom, Material first, then Glass.
+
+look material
+setup python3 sandbox/tools/fakeplayer.py /usr/share/pixmaps/archlinux-logo.png &
+wait 2
+ptr move 1500 600
+wait 1
+ptr glide 960 14 400
+wait 1
+shot card
+note overlay layout: (glyph if no art), title 16/600, "artist · album", seek row "0:xx | bar | -x:xx", transport (volume left, prev/play/next centre, open-player right); Material: wavy bar moving while playing, play a rounded square, art blurred under a wash; Glass: the art is the island, fading out downwards
+wait 2
+shot card-2s
+note the elapsed time advanced
+ptr glide 960 98 200
+ptr click
+wait 1
+shot seek-half
+note click at the bar's middle: elapsed ~1:45 (playerctl position agrees)
+ptr glide 900 98 200
+ptr down
+ptr glide 1020 98 400
+ptr up
+wait 1
+shot seek-drag
+note the drag ended where released (no overshoot to the end)
+ptr glide 790 130 200
+wait 0.4
+shot volume-open
+note the speaker pill widened (~104 px) with a slider
+ptr glide 830 130 100
+ptr click
+wait 0.5
+note playerctl volume ~0.5
+ptr scroll 0 15
+wait 0.4
+ptr glide 788 130 100
+ptr click
+wait 0.5
+shot muted
+note muted (speaker-x); click again restores
+ptr click
+ptr glide 1130 130 200
+wait 0.4
+shot open-app
+note the open-player button widened with the player's name
+ptr click
+wait 0.6
+note fakeplayer logs "fakeplayer: Raise"
+ptr move 1500 600
+wait 1
+ptr glide 960 14 400
+wait 1
+ptr glide 960 130 200
+ptr click
+wait 1
+shot paused
+note Material: the wave lies flat when paused; play button a circle
+ptr click
+
+look glass
+setup python3 sandbox/tools/fakeplayer.py /usr/share/pixmaps/archlinux-logo.png &
+wait 2
+ptr move 1500 600
+wait 1
+ptr glide 960 14 400
+wait 1
+shot card
+note overlay layout: (glyph if no art), title 16/600, "artist · album", seek row "0:xx | bar | -x:xx", transport (volume left, prev/play/next centre, open-player right); Material: wavy bar moving while playing, play a rounded square, art blurred under a wash; Glass: the art is the island, fading out downwards
+wait 2
+shot card-2s
+note the elapsed time advanced
+ptr glide 960 98 200
+ptr click
+wait 1
+shot seek-half
+note click at the bar's middle: elapsed ~1:45 (playerctl position agrees)
+ptr glide 900 98 200
+ptr down
+ptr glide 1020 98 400
+ptr up
+wait 1
+shot seek-drag
+note the drag ended where released (no overshoot to the end)
+ptr glide 790 130 200
+wait 0.4
+shot volume-open
+note the speaker pill widened (~104 px) with a slider
+ptr glide 830 130 100
+ptr click
+wait 0.5
+note playerctl volume ~0.5
+ptr scroll 0 15
+wait 0.4
+ptr glide 788 130 100
+ptr click
+wait 0.5
+shot muted
+note muted (speaker-x); click again restores
+ptr click
+ptr glide 1130 130 200
+wait 0.4
+shot open-app
+note the open-player button widened with the player's name
+ptr click
+wait 0.6
+note fakeplayer logs "fakeplayer: Raise"
+ptr move 1500 600
+wait 1
+ptr glide 960 14 400
+wait 1
+ptr glide 960 130 200
+ptr click
+wait 1
+shot paused
+note Material: the wave lies flat when paused; play button a circle
+ptr click

@@ -1,0 +1,26 @@
+# power: Battery & Power page. Check in each look. The arena has no battery: battery groups are hidden in both shells (say so).
+# Never press anything that suspends, locks or shuts down.
+ipc panels settings power
+wait 2
+shot pw-top
+note P1: groups in the same order (Energy mode, the Cool-down link + priority row, the idle group "When you're away" with 4 dropdowns, or the own-hypridle group); same texts; widths: dropdowns 160 px, segmented 330/220. Without power-profiles-daemon the one row shows the same powerShort / powerReason text in both.
+ptr move 1100 600 scroll 0 5
+wait 1
+shot pw-scroll
+note P1 cont.: lower groups (idle timers, "More options") same as QML; no battery groups (no battery in the arena).
+ipc caffeine on
+wait 1
+ipc panels settings appearance
+wait 1
+ipc panels settings power
+wait 2
+shot pw-caffeine
+note P6: with caffeine on, a row "Keeping awake - Caffeine is on - until off" with a "Turn off Caffeine" button shows in both shells.
+ipc caffeine off
+# MANUAL: P2 with ppd present click "Balanced" then "Low Power" in the Energy mode segmented: selection moves, detail "Now Low Power - ..."; set back.
+# MANUAL: P3 click the "Dim the screen after" dropdown: popup list (Never ... 1 hour) with the checked item marked; choose "2 minutes": config idleDimAc (or idleDimBattery) = 120; put it back.
+# MANUAL: P4 Tab to that dropdown (or click and Esc), key Down with the list closed: QML steps the value to the next option without opening; Rust now also steps (fixed in batch 2); report.
+# MANUAL: P5 click the Cool-down link: "Cool-down and performance" opens with a back arrow; back returns to Battery & Power.
+# MANUAL: P6 click "Turn off Caffeine": the row disappears in both.
+# MANUAL: P7 More options: "Energy mode" (Game Mode row, disabled without Performance) and "Apps using significant energy" with Keep track; Keep track on: after 5+ min or "Nothing has used much energy lately" + footer "CPU time over the last hour..."; off: footer "Off: nothing is recorded."; do not click Quit on anything.
+ipc panels close

@@ -56,11 +56,16 @@ pub struct Shell {
     pub surfaces: crate::surfaces::Surfaces,
     data: HashMap<TypeId, Box<dyn Any>>,
     started: HashSet<&'static str>,
+    /// A service's reading while a window animates: handed to the parts a
+    /// few per turn between frames instead of to all of them at once
+    /// (runloop.rs; the binary's loop drains it). Off in loops that don't.
+    pub defer_data: bool,
+    pub deferred: std::collections::VecDeque<(&'static str, TypeId)>,
 }
 
 impl Shell {
     pub fn new(tx: Sender<Msg>, glass: Glass, surfaces: crate::surfaces::Surfaces) -> Self {
-        Self { look: theme::read(), cfg: theme::read_json(), glass, plugin: false, tx, surfaces, data: HashMap::new(), started: HashSet::new() }
+        Self { look: theme::read(), cfg: theme::read_json(), glass, plugin: false, tx, surfaces, data: HashMap::new(), started: HashSet::new(), defer_data: false, deferred: Default::default() }
     }
 
     /// The newest reading of a service's type, if one came yet
@@ -73,6 +78,10 @@ impl Shell {
     pub fn want(&mut self, service: &'static str) {
         if self.started.insert(service) {
             crate::services::start(service, self.tx.clone());
+            // (the tray's icons are looked up in the shell's icon index, icon_theme.rs)
+            if service == "tray" || service == "hypr" {
+                self.want("icons");
+            }
         }
     }
 
@@ -112,13 +121,18 @@ pub struct Command {
 impl Command {
     /// One line from the shell; None for anything that isn't a command
     pub fn parse(line: &str) -> Option<Self> {
-        let v: serde_json::Value = serde_json::from_str(line.trim()).ok()?;
+        Self::from_value(serde_json::from_str(line.trim()).ok()?).ok()
+    }
+
+    /// The same from a line already read as JSON (Err: not a command, the value back)
+    pub fn from_value(v: serde_json::Value) -> Result<Self, serde_json::Value> {
         let s = |k: &str| v.get(k).and_then(|x| x.as_str()).map(str::to_string);
-        let (cmd, surface) = (s("cmd")?, s("surface")?);
+        let (Some(cmd), Some(surface)) = (s("cmd"), s("surface")) else { return Err(v) };
         if cmd.is_empty() || surface.is_empty() {
-            return None;
+            return Err(v);
         }
-        Some(Self { cmd, surface, screen: s("screen").filter(|x| !x.is_empty()), args: v })
+        let screen = s("screen").filter(|x| !x.is_empty());
+        Ok(Self { cmd, surface, screen, args: v })
     }
 }
 
@@ -225,6 +239,11 @@ pub trait Part {
     fn drag(&mut self, st: &mut State, surface: &Rc<Surface>, ev: &crate::dnd::Drag) {}
     /// After each turn of the loop, once drawn: glass shapes, accessibility
     fn after_frame(&mut self, st: &mut State) {}
+    /// Once, a few seconds after the first frame, with the loop idle: make
+    /// the windows it keeps while closed (made, unmapped: `Surface::hide`), so
+    /// the first open doesn't build them (the QML compiles its panels at
+    /// start; making one here took a few hundred ms on the first open)
+    fn prewarm(&mut self, st: &mut State) {}
     /// Its accessibility trees (for AT-SPI's actions)
     fn a11y(&mut self) -> Vec<&mut crate::a11y::A11y> {
         Vec::new()
@@ -241,16 +260,36 @@ impl State {
     pub fn each_part(&mut self, mut f: impl FnMut(&mut dyn Part, &mut State)) {
         let mut parts = std::mem::take(&mut self.parts);
         for p in parts.iter_mut() {
-            f(p.as_mut(), self);
+            let n = p.name();
+            crate::perf::time(|| format!("part {n}"), || f(p.as_mut(), self));
         }
         parts.append(&mut self.parts);
         self.parts = parts;
     }
 
+    /// Where a panel opens when nothing says: the focused output (Hyprland's),
+    /// else the first (for Part::prewarm)
+    pub fn likely_output(&self) -> Option<String> {
+        let outs = self.outputs_now();
+        let focused = self.shell.get::<crate::services::hypr::Snapshot>().map(|s| s.focused.clone()).unwrap_or_default();
+        outs.iter().find(|(_, n)| *n == focused).or(outs.first()).map(|(_, n)| n.clone())
+    }
+
+    /// The `i`th part's prewarm (src/main.rs runs them one per idle turn)
+    pub fn prewarm_part(&mut self, i: usize) -> bool {
+        let Some(name) = self.parts.get(i).map(|p| p.name()) else { return false };
+        let t = std::time::Instant::now();
+        self.part(name, |p, st| p.prewarm(st));
+        if crate::perf::on() && t.elapsed().as_millis() > 2 {
+            eprintln!("debug: prewarm {name} {} ms", t.elapsed().as_millis());
+        }
+        true
+    }
+
     pub fn part(&mut self, name: &str, f: impl FnOnce(&mut dyn Part, &mut State)) {
         let mut parts = std::mem::take(&mut self.parts);
         if let Some(p) = parts.iter_mut().find(|p| p.name() == name) {
-            f(p.as_mut(), self);
+            crate::perf::time(|| format!("part {name}"), || f(p.as_mut(), self));
         }
         parts.append(&mut self.parts);
         self.parts = parts;
@@ -272,6 +311,18 @@ impl State {
         let changed = look != self.shell.look;
         self.shell.look = look;
         self.each_part(|p, st| p.config_changed(st, changed));
+        // (a new look: every window drawn whole once, not only what its
+        // tracking says changed: egl.rs's partial redraw has a safety net)
+        if changed {
+            self.redraw_everything();
+        }
+    }
+
+    /// Every window's next frame drawn whole
+    pub fn redraw_everything(&self) {
+        for s in &self.surfaces {
+            s.redraw_all();
+        }
     }
 
     /// A line from the shell: a command, to the part it names
@@ -280,7 +331,7 @@ impl State {
             eprintln!("debug: command {} {}", cmd.cmd, cmd.surface);
         }
         let name = cmd.surface.clone();
-        self.part(&name, |p, st| p.command(st, &cmd));
+        crate::perf::time(|| format!("command {} {}", cmd.cmd, cmd.surface), || self.part(&name, |p, st| p.command(st, &cmd)));
     }
 }
 

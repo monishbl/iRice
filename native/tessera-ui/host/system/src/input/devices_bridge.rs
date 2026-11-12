@@ -8,24 +8,16 @@
 //! cx.feed["devices"]) and does what the pages ask (`cx.ask("devices", what,
 //! args)`: "devices.act" [what, …args], or "devices.<what>" [args…]).
 //!
-//! The feed is assembled from what the other services publish on the bus. The
-//! contract (each is the exact JSON segment of the feed, so its owner builds
-//! it with the QML property names):
-//!   "feed.wifi"      net: { device, enabled, networks[], known, forgetError,
-//!                    join{ssid,stage,error,busy}, share{stage,ssid,qr,error,password} }
-//!   "feed.backends"  net/host-shell: Backends' fields (wifiUnmanaged … btFixError)
-//!   "feed.speed"     net SpeedTest: SpeedTestCard's texts (running, sub, button, live, …)
-//!   "feed.speedTest" net SpeedTest: backend, running, ooklaReady, hasOokla, ooklaInstall,
-//!                    link, signalWords, ip, isp, history[]
-//!   "feed.ddc"       net Brightness: { displays, values, installed, problem, scanned, scanning }
-//!   "feed.airplay"   sharing: { checked, installed, installing, installError, error, wanted, speakers }
-//!   "feed.mirroring" sharing: { available, error, p2p, installing, installError, target, state, displays[] }
-//!   "feed.phone"     sharing: the `phone` segment ({phone, mirroring, hasAdb, …, webcam})
-//!   "feed.sharing"   sharing: { localSend, localSendError, quickShare, quickShareName,
-//!                    quickShareError, btAvailable, btOn, portsError }
-//!   "wifijoin" {saved}  (the saved enterprise network's settings for the join form)
-//!   "needs" {checked, avahi, pipewire, networkManager, installing}, "health" {fixing},
-//!   "updates" {running}, "filepicker" {busy}, "bluetooth" {devices: {addr: {trusted, pairing, busy}}, name}
+//! The feed is assembled from what the other services publish, reshaped to
+//! the QML bridge's property names:
+//!   host-system bus: "WifiList" (network_feed: the nmcli list, asked again
+//!   every 4 s as `network.list` while the page is up), "WifiJoin", "WifiShare",
+//!   "SpeedTest" (speed / speedTest), "Brightness" (ddc), "updates" {running};
+//!   host state: "backends", "needs", "health" (host-shell Probes), "airplay",
+//!   "mirroring", "phone", "localsend", "quickshare", "sharing" (host-sharing),
+//!   "picker.busy" (host-shell); core's BlueZ, Wi-Fi status and Sound; the
+//!   adapter's name and trusted devices from BlueZ's object tree (busctl);
+//!   pairing/busy marks are this bridge's own (its bluetoothctl runs).
 //! and its own: bus "displays" (displays.rs). Actions go out as asks:
 //!   network.{wifi,rescan,connect,disconnect,join,forget,hold}, wifijoin.{loadKnown,saved,
 //!   dismiss,join}, wifishare.{share,close}, speedtest.{probe,readLink,start,cancel,clearHistory},
@@ -43,11 +35,14 @@ use super::common::*;
 use super::device_alerts::picture_for;
 use serde_json::{json, Value};
 use std::any::Any;
+use std::collections::BTreeSet;
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::time::Duration;
 use tessera_core::host::{Host, Service};
+use tessera_core::services::audio::Sound;
 use tessera_core::services::bluez::Bluetooth;
+use tessera_core::services::status::Wifi;
 
 fn arg_str(args: &[Value], i: usize) -> String {
     args.get(i).map(|v| v.as_str().map(String::from).unwrap_or_else(|| if v.is_null() { String::new() } else { v.to_string() })).unwrap_or_default()
@@ -90,10 +85,140 @@ fn bluetoothctl(args: Vec<String>) {
     });
 }
 
+/// bluetoothctl, then `M::BtDone(address)` (the device's busy/pairing mark comes off)
+fn bluetoothctl_then(args: Vec<String>, addr: String, send: impl Fn(Box<dyn Any + Send>) + Send + 'static) {
+    std::thread::spawn(move || {
+        let c: Vec<&str> = std::iter::once("bluetoothctl").chain(args.iter().map(String::as_str)).collect();
+        let _ = crate::util::capture(&c, Duration::from_secs(60));
+        send(Box::new(M::BtDone(addr)));
+    });
+}
+
+/// What core's BlueZ list doesn't carry: the adapter's name (Alias) and the
+/// trusted devices, from BlueZ's object tree (`busctl --json`), on a thread
+fn bt_read(send: impl Fn(Box<dyn Any + Send>) + Send + 'static) {
+    std::thread::spawn(move || {
+        let out = crate::util::capture(&["busctl", "--system", "--json=short", "call", "org.bluez", "/", "org.freedesktop.DBus.ObjectManager", "GetManagedObjects"], Duration::from_secs(5));
+        let Some((0, text)) = out else { return };
+        let Ok(v) = serde_json::from_str::<Value>(&text) else { return };
+        let (name, trusted) = parse_bluez_objects(&v);
+        send(Box::new(M::BtInfo(name, trusted)));
+    });
+}
+
+fn parse_bluez_objects(v: &Value) -> (String, BTreeSet<String>) {
+    let mut name = String::new();
+    let mut trusted = BTreeSet::new();
+    if let Some(objs) = v["data"][0].as_object() {
+        for ifaces in objs.values() {
+            let a = &ifaces["org.bluez.Adapter1"];
+            if a.is_object() && name.is_empty() {
+                name = a["Alias"]["data"].as_str().or(a["Name"]["data"].as_str()).unwrap_or("").to_string();
+            }
+            let d = &ifaces["org.bluez.Device1"];
+            if d["Trusted"]["data"] == true {
+                if let Some(addr) = d["Address"]["data"].as_str() {
+                    trusted.insert(addr.to_string());
+                }
+            }
+        }
+    }
+    (name, trusted)
+}
+
+/// Mirroring.protocolName
+fn protocol_name(p: &str) -> &'static str {
+    match p {
+        "chromecast" => "Chromecast",
+        "mice" => "Miracast (network)",
+        _ => "Miracast",
+    }
+}
+
+/// `new Date(ms).toLocaleString("d MMM, HH:mm")`, local time
+fn date_label(ms: f64) -> String {
+    const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    let t = (ms / 1000.0) as libc::time_t;
+    // SAFETY: localtime_r only writes the tm it is given
+    let mut tm: libc::tm = unsafe { std::mem::zeroed() };
+    if unsafe { libc::localtime_r(&t, &mut tm) }.is_null() {
+        return String::new();
+    }
+    format!("{} {}, {:02}:{:02}", tm.tm_mday, MONTHS[tm.tm_mon.clamp(0, 11) as usize], tm.tm_hour, tm.tm_min)
+}
+
+/// RustBridgeDevices.qml's ago(ms)
+fn ago(ms: f64) -> String {
+    let m = ((crate::net::common::now_ms() - ms) / 60000.0).round() as i64;
+    if m < 1 {
+        "just now".into()
+    } else if m < 60 {
+        format!("{m} min ago")
+    } else if m < 1440 {
+        format!("{} h ago", (m as f64 / 60.0).round())
+    } else {
+        format!("{} d ago", (m as f64 / 1440.0).round())
+    }
+}
+
+/// SpeedTestCard's texts (RustBridgeDevices.qml speedCard), from bus "SpeedTest"
+/// through the Wi-Fi menu's own builder (network_feed::build_speed)
+fn speed_card(st: &Value) -> Value {
+    let m = crate::net::network_feed::build_speed(st);
+    let stage = m["stage"].as_str().unwrap_or("idle").to_string();
+    let err = stage == "error";
+    let running = m["running"] == true;
+    let sub = if running || stage == "done" || err || st["last"].is_null() {
+        m["sub"].as_str().unwrap_or("").to_string()
+    } else {
+        format!("Last test {}", ago(st["last"]["at"].as_f64().unwrap_or(0.0)))
+    };
+    let stats = m["showStats"] == true;
+    json!({
+        "running": running, "sub": sub, "button": m["action"], "live": m["live"], "progress": m["progress"], "stats": stats,
+        "download": m["stats"][0]["value"], "upload": m["stats"][1]["value"], "ping": m["stats"][2]["value"], "stage": stage,
+        "extra": if stats { m["resp"].clone() } else { json!("") },
+        "verdict": if !running && !err { m["verdict"].clone() } else { json!("") },
+        "server": if err { json!("") } else { m["server"].clone() },
+        "error": m["error"],
+    })
+}
+
+/// The `speedTest` segment (RustBridgeDevices.qml), from bus "SpeedTest"
+fn speed_test(st: &Value) -> Value {
+    use crate::net::speed_test::{format, format_ms, signal_words};
+    let s = |v: &Value| v.as_str().unwrap_or("").to_string();
+    let n = |v: &Value| v.as_f64().unwrap_or(-1.0);
+    let last = &st["last"];
+    let or = |a: String, b: String| if a.is_empty() { b } else { a };
+    let history: Vec<Value> = st["history"].as_array().map(|l| l.iter().map(|h| {
+        let net = s(&h["network"]);
+        let label = date_label(h["at"].as_f64().unwrap_or(0.0)) + &if net.is_empty() { String::new() } else { format!(" · {net}") };
+        let server = s(&h["server"]);
+        let detail: Vec<String> = [
+            if h["backend"] == "ookla" { "Ookla".to_string() } else { "Cloudflare".to_string() },
+            server.strip_prefix("Cloudflare ").unwrap_or(&server).to_string(),
+            if n(&h["ping"]) >= 0.0 { format!("ping {}", format_ms(n(&h["ping"]))) } else { String::new() },
+            if n(&h["loadedDown"]) >= 0.0 { format!("under load {}", format_ms(n(&h["loadedDown"]))) } else { String::new() },
+        ].into_iter().filter(|x| !x.is_empty()).collect();
+        json!({"label": label, "detail": detail.join(" · "), "value": format!("↓ {}   ↑ {}", format(n(&h["download"])), format(n(&h["upload"])))})
+    }).collect()).unwrap_or_default();
+    json!({
+        "backend": st["backend"].as_str().unwrap_or("cloudflare"), "running": st["running"] == true, "ooklaReady": st["ooklaReady"] == true,
+        "hasOokla": st["hasOokla"] == true, "ooklaInstall": s(&st["ooklaInstall"]), "link": st["link"],
+        "signalWords": signal_words(st["link"]["signal"].as_f64().unwrap_or(-100.0)),
+        "ip": or(s(&st["client"]["ip"]), s(&last["ip"])), "isp": or(s(&st["client"]["isp"]), s(&last["isp"])),
+        "history": history,
+    })
+}
+
 enum M {
     Tick,
-    Link,
-    Recheck,
+    Link(u64),
+    Recheck(u64),
+    Scan(u64),
+    BtInfo(String, BTreeSet<String>),
+    BtDone(String),
     Managers(Option<Value>, String),
     System(Value),
     Fix(Option<Value>),
@@ -116,7 +241,13 @@ pub struct DevicesBridge {
     last: String,
     tick_gen: u64,
     link_gen: u64,
-    recheck_gen: u64,
+    /// Bluetooth: the adapter's name, the trusted devices, the ones pairing or (dis)connecting
+    bt_name: String,
+    bt_trusted: BTreeSet<String>,
+    bt_pairing: BTreeSet<String>,
+    bt_busy: BTreeSet<String>,
+    /// Needs.installAsked: 0 no, 1 asked, 2 Software Update is running it
+    install_asked: u8,
 }
 
 impl DevicesBridge {
@@ -134,9 +265,13 @@ impl DevicesBridge {
                 }
                 // (the link changes as you move around)
                 self.link_gen += 1;
-                after(h.sender("DevicesBridge"), 5000, M::Link);
+                let gen = self.link_gen;
+                after(h.sender("DevicesBridge"), 5000, M::Link(gen));
                 // (rfkill and the service change without BlueZ telling)
-                after(h.sender("DevicesBridge"), 3000, M::Recheck);
+                after(h.sender("DevicesBridge"), 3000, M::Recheck(gen));
+                // (the Wi-Fi scanner: the list again every 4 s)
+                after(h.sender("DevicesBridge"), 4000, M::Scan(gen));
+                bt_read(h.sender("DevicesBridge"));
             }
             "sound" => h.ask("airplay.check", json!([])),
             "displays" => h.ask("displays.refresh", json!([])),
@@ -147,18 +282,62 @@ impl DevicesBridge {
             }
             _ => {}
         }
-        let look = page == "displays" && crate::bus::get("feed.mirroring")["available"] == true;
+        self.sync_look(h);
+        if page != "network" {
+            if !self.asking.is_empty() {
+                h.ask("network.hold", json!([false, false]));
+            }
+            self.asking.clear();
+            self.link_gen += 1; // (the network page's timers stop)
+            scan_stop();
+            if !crate::bus::get("WifiShare")["stage"].as_str().unwrap_or("").is_empty() {
+                self.reveal = false;
+                h.ask("wifishare.close", json!([]));
+            }
+        }
+    }
+
+    /// Mirroring.look while Displays is up and mirroring is available (also when that changes)
+    fn sync_look(&mut self, h: &mut Host) {
+        let look = self.live && self.page == "displays" && h.state("mirroring")["available"] == true;
         if look != self.looking_tvs {
             self.looking_tvs = look;
             h.ask("mirroring.look", json!([look]));
         }
-        if page != "network" {
-            self.asking.clear();
-            scan_stop();
-            if !crate::bus::get("feed.wifi")["share"]["stage"].as_str().unwrap_or("").is_empty() {
-                h.ask("wifishare.close", json!([]));
-            }
-        }
+    }
+
+    /// The `wifi` segment: NetworkFeed's list (bus "WifiList") with WifiJoin's
+    /// and WifiShare's states (bus "WifiJoin", "WifiShare")
+    fn wifi_feed(&self, h: &Host) -> Value {
+        let g = crate::bus::get;
+        let st = h.st.shell.get::<Wifi>().cloned().unwrap_or_default();
+        let list = g("WifiList");
+        let join = g("WifiJoin");
+        let share = g("WifiShare");
+        let s = |v: &Value| v.as_str().unwrap_or("").to_string();
+        let (jssid, jstage, jbusy) = (s(&join["ssid"]), s(&join["stage"]), join["busy"] == true);
+        let networks: Vec<Value> = list["networks"].as_array().map(|l| l.iter().map(|n| {
+            let name = s(&n["name"]);
+            let joining = jbusy && jssid == name;
+            let failed_text = if jstage == "error" && jssid == name { s(&join["error"]) } else { String::new() };
+            let connecting = s(&list["connecting"]) == name || joining;
+            let open = n["open"] == true;
+            json!({
+                "name": name, "signal": n["signal"].as_f64().unwrap_or(0.0), "connected": n["connected"] == true, "known": n["known"] == true,
+                "secured": !open, "open": open, "enterprise": n["enterprise"] == true, "connecting": connecting, "busy": connecting,
+                "failed": s(&list["failed"]) == name || !failed_text.is_empty(), "failedText": failed_text,
+            })
+        }).collect()).unwrap_or_default();
+        let pw = s(&share["password"]);
+        json!({
+            "device": st.present, "enabled": st.enabled, "networks": networks,
+            "known": if join["knownNetworks"].is_array() { join["knownNetworks"].clone() } else { json!([]) },
+            "forgetError": s(&join["forgetError"]),
+            "join": {"ssid": jssid, "stage": jstage, "error": s(&join["error"]), "busy": jbusy},
+            "saved": join["saved"],
+            "share": {"stage": s(&share["stage"]), "ssid": s(&share["ssid"]), "qr": s(&share["qr"]), "error": s(&share["error"]),
+                      "hasPassword": !pw.is_empty(), "password": if self.reveal { pw } else { String::new() }},
+        })
     }
 
     // ── Sharing's helpers (sharing.qml) ──
@@ -202,59 +381,89 @@ impl DevicesBridge {
     fn feed(&self, h: &Host) -> Value {
         let p = self.page.as_str();
         let g = crate::bus::get;
+        let updating = g("updates")["running"].as_bool().unwrap_or(false);
+        // (host-shell's Probes: h.state "needs", "health", "backends")
+        let needs = h.state("needs");
+        let nb = |k: &str| needs[k].as_bool().unwrap_or(false);
         let mut f = json!({
             "page": p,
-            "healthFixing": g("health")["fixing"].as_str().unwrap_or(""),
-            "updatesRunning": g("updates")["running"].as_bool().unwrap_or(false),
+            "healthFixing": h.state("health")["fixing"].as_str().unwrap_or(""),
+            "updatesRunning": updating,
             "needs": {
-                "checked": g("needs")["checked"].as_bool().unwrap_or(false), "avahi": g("needs")["avahi"].as_bool().unwrap_or(false),
-                "pipewire": g("needs")["pipewire"].as_bool().unwrap_or(false), "networkManager": g("needs")["networkManager"].as_bool().unwrap_or(false),
-                "installing": g("needs")["installing"].as_bool().unwrap_or(false)
+                "checked": nb("checked"), "avahi": nb("avahi"), "pipewire": nb("pipewire"), "networkManager": nb("networkManager"),
+                "installing": self.install_asked > 0 && updating
             }
         });
         match p {
             "network" => {
-                let mut wifi = g("feed.wifi");
-                if wifi.is_null() {
-                    wifi = json!({"device": false, "enabled": false, "networks": [], "known": [], "forgetError": "", "join": {"ssid": "", "stage": "", "error": "", "busy": false}, "share": {"stage": "", "ssid": "", "qr": "", "error": "", "password": ""}});
-                }
-                let pw = wifi["share"]["password"].as_str().unwrap_or("").to_string();
-                wifi["share"]["hasPassword"] = json!(!pw.is_empty());
-                wifi["share"]["password"] = json!(if self.reveal { pw } else { String::new() });
-                wifi["saved"] = g("wifijoin")["saved"].clone();
-                f["wifi"] = wifi;
-                f["backends"] = g("feed.backends");
+                f["wifi"] = self.wifi_feed(h);
+                f["backends"] = if h.state("backends").is_object() { h.state("backends").clone() } else { json!({}) };
                 let bt = h.st.shell.get::<Bluetooth>();
-                let extra = g("bluetooth");
                 let mut devices = serde_json::Map::new();
                 for d in bt.map(|b| b.devices.as_slice()).unwrap_or(&[]) {
-                    let e = &extra["devices"][&d.address];
+                    let pairing = self.bt_pairing.contains(&d.address);
                     devices.insert(
                         d.address.clone(),
-                        json!({"trusted": e["trusted"].as_bool().unwrap_or(false), "pairing": e["pairing"].as_bool().unwrap_or(false), "busy": e["busy"].as_bool().unwrap_or(false),
+                        json!({"trusted": self.bt_trusted.contains(&d.address), "pairing": pairing, "busy": pairing || self.bt_busy.contains(&d.address),
                                "picture": picture_for(&d.icon, &d.name), "name": d.name}),
                     );
                 }
-                f["bt"] = json!({"adapter": bt.is_some_and(|b| b.present), "enabled": bt.is_some_and(|b| b.powered), "name": extra["name"].as_str().unwrap_or(""), "devices": devices});
-                f["speed"] = g("feed.speed");
-                f["speedTest"] = g("feed.speedTest");
+                f["bt"] = json!({"adapter": bt.is_some_and(|b| b.present), "enabled": bt.is_some_and(|b| b.powered), "name": self.bt_name, "devices": devices});
+                let st = g("SpeedTest");
+                f["speed"] = speed_card(&st);
+                f["speedTest"] = speed_test(&st);
             }
-            "sound" => f["airplay"] = g("feed.airplay"),
+            "sound" => {
+                // (AirPlay.speakers: the PipeWire outputs the raop module made)
+                let speakers = h.st.shell.get::<Sound>().map_or(0, |s| s.sinks.iter().filter(|d| d.name.starts_with("raop_sink.")).count());
+                let mut air = if h.state("airplay").is_object() { h.state("airplay").clone() } else { json!({}) };
+                air["speakers"] = json!(speakers);
+                f["airplay"] = air;
+            }
             "displays" => {
                 let d = g("displays");
                 f["displays"] = json!({
                     "loaded": d["loaded"].as_bool().unwrap_or(false), "confirming": d["confirming"].as_bool().unwrap_or(false), "confirmLeft": d["confirmLeft"].as_i64().unwrap_or(0),
                     "monitors": d["monitors"], "saved": d["saved"].as_i64().unwrap_or(0), "lowered": d["lowered"]
                 });
-                f["ddc"] = g("feed.ddc");
-                f["mirroring"] = g("feed.mirroring");
+                let b = g("Brightness");
+                let outputs: Vec<Value> = b["ddcDisplays"].as_array().map(|l| l.iter().map(|d| d["output"].clone()).collect()).unwrap_or_default();
+                f["ddc"] = json!({
+                    "displays": outputs, "values": if b["ddcValues"].is_object() { b["ddcValues"].clone() } else { json!({}) },
+                    "installed": b["ddcInstalled"] == true, "problem": b["ddcProblem"].as_str().unwrap_or(""),
+                    "scanned": b["ddcScanned"] == true, "scanning": b["ddcScanning"] == true
+                });
+                let m = h.state("mirroring");
+                let tvs: Vec<Value> = m["displays"].as_array().map(|l| l.iter().map(|d| json!({"uuid": d["uuid"], "name": d["name"], "protocol": protocol_name(d["protocol"].as_str().unwrap_or(""))})).collect()).unwrap_or_default();
+                f["mirroring"] = json!({
+                    "available": m["available"] == true, "error": m["error"].as_str().unwrap_or(""), "p2p": m["p2p"].as_bool().unwrap_or(true),
+                    "installing": m["installing"] == true, "installError": m["installError"].as_str().unwrap_or(""),
+                    "target": m["target"].as_str().unwrap_or(""), "state": m["state"].as_str().unwrap_or(""), "displays": tvs
+                });
             }
             "phone" => {
-                f["phone"] = g("feed.phone");
-                let mut sh = g("feed.sharing");
-                if !sh.is_object() {
-                    sh = json!({});
-                }
+                // (host-sharing's state: "phone", "localsend", "quickshare", "sharing")
+                let ph = h.state("phone");
+                let dev = &ph["phone"];
+                let serial = dev["serial"].as_str().unwrap_or("").to_string();
+                let s = |v: &Value| v.as_str().unwrap_or("").to_string();
+                f["phone"] = json!({
+                    "phone": if dev.is_object() { json!({"model": s(&dev["model"]), "android": s(&dev["android"]), "battery": dev["battery"].as_f64().unwrap_or(-1.0),
+                        "charging": dev["charging"] == true, "wireless": dev["wireless"] == true, "serial": serial}) } else { Value::Null },
+                    "mirroring": dev.is_object() && ph["mirrors"].as_array().is_some_and(|l| l.iter().any(|x| x.as_str() == Some(serial.as_str()))),
+                    "hasAdb": ph["hasAdb"] == true, "hasScrcpy": ph["hasScrcpy"] == true, "qrencode": tessera_core::util::on_path("qrencode"),
+                    "installing": ph["installing"] == true, "installError": s(&ph["installError"]), "waiting": !ph["waiting"].is_null() && ph["waiting"] != false,
+                    "pairStage": s(&ph["pairStage"]), "pairQr": s(&ph["pairQr"]), "pairError": s(&ph["pairError"]),
+                    "camReady": ph["camReady"] == true, "camModule": ph["camModule"] == true, "kernelPackage": s(&ph["kernelPackage"]),
+                    "camSetting": ph["camSetting"], "camError": s(&ph["camError"]), "webcam": ph["webcam"] == true
+                });
+                let (ls, qs) = (h.state("localsend"), h.state("quickshare"));
+                let mut sh = json!({
+                    "localSend": ls["available"] == true, "localSendError": s(&ls["error"]),
+                    "quickShare": qs["available"] == true, "quickShareName": s(&qs["name"]), "quickShareError": s(&qs["error"]),
+                    "btAvailable": qs["bluetoothAvailable"] == true, "btOn": qs["bluetoothOn"] == true,
+                    "portsError": s(&h.state("sharing")["ports"]["error"])
+                });
                 sh["pairingRisk"] = json!(self.system["pairing"]["risk"].as_bool().unwrap_or(false));
                 sh["passwordless"] = json!(self.system["passwordless"].as_bool().unwrap_or(false));
                 sh["fixing"] = json!(self.fixing);
@@ -262,7 +471,7 @@ impl DevicesBridge {
                 sh["managers"] = if self.managers.is_null() { json!([]) } else { self.managers.clone() };
                 sh["fmError"] = json!(self.fm_error);
                 sh["fmBusy"] = json!(self.fm_busy);
-                sh["pickerBusy"] = json!(g("filepicker")["busy"].as_bool().unwrap_or(false));
+                sh["pickerBusy"] = json!(h.state("picker.busy").as_bool().unwrap_or(false));
                 sh["user"] = json!(std::env::var("USER").unwrap_or_default());
                 f["sharing"] = sh;
             }
@@ -319,7 +528,7 @@ impl DevicesBridge {
             "wifiShareReveal" => self.reveal = !self.reveal,
             "wifiShareCopy" => {
                 // Clipboard.copyText(WifiShare.password), through wl-copy's stdin
-                let pw = crate::bus::get("feed.wifi")["share"]["password"].as_str().unwrap_or("").to_string();
+                let pw = crate::bus::get("WifiShare")["password"].as_str().unwrap_or("").to_string();
                 if !pw.is_empty() {
                     std::thread::spawn(move || {
                         use std::io::Write;
@@ -341,11 +550,14 @@ impl DevicesBridge {
             }
             "wifiJoinForm" => h.ask("wifijoin.join", json!([a0])),
             "wifiDismiss" => h.ask("wifijoin.dismiss", json!([])),
-            "installTools" => h.ask("needs.install", json!([if a0.is_null() { json!([]) } else { a0 }])),
+            "installTools" => {
+                self.install_asked = 1;
+                h.ask("needs.install", json!([if a0.is_null() { json!([]) } else { a0 }]));
+            }
             "startNm" => h.ask("backends.startNm", json!([])),
             "openWifiApp" => h.ask("backends.openWifiApp", json!([])),
             "speedTest" => {
-                if crate::bus::get("feed.speed")["running"] == true {
+                if crate::bus::get("SpeedTest")["running"] == true {
                     h.ask("speedtest.cancel", json!([]));
                 } else {
                     h.ask("speedtest.start", json!([]));
@@ -360,15 +572,37 @@ impl DevicesBridge {
                 }
             }
             "btFix" => h.ask("backends.fixBluetooth", json!([])),
-            "btConnect" => bluetoothctl(vec!["connect".into(), s0]),
-            "btDisconnect" => bluetoothctl(vec!["disconnect".into(), s0]),
-            "btPair" => bluetoothctl(vec!["pair".into(), s0]),
-            "btCancelPair" => bluetoothctl(vec!["cancel-pairing".into(), s0]),
-            "btTrust" => bluetoothctl(vec![if arg_bool(a, 1) { "trust" } else { "untrust" }.into(), s0]),
-            "btForget" => bluetoothctl(vec!["remove".into(), s0]),
+            "btConnect" | "btDisconnect" => {
+                self.bt_busy.insert(s0.clone());
+                bluetoothctl_then(vec![if what == "btConnect" { "connect" } else { "disconnect" }.into(), s0.clone()], s0, h.sender("DevicesBridge"));
+            }
+            "btPair" => {
+                self.bt_pairing.insert(s0.clone());
+                bluetoothctl_then(vec!["pair".into(), s0.clone()], s0, h.sender("DevicesBridge"));
+            }
+            "btCancelPair" => {
+                self.bt_pairing.remove(&s0);
+                bluetoothctl(vec!["cancel-pairing".into(), s0]);
+            }
+            "btTrust" => {
+                // (shown at once; BlueZ's own answer follows)
+                let on = arg_bool(a, 1);
+                if on {
+                    self.bt_trusted.insert(s0.clone());
+                } else {
+                    self.bt_trusted.remove(&s0);
+                }
+                bluetoothctl_then(vec![if on { "trust" } else { "untrust" }.into(), s0.clone()], s0, h.sender("DevicesBridge"));
+            }
+            "btForget" => bluetoothctl_then(vec!["remove".into(), s0.clone()], s0, h.sender("DevicesBridge")),
             // Sound
             "airplayInstall" => h.ask("airplay.install", json!([])),
-            "avahiOn" => h.ask("needs.turnOnAvahi", json!([])),
+            "avahiOn" => {
+                if !h.state("needs")["avahiInstalled"].as_bool().unwrap_or(false) {
+                    self.install_asked = 1;
+                }
+                h.ask("needs.turnOnAvahi", json!([]));
+            }
             // Displays
             "displaysSet" => h.ask("displays.set", json!([s0, a.get(1).cloned().filter(Value::is_object).unwrap_or(json!({}))])),
             "displaysSetMany" => h.ask("displays.setMany", json!([if a0.is_null() { json!([]) } else { a0 }])),
@@ -392,7 +626,7 @@ impl DevicesBridge {
             "phoneWebcam" => h.ask("phone.setWebcam", json!([arg_bool(a, 0)])),
             // (again, with the other camera)
             "phoneCameraChanged" => {
-                if crate::bus::get("feed.phone")["webcam"] == true {
+                if h.state("phone")["webcam"] == true {
                     h.ask("phone.setWebcam", json!([false]));
                     after(h.sender("DevicesBridge"), 800, M::CamAgain);
                 }
@@ -462,24 +696,53 @@ impl Service for DevicesBridge {
         match *m {
             M::Tick => {
                 if self.live {
+                    // (Needs.installing: asked, until Software Update's run ends)
+                    let updating = crate::bus::get("updates")["running"].as_bool().unwrap_or(false);
+                    if self.install_asked == 1 && updating {
+                        self.install_asked = 2;
+                    } else if self.install_asked == 2 && !updating {
+                        self.install_asked = 0;
+                    }
+                    self.sync_look(h);
                     self.push(h, false);
                     after(h.sender("DevicesBridge"), 250, M::Tick);
                 }
             }
-            M::Link => {
-                if self.live && self.page == "network" {
+            M::Link(gen) => {
+                if self.live && self.page == "network" && gen == self.link_gen {
                     h.ask("speedtest.readLink", json!([]));
-                    after(h.sender("DevicesBridge"), 5000, M::Link);
+                    bt_read(h.sender("DevicesBridge"));
+                    after(h.sender("DevicesBridge"), 5000, M::Link(gen));
                 }
             }
-            M::Recheck => {
-                if self.live && self.page == "network" {
-                    let st = crate::bus::get("feed.backends")["btState"].as_str().unwrap_or("").to_string();
-                    if st != "ok" && !st.is_empty() {
+            M::Recheck(gen) => {
+                if self.live && self.page == "network" && gen == self.link_gen {
+                    // (Backends.btState, host-shell's Probes)
+                    let st = h.state("backends")["btState"].as_str().unwrap_or("").to_string();
+                    if st != "ok" {
                         h.ask("backends.recheck", json!([]));
                     }
-                    after(h.sender("DevicesBridge"), 3000, M::Recheck);
+                    after(h.sender("DevicesBridge"), 3000, M::Recheck(gen));
                 }
+            }
+            M::Scan(gen) => {
+                if self.live && self.page == "network" && gen == self.link_gen {
+                    if self.asking.is_empty() {
+                        h.ask("network.list", json!([]));
+                    }
+                    after(h.sender("DevicesBridge"), 4000, M::Scan(gen));
+                }
+            }
+            M::BtInfo(name, trusted) => {
+                self.bt_name = name;
+                self.bt_trusted = trusted;
+                self.push(h, false);
+            }
+            M::BtDone(addr) => {
+                self.bt_pairing.remove(&addr);
+                self.bt_busy.remove(&addr);
+                bt_read(h.sender("DevicesBridge"));
+                self.push(h, false);
             }
             M::Managers(v, err) => {
                 self.fm_busy = false;
@@ -524,6 +787,27 @@ mod tests {
         assert_eq!(arg_str(&a, 2), "");
         assert_eq!(arg_str(&a, 9), "");
         assert!(arg_bool(&a, 1) && arg_bool(&a, 3) && !arg_bool(&a, 2) && !arg_bool(&a, 9));
+    }
+
+    #[test]
+    fn bluez_name_and_trusted_devices() {
+        let v = json!({"type": "a{oa{sa{sv}}}", "data": [{
+            "/org/bluez/hci0": {"org.bluez.Adapter1": {"Alias": {"type": "s", "data": "Desk"}, "Name": {"type": "s", "data": "host"}}},
+            "/org/bluez/hci0/dev_AA": {"org.bluez.Device1": {"Address": {"type": "s", "data": "AA:BB"}, "Trusted": {"type": "b", "data": true}}},
+            "/org/bluez/hci0/dev_CC": {"org.bluez.Device1": {"Address": {"type": "s", "data": "CC:DD"}, "Trusted": {"type": "b", "data": false}}}
+        }]});
+        let (name, trusted) = parse_bluez_objects(&v);
+        assert_eq!(name, "Desk");
+        assert!(trusted.contains("AA:BB") && !trusted.contains("CC:DD"));
+        assert_eq!(protocol_name("mice"), "Miracast (network)");
+    }
+
+    #[test]
+    fn the_speed_card_in_the_pages_shape() {
+        let c = speed_card(&json!({"stage": "download", "running": true, "live": 42e6, "progress": 0.4, "ping": 12.0, "download": -1.0, "upload": -1.0}));
+        assert_eq!((c["button"].as_str(), c["sub"].as_str(), c["running"].as_bool()), (Some("Cancel"), Some("Testing download…"), Some(true)));
+        let e = speed_card(&json!({"stage": "error", "error": "offline"}));
+        assert_eq!((e["error"].as_str(), e["server"].as_str(), e["stats"].as_bool()), (Some("offline"), Some(""), Some(false)));
     }
 
     #[test]

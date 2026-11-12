@@ -13,7 +13,8 @@ use crate::ui;
 use crate::wayland::{Spec, State, Surface};
 use serde_json::json;
 use slint::platform::Key;
-use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
+use slint::{ComponentHandle, SharedString};
+use tessera_core::rows::Rows;
 use smithay_client_toolkit::shell::wlr_layer::{Anchor, KeyboardInteractivity, Layer};
 use smithay_client_toolkit::shell::WaylandSurface;
 use std::rc::Rc;
@@ -28,6 +29,23 @@ struct Win {
     a11y: Option<crate::a11y::A11y>,
     glass_sent: String,
     region_sent: Vec<(i32, i32, i32, i32)>,
+    /// the tools and the microphones, handed to the window once (changed in place)
+    tool_rows: Rows<ui::StTool>,
+    mic_rows: Rows<ui::StOpt>,
+}
+
+/// The look's icons (again when the look changes: the window is kept)
+fn icons(ui: &ui::ScreenToolbar, m: bool) {
+    ui.set_ic_record(ic("record", m));
+    ui.set_ic_monitor(ic("monitor", m));
+    ui.set_ic_window(ic("app-window", m));
+    ui.set_ic_selection(ic("selection", m));
+    ui.set_ic_reset(ic("arrow-counter-clockwise", m));
+    ui.set_ic_pencil(ic("pencil-simple", m));
+    ui.set_ic_folder(ic("folder-open", m));
+    ui.set_ic_caret_up(ic("caret-up", m));
+    ui.set_ic_caret_down(ic("caret-down", m));
+    ui.set_ic_check(ic("check", m));
 }
 
 #[derive(Default)]
@@ -114,21 +132,22 @@ impl Toolbar {
                 false
             });
         }
-        let m = st.shell.look.material;
-        ui.set_ic_record(ic("record", m));
-        ui.set_ic_monitor(ic("monitor", m));
-        ui.set_ic_window(ic("app-window", m));
-        ui.set_ic_selection(ic("selection", m));
-        ui.set_ic_reset(ic("arrow-counter-clockwise", m));
-        ui.set_ic_pencil(ic("pencil-simple", m));
-        ui.set_ic_folder(ic("folder-open", m));
-        ui.set_ic_caret_up(ic("caret-up", m));
-        ui.set_ic_caret_down(ic("caret-down", m));
+        icons(&ui, st.shell.look.material);
+        let (tool_rows, mic_rows) = (Rows::new(), Rows::new());
+        ui.set_tools(tool_rows.model());
+        ui.set_mics(mic_rows.model());
         ui.show().expect("show toolbar");
         let a11y = crate::a11y::A11y::new(&surface, st.tx.clone());
         st.set_input_region(&surface, Some(&[]));
-        self.win = Some(Win { output: output.into(), surface, ui, a11y, glass_sent: String::new(), region_sent: Vec::new() });
+        self.win = Some(Win { output: output.into(), surface, ui, a11y, glass_sent: String::new(), region_sent: Vec::new(), tool_rows, mic_rows });
         true
+    }
+
+    /// Made ahead (a moment after start), so the first ⇧⌘5 draws at once
+    pub fn make_ahead(&mut self, st: &mut State, output: &str) {
+        if self.win.is_none() {
+            self.window(st, output);
+        }
     }
 
     pub fn open(&mut self, st: &mut State, screen: Option<String>, b: &Bridge, options: bool) {
@@ -215,6 +234,7 @@ impl Toolbar {
         if let Some(w) = &mut self.win {
             if look {
                 st.shell.apply_theme(&w.ui.global::<ui::Theme>());
+                icons(&w.ui, st.shell.look.material);
                 w.glass_sent.clear();
             }
         }
@@ -244,7 +264,7 @@ impl Toolbar {
                 red: t.icon == "record" && b.recording,
             })
             .collect();
-        ui.set_tools(ModelRc::new(VecModel::from(tools)));
+        w.tool_rows.set(tools);
         ui.set_record_only(self.record_only);
         ui.set_options_open(self.options);
         ui.set_available(b.available);
@@ -253,7 +273,7 @@ impl Toolbar {
         let mut mics = vec![(String::new(), "None".to_string()), ("default".to_string(), "Default microphone".to_string())];
         mics.extend(self.mics.iter().cloned());
         let opts: Vec<ui::StOpt> = mics.iter().map(|(n, d)| ui::StOpt { text: d.as_str().into(), checked: *n == c.mic }).collect();
-        ui.set_mics(ModelRc::new(VecModel::from(opts)));
+        w.mic_rows.set(opts);
         ui.set_system_audio(c.system_audio);
         ui.set_cursor(c.cursor);
         ui.set_countdown(COUNTDOWNS.iter().position(|x| *x == c.countdown).unwrap_or(0) as i32);
@@ -278,26 +298,26 @@ impl Toolbar {
         if let Some(w) = &self.win {
             let c = self.cfg(st);
             let ui = &w.ui;
-            let tools: Vec<ui::StTool> = (0..ui.get_tools().row_count())
-                .filter_map(|i| ui.get_tools().row_data(i))
+            let tools: Vec<ui::StTool> = (0..w.tool_rows.len())
+                .filter_map(|i| w.tool_rows.get(i))
                 .zip(self.tools.iter())
                 .map(|(mut t, tool)| {
                     t.picked = matches!(tool.act, Act::Area(a) if a == c.area);
                     t
                 })
                 .collect();
-            ui.set_tools(ModelRc::new(VecModel::from(tools)));
+            w.tool_rows.set(tools);
             let mut names = vec![String::new(), "default".to_string()];
             names.extend(self.mics.iter().map(|m| m.0.clone()));
-            let opts: Vec<ui::StOpt> = (0..ui.get_mics().row_count())
-                .filter_map(|i| ui.get_mics().row_data(i))
+            let opts: Vec<ui::StOpt> = (0..w.mic_rows.len())
+                .filter_map(|i| w.mic_rows.get(i))
                 .zip(names.iter())
                 .map(|(mut o, n)| {
                     o.checked = *n == c.mic;
                     o
                 })
                 .collect();
-            ui.set_mics(ModelRc::new(VecModel::from(opts)));
+            w.mic_rows.set(opts);
             ui.set_system_audio(c.system_audio);
             ui.set_cursor(c.cursor);
             ui.set_countdown(COUNTDOWNS.iter().position(|x| *x == c.countdown).unwrap_or(0) as i32);

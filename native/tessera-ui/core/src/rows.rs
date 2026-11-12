@@ -128,8 +128,52 @@ impl<T: Clone + PartialEq + 'static> Rows<T> {
     }
 }
 
+/// A list inside a row (a card's buttons, a block's options): the same model
+/// for the same contents. Slint compares models by identity, so a row
+/// holding a model made afresh never equals its old self: `Rows::set`
+/// changed every such row on every refresh and its inner list was made
+/// again (a hovered button lost its hover). Equal contents get the model
+/// made for them before (the last 256 kept per type; never changed in place).
+pub fn shared<T: Clone + PartialEq + 'static>(v: Vec<T>) -> ModelRc<T> {
+    use std::any::{Any, TypeId};
+    use std::cell::RefCell;
+    use std::collections::HashMap;
+    thread_local! {
+        static KEPT: RefCell<HashMap<TypeId, Box<dyn Any>>> = RefCell::new(HashMap::new());
+    }
+    if v.is_empty() {
+        return ModelRc::default();
+    }
+    KEPT.with(|k| {
+        let mut k = k.borrow_mut();
+        let list = k.entry(TypeId::of::<T>()).or_insert_with(|| Box::new(Vec::<(Vec<T>, ModelRc<T>)>::new()));
+        let list = list.downcast_mut::<Vec<(Vec<T>, ModelRc<T>)>>().unwrap();
+        if let Some(i) = list.iter().position(|(c, _)| *c == v) {
+            // (most recently used at the end)
+            let e = list.remove(i);
+            let m = e.1.clone();
+            list.push(e);
+            return m;
+        }
+        let m = ModelRc::new(VecModel::from(v.clone()));
+        list.push((v, m.clone()));
+        if list.len() > 256 {
+            list.remove(0);
+        }
+        m
+    })
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn equal_contents_share_one_model() {
+        let a = super::shared(vec![1, 2, 3]);
+        let b = super::shared(vec![1, 2, 3]);
+        let c = super::shared(vec![1, 2]);
+        assert!(a == b && a != c);
+        assert!(super::shared::<i32>(vec![]) == super::shared::<i32>(vec![]));
+    }
     use super::*;
 
     fn all(r: &Rows<(u32, &'static str)>) -> Vec<(u32, &'static str)> {

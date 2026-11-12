@@ -22,10 +22,38 @@ const PANELS: &[&str] = &["spotlight", "controlCenter", "notificationCenter", "m
 /// The layouts Tiling names (`snap-<layout>`)
 const SNAPS: &[&str] = &["left", "right", "top", "bottom", "fill", "center"];
 
+/// Every other name `run` answers (beside PANELS and snap-*): all of them are
+/// registered as Hyprland global shortcuts `tessera:<name>`, as the QML's
+/// GlobalShortcut items are (TesseraShell.qml, Osd.qml)
+const OTHERS: &[&str] = &[
+    "reset", "lock", "reportBug", "appExpose", "showDesktop", "settings", "screenshotScreen", "screenshotRegion", "ocr", "screenTranslate", "record",
+    "askScreen", "circleSearch", "lens", "darkMode", "caffeine", "replyLatest", "shareSelection", "shelf", "pointerDown", "pointerUp", "dictate",
+    "dictateRelease", "tabs", "pip", "snap-restore", "switcher", "switcherBack", "switcherCommit", "captions", "findPointer", "superTap",
+    "superTapCancel", "superTapRelease", "volumeUp", "volumeDown", "volumeMute", "micMute", "brightnessUp", "brightnessDown",
+];
+
+/// A name keybinds.lua binds to a key coming up (`release = true`)
+pub fn on_release(name: &str) -> bool {
+    name.ends_with("Release") || name == "pointerUp"
+}
+
+/// The names registered with Hyprland
+pub fn names() -> Vec<String> {
+    PANELS.iter().map(|p| p.to_string()).chain(SNAPS.iter().map(|l| format!("snap-{l}"))).chain(OTHERS.iter().map(|n| n.to_string())).collect()
+}
+
 #[derive(Default)]
 pub struct Shortcuts {
     super_down: i64,
+    /// the volume and brightness the keys last set, and when: a key held
+    /// down repeats faster than the sound server answers, so the next step
+    /// goes on from here, not from a reading a step behind
+    volume_set: Option<(f64, i64)>,
+    brightness_set: Option<(f64, i64)>,
 }
+
+/// How long a level the keys set counts over the readings
+const KEY_HOLD_MS: i64 = 600;
 
 /// A step of 5% up or down, never outside 0..1 (Audio.setVolume(volume ± 0.05))
 pub fn step(v: f64, d: f64) -> f64 {
@@ -33,10 +61,18 @@ pub fn step(v: f64, d: f64) -> f64 {
 }
 
 impl Shortcuts {
-    fn set_volume(h: &Host, d: f64) {
+    /// Audio.setVolume(Audio.volume ± 0.05): unmutes, as the QML's
+    fn set_volume(&mut self, h: &Host, d: f64) {
         use tessera_core::services::audio::{send, Cmd, Sound};
         if let Some(dev) = h.st.shell.get::<Sound>().and_then(|s| s.sink().cloned()) {
-            send(Cmd::SinkVolume { index: dev.index, channels: dev.channels.max(1), volume: step(dev.volume, d) });
+            let now = now_ms();
+            let from = self.volume_set.filter(|(_, t)| now - t < KEY_HOLD_MS).map_or(dev.volume, |(v, _)| v);
+            let v = step(from, d);
+            self.volume_set = Some((v, now));
+            if dev.muted {
+                send(Cmd::SinkMute { index: dev.index, muted: false });
+            }
+            send(Cmd::SinkVolume { index: dev.index, channels: dev.channels.max(1), volume: v });
         }
     }
 
@@ -124,7 +160,7 @@ impl Shortcuts {
             }
             // the media keys (Osd.qml)
             "volumeUp" | "volumeDown" => {
-                Self::set_volume(h, if name == "volumeUp" { 0.05 } else { -0.05 });
+                self.set_volume(h, if name == "volumeUp" { 0.05 } else { -0.05 });
                 h.ask("sound.play", json!(["volumeKeys"]));
             }
             "volumeMute" => Self::toggle_mute(h, false),
@@ -132,7 +168,12 @@ impl Shortcuts {
             // (no backlight: no OSD either)
             "brightnessUp" | "brightnessDown" => {
                 if let Some(b) = h.st.shell.get::<tessera_core::services::brightness::Backlight>().filter(|b| b.present) {
-                    tessera_core::services::brightness::set(step(b.value, if name == "brightnessUp" { 0.05 } else { -0.05 }));
+                    let now = now_ms();
+                    let from = self.brightness_set.filter(|(_, t)| now - t < KEY_HOLD_MS).map_or(b.value, |(v, _)| v);
+                    // (Brightness.set: never fully dark)
+                    let v = step(from, if name == "brightnessUp" { 0.05 } else { -0.05 }).max(0.01);
+                    self.brightness_set = Some((v, now));
+                    tessera_core::services::brightness::set(v);
                 }
             }
             other => eprintln!("tessera-ui: host: no shortcut {other}"),
@@ -154,6 +195,16 @@ impl Service for Shortcuts {
         h.st.shell.want("hypr");
         h.st.shell.want("audio");
         h.st.shell.want("brightness");
+        // (binds say hl.dsp.global("tessera:<name>"): heard on a connection
+        // of our own, no process per key press; hypr/tessera/keybinds.lua)
+        tessera_core::global_shortcuts::register("tessera", names(), |name, pressed| {
+            // (a bind's key going down says "pressed", and a `global` bind's
+            // key coming up "released"; the names bound to a release
+            // (dictateRelease, superTapRelease, pointerUp) act on what comes)
+            if pressed || on_release(name) {
+                tessera_core::host::route_ipc(&["shortcut".to_string(), name.to_string()], None);
+            }
+        });
     }
     fn call(&mut self, h: &mut Host, _call: &str, args: &Value) {
         if let Some(n) = args[0].as_str() {
@@ -176,6 +227,42 @@ mod tests {
         assert_eq!(step(0.98, 0.05), 1.0);
         assert_eq!(step(0.02, -0.05), 0.0);
         assert_eq!(step(0.3, -0.05), 0.25);
+    }
+
+    #[test]
+    fn every_qml_global_shortcut_is_registered() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../shell");
+        let mut qml = std::fs::read_to_string(root.join("TesseraShell.qml")).unwrap();
+        qml += &std::fs::read_to_string(root.join("modules/osd/Osd.qml")).unwrap();
+        let ours = names();
+        let mut seen = 0;
+        // (lines left inside a `Shortcut {` / `GlobalShortcut {` block: its name may be on a later line)
+        let mut inside = 0;
+        for l in qml.lines() {
+            let l = l.trim();
+            if l.contains("Shortcut {") && !l.starts_with("component") {
+                inside = 4;
+            }
+            if inside == 0 {
+                continue;
+            }
+            inside -= 1;
+            // `Shortcut { panel: "x"` and `GlobalShortcut { … name: "x"` (one line or the next)
+            for key in ["panel: \"", "name: \""] {
+                if let Some(at) = l.find(key) {
+                    inside = 0;
+                    let n = &l[at + key.len()..];
+                    let n = &n[..n.find('"').unwrap()];
+                    if n.ends_with('-') || n.is_empty() {
+                        continue; // ("snap-" + layout: the snaps, checked below)
+                    }
+                    seen += 1;
+                    assert!(ours.iter().any(|o| o == n), "the QML's shortcut {n} isn't registered");
+                }
+            }
+        }
+        assert!(seen > 40, "only {seen} QML shortcuts found");
+        assert!(ours.iter().any(|o| o == "snap-left"));
     }
 
     #[test]

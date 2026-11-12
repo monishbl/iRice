@@ -1,0 +1,18 @@
+# Stage Manager must be on (config stageManager enabled or the Control Center toggle); needs 3 apps opened in turn so 2 stages wait at the left.
+setup foot -T A & sleep 1; foot -T B & sleep 1; foot -T C &
+wait 3
+# MANUAL: turn Stage Manager on (use_config stageManager enabled, or its Control Center toggle) if the harness has no config step
+shot stage-strip
+note Two waiting stages at the left at x 20, each 140 x 104 thumbnail with icon and name under it; same as QML in this look.
+# MANUAL: live previews on (use_config overview previews "live"): hover a stage and hold 3 s
+ptr move 960 540 sleep 100 glide 80 200 300
+rec stage-hover 3 ptr move 80 200
+note Hovered stage stays at scale 1.04, steady for 3 s with no scale reset every 200 ms (fix); compare QML.
+ptr move 80 200 down
+shot stage-press
+note Pressed stage is at 0.96 scale.
+ptr move 80 200 up
+wait 1
+shot stage-selected
+note Released: that stage comes in (becomes the active stage); the other waits at the left.
+setup pkill -x foot || true

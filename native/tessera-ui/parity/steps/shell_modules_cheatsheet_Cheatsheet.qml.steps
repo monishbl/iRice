@@ -1,0 +1,22 @@
+# Cheatsheet: both looks (runner does both).
+ipc panels open cheatsheet IRICE-TEST
+wait 1
+shot open
+note Cheatsheet open; same layout, groups and look as QML.
+ipc panels close
+wait 1
+rec open 1 ipc panels open cheatsheet IRICE-TEST
+note Open curve: Material settles in about 0.3 s, Glass about 0.4 s; compare with QML within 1 frame.
+wait 1
+rec close 0.4 key -k Escape
+note Escape closes in 192 ms, same as QML.
+wait 1
+ipc panels open cheatsheet IRICE-TEST
+wait 1
+# NOTE: click on layer surfaces may not register in the harness. "Periodic table" segment position is read from the shot (unknown here).
+# MANUAL: click "Periodic table" -> Material: the segment's inner corners round with a small overshoot in about 0.22 s; Glass: the pill slides in 220 ms
+# MANUAL: glide over an element -> tint 45 % + outline; Material rounds in about 0.22 s
+# MANUAL: Shortcuts page: binds in three columns (page switch needs the segment position)
+shot shortcuts
+note Shortcuts page if reachable: binds in three columns, same groups and keys as QML; otherwise the default page matches QML.
+ipc panels close

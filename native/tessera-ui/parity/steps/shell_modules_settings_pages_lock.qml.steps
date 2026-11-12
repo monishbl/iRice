@@ -1,0 +1,20 @@
+# lock: Lock Screen page. Check in each look (Material starts with "Clock" carousel; Glass has "Cards and field").
+ipc panels settings lock
+wait 2
+shot lock-top
+note L1: Material starts with "Clock" (carousel, Size, Thickness) and has the Clock width/digits group in More options; Glass has neither but has "Cards and field". Same texts, footers and order as QML.
+ptr move 1100 600 scroll 0 5
+wait 1
+shot lock-mid
+note L1 cont.: middle of the page (Notifications Beside/Icons, Layout, Bedside Mode): same labels, details, footers and order as QML.
+ptr move 1100 600 scroll 0 10
+wait 1
+shot lock-end
+note L1 cont.: end of the page (buttons "Preview Login Screen" and "Lock Screen", More options): same as QML.
+# MANUAL: L1 open More options and shot to the end.
+# MANUAL: L2 click Notifications "Beside" then "Icons": Glass row detail changes; Material group footer changes. Layout "Classic": Glass footer "The clock up top...", Material detail "The clock and the date, nothing under them".
+# MANUAL: L3 switch Bedside Mode off, open More options: Prevent burn-in, Wake with the mouse, Clock brightness, Clock weight and "Into Bedside Mode" greyed and non-reactive; labels as QML.
+# MANUAL: L4 Accessibility > Reduce motion on, back to Lock: Login intro detail "Off while Reduce motion is on (Accessibility)", Play Intro greyed, switch still usable.
+# MANUAL: L5 "Preview Login Screen" opens the login preview (Esc closes); "Lock Screen" locks the arena (then ipc lock unlock).
+# MANUAL: L6 Material: choose the analog face in the carousel, open More options: Width and Digits rows hidden.
+ipc panels close

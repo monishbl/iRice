@@ -1,0 +1,16 @@
+# Log view box on the Report a Bug page (Tessera log row > Show).
+ipc panels settings about/bugreport
+wait 2
+ptr move 1100 600 sleep 200 scroll 0 10
+wait 1
+shot bug
+note Find the Tessera log row and its Show button (read y from this shot). Click guess follows.
+ptr move 1330 500 sleep 300 glide 1330 500 100 click
+wait 1
+shot log-box
+note L1 dark box 200 px tall, 12 px in from the group's edge, mono 11 px text wrapping anywhere; same colours per look. NOTE: the Show click position is a guess.
+ptr move 1100 560 sleep 300 scroll 0 3
+shot log-scrolled
+note L2 while scrolling inside the box a thin scroll indicator shows at its right edge (QML does; batch 3 added it in Rust).
+# MANUAL: L3 follow: with details shown the end stays in view; scroll up and it stays put (needs a simulated update)
+ipc panels close

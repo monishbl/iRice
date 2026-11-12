@@ -1,0 +1,27 @@
+# Accounts page. Never sign in or type a real key.
+ipc panels settings accounts
+wait 2
+shot acc-top
+note A1 headings "Google", "iCloud", "Microsoft 365" in that order, each part's groups as the QML, same heading size and weight (check in each look).
+ptr move 1100 600 sleep 200 scroll 0 20
+wait 1
+shot acc-mid
+note A1 middle of the page: iCloud part as QML.
+ptr move 1100 600 sleep 200 scroll 0 40
+wait 1
+shot acc-end
+note A1 end of the page: Microsoft 365 part as QML.
+ipc panels settings google
+wait 2
+shot acc-google
+note A2 Accounts opens scrolled so that the Google heading is at the top, both shells.
+ipc panels settings icloud
+wait 2
+shot acc-icloud
+note A2 iCloud heading at the top.
+ipc panels settings microsoft
+wait 2
+shot acc-microsoft
+note A2 Microsoft 365 heading at the top.
+# MANUAL: A3 in the Google part open More options, switch "Use your own OAuth client" on, go to another page and back: QML has More options closed and the switch off again (batch 3: typed state starts over); Rust must match
+ipc panels close

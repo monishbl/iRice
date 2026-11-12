@@ -1,0 +1,59 @@
+# GreeterText: ly-style text login. Mock password "tessera".
+# NOTE: $TESSERA_BIN must point at the Rust binary.
+setup TESSERA_GREETER_MOCK=1 $TESSERA_BIN --greeter --style text --demo users &
+wait 2
+shot start
+note Three rows in a box (<=560 wide, 1 px dim border): session, login, password; top "F1 shutdown F2 reboot F3 sleep" and time on the right; password row label in the accent colour, caret blinking after the empty stars; as QML.
+key -k Up
+wait 0.4
+shot login-row
+note Login row now accent-coloured, shows "ada_" (name plus underscore).
+key x
+wait 0.3
+shot adax
+note Login row reads "adax_".
+key -k BackSpace
+wait 0.3
+shot ada-again
+note Backspace removed the x: "ada_".
+key -k Up
+wait 0.3
+key -k Right
+wait 0.3
+shot session-next
+note Session row active and shows "< NextSession >" with the next session name.
+key -k Down
+key -k Down
+wait 0.3
+key abc
+wait 0.3
+shot stars
+note Password row shows "***".
+key -k Return
+wait 1.8
+shot wrong
+note Red "Incorrect password. Try again." on the status line; password field empty.
+key tessera
+key -k Return
+wait 0.5
+shot ok
+note Logging in (status "logging in..."); window quits about 1.2 s after (stderr "would launch").
+wait 2
+shot ok-gone
+note Greeter window gone after about 1.2 s.
+# F2 power
+setup TESSERA_GREETER_MOCK=1 $TESSERA_BIN --greeter --style text --demo users &
+wait 2
+key -k F2
+wait 0.4
+shot f2
+note "reboot" at the top turns red and the status line reads "reboot: Enter (or the same key again) to confirm, Esc to cancel".
+key -k F2
+wait 0.5
+# MANUAL: stderr shows a dry "reboot" after the second F2
+# Session click halves
+key -k Escape
+wait 0.5
+key -k Escape
+wait 1
+# MANUAL: click the session value's right half: next session; left half: previous (click on layer surfaces may not register in the harness)

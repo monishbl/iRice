@@ -1,0 +1,8 @@
+# Notification Center: panel at the right under the bar (x≈1530..1912 Material, 1544..1912 Glass); read rows from the first shot
+look glass
+wait 2
+ipc panels open notificationCenter IRICE-TEST
+wait 1
+note Focus tab (from shot): start, pause, reset; Stopwatch: laps add rows without flicker
+shot focus
+ipc panels close

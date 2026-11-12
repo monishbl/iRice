@@ -1,0 +1,12 @@
+look material
+setup python3 -I -c "import json,os;p=os.path.expanduser('~/.config/tessera/config.json');c=json.load(open(p));c.setdefault('controlCenter',{})['layout']=[];json.dump(c,open(p,'w'),indent=4)"
+wait 2
+setup sh -c 'while :; do pw-play --volume 0.05 /usr/share/sounds/freedesktop/stereo/complete.oga; done' >/dev/null 2>&1 &
+wait 2
+ipc panels open controlCenter IRICE-TEST
+wait 1
+ptr move 1700 406 sleep 50 down sleep 1100 up
+wait 0.6
+shot sound-page
+note outputs, Applications with the app slider, Microphone; see CCSlider.steps for drags
+ipc panels close

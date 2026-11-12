@@ -177,7 +177,7 @@ pub fn trackpad(cx: &mut Ctx, p: &mut Page) {
         let typing = cx.b("trackpad.disableWhileTyping");
         let tt = cx.toggle("trackpad.disableWhileTyping");
         p.group("Point and click")
-            .row(Row::new("Drag lock").detail("A tap-drag keeps holding when you lift your finger, until you tap again").switch(lock, lt).enabled(tap && drag))
+            .row(Row::new("Drag lock").detail("A tap-drag keeps holding when you lift your finger, until you tap again").switch(lock, lt).enabled(tap && drag).faded(!(tap && drag)))
             .row(Row::new("Middle click").detail(if right == "corner" { "Click both bottom corners together" } else { "Click or tap with three fingers" }).switch(mid, mt))
             .row(Row::new("Ignore the trackpad while typing").detail("Stops a resting palm from moving the pointer").switch(typing, tt));
     }

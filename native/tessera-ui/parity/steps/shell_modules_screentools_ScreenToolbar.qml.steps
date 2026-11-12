@@ -1,0 +1,65 @@
+# Screen toolbar. Dock on with 48 px icons assumed: bar y 934..998 (centre 966), all tools about 1041 wide at x about 440. Check in each look.
+# Tool centres x: 504 Capture Screen, 612, 741 Copy Text, 849, 957, 1086 Record Screen, 1194, 1302, Options about 1424.
+wait 3
+rec tb-first 1 ipc panels open screenTools IRICE-TEST
+note First frame with the bar: Rust no later than QML (+-1 frame).
+wait 1
+rec tb-close0 0.5 key -k Escape
+note Escape closes the toolbar.
+wait 1
+rec tb-open 1 ipc panels open screenTools IRICE-TEST
+note The bar rises 12 px and fades in over 220 ms; compare the frame strip with QML.
+wait 1
+rec tb-close 0.5 key -k Escape
+note Exit takes 220 ms (frame strip vs QML).
+wait 1
+ipc panels open screenTools IRICE-TEST
+wait 1
+ptr glide 741 966 300
+wait 1
+shot tb-hover
+note Copy Text hovered: Glass fill / Material 8 % state layer, same as QML.
+rec tb-press 0.7 ptr move 741 966 down sleep 250 glide 741 700 1 up
+note Material: the face swells to about 110 px wide, corners 28 -> 16, springs back past 100 % once and settles in about 0.3 s; QML and Rust curves within +-1 frame; Glass: pressed fill only. Released away so nothing runs. NOTE: click on layer surfaces may not register in the harness.
+wait 1
+ptr move 1424 966 click
+wait 1
+shot tb-options
+note Options open above the bar (bottom edge y about 926), the caret flips; the Material check uses tertiaryContainer with a Material Symbol check.
+ptr move 1300 800 click
+wait 1
+shot tb-options-mic
+note Clicking "Default microphone" moves the check to it (position of the row may differ; compare with QML).
+key -k Escape
+wait 1
+shot tb-esc1
+note First Escape closes Options only; the toolbar stays.
+key -k Escape
+wait 1
+shot tb-esc2
+note Second Escape closes the toolbar.
+ipc recorder toolbar
+wait 1
+shot rec-bar
+note Recording-only bar: Entire Screen / Window / Selected Region | Options, Record. Glass bar about 553 wide at x about 683 (Window at about (843,966), Record about (1176,966)); Material split-button bar about 627 wide at x about 646, lead about x 1101..1207, trail centre about (1229,966). The lead's left edge at the same x as QML (+-1).
+ptr move 843 966 click
+wait 1
+shot rec-window
+note Glass: Window is picked (accent 22 % fill).
+ptr move 1176 966 sleep 300 glide 1176 966 50
+wait 1
+shot rec-hover
+note Glass: Record hovered, its red matches QML (+-2 per channel).
+ptr move 1176 966 sleep 200 down
+shot rec-press
+ptr up
+note Glass: pressed Record is the red divided by 1.2 and 97 % scale. NOTE: click on layer surfaces may not register in the harness.
+wait 1
+rec split-menu 0.6 ptr move 1229 966 click
+note Material only: the caret turns half a turn over about 220 ms, the menu fades and slides 6 px: 200 wide, right edge x about 1253, bottom y about 938; the trail's inner corners round to 20 with a small overshoot.
+wait 1
+key -k Escape
+key -k Escape
+# MANUAL: Toggle System audio while the pointer rests on a microphone row: that row keeps its hover (rows kept in place)
+# MANUAL: Starting a recording is not testable here (no gpu-screen-recorder): after "Record a window" the Rust log should show screen.do ["record","window"]
+# MANUAL: Look change: open/close in Glass, switch to Material in Settings, Appearance, open again: Material Symbols everywhere (the Options check too)

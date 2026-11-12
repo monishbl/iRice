@@ -1,0 +1,15 @@
+# Drive group on the Google and Microsoft account pages. Never press Install, Connect, Mount or Disconnect.
+ipc panels settings google
+wait 2
+ptr move 1100 600 sleep 200 scroll 0 30
+wait 1
+shot drive-google
+note D1 title, row label/detail, buttons and footer of the Drive group match QML for the same state (sandbox: probably not connected).
+ipc panels settings microsoft
+wait 2
+ptr move 1100 600 sleep 200 scroll 0 30
+wait 1
+shot drive-ms
+note D1 Microsoft Drive group: same title, rows, buttons and footer as QML.
+# MANUAL: D2 if connected and mounted, click Open: the folder opens in Files; close it (needs a real account)
+ipc panels close

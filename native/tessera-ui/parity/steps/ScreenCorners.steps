@@ -1,0 +1,12 @@
+# Arena IRICE-TEST 1920x1080 scale 1, the user's config (expressive motion, Colloid, their 4 widgets).
+# Each file runs top to bottom from a fresh desktop. `static NAME x y w h`: that region must not change
+# from there until the next `shot`, `rec` or `look` (the no-reload blocks end with their last close).
+# Right-clicks: `ptr ... down up` lines marked (right button) need the runner's right button.
+
+look material
+shot sc-corners
+note 12 px concave black corners bottom-left and bottom-right
+setup python3 -c "import json,os;p=os.path.expanduser('~/.config/tessera/config.json');c=json.load(open(p));c.setdefault('appearance',{})['screenCornerRadius']=json.loads('24');json.dump(c,open(p,'w'),indent=4)"
+wait 1.5
+shot sc-24
+setup python3 -c "import json,os;p=os.path.expanduser('~/.config/tessera/config.json');c=json.load(open(p));c.setdefault('appearance',{})['screenCornerRadius']=json.loads('12');json.dump(c,open(p,'w'),indent=4)"

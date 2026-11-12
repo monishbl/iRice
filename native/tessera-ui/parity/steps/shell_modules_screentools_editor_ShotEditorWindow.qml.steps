@@ -1,0 +1,114 @@
+# Shot editor window. Check in each look. Glass window 1433x934 at (244,73), canvas x 280..1640 y 157..923, top bar y 127 (tools x 351+40i; undo 1583, redo 1623), bottom bar y 953 (swatches x 293+28i). Material window 1390x934 at (265,73), canvas x 301..1619 y 169..911, top bar y 133 (tools x 382+42i), bottom bar y 947 (swatches x 313+26i; split caret centre 1599).
+setup (magick -size 1600x900 xc:white -fill black -pointsize 48 -annotate +100+200 "Invoice total 42.00" -annotate +100+320 "https://example.com/pay" /tmp/t.png || convert -size 1600x900 xc:white -fill black -pointsize 48 -annotate +100+200 "Invoice total 42.00" -annotate +100+320 "https://example.com/pay" /tmp/t.png); cp /tmp/t.png /tmp/t2.png
+rec ed-open 1 ipc shotEditor edit /tmp/t.png
+note Open: fade plus scale 0.97 -> 1 over 300 ms; compare QML vs Rust frame by frame.
+wait 1
+rec ed-close 0.6 key -k Escape
+note Close: 200 ms out; compare frames with QML.
+wait 1
+setup magick -size 1900x200 xc:white /tmp/wide.png || convert -size 1900x200 xc:white /tmp/wide.png
+ipc shotEditor edit /tmp/wide.png
+wait 1
+key -k c
+wait 1
+shot crop-wide
+note Wide picture letterboxed in the 240 px minimum canvas: canvas x 185..1735, y 420..660 (both looks); picture 1550x163 at y 458..621; the four corner crop handles are WHOLE (not cut in half) at the picture's corners.
+ptr move 181 454 down glide 400 520 200 up
+wait 1
+shot crop-drag
+note Grabbing the top-left handle from 5 px outside the picture shrinks the crop from that corner (before the fix the press did nothing); the readout shows the new size. NOTE: click on layer surfaces may not register in the harness.
+key -k Return
+wait 1
+key -k Escape
+wait 1
+ipc shotEditor edit /tmp/t.png
+wait 1
+key -k r
+ptr move 500 300 down glide 700 450 100 up
+wait 1
+shot constrain-rect
+note Rectangle drag (no Shift: a plain box); a 2 px drag leaves nothing; pen click leaves a dot. (Shift constraint is MANUAL.)
+ptr move 349 953 sleep 200 down
+shot sw-press
+ptr up
+note Colour swatch 3 pressed: Glass shrinks to 0.9; Material swells about 6 % and overshoots a little on release (Material swatch is at x 365 y 947).
+rec sw 0.5 ptr move 349 953 down sleep 150 up
+note Swatch press/release curve: Glass 0.9 shrink, Material about 6 % swell with a little overshoot when let go; compare with QML.
+wait 1
+key -k t
+ptr click 600 500
+key Hi
+ptr click 349 953
+wait 1
+shot text-colour
+note Text label "Hi" turned to the picked colour (colour 3); width button 3 would make it larger; Enter commits, Esc cancels.
+key -k Return
+wait 1
+key -k s
+key -M ctrl -k a -m ctrl
+key -k Escape
+wait 1
+shot esc-selection
+note Escape clears the text selection first (editor stays open, selection gone).
+key -k c
+key -k Escape
+wait 1
+shot esc-crop
+note Escape cancels the crop and leaves the crop mode.
+key -k p
+ptr move 500 400 down glide 800 500 100 up
+key -k Escape
+wait 1
+shot esc-banner
+note Drawing then Escape shows the banner "Save changes to this screenshot?" with Keep editing.
+key -k Escape
+wait 1
+shot esc-keep
+note A second Escape picks Keep editing: the banner is gone and the editor stays open with the mark.
+rec ed-copy 1 key -M ctrl -k c -m ctrl
+note Ctrl+C: spinner then toast "Copied to the clipboard" (2 s).
+wait 3
+setup mkdir -p /tmp/ro && cp /tmp/t.png /tmp/ro/ro.png && chmod -w /tmp/ro
+ipc shotEditor close
+ipc shotEditor edit /tmp/ro/ro.png
+wait 1
+key -k p
+ptr move 500 400 down glide 800 500 100 up
+key -M ctrl -k s -m ctrl
+wait 2
+shot save-error
+note Read-only folder: error banner "Couldn't save "ro.png"" with Copy to clipboard / Try again / x.
+ipc shotEditor close
+ipc shotEditor edit /tmp/t.png
+wait 1
+ptr move 1540 947 sleep 300 glide 1540 947 50
+wait 1
+shot split-hover
+note Material only (Glass has no split button): hover on the lead eases in over 150 ms. Compare the lead's colour with QML.
+rec split 0.6 ptr move 1599 947 click
+note Material only: caret turns clockwise 180 -> 360 over 220 ms OutCubic, its inner corners round up with a small overshoot (290 ms), the menu (surfaceContainer, 200 wide) fades in with its bottom 8 px above the button's top (y about 919). NOTE: click on layer surfaces may not register in the harness.
+wait 1
+shot split-menu
+note Material: menu open above the split button, 200 wide.
+ptr move 960 300 click
+wait 1
+shot split-closed
+note Click outside fades the menu out (Rust keeps the items while fading: known).
+ipc shotEditor close
+wait 1
+ipc shotEditor edit /tmp/missing.png
+wait 1
+shot missing
+note "Couldn't open this screenshot"; the split button (Material) is dimmed to 38 % and clicking its caret does nothing.
+ptr move 1599 947 click
+wait 1
+shot missing-click
+note Nothing changes after clicking the disabled caret.
+ipc shotEditor close
+wait 1
+setup magick -size 7000x4000 plasma: /tmp/big.png || convert -size 7000x4000 plasma: /tmp/big.png
+rec ed-loading 1 ipc shotEditor edit /tmp/big.png
+note Big picture: a loading indicator plus "Opening screenshot..." until it loads (QML vs Rust).
+wait 5
+ipc shotEditor close
+# MANUAL: Shift with R drag makes a square, Shift with A snaps to 45 degrees (held modifier across a ptr drag)

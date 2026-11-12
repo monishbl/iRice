@@ -149,7 +149,7 @@ component AsButton inherits FocusScope {
         background: Theme.material ? (minor ? m3i.with-alpha(layer) : m3c.mix(m3i, 1 - layer))
             : primary ? (touch.pressed ? Theme.accent.darker(0.2) : touch.has-hover ? Theme.accent.darker(0.1) : Theme.accent)
             : touch.pressed ? Theme.fill-pressed : touch.has-hover ? Theme.fill-hover : Theme.fill;
-        animate background { duration: 150ms; }
+        animate background { duration: Theme.hover; }
         inner := HorizontalLayout {
             alignment: center;
             spacing: glyph ? (Theme.material ? 8px : 6px) : 0px;
@@ -206,10 +206,13 @@ component AsIconButton inherits FocusScope {
     }
     bg := Rectangle {
         border-radius: Theme.material ? (touch.pressed ? min(8px, self.height / 2) : self.height / 2) : Theme.radius-control - 2px;
-        animate border-radius { duration: 150ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+        animate border-radius { duration: Theme.hover; easing: cubic-bezier(0.33, 1, 0.68, 1); }
         background: Theme.material ? (touch.pressed ? Theme.m3-on-surface-variant.with-alpha(0.1) : touch.has-hover ? Theme.m3-on-surface-variant.with-alpha(0.08) : transparent)
             : touch.pressed ? Theme.fill-pressed : touch.has-hover ? Theme.fill : transparent;
-        animate background { duration: 150ms; }
+        animate background { duration: Theme.hover; }
+        // (it gives a little as it's pressed, IconButton.qml)
+        transform-scale: touch.pressed ? 0.97 : 1;
+        animate transform-scale { duration: 100ms; }
         SymIcon {
             text: icon;
             font-size: icon-size;
@@ -288,7 +291,7 @@ component PillSearch inherits Rectangle {
     height: 56px;
     border-radius: self.height / 2;
     background: input.has-focus ? Theme.m3-surface-container-highest : hover.has-hover ? Theme.m3-surface-container-high.mix(Theme.m3-on-surface, 0.92) : Theme.m3-surface-container-high;
-    animate background { duration: 150ms; }
+    animate background { duration: Theme.hover; }
     hover := TouchArea {
         mouse-cursor: MouseCursor.text;
         clicked => { input.focus(); }
@@ -417,7 +420,7 @@ component FilterChip inherits FocusScope {
     width: label.preferred-width + (Theme.material ? (on ? 16px + 18px + 8px : 32px) : 24px);
     height: Theme.material ? 32px : 28px;
     horizontal-stretch: 0;
-    animate width { duration: Theme.material ? 150ms : 0ms; easing: ease-out; }
+    animate width { duration: Theme.material ? Theme.hover : 0ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
     accessible-role: radio-button;
     accessible-label: text;
     accessible-checkable: true;
@@ -511,7 +514,7 @@ component AppCard inherits FocusScope {
         border-radius: Theme.material ? 20px : Theme.radius-module - 6px;
         background: Theme.material ? Theme.m3-surface-container.mix(Theme.m3-on-surface, touch.pressed ? 0.9 : touch.has-hover ? 0.92 : 1)
             : touch.has-hover ? Theme.fill-hover : Theme.fill;
-        animate background { duration: 150ms; }
+        animate background { duration: Theme.hover; }
         touch := TouchArea {
             mouse-cursor: pointer;
             clicked => { root.opened(); }
@@ -595,6 +598,7 @@ component SplitButton inherits Rectangle {
     in property <AsGlyphs> g;
     callback clicked();
     callback toggle(length, length); // where the menu goes (the window's coordinates: the button's bottom right)
+    callback open-menu(length, length); // (Down: opens it, or leaves it open)
     callback close-menu(); // (Escape)
     height: 48px;
     width: lead.width + 2px + 40px;
@@ -612,7 +616,7 @@ component SplitButton inherits Rectangle {
                 return accept;
             }
             if e.text == Key.DownArrow {
-                root.toggle(root.absolute-position.x + root.width, root.absolute-position.y + root.height);
+                root.open-menu(root.absolute-position.x + root.width, root.absolute-position.y + root.height);
                 return accept;
             }
             if e.text == Key.Escape && open {
@@ -628,7 +632,7 @@ component SplitButton inherits Rectangle {
             border-top-right-radius: inner;
             border-bottom-right-radius: inner;
             background: Theme.m3-primary.mix(Theme.m3-on-primary, lt.pressed ? 0.9 : lt.has-hover ? 0.92 : 1);
-            animate background { duration: 150ms; }
+            animate background { duration: Theme.hover; }
             transform-origin: { x: self.width / 2, y: self.height / 2 };
             transform-scale: lt.pressed ? 1 + min(0.06, 10px / self.width) : 1;
             animate transform-scale { duration: 290ms; easing: spring(0.3); }
@@ -688,7 +692,7 @@ component SplitButton inherits Rectangle {
             border-bottom-right-radius: self.height / 2;
             animate border-top-left-radius, border-bottom-left-radius { duration: 250ms; easing: spring(0.3); }
             background: Theme.m3-primary.mix(Theme.m3-on-primary, tt.pressed ? 0.9 : tt.has-hover ? 0.92 : 1);
-            animate background { duration: 150ms; }
+            animate background { duration: Theme.hover; }
             transform-origin: { x: self.width / 2, y: self.height / 2 };
             transform-scale: tt.pressed ? 1.06 : 1;
             animate transform-scale { duration: 290ms; easing: spring(0.3); }
@@ -697,7 +701,7 @@ component SplitButton inherits Rectangle {
                 font-size: 18px;
                 color: Theme.m3-on-primary;
                 transform-rotation: open ? 180deg : 0deg;
-                animate transform-rotation { duration: 220ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+                animate transform-rotation { duration: Theme.popover; easing: cubic-bezier(0.33, 1, 0.68, 1); }
             }
             if trail.has-focus: AsRing { pw: parent.width; ph: parent.height; r: parent.height / 2 + 4px; }
             tt := TouchArea {
@@ -724,7 +728,7 @@ component AboutRow inherits Rectangle {
     border-bottom-left-radius: last ? 24px : 4px;
     border-bottom-right-radius: last ? 24px : 4px;
     background: hover.has-hover ? Theme.m3-surface-container-high.mix(Theme.m3-on-surface, 0.92) : Theme.m3-surface-container-high;
-    animate background { duration: 150ms; }
+    animate background { duration: Theme.hover; }
     accessible-role: groupbox;
     accessible-label: label;
     hover := TouchArea { }
@@ -833,6 +837,8 @@ export component AppStoreWindow inherits Window {
     callback remove();
     callback website();
     callback menu-pick(int);
+    // the split button wants its menu (x, y: its bottom right; only-open: Down)
+    callback menu-toggle(length, length, bool);
     callback install-catalogue();
 
     public function focus-search() {
@@ -1185,12 +1191,10 @@ export component AppStoreWindow inherits Window {
                             open: root.menu-open;
                             g: g;
                             clicked => { root.main(); }
-                            toggle(x, y) => {
-                                root.menu-x = x;
-                                root.menu-y = y;
-                                root.menu-open = !root.menu-open;
-                            }
-                            close-menu => { root.menu-open = false; }
+                            // (the menu is its own popup: Rust opens it by the button)
+                            toggle(x, y) => { root.menu-toggle(x, y, false); }
+                            open-menu(x, y) => { root.menu-toggle(x, y, true); }
+                            close-menu => { root.menu-toggle(0, 0, false); }
                         }
                         if !Theme.material: AsButton {
                             primary: true;
@@ -1342,38 +1346,58 @@ export component AppStoreWindow inherits Window {
             }
         }
     }
+}
 
-    // The split button's menu (a click outside it closes it)
-    if menu-open: TouchArea {
-        clicked => { root.menu-open = false; }
+// The split button's menu (SplitButton.qml's Popup) as its own popup
+// window: Rust opens it under the button's right end (lib.rs `open_menu`)
+// and closes it on a pick, Esc, or a click elsewhere (the popup's grab).
+// Keys: ↑ ↓ move, Enter or Space choose, Esc closes.
+export component AsMenu inherits Window {
+    in property <[AsMenuItem]> items;
+    in-out property <int> current: -1;
+    callback pick(int);
+    callback dismiss();
+    background: transparent;
+    default-font-family: Theme.font;
+    function step(d: int) {
+        let n = items.length;
+        if n == 0 { return; }
+        let start = current < 0 ? (d > 0 ? -1 : 0) : current;
+        let i1 = mod(start + d + n, n);
+        let i2 = mod(start + 2 * d + 2 * n, n);
+        if items[i1].enabled { current = i1; } else if items[i2].enabled { current = i2; }
     }
-    menu := Rectangle {
-        visible: self.opacity > 0.01;
-        opacity: menu-open ? 1 : 0;
-        animate opacity { duration: menu-open ? 220ms : 150ms; }
-        width: max(200px, mcol.preferred-width);
-        height: mcol.preferred-height + 16px;
-        x: max(8px, min(root.width - self.width - 8px, root.menu-x - self.width));
-        y: root.menu-y + 8px + (menu-open ? 0px : -6px);
-        animate y { duration: 220ms; easing: ease-out; }
+    forward-focus: keys;
+    keys := FocusScope {
+        key-pressed(e) => {
+            if e.text == Key.Escape { root.dismiss(); return accept; }
+            if e.text == Key.DownArrow { step(1); return accept; }
+            if e.text == Key.UpArrow { step(-1); return accept; }
+            if e.text == Key.Return || e.text == " " {
+                if current >= 0 && current < items.length && items[current].enabled { root.pick(items[current].id); }
+                return accept;
+            }
+            reject
+        }
+    }
+    Rectangle {
         border-radius: 16px;
         background: Theme.m3-surface-container;
-        drop-shadow-blur: 16px;
-        drop-shadow-offset-y: 4px;
-        drop-shadow-color: Theme.m3-shadow.with-alpha(Theme.dark ? 0.4 : 0.16);
+        border-width: Theme.dark ? 1px : 0;
+        border-color: Theme.m3-outline-variant.with-alpha(0.5);
         accessible-role: AccessibleRole.list;
         accessible-label: "More options";
-        TouchArea { }
         mcol := VerticalLayout {
             y: 8px;
             height: self.preferred-height;
-            for it in menu-items: Rectangle {
+            for it[i] in items: Rectangle {
                 height: 44px;
                 opacity: it.enabled ? 1 : 0.38;
-                background: mt.has-hover && it.enabled ? Theme.m3-on-surface.with-alpha(mt.pressed ? 0.1 : 0.08) : transparent;
+                background: (mt.has-hover || root.current == i) && it.enabled ? Theme.m3-on-surface.with-alpha(mt.pressed ? 0.1 : 0.08) : transparent;
+                animate background { duration: Theme.hover; }
                 accessible-role: list-item;
                 accessible-label: it.text;
-                accessible-action-default => { if it.enabled { root.menu-open = false; root.menu-pick(it.id); } }
+                accessible-action-default => { if it.enabled { root.pick(it.id); } }
                 HorizontalLayout {
                     padding-left: 16px;
                     padding-right: 16px;
@@ -1393,12 +1417,9 @@ export component AppStoreWindow inherits Window {
                     }
                 }
                 mt := TouchArea {
-                    enabled: it.enabled && root.menu-open;
+                    enabled: it.enabled;
                     mouse-cursor: pointer;
-                    clicked => {
-                        root.menu-open = false;
-                        root.menu-pick(it.id);
-                    }
+                    clicked => { root.pick(it.id); }
                 }
             }
         }

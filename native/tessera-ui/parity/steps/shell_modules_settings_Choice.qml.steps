@@ -1,0 +1,24 @@
+# Choice control. Uses the Notifications Style choice (Material pill about 1325,580 - read from the shot).
+ipc panels settings notifications
+wait 2
+shot page
+note Find the Style Choice; the clicks below use a guess of 1325,580.
+rec caret 4 ptr move 1325 580 sleep 300 glide 1325 580 100 click sleep 1200 click
+wait 1
+note C1 (Material) caret turns over in about 200 ms on open and back on close, as QML (compare recording frames; batch 1 PASS 1.62-1.83 s and 3.95-4.17 s).
+wait 1
+ptr move 1325 580 sleep 300 glide 1325 580 100 click
+wait 1
+shot open
+note C2 the list is open after the click.
+ptr move 1325 580 sleep 300 glide 1325 580 100 click
+wait 1
+shot closed
+note C2 clicking the Choice again closes the list (toggle).
+key -k Escape
+key -k Down
+wait 1
+shot down
+note C3 pressing Down on the focused Choice opens the list.
+key -k Escape
+ipc panels close

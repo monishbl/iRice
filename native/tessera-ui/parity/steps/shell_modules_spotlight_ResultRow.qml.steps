@@ -1,0 +1,33 @@
+look glass
+# NOTE: click on layer surfaces may not register in the harness
+ipc panels open spotlight IRICE-TEST
+wait 1
+key fi
+wait 1
+shot rr-fi
+note App rows have their Colloid coloured icons at x 10, 26 px (Thunar blue folder, Foot in colour); earlier Rust drew dark monochrome glyphs (FAIL: fixed by iconStyle default). List any row with an empty icon slot and its app name.
+ptr move 960 350 sleep 300 glide 960 350 300
+wait 1
+shot rr-hover
+note Unselected row under the pointer has its hover fill at once.
+ptr move 960 350 sleep 100 glide 960 800 300
+wait 1
+shot rr-hover-off
+note Fill cleared after the pointer left the row.
+key -M ctrl -k a -m ctrl
+key -k BackSpace
+key :smile
+wait 1
+shot rr-emoji
+note Emoji rows with the emoji at 20 px centred in the leading slot; same as QML.
+# MANUAL: /.bash file rows (no files in the sandbox): hover a file row -> eye at the right, glide onto the eye keeps the row hovered, click opens Quick Look
+# row click runs the app and closes Search
+key -M ctrl -k a -m ctrl
+key -k BackSpace
+key fi
+wait 1
+ptr move 960 310 sleep 200 click
+wait 2
+shot rr-click
+note Click on the first row starts the app and Search is closed (if click does not register on layer surfaces in the harness, note that).
+setup pkill -x foot || true

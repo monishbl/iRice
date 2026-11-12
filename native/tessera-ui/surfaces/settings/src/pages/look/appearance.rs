@@ -58,13 +58,39 @@ pub const MENU_ICONS: [(&str, &str, &str); 18] = [
     ("alien", "alien", "Alien"),
 ];
 
+/// The emoji styles: id, package, family (EmojiFont.qml's styles)
+const EMOJI: &[(&str, &str, &str)] = &[("android", "noto-fonts-emoji", "noto color emoji"), ("apple", "ttf-apple-emoji", "apple color emoji"), ("windows", "ttf-fluent-emoji", "fluent emoji color")];
+
+/// Which emoji styles' fonts are installed ({id: true}), from fc-list (off the UI thread: Ctx::once)
+fn emoji_fonts() -> Value {
+    let out = super::super::super::model::Ctx::run(&["fc-list", ":", "family"]);
+    let mut found = serde_json::Map::new();
+    for line in out.lines() {
+        for fam in line.split(',') {
+            let f = fam.trim().to_lowercase().replace("fluentemoji", "fluent emoji").replace("emojicolor", "emoji color");
+            for (id, _, family) in EMOJI {
+                if f == *family {
+                    found.insert(id.to_string(), Value::Bool(true));
+                }
+            }
+        }
+    }
+    Value::Object(found)
+}
+
 /// /etc/os-release's name and logo (SystemInfo.osName, .osLogo)
 pub fn os_release() -> (String, String) {
+    // (read once: the page is built again after every change)
+    static OS: std::sync::OnceLock<(String, String)> = std::sync::OnceLock::new();
+    OS.get_or_init(read_os_release).clone()
+}
+
+fn read_os_release() -> (String, String) {
     let text = std::fs::read_to_string("/etc/os-release").or_else(|_| std::fs::read_to_string("/usr/lib/os-release")).unwrap_or_default();
     let field = |k: &str| -> String {
         text.lines().find_map(|l| l.strip_prefix(&format!("{k}="))).map(|v| v.trim().trim_matches('"').to_string()).unwrap_or_default()
     };
-    let name = [field("PRETTY_NAME"), field("NAME")].into_iter().find(|s| !s.is_empty()).unwrap_or_else(|| "Linux".into());
+    let name = [field("PRETTY_NAME"), field("NAME")].into_iter().find(|s| !s.is_empty()).unwrap_or_else(|| "Your distro".into());
     (name, field("LOGO"))
 }
 
@@ -252,12 +278,15 @@ pub fn appearance(cx: &mut Ctx, p: &mut Page) {
         // Emoji: the font, and Install when it's missing
         let estyle = cx.s("emoji.style");
         let evalues = ["android", "apple", "windows"];
-        let available = feed(cx)["emojiAvailable"].as_bool().unwrap_or(true);
-        let pkg = feed(cx)["emojiPackage"].as_str().unwrap_or("").to_string();
+        let fonts = cx.once("look.emojiFonts", emoji_fonts);
+        let available = feed(cx)["emojiAvailable"].as_bool().unwrap_or_else(|| fonts[estyle.as_str()].as_bool().unwrap_or(estyle == "android"));
+        let pkg = feed(cx)["emojiPackage"].as_str().map(str::to_string).unwrap_or_else(|| EMOJI.iter().find(|e| e.0 == estyle).map_or("", |e| e.1).to_string());
         let ep = cx.on(move |cx, a| {
             if a.i == 100 {
                 let s = cx.s("emoji.style");
                 cx.ask("look", "installEmoji", json!([s]));
+                // (looked for again: the next build after it's installed finds it)
+                cx.local.remove("look.emojiFonts");
             } else if let Some(v) = evalues.get(a.i.max(0) as usize) {
                 cx.set("emoji.style", *v);
             }
@@ -446,8 +475,8 @@ pub fn glass(cx: &mut Ctx, p: &mut Page) {
             .row(Row::new("Window corners").detail(format!("{radius} px, continuous curve")).slider(radius as f32, 0.0, 32.0, 1.0, rn).width(220.0))
             .row(Row::new("Rounded screen corners").switch(corners, ct));
 
-        // Advanced…: the custom material and the optics (the QML's popover,
-        // here under the group)
+        // Advanced…: the custom material and the optics, in a popover by
+        // its button (the QML's QQC.Popup)
         if advanced {
             let dark = cx.dark;
             let data: Vec<Opt> = ADVANCED
@@ -481,13 +510,14 @@ pub fn glass(cx: &mut Ctx, p: &mut Page) {
                 }
             });
             let b = p.custom("look", "glass-advanced");
-            b.data(data).id(act).above(8.0);
+            // (the QML's QQC.Popup: a popover by the Advanced… button)
+            b.data(data).id(act).text("look.glassAdvanced").popover();
             b.num = lens.max(0.15);
         }
     }
 
     // Match apps
-    let available = cx.material || feed(cx)["appThemeAvailable"].as_bool().unwrap_or(false);
+    let available = cx.material || feed(cx)["appThemeAvailable"].as_bool().unwrap_or_else(|| crate::pages::accounts::defaultapps::on_path("matugen"));
     let at = cx.s("appearance.appTheme");
     let av = ["off", "accent", "wallpaper"];
     let ap = cx.pick("appearance.appTheme", &av);

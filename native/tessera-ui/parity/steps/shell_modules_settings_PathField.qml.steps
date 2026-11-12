@@ -1,0 +1,9 @@
+# Settings window: Material 1040x700 at 440,205 (page column from x~772); Glass 860x620 at 530,230. Sidebar rows (Material, x=560): Appearance 335, Wallpaper 385, Desktop 435, Menu bar 485, Lock 535, Notifications 626, Focus 676, Windows 767, Displays 858.
+# Click coordinates inside pages are not known in advance: those steps are MANUAL unless a keyboard path exists. Check in each look.
+ipc panels settings wallpaper
+wait 2
+shot f1
+note F1 path row (Folder / Light picture) if shown for the wallpaper mode: field width, button and gap as QML (set Dynamic to Time of day or Light & dark first).
+# MANUAL: F1 set the wallpaper mode so a path row shows
+# MANUAL: F2 click Choose...: file chooser opens at the current value's folder, button reads 'Choosing...' disabled until closed (SBus.picker-busy); close with Esc
+# MANUAL: F3 type ~/Pictures + Return: setting becomes /home/.../Pictures; restore the old value

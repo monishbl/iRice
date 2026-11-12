@@ -33,11 +33,13 @@ pub struct Damage {
     tick: Pin<Box<Property<u32>>>,
     /// the next frame is all new (the first, a new size or scale)
     all: Cell<bool>,
+    /// how many components (the window and its open popups) the last frame drew
+    layers: Cell<usize>,
 }
 
 impl Default for Damage {
     fn default() -> Self {
-        Self { state: Default::default(), tick: Box::pin(Property::new(0)), all: Cell::new(true) }
+        Self { state: Default::default(), tick: Box::pin(Property::new(0)), all: Cell::new(true), layers: Cell::new(0) }
     }
 }
 
@@ -62,7 +64,9 @@ impl Damage {
         let probe = Probe { window: inner, tick, stack: vec![Frame { transform: ItemTransform::identity(), clip: LogicalRect::from_size(size) }] };
         let mut renderer = self.state.create_partial_renderer(probe);
         let adapter = inner.window_adapter();
+        let mut layers = 0;
         let region = inner.draw_contents(|components, _| {
+            layers = components.len();
             let r = self.state.apply_dirty_region(&mut renderer, components, size, None);
             // (each item's drawing is read once, so its tracker knows what it depends on)
             for (c, origin) in components {
@@ -72,10 +76,18 @@ impl Damage {
             }
             r
         })?;
-        if all {
+        // (a popup opened or closed inside the window: drawn whole, its own
+        // tracking can't be trusted to cover where it was)
+        if all || self.layers.replace(layers) != layers {
             return None;
         }
-        Some(region.iter().map(|b| b.to_rect()).collect())
+        let rects: Vec<LogicalRect> = region.iter().map(|b| b.to_rect()).collect();
+        // (most of it changed anyway: all of it, one box is cheaper to clip)
+        let area: f32 = rects.iter().map(|r| r.size.width * r.size.height).sum();
+        if area > 0.66 * w * h {
+            return None;
+        }
+        Some(rects)
     }
 }
 

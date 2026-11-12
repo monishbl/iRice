@@ -1,0 +1,64 @@
+# Settings window: Material 1040x700 at 440,205 (page column from x~772); Glass 860x620 at 530,230. Sidebar rows (Material, x=560): Appearance 335, Wallpaper 385, Desktop 435, Menu bar 485, Lock 535, Notifications 626, Focus 676, Windows 767, Displays 858.
+# Click coordinates inside pages are not known in advance: those steps are MANUAL unless a keyboard path exists. Check in each look.
+look material
+ipc panels settings appearance
+wait 2
+shot mat-open
+note Material window 1040x700 at 440,205; Appearance page.
+ptr move 560 246 sleep 200 click
+wait 0.5
+key dock
+wait 0.5
+key -k Down
+wait 0.3
+key -k Down
+wait 0.3
+shot m6
+note M6 search 'dock' after two Downs: the second result is lit with a ring (QML: Down moves focus through results).
+key -k Return
+wait 1.5
+shot m6-open
+note M6 Return opened the second result's page, same as QML.
+ipc panels settings appearance
+wait 2
+ptr move 560 335 sleep 200 click
+wait 1
+rec pill 3 ptr move 560 335 sleep 100 click glide 560 858 100 click
+wait 1
+note M1 pill spring was FAIL (Rust ~400 ms + 300 ms tail, 20 fps vs QML 140-220 ms, 60 fps): now the pill move must last 250-400 ms, Rust within 60 ms of QML, with a small overshoot then settle; report frames and longest gap.
+ipc panels settings appearance
+wait 2
+ptr move 560 335 sleep 200 click
+wait 1
+ptr move 1900 1000
+rec cookie 3 wait 3
+note M2 cookie turns about 45 degrees in 3 s (24 s a round); Rust changes <= 13 times a second; settings stats <= 45 frames in 3 s (QML redraws 60/s).
+ptr move 560 335 sleep 200 click
+wait 0.5
+key -k Down
+wait 1
+shot k1
+note M3 after Down: Wallpaper selected (Rust works straight after click; QML needs Tab first).
+key -k Down
+wait 1
+shot k2
+note M3 second Down: Desktop & Widgets.
+key -k End
+wait 1
+shot k3
+note M3 End: last page (About).
+key -k Home
+wait 1
+shot k4
+note M3 Home: Appearance.
+ptr move 1100 700 scroll 0 3
+wait 0.4
+shot m4
+note M4 a thin scroll thumb at the right edge while scrolling (about 1466,300+); nothing when idle; fades about 1 s after.
+wait 3
+shot m4-idle
+note M4 thumb gone about 2.5 s after the pointer leaves/stops (Rust PASS earlier); QML idle shows none.
+# MANUAL: M7 click search, Tab until the pages list has focus: open page shows a focus ring; Up/Down change page; Down inside a page's text field does not change page
+# MANUAL: M6 with empty search: click it, Down, Down: the next page opens (focus on the list, ringed)
+# MANUAL: M1 SIGUSR1 stats line (render_us p50/p95/max) before and after the clicks; if p50 > ~16 ms report for the core renderer
+# MANUAL: M5 switch timing and kept pages: see Settings.qml T1/T2

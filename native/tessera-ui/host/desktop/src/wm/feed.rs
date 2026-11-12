@@ -22,6 +22,8 @@ pub struct Feed {
     edit_screen: String,
     sent: String,
     last_gen: Value,
+    /// ScreenTime.qml's figures (screentime.rs), set before each send
+    pub screen_time: Value,
 }
 
 fn ev(e: &cal::Event) -> Value {
@@ -104,6 +106,32 @@ impl Feed {
         if bat.present {
             batteries.push(json!({"icon": if bat.charging { "lightning" } else { "laptop" }, "picture": "", "value": level, "name": "This computer"}));
         }
+        // (BatteriesWidget: connected Bluetooth devices that report a level,
+        // with Devices' glyph and drawing; four at most)
+        if let Some(bt) = h.st.shell.get::<tessera_core::services::bluez::Bluetooth>() {
+            use tessera_host_system::input::device_alerts::{bt_icon, picture_for};
+            let fast = h.state("fastLevels");
+            for d in bt.devices.iter().filter(|d| d.connected) {
+                let (icon, picture) = (bt_icon(&d.icon), picture_for(&d.icon, &d.name));
+                // earbuds with their case open: left, right and case apart
+                // (FastPair.levelsFor: heard in the last two minutes)
+                let lv = &fast[d.address.replace([':', '.'], "_")];
+                let fresh = lv.is_object() && now - lv["at"].as_i64().unwrap_or(0) < 120_000;
+                let parts: Vec<(&str, f64)> = if fresh {
+                    [("Left", "left"), ("Right", "right"), ("Case", "case")].iter().filter_map(|(n, k)| lv[*k]["level"].as_f64().map(|v| (*n, v / 100.0))).collect()
+                } else {
+                    Vec::new()
+                };
+                if !parts.is_empty() {
+                    for (n, v) in parts {
+                        batteries.push(json!({"icon": icon, "picture": picture, "value": v, "name": n}));
+                    }
+                } else if let Some(p) = d.battery {
+                    batteries.push(json!({"icon": icon, "picture": picture, "value": p as f64 / 100.0, "name": d.name}));
+                }
+            }
+        }
+        batteries.truncate(4);
 
         let player = h.st.shell.get::<mpris::Players>().and_then(|p| p.chosen().cloned());
         let notes = {
@@ -125,8 +153,7 @@ impl Feed {
             "busy": busy.into_iter().collect::<Vec<_>>(),
             "upcoming": upcoming,
             "todos": list.iter().map(|t| json!({"key": t.key, "text": t.text, "done": t.done, "due": t.due, "dueLabel": due_label(t.due, t.all_day, now, clock24), "overdue": t.due != 0 && !t.done && t.due < now})).collect::<Vec<_>>(),
-            // (Screen Time is host/system's: nothing here yet)
-            "screenTime": {"total": 0, "week": [], "apps": []},
+            "screenTime": if self.screen_time.is_object() { self.screen_time.clone() } else { json!({"total": 0, "week": [], "apps": []}) },
             "media": {"has": player.is_some(), "playing": player.as_ref().is_some_and(|p| p.playing), "title": player.as_ref().map(|p| p.track.title.clone()).unwrap_or_default(), "artist": player.as_ref().map(|p| p.track.artist.clone()).unwrap_or_default(), "art": player.as_ref().map(|p| p.track.art_url.clone()).unwrap_or_default()},
             "batteries": batteries,
             "power": {"has": bat.present, "level": if bat.present { level } else { 1.0 }, "charging": bat.charging, "onBattery": bat.present && !bat.charging},

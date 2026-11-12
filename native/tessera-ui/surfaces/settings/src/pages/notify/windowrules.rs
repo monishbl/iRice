@@ -502,10 +502,14 @@ fn edit_view(cx: &mut Ctx, p: &mut Page, rules: &[Rule], floating: bool) {
 /// Windows, Stages and Overview (appearance-windows.qml)
 pub fn windows(cx: &mut Ctx, p: &mut Page) {
     let f = feed(cx).clone();
-    let plugin = f["decorationsPlugin"].as_bool().unwrap_or(false);
-    let controls = f["pluginControls"].as_bool().unwrap_or(false);
-    let glass = f["glassPlugin"].as_bool().unwrap_or(false);
+    let glass = f["glassPlugin"].as_bool().unwrap_or(cx.shell.plugin);
     let deco = cx.s("appearance.decorations");
+    // (the shell's, else as Decorations.qml: hyprbars in hyprctl's plugin
+    // list, looked for once while titles are chosen; controls need the glass plugin)
+    let plugin = f["decorationsPlugin"].as_bool().unwrap_or_else(|| {
+        deco == "titlebars" && cx.once("notify.hyprbars", || Value::Bool(super::super::super::model::Ctx::run(&["sh", "-c", "hyprctl plugin list 2>/dev/null | grep -qi hyprbars && echo yes"]) == "yes")).as_bool().unwrap_or(false)
+    });
+    let controls = f["pluginControls"].as_bool().unwrap_or(deco == "controls" && glass);
     let gaps = ["none", "compact", "comfortable"];
     let gap = cx.s("appearance.gaps");
     let gp = cx.pick("appearance.gaps", &gaps);

@@ -1,0 +1,18 @@
+# Settings window: Material 1040x700 at 440,205 (page column from x~772); Glass 860x620 at 530,230. Sidebar rows (Material, x=560): Appearance 335, Wallpaper 385, Desktop 435, Menu bar 485, Lock 535, Notifications 626, Focus 676, Windows 767, Displays 858.
+# Click coordinates inside pages are not known in advance: those steps are MANUAL unless a keyboard path exists. Check in each look.
+ipc panels settings sound
+wait 2
+shot snd
+note S1 Sound page: Output group (Volume row with mute icon + 200 px slider, then one row per output with Use or a check), Input group, 'Sound effects' link showing On/Off, More options; same texts and order as QML.
+key -k Tab
+wait 0.3
+shot snd-tab1
+note S3 first Tab: QML focus ring lands on the mute button; Rust must match (was missing, row 5).
+key -k Tab
+wait 0.3
+shot snd-tab2
+note S3 second Tab: focus moves on (slider/outputs) with a visible ring; same as QML.
+# MANUAL: S2 hover the mute icon (about 1215,y from snd): 28 px ghost circle (Material) / rounded fill (Glass); press and hold only if output is the arena's own: QML corners tighten to 8 and swell
+# MANUAL: S4 click 'Sound effects': Notifications page opens in both; go back
+# MANUAL: S5 More options: 'Microphone in the Sound menu' switch; AirPlay group with the rows the arena's Needs give, same detail text; toggle the mic switch twice
+# MANUAL: never click anything that changes the host's sound

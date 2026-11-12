@@ -46,6 +46,7 @@ export component ClipboardPanel inherits Window {
     in property <bool> sel-pinned;
     in property <string> query;
     in property <string> empty-outline;
+    in property <bool> scrolling; // (the list moved within 900 ms: the scroll indicator shows)
     in property <[string]> hint-keys: ["↵", "⇧↵", "Alt ↵", "Ctrl P", "Del"];
 
     out property <float> openness: shown ? 1 : 0;
@@ -77,9 +78,14 @@ export component ClipboardPanel inherits Window {
     title: "Clipboard";
     default-font-family: Theme.font;
 
+    // Dialog.qml: opens on a SpringAnimation of Theme.motion.spring + 0.4,
+    // damping + 0.08 (Qt steps 16 ms: ω = √(62.5·spring), ζ = 62.5·damping / 2ω);
+    // Material 6.48 / 0.58: ω 20.1, ζ 0.90 → 312 ms spring(0.1); Glass
+    // (subtle) 4.2 / 0.40: ω 16.2, ζ 0.77 → 388 ms spring(0.23). Closes in
+    // Theme.motion.panel × 0.6 (192 ms) on the look's exit curve.
     animate openness {
-        duration: shown ? 420ms : 192ms;
-        easing: shown ? spring(0.15) : cubic-bezier(0.4, 0, 1, 1);
+        duration: shown ? (Theme.material ? 312ms : 388ms) : 192ms;
+        easing: shown ? (Theme.material ? spring(0.1) : spring(0.23)) : Theme.material ? cubic-bezier(0.3, 0, 0.8, 0.15) : cubic-bezier(0.4, 0, 1, 1);
     }
     changed openness => {
         if !shown && openness <= 0.001 { closed(); }
@@ -149,9 +155,20 @@ export component ClipboardPanel inherits Window {
                 property <length> gap: Theme.material ? 2px : 0;
                 property <length> avail: self.width - 4px - 2 * gap;
                 property <length> extra: (avail - (t0.preferred-width + t1.preferred-width + t2.preferred-width + 3 * 24px)) / 3;
-                property <length> w0: t0.preferred-width + 24px + extra;
-                property <length> w1: t1.preferred-width + 24px + extra;
-                property <length> w2: t2.preferred-width + 24px + extra;
+                property <length> b0: t0.preferred-width + 24px + extra;
+                property <length> b1: t1.preferred-width + 24px + extra;
+                property <length> b2: t2.preferred-width + 24px + extra;
+                // Material: the pressed segment widens (≤ 14 px, 18 %) and its
+                // neighbours give way, on the press spring (Theme.motion.springPress
+                // 7.5 / 0.3: ω 21.7, ζ 0.43 → 290 ms spring(0.57)), bouncing back
+                property <int> pressing: -1;
+                property <bool> pressed-now;
+                property <float> squeeze: Theme.material && pressing >= 0 && pressed-now ? 1 : 0;
+                animate squeeze { duration: 290ms; easing: spring(0.57); }
+                property <length> dd: squeeze * (pressing == 0 ? min(14px, b0 * 0.18) : pressing == 1 ? min(14px, b1 * 0.18) : pressing == 2 ? min(14px, b2 * 0.18) : 0px);
+                property <length> w0: b0 + (pressing == 0 ? dd : pressing == 1 ? -dd / 2 : 0px);
+                property <length> w1: b1 + (pressing == 1 ? dd : pressing == 0 || pressing == 2 ? -dd : 0px);
+                property <length> w2: b2 + (pressing == 2 ? dd : pressing == 1 ? -dd / 2 : 0px);
                 property <length> x0: 2px;
                 property <length> x1: x0 + w0 + gap;
                 property <length> x2: x1 + w1 + gap;
@@ -163,7 +180,7 @@ export component ClipboardPanel inherits Window {
                     height: parent.height - 4px;
                     border-radius: self.height / 2;
                     background: Theme.dark ? #ffffff33 : #ffffff;
-                    animate x, width { duration: 220ms; easing: cubic-bezier(0.2, 0, 0, 1); }
+                    animate x, width { duration: Theme.popover; easing: cubic-bezier(0.2, 0.9, 0.1, 1.0); } // (Theme.motion.emphasized)
                 }
                 for i in 3: Rectangle {
                     x: i == 0 ? x0 : i == 1 ? x1 : x2;
@@ -179,13 +196,15 @@ export component ClipboardPanel inherits Window {
                     if Theme.material: Rectangle {
                         property <length> full: self.height / 2;
                         property <length> inner: chosen ? full : segTa.pressed ? 4px : 8px;
+                        // (springFast 12.8 / 0.54: ω 28.3, ζ 0.60)
+                        animate inner { duration: 222ms; easing: spring(0.4); }
                         border-top-left-radius: i == 0 ? full : inner;
                         border-bottom-left-radius: i == 0 ? full : inner;
                         border-top-right-radius: i == 2 ? full : inner;
                         border-bottom-right-radius: i == 2 ? full : inner;
                         background: chosen ? Theme.m3-primary.mix(Theme.m3-on-primary, segTa.pressed ? 0.9 : segTa.has-hover ? 0.92 : 1)
                             : Theme.m3-surface-container-highest.mix(Theme.m3-on-surface-variant, segTa.pressed ? 0.9 : segTa.has-hover ? 0.92 : 1);
-                        animate background { duration: 150ms; }
+                        animate background { duration: Theme.hover; }
                     }
                     Text {
                         text: ["All", "Text", "Images"][i];
@@ -197,6 +216,10 @@ export component ClipboardPanel inherits Window {
                     segTa := TouchArea {
                         mouse-cursor: pointer;
                         clicked => { set-kind(i); }
+                        changed pressed => {
+                            if self.pressed { seg.pressing = i; }
+                            seg.pressed-now = self.pressed;
+                        }
                     }
                 }
                 // (each label's natural width: segments fit their labels)
@@ -252,12 +275,14 @@ export component ClipboardPanel inherits Window {
                         if Theme.material: Rectangle {
                             property <length> top: selected || it.first ? 16px : 4px;
                             property <length> bottom: selected || it.last ? 16px : 4px;
+                            // (springFast 12.8 / 0.54: ω 28.3, ζ 0.60)
+                            animate top, bottom { duration: 222ms; easing: spring(0.4); }
                             border-top-left-radius: top;
                             border-top-right-radius: top;
                             border-bottom-left-radius: bottom;
                             border-bottom-right-radius: bottom;
                             background: selected ? Theme.m3-secondary-container.mix(Theme.m3-on-secondary-container, rowTa.pressed ? 0.9 : 1) : Theme.m3-surface-container-high;
-                            animate background { duration: 150ms; }
+                            animate background { duration: Theme.hover; }
                         }
                         rowTa := TouchArea {
                             changed has-hover => { if self.has-hover { hovered(it.index); } }
@@ -391,6 +416,54 @@ export component ClipboardPanel inherits Window {
                                     label: "Remove";
                                     clicked => { remove(it.index); }
                                 }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ── ScrollIndicator.qml: a thin bar over the list's right edge (6 px
+            // past it), shown while it scrolls or the pointer is near; drag the
+            // thumb or click the track ──
+            sb := Rectangle {
+                x: parent.width + 6px - self.width;
+                y: list.y;
+                width: 12px;
+                height: list.height;
+                property <length> span: max(1px, list.content-height - list.height);
+                property <length> th: max(28px, self.height * list.height / max(1px, list.content-height));
+                property <length> ty: (self.height - th) * max(0, min(1, -list.content-y / span));
+                property <bool> active: track.has-hover || thumb-ta.pressed || scrolling;
+                visible: list.content-height > list.height + 1px;
+                opacity: active ? 1 : 0;
+                animate opacity { duration: active ? 150ms : 400ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+                Rectangle {
+                    x: (parent.width - self.width) / 2;
+                    y: sb.ty;
+                    width: track.has-hover || thumb-ta.pressed ? 8px : 6px;
+                    animate width { duration: 150ms; }
+                    height: sb.th;
+                    border-radius: self.width / 2;
+                    background: (Theme.dark ? #ffffff : #000000).with-alpha(thumb-ta.pressed ? 0.5 : 0.32);
+                }
+                track := TouchArea {
+                    pointer-event(e) => {
+                        if e.kind == PointerEventKind.down && (self.mouse-y < sb.ty || self.mouse-y > sb.ty + sb.th) {
+                            list.content-y = -max(0px, min(sb.span, (self.mouse-y - sb.th / 2) / max(1px, self.height - sb.th) * sb.span));
+                        }
+                    }
+                    thumb-ta := TouchArea {
+                        y: sb.ty;
+                        height: sb.th;
+                        property <length> grab;
+                        pointer-event(e) => {
+                            if e.kind == PointerEventKind.down {
+                                self.grab = self.mouse-y;
+                            }
+                        }
+                        moved => {
+                            if self.pressed {
+                                list.content-y = -max(0px, min(sb.span, (sb.ty + self.mouse-y - self.grab) / max(1px, sb.height - sb.th) * sb.span));
                             }
                         }
                     }

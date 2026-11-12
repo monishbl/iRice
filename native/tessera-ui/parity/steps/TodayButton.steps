@@ -1,0 +1,11 @@
+# Arena IRICE-TEST 1920x1080 scale 1, the user's config (expressive motion, Colloid, their 4 widgets).
+# Each file runs top to bottom from a fresh desktop. `static NAME x y w h`: that region must not change
+# from there until the next `shot`, `rec` or `look` (the no-reload blocks end with their last close).
+# Right-clicks: `ptr ... down up` lines marked (right button) need the runner's right button.
+
+look glass
+ipc today preview bloom
+wait 2
+rec tb-press 1 ptr move 1318 800 sleep 300 down sleep 300 up
+note hover darker accent (150 ms); press 0.97 over 100 ms
+key -k Escape

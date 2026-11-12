@@ -1,0 +1,17 @@
+# Settings window: Material 1040x700 at 440,205 (page column from x~772); Glass 860x620 at 530,230. Sidebar rows (Material, x=560): Appearance 335, Wallpaper 385, Desktop 435, Menu bar 485, Lock 535, Notifications 626, Focus 676, Windows 767, Displays 858.
+# Click coordinates inside pages are not known in advance: those steps are MANUAL unless a keyboard path exists. Check in each look.
+ipc panels settings phone
+wait 2
+ptr move 1100 600 scroll 0 25
+wait 1
+shot sh
+note S1 Sharing heading: groups Nearby sharing, Android phones (Quick Share), Share from anywhere with the same rows, buttons (with icons) and footers as QML.
+ptr move 1100 600 scroll 0 25
+wait 1
+shot sh-end
+note S1 end of page: same rows, buttons with icons and footers as QML; Receive/Visible left at 'No one'.
+# MANUAL: S2 click 'Everyone for 10 min': detail "You're asked before anything is saved", config sharing.receiving 10min; set back to No one
+# MANUAL: S3 click the name field, type Arena, Enter: config sharing.name Arena; clear + Enter: empty (placeholder "<user>'s computer")
+# MANUAL: S4 Choose... opens a folder chooser at ~ (cancel); type ~/Tmp + Enter: config quickShareFolder $HOME/Tmp (restore)
+# MANUAL: S5 Hotspot switch: detail flips between the two texts, config quickShareHotspot false/true
+# MANUAL: S6 File managers rows same as QML (do not click Add/Remove); never send or receive files for real

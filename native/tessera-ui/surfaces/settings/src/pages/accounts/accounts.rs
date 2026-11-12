@@ -248,7 +248,7 @@ fn google(cx: &mut Ctx, p: &mut Page) {
         let (copts, cid) = buttons(cx, vec![(btn("Connect Google account").off(busy || !configured), "googleRun", json!([{"cmd": "connect"}]))]);
         let mut rows = vec![
             Row::new("Use your own OAuth client").detail("Instead of GNOME Online Accounts").switch(advanced, adv),
-            Row::new("Client file").visible(advanced).detail(if configured { "Imported" } else { "The JSON file Google Cloud gives you" }).path("", "client_secret_….json", client),
+            Row::new("Client file").visible(advanced).detail(if configured { "Imported" } else { "The JSON file Google Cloud gives you" }).path("", "client_secret_….json", client).busy(cx.feed["look"]["pickerBusy"].as_bool().unwrap_or(false) || cx.feed["accounts"]["pickerBusy"].as_bool().unwrap_or(false)),
             Row::new("Connect with your client").visible(advanced).buttons(copts, cid),
         ];
         for a in &accounts {

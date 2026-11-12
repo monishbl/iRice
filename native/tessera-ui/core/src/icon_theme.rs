@@ -64,7 +64,26 @@ fn lookup(name: &str, extra: Option<&Path>) -> Option<PathBuf> {
             return Some(p);
         }
     }
-    let mut themes: Vec<String> = user_theme().into_iter().collect();
+    // The shell's own index (services/icons.rs: the theme Settings chose,
+    // e.g. Colloid, the themes it inherits, hicolor, the pixmaps; the QML's
+    // IconLookup), with its name variants (case, a reverse-DNS id's last part)
+    if let Some(icons) = crate::services::icons::shared() {
+        if let Some(p) = icons.exact(name) {
+            return Some(p);
+        }
+    }
+    // (before the index is built, or a name it hasn't: the themes walked
+    // here, the shell's theme and what it inherits first, as the QML's
+    // Quickshell.iconPath fallback does)
+    // (read once: the shell's theme is chosen at start, as Quickshell's)
+    static SHELL_CHAIN: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+    let mut themes: Vec<String> = SHELL_CHAIN
+        .get_or_init(|| {
+            let roots = crate::services::icons::roots();
+            crate::services::icons::chain_of(&roots, &crate::services::icons::theme_name(&crate::theme::read_json()))
+        })
+        .clone();
+    themes.extend(user_theme());
     for t in ["Papirus", "breeze", "Adwaita", "hicolor"] {
         if !themes.iter().any(|x| x == t) {
             themes.push(t.into());
@@ -87,18 +106,29 @@ fn lookup(name: &str, extra: Option<&Path>) -> Option<PathBuf> {
     None
 }
 
+static CACHE: Mutex<Option<HashMap<String, Option<PathBuf>>>> = Mutex::new(None);
+
 /// The file for an icon name (`extra`: a folder of the app's own icons)
 pub fn find(name: &str, extra: Option<&Path>) -> Option<PathBuf> {
-    static CACHE: Mutex<Option<HashMap<String, Option<PathBuf>>>> = Mutex::new(None);
     let key = format!("{name}\n{}", extra.map(|p| p.to_string_lossy().into_owned()).unwrap_or_default());
     if let Some(hit) = CACHE.lock().ok().and_then(|c| c.as_ref().and_then(|m| m.get(&key).cloned())) {
         return hit;
     }
     let found = lookup(name, extra);
-    if let Ok(mut c) = CACHE.lock() {
-        c.get_or_insert_with(HashMap::new).insert(key, found.clone());
+    // (a miss before the shell's index is built isn't kept: asked again once it is)
+    if found.is_some() || crate::services::icons::shared().is_some() {
+        if let Ok(mut c) = CACHE.lock() {
+            c.get_or_insert_with(HashMap::new).insert(key, found.clone());
+        }
     }
     found
+}
+
+/// The shell's index was (re)built: answers found without it are dropped
+pub fn forget() {
+    if let Ok(mut c) = CACHE.lock() {
+        *c = None;
+    }
 }
 
 /// An app's icon by its window class (as Apps.iconFor: its desktop entry's

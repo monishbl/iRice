@@ -281,6 +281,17 @@ impl Reveal {
     pub fn hide(&mut self) {
         self.revealed = false;
     }
+    /// A swipe up from the bottom edge on the touchscreen (touchReveal):
+    /// shown; nothing hovers to keep it up, so touchHold decides
+    pub fn touch(&mut self) {
+        self.revealed = true;
+    }
+    /// touchHold ran out: hidden again unless the pointer wants it up
+    pub fn hold_over(&mut self) {
+        if !self.wants_up {
+            self.revealed = false;
+        }
+    }
 }
 
 /// Whether it auto-hides now: always, or while a window overlaps it

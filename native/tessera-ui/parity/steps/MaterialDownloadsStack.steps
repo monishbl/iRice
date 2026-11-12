@@ -1,0 +1,10 @@
+# Arena IRICE-TEST 1920x1080 scale 1, the user's config (expressive motion, Colloid, their 4 widgets).
+# Each file runs top to bottom from a fresh desktop. `static NAME x y w h`: that region must not change
+# from there until the next `shot`, `rec` or `look` (the no-reload blocks end with their last close).
+# Right-clicks: `ptr ... down up` lines marked (right button) need the runner's right button.
+
+look material
+setup sh -c 'cd ~/Downloads && touch report.pdf photos.zip shot.png notes.txt clip.mp4'
+rec mds-open 1.2 ptr move 970 1032 click
+note grows from the bottom on Material's default spring ≈320 ms; title, Open in Files; Colloid icons; Quick Look eye in Material Symbols
+key -k Escape

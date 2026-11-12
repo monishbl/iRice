@@ -1,0 +1,149 @@
+# IslandRecent: steps from parity/shell_modules_menubar_IslandRecent.qml.md (batches 1-5). Screen IRICE-TEST 1920x1080 scale 1;
+# the island is centred at x 960 (closed y ~14, open ~392 wide); the bar is 30 px tall.
+# Each block runs in both looks: the file runs top to bottom, Material first, then Glass.
+
+look material
+ipc island demo download
+wait 1
+ipc island dismissNewest
+ipc island demo usb
+wait 1
+ipc island dismissNewest
+ipc island demo wifi
+wait 7
+ptr move 1500 600
+wait 1
+ptr glide 960 14 400
+wait 1
+shot recent
+note "Recent" + "Clear", three lines newest first, badge at each line's LEFT, title, detail, "now"; the list fades in
+ptr glide 1140 110 200
+wait 0.4
+shot line-hover
+note the time turned into an x
+ptr click
+wait 0.5
+shot removed
+note the line slid off and the rest moved up
+ptr glide 900 110 200
+ptr down
+ptr glide 800 110 150
+ptr up
+wait 0.6
+shot dragged
+note dragged 100 px left: the line went
+ptr glide 900 110 200
+ptr down
+ptr glide 870 110 300
+ptr up
+wait 0.6
+shot spring-back
+note 30 px slowly: it sprang back
+ptr down
+ptr glide 840 110 40
+ptr up
+wait 0.6
+shot flicked
+note a quick flick (>500 px/s) removed it
+ipc island demo download
+wait 1
+ipc island dismissNewest
+ptr glide 1140 75 200
+ptr click
+wait 0.5
+shot cleared
+note Clear emptied the list
+ptr glide 960 700 300
+wait 1
+ipc timer toggle
+ipc island demo usb
+wait 1
+ipc island dismissNewest
+ptr move 1500 600
+wait 1
+ptr glide 960 14 400
+wait 1
+ptr glide 783 20 200
+wait 0.3
+shot clock-reachable
+note the top-left clock button is reachable (island stays open)
+ptr click
+wait 0.6
+shot recent-over
+note Recent shows in place of the timer row; the island kept its height
+ipc timer reset
+ptr glide 960 700 300
+wait 1
+
+look glass
+ipc island demo download
+wait 1
+ipc island dismissNewest
+ipc island demo usb
+wait 1
+ipc island dismissNewest
+ipc island demo wifi
+wait 7
+ptr move 1500 600
+wait 1
+ptr glide 960 14 400
+wait 1
+shot recent
+note "Recent" + "Clear", three lines newest first, badge at each line's LEFT, title, detail, "now"; the list fades in
+ptr glide 1140 110 200
+wait 0.4
+shot line-hover
+note the time turned into an x
+ptr click
+wait 0.5
+shot removed
+note the line slid off and the rest moved up
+ptr glide 900 110 200
+ptr down
+ptr glide 800 110 150
+ptr up
+wait 0.6
+shot dragged
+note dragged 100 px left: the line went
+ptr glide 900 110 200
+ptr down
+ptr glide 870 110 300
+ptr up
+wait 0.6
+shot spring-back
+note 30 px slowly: it sprang back
+ptr down
+ptr glide 840 110 40
+ptr up
+wait 0.6
+shot flicked
+note a quick flick (>500 px/s) removed it
+ipc island demo download
+wait 1
+ipc island dismissNewest
+ptr glide 1140 75 200
+ptr click
+wait 0.5
+shot cleared
+note Clear emptied the list
+ptr glide 960 700 300
+wait 1
+ipc timer toggle
+ipc island demo usb
+wait 1
+ipc island dismissNewest
+ptr move 1500 600
+wait 1
+ptr glide 960 14 400
+wait 1
+ptr glide 783 20 200
+wait 0.3
+shot clock-reachable
+note the top-left clock button is reachable (island stays open)
+ptr click
+wait 0.6
+shot recent-over
+note Recent shows in place of the timer row; the island kept its height
+ipc timer reset
+ptr glide 960 700 300
+wait 1

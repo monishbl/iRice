@@ -1,0 +1,27 @@
+# AppStoreFeed: the bridge between the store service and the App Store window. Never install/remove/update.
+ipc panels appStore
+wait 3
+shot open
+note Window opened and Discover is loaded or loading with sections and the search field has the caret (check in each look); no empty or broken window. Same as QML.
+ipc panels close
+wait 1
+shot closed
+note Window closed completely, nothing left on screen.
+ipc panels appStore
+wait 3
+shot reopen
+note Window reopens and Discover loads again exactly as the first time (state feed re-sent on reopen).
+# Search each place (typed in the search field, which has the caret on open)
+key firefox
+wait 2
+shot search
+note Results answer for "firefox"; cards show logos and source names such as Arch repos, Flathub, AUR. Compare with QML (sandbox may have no network or catalogue so a notice may show instead; it must be the same in both shells).
+key -M ctrl -k a -m ctrl -k BackSpace
+key aur: yay
+wait 2
+shot search-aur
+note AUR chip on, subtitle says Community packages from the AUR; cards show source "AUR - community" when an answer arrives. Same as QML.
+# MANUAL: open Spotlight, type "gimp", choose its Get row with the store closed; store must open on that app's page; repeat with store open for another app and the page must switch
+# MANUAL: on an app's page (Material) split menu > Copy the name, then wl-paste must give the name; Open the website must request a browser launch in the log
+# MANUAL: without the catalogue the notice shows in both shells (needs an arena without a catalogue)
+ipc panels close

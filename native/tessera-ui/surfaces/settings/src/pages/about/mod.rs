@@ -91,9 +91,6 @@ pub fn finish(p: &mut Page) {
     }
 }
 
-thread_local! {
-    static ICONS: std::cell::RefCell<std::collections::HashMap<String, Option<slint::Image>>> = Default::default();
-}
 
 fn rgb(hex: &str) -> [u8; 3] {
     let h = hex.trim_start_matches('#');
@@ -108,22 +105,33 @@ pub fn app_icon(cx: &mut Ctx, names: &[&str], px: u32) -> Option<slint::Image> {
     let shell = cx.shell;
     let icons = shell.get::<crate::services::icons::Icons>()?;
     let path = icons.path(names, &[])?;
-    let key = format!("{}@{px}:{}:{}", path.display(), cx.material, cx.dark);
-    if let Some(i) = ICONS.with(|m| m.borrow().get(&key).cloned()) {
-        return i;
-    }
     let accent = rgb(&shell.look.accent);
     let themed = if cx.material {
-        let roles = crate::theme::material_roles(&shell.look.seed, cx.dark, &shell.look.style);
-        let r = |k: &str| rgb(roles.iter().find(|(n, _)| n == k).map_or("#6750A4", |(_, v)| v.as_str()));
-        (r("primaryContainer"), r("onPrimaryContainer"))
+        // (the scheme worked out once per seed: this runs for every icon on
+        // every build of the page)
+        thread_local! {
+            static THEMED: std::cell::RefCell<Option<(String, ([u8; 3], [u8; 3]))>> = const { std::cell::RefCell::new(None) };
+        }
+        let key = format!("{}|{}|{}", shell.look.seed, cx.dark, shell.look.style);
+        THEMED.with(|t| {
+            let mut t = t.borrow_mut();
+            if let Some((k, v)) = t.as_ref() {
+                if *k == key {
+                    return *v;
+                }
+            }
+            let roles = crate::theme::material_roles(&shell.look.seed, cx.dark, &shell.look.style);
+            let r = |k: &str| rgb(roles.iter().find(|(n, _)| n == k).map_or("#6750A4", |(_, v)| v.as_str()));
+            let v = (r("primaryContainer"), r("onPrimaryContainer"));
+            *t = Some((key, v));
+            v
+        })
     } else {
         ([0, 0, 0], [0, 0, 0])
     };
     let style = crate::appicon::Style::from_settings(&shell.cfg, cx.material, cx.dark, accent, themed);
-    let img = crate::appicon::render(&path, px, &style, None).map(slint::Image::from_rgba8);
-    ICONS.with(|m| m.borrow_mut().insert(key, img.clone()));
-    img
+    // (drawn off the UI thread: a page of apps waited for every icon before)
+    cx.icon(&path, px, style)
 }
 
 /// The home folder written as ~

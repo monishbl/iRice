@@ -1,0 +1,12 @@
+# Notification Center: panel at the right under the bar (x≈1530..1912 Material, 1544..1912 Glass); read rows from the first shot
+look material
+wait 2
+setup notify-send -a Firefox -i firefox 'Download finished' 'report.pdf'
+setup notify-send -a Firefox -i firefox 'Download finished' 'slides.pdf'
+setup notify-send -a Files -i org.gnome.Nautilus -A open=Open 'Copied' '3 files'
+wait 1
+ipc panels open notificationCenter IRICE-TEST
+wait 1
+shot nc-open
+note alerts in Material: badge, act button works
+ipc panels close

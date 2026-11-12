@@ -1,0 +1,14 @@
+# IslandInk: steps from parity/shell_modules_menubar_IslandInk.qml.md (batches 1-5). Screen IRICE-TEST 1920x1080 scale 1;
+# the island is centred at x 960 (closed y ~14, open ~392 wide); the bar is 30 px tall.
+# Each block runs in both looks: the file runs top to bottom, Material first, then Glass.
+
+look material
+ipc recorder screen
+wait 2
+shot recording-pill
+note Material: the recording lead circle is error (red) with an on-error dot
+ipc recorder pause
+wait 1
+shot paused-pill
+note paused (grey colour): the lead circle is primary
+ipc recorder stop

@@ -46,11 +46,22 @@ component GhostIcon inherits Rectangle {
     callback clicked();
     width: 28px;
     height: 28px;
-    border-radius: Theme.material ? self.height / 2 : Theme.radius-control - 2px;
+    // (Material: the corners tighten as it's pressed, IconButton.qml)
+    border-radius: Theme.material ? (gta.pressed ? 8px : self.height / 2) : Theme.radius-control - 2px;
+    animate border-radius { duration: 150ms; }
     background: Theme.material ? Theme.m3-on-surface-variant.with-alpha(gta.pressed ? 0.1 : gta.has-hover ? 0.08 : 0) : gta.pressed ? Theme.fill-pressed : gta.has-hover ? Theme.fill : transparent;
+    animate background { duration: SM.hover; }
     accessible-role: AccessibleRole.button;
     accessible-label: label;
     accessible-action-default => { clicked(); }
+    // Keyboard: a Tab stop; Space or Enter press it
+    fs := FocusScope {
+        key-pressed(e) => {
+            if !e.repeat && (e.text == " " || e.text == Key.Return) { root.clicked(); return accept; }
+            reject
+        }
+    }
+    SFocusRing { shown: fs.has-focus; radius: root.border-radius; }
     SIcon { g: root.g; size: 16px; color: Theme.secondary; }
     gta := TouchArea {
         mouse-cursor: pointer;
@@ -64,10 +75,25 @@ component ListItem inherits Rectangle {
     in property <SOpt> o;
     in property <bool> first;
     in property <bool> last;
+    // the list's keys are on it (DevList): a ring
+    in property <bool> keyed;
     callback clicked();
     callback action();
     callback menu(length, length, length, length);
     property <bool> lit: o.on;
+    // held 550 ms: the menu opens, and letting go isn't a click (ListRow.qml 205–225)
+    property <bool> held;
+    hold := Timer {
+        interval: 550ms;
+        running: ta.pressed && !root.held;
+        triggered => {
+            root.held = true;
+            root.menu(root.absolute-position.x + ta.mouse-x, root.absolute-position.y + ta.mouse-y, 1px, 0px);
+        }
+    }
+    public function open-menu() {
+        root.menu(root.absolute-position.x + 24px, root.absolute-position.y + root.height / 2, 1px, 0px);
+    }
     property <bool> secured: mod(o.style, 2) == 1;
     property <bool> busy: mod(floor(o.style / 2), 2) == 1;
     property <bool> has-action: mod(floor(o.style / 4), 2) == 1;
@@ -142,12 +168,18 @@ component ListItem inherits Rectangle {
             accessible-role: AccessibleRole.none;
         }
     }
+    SFocusRing { shown: root.keyed; radius: Theme.radius-control; }
     ta := TouchArea {
         mouse-cursor: pointer;
-        clicked => { root.clicked(); }
+        clicked => {
+            if !root.held { root.clicked(); }
+            root.held = false;
+        }
         pointer-event(e) => {
+            if e.button == PointerEventButton.left && e.kind == PointerEventKind.down { root.held = false; }
             if e.button == PointerEventButton.right && e.kind == PointerEventKind.up {
-                root.menu(root.absolute-position.x + self.mouse-x - 110px, root.absolute-position.y + self.mouse-y, 220px, 0px);
+                // (at the pointer: its left edge there, PointerMenu.qml; a 0 height says so)
+                root.menu(root.absolute-position.x + self.mouse-x, root.absolute-position.y + self.mouse-y, 1px, 0px);
             }
         }
     }
@@ -185,8 +217,33 @@ component ListItem inherits Rectangle {
 }
 
 // A Wi-Fi or Bluetooth list: its rows, or a line saying why there are none
-component DevList inherits VerticalLayout {
+component DevList inherits Rectangle {
     in property <SetRow> r;
+    // the row the keys are on (-1: none; shown while the list has focus)
+    property <int> keyed: -1;
+    property <bool> keys-on: fs.has-focus;
+    fs := FocusScope {
+        key-pressed(e) => {
+            let n = r.data.length;
+            if n == 0 { return reject; }
+            if e.text == Key.DownArrow { keyed = min(n - 1, keyed + 1); return accept; }
+            if e.text == Key.UpArrow { keyed = max(0, keyed - 1); return accept; }
+            if keyed >= 0 && keyed < n && (e.text == " " || e.text == Key.Return) { SBus.act(r.id, keyed, 0, "click"); return accept; }
+            if keyed >= 0 && keyed < n && (e.text == Key.Menu || (e.modifiers.shift && e.text == Key.F10)) {
+                if r.data[keyed].id != "" { SBus.menu(r.data[keyed].id, root.absolute-position.x + 32px, root.absolute-position.y + 8px + keyed * 50px, 1px, 0px); }
+                return accept;
+            }
+            reject
+        }
+        changed has-focus => { if self.has-focus && keyed < 0 { keyed = 0; } }
+    }
+    min-height: lay.preferred-height;
+    preferred-height: lay.preferred-height;
+    // (the pointer over the list: it keeps its order while you aim,
+    // WifiList.qml 57–101; the rows inside it, so it sees them hovered)
+    hov := TouchArea {
+    changed has-hover => { SBus.act("hover:" + r.low, self.has-hover ? 1 : 0, 0, ""); }
+    lay := VerticalLayout {
     padding: 8px;
     spacing: 2px;
     if r.data.length == 0: Text {
@@ -200,9 +257,15 @@ component DevList inherits VerticalLayout {
         o: o;
         first: i == 0;
         last: i == r.data.length - 1;
-        clicked => { SBus.act(r.id, i, 0, "click"); }
+        keyed: root.keys-on && root.keyed == i;
+        clicked => {
+            root.keyed = i;
+            SBus.act(r.id, i, 0, "click");
+        }
         action => { SBus.act(r.id, i, 0, "action"); }
         menu(x, y, w, h) => { if o.id != "" { SBus.menu(o.id, x, y, w, h); } }
+    }
+    }
     }
 }
 
@@ -255,6 +318,17 @@ component SpeedCard inherits VerticalLayout {
                 accessible-role: AccessibleRole.button;
                 accessible-label: r.text;
                 accessible-action-default => { SBus.act(r.id, 0, 0, "test"); }
+                // (Glass: it gives a little as it's pressed, 100 ms)
+                transform-scale: !Theme.material && ata.pressed ? 0.97 : 1;
+                animate transform-scale { duration: SM.press; }
+                // Keyboard: a Tab stop; Space or Return press it
+                sfs := FocusScope {
+                    key-pressed(e) => {
+                        if !e.repeat && (e.text == " " || e.text == Key.Return) { SBus.act(r.id, 0, 0, "test"); return accept; }
+                        reject
+                    }
+                }
+                SFocusRing { shown: sfs.has-focus; radius: parent.border-radius; }
                 at := Text {
                     text: r.text;
                     color: Theme.material ? parent.m-ink : r.on ? Theme.label : Theme.on-accent;
@@ -470,6 +544,7 @@ component Arrangement inherits Rectangle {
         property <length> dx;
         property <length> dy;
         property <bool> dragging;
+        z: self.dragging ? 2 : 1;
         x: self.home-x + self.dx;
         y: self.home-y + self.dy;
         width: m.step * root.k * 1px;
@@ -595,8 +670,9 @@ export component DevicesBlock inherits VerticalLayout {
             VerticalLayout {
                 spacing: Theme.material ? 2px : 0;
                 Rectangle {
+                    height: 220px;
                     Tile { place: 1; }
-                    Arrangement { b: b; }
+                    Arrangement { b: b; width: parent.width; height: parent.height; }
                 }
                 Rectangle {
                     min-height: Theme.material ? 56px : 44px;
@@ -675,6 +751,42 @@ export component DevicesCtl inherits VerticalLayout {
     if r.sub == "list": Rectangle {
         Tile { place: r.step; }
         DevList { r: r; }
+    }
+    // Wi-Fi with no manager (ServiceNotice.qml): a centred notice, r.label
+    // its title, r.detail why, r.text its button (r.busy: working on it)
+    if r.sub == "notice": Rectangle {
+        Tile { place: r.step; }
+        VerticalLayout {
+            padding: 20px;
+            spacing: 6px;
+            alignment: center;
+            HorizontalLayout { alignment: center; SIcon { g: r.icon; size: 24px; color: Theme.tertiary; } }
+            Text {
+                horizontal-alignment: center;
+                wrap: word-wrap;
+                text: r.label;
+                color: Theme.label;
+                font-size: Theme.material ? 16px : Theme.body;
+                font-weight: 600;
+            }
+            if r.detail != "": Text {
+                horizontal-alignment: center;
+                wrap: word-wrap;
+                text: r.detail;
+                color: Theme.secondary;
+                font-size: Theme.material ? 14px : Theme.small;
+            }
+            if r.text != "": HorizontalLayout {
+                alignment: center;
+                padding-top: 6px;
+                SButton {
+                    text: r.text;
+                    busy: r.busy;
+                    label: r.label;
+                    clicked => { SBus.act(r.id, 0, 0, ""); }
+                }
+            }
+        }
     }
     if r.sub == "speed": Rectangle {
         Tile { place: r.step; }

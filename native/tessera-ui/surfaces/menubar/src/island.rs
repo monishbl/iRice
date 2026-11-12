@@ -61,6 +61,11 @@ pub struct Activity {
     pub show_lead: bool,
     pub show_title: bool,
     pub show_time: bool,
+    /// the stacked row's second line and progress (-1: none): LiveInfo.detail, .progress
+    pub detail: String,
+    pub progress: f32,
+    /// every control (the rows and the open card): (piece, icon, fill, on, danger)
+    pub all: Vec<(String, String, bool, bool, bool)>,
 }
 
 impl Activity {
@@ -79,6 +84,12 @@ impl Activity {
             show_lead: v["lead"].as_bool().unwrap_or(true),
             show_title: v["name"].as_bool().unwrap_or(true),
             show_time: v["clock"].as_bool().unwrap_or(true),
+            detail: s("detail"),
+            progress: v["progress"].as_f64().unwrap_or(-1.0) as f32,
+            all: v["all"]
+                .as_array()
+                .map(|a| a.iter().map(|c| (c["piece"].as_str().unwrap_or("").to_string(), c["icon"].as_str().unwrap_or("").to_string(), c["fill"].as_bool().unwrap_or(false), c["on"].as_bool().unwrap_or(true), c["danger"].as_bool().unwrap_or(false))).collect())
+                .unwrap_or_default(),
         }
     }
 }
@@ -338,10 +349,11 @@ pub struct View {
 }
 
 /// `fs_mode`: show | important | compact (Settings → island → in full screen)
-pub fn view(i: &Island, hover_open: bool, pinned: bool, over_fs: bool, fs_mode: &str, fs_open: bool) -> View {
+/// `below`: the alerts came while it was open (hovered or pinned): a card under it (IslandAlertStack)
+pub fn view(i: &Island, hover_open: bool, pinned: bool, over_fs: bool, fs_mode: &str, fs_open: bool, below: bool) -> View {
     let showing = i.event().is_some();
     let pill = over_fs && fs_mode == "compact" && showing && !fs_open && !i.ringing();
-    let event_inside = showing;
+    let event_inside = showing && !below;
     let expanded = (hover_open && !over_fs) || (event_inside && !pill) || (pinned && !over_fs);
     let mode = if pill {
         Mode::Pill
@@ -374,12 +386,46 @@ pub fn arc(cx: f32, cy: f32, r: f32, frac: f32) -> String {
 
 /// A colour as the QML shell writes one: #rrggbb or #aarrggbb (Qt's order)
 pub fn color(s: &str) -> Option<slint::Color> {
+    // (colour names as services post them: "danger", "orange"…, and rgba(…))
+    if let Some(inner) = s.strip_prefix("rgba(").and_then(|r| r.strip_suffix(')')) {
+        let v: Vec<f32> = inner.split(',').filter_map(|x| x.trim().parse().ok()).collect();
+        if v.len() == 4 {
+            let c = |x: f32| if x <= 1.0 { (x * 255.0).round() as u8 } else { x.round().min(255.0) as u8 };
+            return Some(slint::Color::from_argb_u8(c(v[3]), c(v[0]), c(v[1]), c(v[2])));
+        }
+        return None;
+    }
+    if !s.starts_with('#') {
+        let name = match s {
+            "danger" | "error" => "red",
+            "success" => "green",
+            "warning" => "orange",
+            "accent" | "info" => "blue",
+            "" => return None,
+            n => n,
+        };
+        return color(&tessera_core::theme::accent_hex(name, true));
+    }
     let h = s.strip_prefix('#')?;
     let v = u32::from_str_radix(h, 16).ok()?;
     match h.len() {
         6 => Some(slint::Color::from_rgb_u8((v >> 16) as u8, (v >> 8) as u8, v as u8)),
         8 => Some(slint::Color::from_argb_u8((v >> 24) as u8, (v >> 16) as u8, (v >> 8) as u8, v as u8)),
         _ => None,
+    }
+}
+
+/// Island.ago: how long ago a Recent line was ("now", "5m", "2h", else its time)
+pub fn ago(at_ms: f64, now_ms: f64) -> String {
+    let mins = ((now_ms - at_ms) / 60_000.0).floor() as i64;
+    if mins < 1 {
+        "now".into()
+    } else if mins < 60 {
+        format!("{mins}m")
+    } else if mins < 360 {
+        format!("{}h", mins / 60)
+    } else {
+        tessera_core::util::strftime("%H:%M", (at_ms / 1000.0) as i64)
     }
 }
 
@@ -395,13 +441,21 @@ mod tests {
 
     #[test]
     fn rings_and_colours() {
+        assert_eq!(ago(0.0, 30_000.0), "now");
+        assert_eq!(ago(0.0, 5.0 * 60_000.0), "5m");
+        assert_eq!(ago(0.0, 125.0 * 60_000.0), "2h");
+        // colours by name, as the services post them
+        assert!(is_red(color("danger").unwrap()) && is_red(color("red").unwrap()));
+        assert!(!is_red(color("orange").unwrap()));
+        assert_eq!(color("rgba(1, 1, 1, 0.55)"), Some(slint::Color::from_argb_u8(140, 255, 255, 255)));
+        assert_eq!(color(""), None);
         assert_eq!(arc(22.0, 22.0, 18.0, 0.25), "M 22 4 A 18 18 0 0 1 40.00 22.00");
         assert_eq!(arc(22.0, 22.0, 18.0, 0.75), "M 22 4 A 18 18 0 1 1 4.00 22.00");
         assert!(arc(17.0, 17.0, 15.0, 1.0).contains("0 1 1 16.99 2"));
         assert_eq!(arc(17.0, 17.0, 15.0, 0.0), "M 17 2 L 17 2");
         assert_eq!(color("#30D158"), Some(slint::Color::from_rgb_u8(0x30, 0xd1, 0x58)));
         assert_eq!(color("#99ffffff"), Some(slint::Color::from_argb_u8(0x99, 255, 255, 255)));
-        assert_eq!(color("red"), None);
+        assert_eq!(color("red"), color("#FF453A")); // (names are read now)
         assert!(is_red(color("#FF453A").unwrap()) && !is_red(color("#30D158").unwrap()));
     }
 
@@ -558,18 +612,18 @@ mod tests {
     #[test]
     fn what_it_shows() {
         let mut i = Island::default();
-        assert_eq!(view(&i, false, false, false, "show", false).mode, Mode::Idle);
-        assert_eq!(view(&i, true, false, false, "show", false).mode, Mode::Expanded);
-        assert_eq!(view(&i, false, true, false, "show", false).mode, Mode::Expanded);
+        assert_eq!(view(&i, false, false, false, "show", false, false).mode, Mode::Idle);
+        assert_eq!(view(&i, true, false, false, "show", false, false).mode, Mode::Expanded);
+        assert_eq!(view(&i, false, true, false, "show", false, false).mode, Mode::Expanded);
         i.set_activities(vec![act("music")]);
-        assert_eq!(view(&i, false, false, false, "show", false).mode, Mode::Compact);
+        assert_eq!(view(&i, false, false, false, "show", false, false).mode, Mode::Compact);
         // over a fullscreen app: hidden, and the pin and hover don't open it
-        assert_eq!(view(&i, true, true, true, "show", false).mode, Mode::Hidden);
+        assert_eq!(view(&i, true, true, true, "show", false, false).mode, Mode::Hidden);
         i.post(ev("charging", "Charging"), 3000.0, 1, 0.0);
-        let v = view(&i, false, false, false, "show", false);
+        let v = view(&i, false, false, false, "show", false, false);
         assert!(v.event_inside && v.mode == Mode::Expanded);
-        assert_eq!(view(&i, false, false, true, "show", false).mode, Mode::Expanded);
-        assert_eq!(view(&i, false, false, true, "compact", false).mode, Mode::Pill);
-        assert_eq!(view(&i, false, false, true, "compact", true).mode, Mode::Expanded);
+        assert_eq!(view(&i, false, false, true, "show", false, false).mode, Mode::Expanded);
+        assert_eq!(view(&i, false, false, true, "compact", false, false).mode, Mode::Pill);
+        assert_eq!(view(&i, false, false, true, "compact", true, false).mode, Mode::Expanded);
     }
 }

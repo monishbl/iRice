@@ -40,11 +40,12 @@ pub mod settings;
 use tessera_core::services::audio::{self, Cmd, Sound};
 use tessera_core::services::brightness::{self, Backlight};
 use tessera_core::services::hypr::{Glass, Snapshot};
-use tessera_core::shell::Part;
+use tessera_core::rows::Rows;
+use tessera_core::shell::{self, Part};
 use tessera_core::theme;
 use tessera_core::wayland::{Spec, State, Surface};
 use logic::{Act, Cue, Kind, Place, Row};
-use slint::{ComponentHandle, Model, ModelRc, VecModel};
+use slint::ComponentHandle;
 use smithay_client_toolkit::reexports::client::protocol::wl_output::WlOutput;
 use smithay_client_toolkit::shell::wlr_layer::{Anchor, KeyboardInteractivity, Layer};
 use std::any::{Any, TypeId};
@@ -56,6 +57,8 @@ pub const HUD_NS: &str = "tessera:osd";
 pub const BAR_NS: &str = "tessera:fshud";
 const NAME: &str = "osd";
 const M: i32 = 24; // the capsule window's room for the glass's shadow
+/// How long a level set here wins over the readings that follow
+const HOLD: Duration = Duration::from_millis(600);
 
 /// Its own messages (Msg::Part("osd", …))
 enum Msg {
@@ -86,8 +89,14 @@ pub struct Osd {
     capsule: Option<Win<ui::OsdCapsule>>,
     panel: Option<Win<ui::OsdPanel>>,
     bar: Option<Win<ui::OsdBar>>,
-    rows_model: Rc<VecModel<ui::OsdRow>>,
+    rows_model: Rows<ui::OsdRow>,
     rows: Vec<Row>,
+    /// the level just set with its own slider (kind, level, when): shown
+    /// at once and kept a moment over the server's answers, which lag the
+    /// pointer (the QML's Audio and Brightness take a new level at once)
+    held: Option<(Kind, f64, Instant)>,
+    /// the same for a row's level (a display, an app): (row's act, level, when)
+    row_held: Option<(Act, f64, Instant)>,
     // what shows
     kind: Kind,
     device: String,
@@ -120,8 +129,10 @@ impl Default for Osd {
             capsule: None,
             panel: None,
             bar: None,
-            rows_model: Rc::new(VecModel::default()),
+            rows_model: Rows::new(),
             rows: Vec::new(),
+            held: None,
+            row_held: None,
             kind: Kind::Volume,
             device: String::new(),
             shown: false,
@@ -161,14 +172,6 @@ fn kind_named(s: &str) -> Option<Kind> {
     }
 }
 
-/// shell-ipc.sh, from a thread (the QML shell opens Settings)
-fn shell_ipc(args: Vec<String>) {
-    std::thread::spawn(move || {
-        let root = crate::env::var("ROOT").filter(|r| !r.is_empty()).unwrap_or_else(|| concat!(env!("CARGO_MANIFEST_DIR"), "/../../../..").into());
-        let _ = std::process::Command::new(format!("{root}/shell/assets/scripts/shell-ipc.sh")).args(args).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status();
-    });
-}
-
 impl Osd {
     fn now(&self) -> u64 {
         self.started.elapsed().as_millis() as u64
@@ -192,7 +195,17 @@ impl Osd {
         let fullscreen = st.shell.get::<Snapshot>().is_some_and(|s| s.fullscreen());
         let island = settings::island_hud(&st.shell.cfg, st.shell.look.material);
         match logic::place(self.armed, quiet, !device.is_empty(), fullscreen, island) {
-            Place::Nowhere | Place::Island => {}
+            Place::Nowhere => {}
+            // (Osd.qml's Island.hud: the island's level row, the menu bar's;
+            // standalone the host's island posts it)
+            Place::Island => {
+                let name = match kind {
+                    Kind::Brightness => "brightness",
+                    Kind::Mic => "mic",
+                    Kind::Volume => "volume",
+                };
+                shell::ask("island.hud", serde_json::json!([name, device]));
+            }
             Place::Bar => {
                 self.bar_kind = kind;
                 self.bar_shown = true;
@@ -295,7 +308,7 @@ impl Osd {
         let t = to.clone();
         ui.on_picked(move |i| t(Box::new(Msg::Picked(i))));
         ui.on_row_level(move |i, v| to(Box::new(Msg::RowLevel(i, v))));
-        ui.set_rows(ModelRc::from(self.rows_model.clone()));
+        ui.set_rows(self.rows_model.model());
     }
 
     fn wire_panel(&self, st: &State, ui: &ui::OsdPanel) {
@@ -312,7 +325,7 @@ impl Osd {
         let t = to.clone();
         ui.on_picked(move |i| t(Box::new(Msg::Picked(i))));
         ui.on_row_level(move |i, v| to(Box::new(Msg::RowLevel(i, v))));
-        ui.set_rows(ModelRc::from(self.rows_model.clone()));
+        ui.set_rows(self.rows_model.model());
     }
 
     fn open_bar(&mut self, st: &mut State) {
@@ -363,6 +376,14 @@ impl Osd {
             names.entry(key.clone()).or_insert_with(|| crate::util::desktop_name(&key).unwrap_or_else(|| x.name.clone())).clone()
         };
         self.rows = logic::rows(kind, self.page, &s, &b, &mut app_name);
+        if let Some((act, v, t)) = &self.row_held {
+            if t.elapsed() < HOLD {
+                for r in self.rows.iter_mut().filter(|r| r.act == *act && r.value >= 0.0) {
+                    r.value = *v;
+                    r.dim = false;
+                }
+            }
+        }
         let pictures = &mut self.pictures;
         let mut picture = |kind: Option<&str>| {
             let Some(kind) = kind else { return slint::Image::default() };
@@ -380,19 +401,15 @@ impl Osd {
             .map(|r| ui::OsdRow { icon: r.icon.into(), picture: picture(r.picture), text: r.text.as_str().into(), current: r.current, chevron: r.chevron, value: r.value as f32, dim: r.dim })
             .collect();
         // (row by row: a row being dragged keeps its pointer)
-        for (i, r) in model.iter().enumerate() {
-            if i >= self.rows_model.row_count() {
-                self.rows_model.push(r.clone());
-            } else if self.rows_model.row_data(i).as_ref() != Some(r) {
-                self.rows_model.set_row_data(i, r.clone());
-            }
-        }
-        while self.rows_model.row_count() > model.len() {
-            self.rows_model.remove(self.rows_model.row_count() - 1);
-        }
+        self.rows_model.set(model);
 
-        let value = logic::value(kind, &s, &b) as f32;
-        let icon = logic::icon(kind, &s);
+        let held = self.held.filter(|(k, _, t)| *k == kind && t.elapsed() < HOLD).map(|(_, v, _)| v);
+        let value = held.unwrap_or_else(|| logic::value(kind, &s, &b)) as f32;
+        let icon = match (kind, held) {
+            // (dragging unmutes)
+            (Kind::Volume, Some(v)) => logic::volume_icon(v, false),
+            _ => logic::icon(kind, &s),
+        };
         let label = logic::label(kind, &self.device, &s);
         let pace = settings::pace(&st.shell.cfg, st.shell.look.material);
         if let Some(w) = &self.capsule {
@@ -414,7 +431,7 @@ impl Osd {
             ui.set_value(value);
             ui.set_can_mute(kind != Kind::Brightness);
             ui.set_mic(kind == Kind::Mic);
-            ui.set_muted(if kind == Kind::Mic { s.mic_muted() } else { s.muted() });
+            ui.set_muted(held.is_none() && if kind == Kind::Mic { s.mic_muted() } else { s.muted() });
             ui.set_toast(!self.device.is_empty() || kind == Kind::Mic);
             ui.set_more_label(logic::more_label(kind).into());
             ui.set_levels_open(self.levels_open);
@@ -457,8 +474,9 @@ impl Osd {
 
     /// Set the shown kind's level (its own slider: quiet)
     fn set_level(&mut self, st: &mut State, v: f64) {
-        let v = v.clamp(0.0, 1.0);
+        let v = v.clamp(if self.kind == Kind::Brightness { 0.01 } else { 0.0 }, 1.0);
         self.hush(self.kind);
+        self.held = Some((self.kind, v, Instant::now()));
         let s = st.shell.get::<Sound>().cloned().unwrap_or_default();
         match self.kind {
             Kind::Brightness => brightness::set(v),
@@ -480,12 +498,7 @@ impl Osd {
             }
         }
         // (the level moves under the pointer at once; the server's answer follows)
-        if let Some(w) = &self.capsule {
-            w.ui.set_value(v as f32);
-        }
-        if let Some(w) = &self.panel {
-            w.ui.set_value(v as f32);
-        }
+        self.refresh(st);
     }
 
     fn toggle_mute(&mut self, st: &mut State) {
@@ -519,7 +532,12 @@ impl Osd {
                     audio::send(Cmd::StreamMute { index, muted: !x.muted });
                 }
             }
-            Act::Settings(page) => shell_ipc(vec!["call".into(), "panels".into(), "settings".into(), page.into()]),
+            // (Panels.openSettings: the host's in standalone, the QML shell's beside it)
+            Act::Settings(page) => {
+                self.hide_now(st);
+                shell::ask("panels.openSettings", serde_json::json!([page]));
+                return;
+            }
             Act::Backlight => {}
         }
         self.refresh(st);
@@ -527,6 +545,8 @@ impl Osd {
 
     fn row_level(&mut self, st: &mut State, i: i32, v: f64) {
         let Some(row) = self.rows.get(i as usize).cloned() else { return };
+        let v = v.clamp(0.0, 1.0);
+        self.row_held = Some((row.act.clone(), v, Instant::now()));
         let s = st.shell.get::<Sound>().cloned().unwrap_or_default();
         match row.act {
             Act::Backlight => {
@@ -543,6 +563,7 @@ impl Osd {
             }
             _ => {}
         }
+        self.refresh(st);
     }
 
     fn drop_all(&mut self, st: &mut State) {
@@ -754,7 +775,7 @@ impl Part for Osd {
                 let (cx, cy) = (ww as f32 / 2.0, wh as f32 / 2.0);
                 let (x, y) = (cx + (M as f32 - cx) * s, cy + (M as f32 - cy) * s);
                 let shape = theme::glass_shape(&st.shell.look, x, y, 280.0 * s, (wh as f32 - 2.0 * M as f32) * s, 26.0 * s, p.min(1.0), 1.0);
-                let key = if p > 0.002 { format!("{shape:?}") } else { String::new() };
+                let key = if p > 0.002 { tessera_core::theme::glass_key(&shape) } else { String::new() };
                 if key != w.glass_sent {
                     st.shell.glass.set(&w.output, HUD_NS, if p > 0.002 { std::slice::from_ref(&shape) } else { &[] });
                     w.glass_sent = key;

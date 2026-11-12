@@ -1,0 +1,27 @@
+# Lists inside rows keep their elements on refresh (latency.md step 10):
+# a hovered button keeps its hover across the minute tick, the on-screen
+# keyboard changes labels on Shift without flashing.
+look material
+setup notify-send -a Files -A open=Open 'Copied' '3 files'
+wait 2
+ipc panels open notificationCenter IRICE-TEST
+wait 1.5
+shot nc-open
+note find the card's Open button in nc-open; the runner's reviewer moves the pointer there with the next ptr step (adjust X Y)
+ptr glide 1700 200 300
+wait 1
+shot hover-before-tick
+wait 70
+shot hover-after-tick
+note hover-after-tick shows the same hover as hover-before-tick (QML and Rust)
+ipc panels close
+wait 1
+# the on-screen keyboard: Shift twice, recorded
+ipc panels open keyboard IRICE-TEST
+wait 1.5
+shot osk-open
+note find Shift in osk-open and adjust the next ptr step
+rec osk-shift 1.2 ptr move 120 980 click
+rec osk-shift-back 1.2 ptr move 120 980 click
+ipc panels close
+note the keys change their labels only: no whole-keyboard flash (frames over the keys' area: labels only)

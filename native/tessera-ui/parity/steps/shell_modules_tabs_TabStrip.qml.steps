@@ -1,0 +1,16 @@
+# Two foot windows grouped so the tab bar shows.
+setup foot -T one & sleep 1; foot -T two &
+wait 2
+setup hyprctl dispatch togglegroup
+wait 1
+setup hyprctl dispatch moveintogroup l
+wait 2
+shot tabs
+note Two tabs, the focused one front-styled; icons 14 px; same as QML.
+ptr move 960 540 sleep 100 glide 960 30 300
+wait 1
+shot tabs-hover
+note Tab bar position depends on the window; hover a tab 2: x shows (adjust to the bar; reviewer: tab 2 hover with x visible, same as QML).
+# MANUAL: in window 2 run: while :; do printf '\e]0;%s\a' $RANDOM; sleep 0.2; done (title changes 5x/s) and record 2 s hovering tab 2: hover and x stay steady, no flicker
+# MANUAL: click x on tab 2 closes that window; click + adds a new window in the group
+setup pkill -x foot || true
