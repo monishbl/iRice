@@ -15,6 +15,8 @@
 #              its glass plugin built with: make -C hypr/plugin/tessera-glass)
 #   --sets N   N pairs of arenas at once (1–4; default 4), each taking every
 #              Nth screen: QML in 2..5, Rust in 6..9 (never 1, yours)
+#   --rust-arenas A,B…  the Rust side's arenas instead of 6..9 (one per set;
+#              several people capturing at once each take their own)
 #   --only     only the screens whose name matches (e.g. 'settings-*')
 #   --env K=V  run the Rust side with this variable set (repeatable), e.g.
 #              TESSERA_TEXT_GAMMA=1.4
@@ -29,7 +31,7 @@
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIN="" LOOKS="material,glass" REF="$HOME/tessera-verify/qml-ref" SETS=4 SHARD="0/1" ARENA="" ONLY="*"
-OUT="$HOME/tessera-verify/visual-$(date +%m%d-%H%M)" SIDE="" REUSE="" ENVS=() FILL=""
+OUT="$HOME/tessera-verify/visual-$(date +%m%d-%H%M)" SIDE="" REUSE="" ENVS=() FILL="" RUST_ARENAS=""
 USERCFG="$HOME/iRice/.sandbox/home/.config/tessera/config.json"
 WALL=""
 while (($#)); do
@@ -46,6 +48,7 @@ while (($#)); do
         --env) ENVS+=("$2"); shift ;;
         --reuse-qml) REUSE=$2; shift ;;
         --fill) FILL=1 ;;
+        --rust-arenas) RUST_ARENAS=$2; shift ;;
         --side) SIDE=$2; shift ;;   # (internal: one side's run)
         -h|--help) sed -n 2,20p "$0"; exit 0 ;;
         *) echo "unknown option $1"; exit 2 ;;
@@ -174,7 +177,9 @@ for ((i = 0; i < SETS; i++)); do
         pids+=($!)
         sleep 12   # (the arenas start one after another)
     fi
-    "$0" "${args[@]}" --side rust --arena $((6 + i)) --shard "$i/$SETS" </dev/null >/dev/null 2>&1 &
+    ra=$((6 + i))
+    if [[ -n $RUST_ARENAS ]]; then IFS=, read -ra RA <<<"$RUST_ARENAS"; ra=${RA[i]:-$ra}; fi
+    "$0" "${args[@]}" --side rust --arena "$ra" --shard "$i/$SETS" </dev/null >/dev/null 2>&1 &
     pids+=($!)
     sleep 12
 done
