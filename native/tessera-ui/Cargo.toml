@@ -20,6 +20,8 @@ tessera-core = { path = "core" }
 slint = { version = "=1.18.1", default-features = false, features = ["std", "compat-1-2", "renderer-femtovg", "unstable-fontique-011"] }
 slint-build = "=1.18.1"
 i-slint-core = "=1.18.1"
+# (--features skia: Slint's Skia renderer instead of FemtoVG, on our own EGL: core/src/skia.rs)
+i-slint-renderer-skia = { version = "=1.18.1", default-features = false, features = ["opengl"] }
 # (Slint's FemtoVG, vendored with a screen clip so a frame redraws only what
 # changed: core/src/egl.rs; the [patch] below makes Slint use the same copy)
 femtovg = { version = "=0.27.0", default-features = false }
@@ -60,6 +62,10 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
+
+[features]
+# Skia draws text as Qt and browsers do (the QML shell's look); FemtoVG is the default
+skia = ["tessera-core/skia"]
 
 [dependencies]
 tessera-core.workspace = true

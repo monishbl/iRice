@@ -96,9 +96,25 @@ impl Damage {
 /// removed) so where they were is repainted too. Everything else is
 /// FemtoVG's (the methods it has of its own are passed on; the rest of the
 /// trait's are its defaults either way).
+/// The renderer underneath: FemtoVG, or Skia with `--features skia` (skia.rs)
+#[cfg(not(feature = "skia"))]
+pub type Inner = slint::platform::femtovg_renderer::FemtoVGRenderer;
+#[cfg(feature = "skia")]
+pub type Inner = crate::skia::SkiaRenderer;
+
 pub struct Renderer {
-    pub femto: slint::platform::femtovg_renderer::FemtoVGRenderer,
+    pub femto: Inner,
     pub damage: Damage,
+}
+
+impl Renderer {
+    /// One frame of the window, drawn now
+    pub fn draw(&self) -> Result<(), slint::PlatformError> {
+        #[cfg(not(feature = "skia"))]
+        return self.femto.render();
+        #[cfg(feature = "skia")]
+        return self.femto.render().map(|_| ());
+    }
 }
 
 use i_slint_core::renderer::RendererSealed;

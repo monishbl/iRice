@@ -14,6 +14,8 @@ pub mod a11y;
 pub mod appicon;
 pub mod damage;
 pub mod dnd;
+#[cfg(feature = "skia")]
+pub mod skia;
 pub mod egl;
 pub mod env;
 pub mod global_shortcuts; // (Hyprland's global shortcuts, as Quickshell's GlobalShortcut: standalone)

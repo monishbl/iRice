@@ -252,7 +252,7 @@ void main(void) {
     vec4 mask = texture2D(glyphtex, ftcoord);
 
     if (glyphTextureType == 1) {
-        mask = vec4(mask.x);
+        mask = vec4(pow(mask.x, TEXT_GAMMA));
     } else {
         result = vec4(1, 1, 1, 1);
         mask = vec4(mask.xyz * mask.w, mask.w);

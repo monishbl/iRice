@@ -222,7 +222,7 @@ impl Surface {
             // (and the frame draws only that, with the back buffer's age: egl.rs)
             self.gl_frame.set(true);
         }
-        if let Err(e) = crate::perf::time(|| format!("femtovg draw {}", self.namespace), || self.renderer.femto.render()) {
+        if let Err(e) = crate::perf::time(|| format!("femtovg draw {}", self.namespace), || self.renderer.draw()) {
             eprintln!("tessera-ui: render failed: {e}");
         }
         self.stats.borrow_mut().rendered(t.elapsed());
@@ -673,7 +673,7 @@ impl State {
         slint::platform::femtovg_renderer::OpenGLInterface::ensure_current(&gl).expect("EGL make current");
         let surface = Rc::new_cyclic(|weak: &Weak<Surface>| Surface {
             window: slint::Window::new(weak.clone() as Weak<dyn WindowAdapter>),
-            renderer: crate::damage::Renderer { femto: FemtoVGRenderer::new(gl).expect("FemtoVG renderer"), damage: Default::default() },
+            renderer: crate::damage::Renderer { femto: make_renderer(gl), damage: Default::default() },
             damage,
             gl_frame,
             egl: self.egl.clone(),
@@ -1359,4 +1359,18 @@ impl SessionLockHandler for State {
         s.frame_pending.set(false);
         s.apply_geometry();
     }
+}
+
+/// The window's renderer on its EGL surface: FemtoVG, or Skia (--features skia)
+#[cfg(not(feature = "skia"))]
+fn make_renderer(gl: GlSurface) -> crate::damage::Inner {
+    FemtoVGRenderer::new(gl).expect("FemtoVG renderer")
+}
+#[cfg(feature = "skia")]
+fn make_renderer(gl: GlSurface) -> crate::damage::Inner {
+    thread_local! {
+        static SHARED: crate::skia::SkiaSharedContext = Default::default();
+    }
+    let surface = crate::skia::SkiaGl::new(gl).expect("Skia on EGL");
+    SHARED.with(|c| crate::skia::SkiaRenderer::new_with_surface(c, Box::new(surface)))
 }

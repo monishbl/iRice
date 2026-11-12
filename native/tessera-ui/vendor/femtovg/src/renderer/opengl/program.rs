@@ -148,8 +148,16 @@ impl MainProgram {
         with_glyph_texture: bool,
     ) -> Result<Self, ErrorKind> {
         let shader_defs = if antialias { "#define EDGE_AA 1" } else { "" };
+        // (Tessera: a gamma on glyph coverage, TESSERA_TEXT_GAMMA, default 1:
+        // above 1 thins the soft edges, as Qt's text rendering does)
+        let text_gamma = std::env::var("TESSERA_TEXT_GAMMA")
+            .ok()
+            .and_then(|v| v.parse::<f32>().ok())
+            .filter(|g| (0.5..=3.0).contains(g))
+            .unwrap_or(1.0);
         let select_shader_type = format!(
-            "#define SELECT_SHADER {}\n{}",
+            "#define TEXT_GAMMA {:.3}\n#define SELECT_SHADER {}\n{}",
+            text_gamma,
             shader_type.to_u8(),
             if with_glyph_texture {
                 "#define ENABLE_GLYPH_TEXTURE"

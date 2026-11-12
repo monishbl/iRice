@@ -25,6 +25,11 @@ component Control {
     in property <SetRow> r;
     in property <string> menu-open; // the id whose list is open
     property <length> w: r.width > 0 ? r.width : 220px;
+    // a custom control that sizes itself (a slider, a check, buttons), not a whole-row one
+    property <bool> inline: (r.group == "devices" && (r.sub == "level" || r.sub == "btn-switch" || r.sub == "check" || r.sub == "signal"))
+        || (r.group == "notify" && (r.sub == "sound" || r.sub == "days" || r.sub == "stepper" || r.sub == "size" || r.sub == "entry"))
+        || (r.group == "accounts" && (r.sub == "field" || r.sub == "source"))
+        || (r.group == "system" && (r.sub == "pick-add" || r.sub == "energy"));
     // (in a layout, so the row reserves what the control takes: a long
     // label no longer pushes it past the row's edge)
     min-width: body.min-width;
@@ -198,17 +203,21 @@ component Control {
         }
         if r.control == "spinner": Busy {}
         if r.control == "custom" && r.group == "look": LookCtl { r: r; }
-        // (a button beside a switch sizes itself: in the layout, so the row
-        // reserves its width; outside it, Scan again spilled past the card)
-        if r.control == "custom" && r.group == "devices" && r.sub == "btn-switch": DevicesCtl { r: r; }
+        // (the controls that size themselves: in the layout, so the row
+        // reserves their width; outside it they spilled past the card: Scan
+        // again, Sound's level and check mark)
+        if r.control == "custom" && inline && r.group == "devices": DevicesCtl { r: r; }
+        if r.control == "custom" && inline && r.group == "notify": NotifyCtl { r: r; }
+        if r.control == "custom" && inline && r.group == "accounts": AccountsCtl { r: r; }
+        if r.control == "custom" && inline && r.group == "system": SystemCtl { r: r; }
     }
-    // (outside the layout: these size themselves from the row, and inside
-    // it they would size the row from themselves, a loop)
-    if r.control == "custom" && r.group == "notify": NotifyCtl { r: r; }
-    if r.control == "custom" && r.group == "devices" && r.sub != "btn-switch": DevicesCtl { r: r; }
+    // (outside the layout: the whole-row ones size themselves from the row,
+    // and inside it they would size the row from themselves, a loop)
+    if r.control == "custom" && !inline && r.group == "notify": NotifyCtl { r: r; }
+    if r.control == "custom" && !inline && r.group == "devices": DevicesCtl { r: r; }
     if r.control == "custom" && r.group == "input": InputCtl { r: r; }
-    if r.control == "custom" && r.group == "accounts": AccountsCtl { r: r; }
-    if r.control == "custom" && r.group == "system": SystemCtl { r: r; }
+    if r.control == "custom" && !inline && r.group == "accounts": AccountsCtl { r: r; }
+    if r.control == "custom" && !inline && r.group == "system": SystemCtl { r: r; }
     if r.control == "custom" && r.group == "about": AboutCtl { r: r; }
 }
 
