@@ -347,7 +347,13 @@ impl Glass {
                 // (the plugin's name, as the ping found it: "\0glass" stands for it)
                 let cmds: Vec<String> = pending.into_values().map(|c| c.replace("\0glass", glass_cmd())).collect();
                 let cmd = if cmds.len() == 1 { cmds[0].clone() } else { format!("[[BATCH]]{}", cmds.join(";")) };
-                let answer = request(&cmd);
+                // (once more on a failed request: a shape lost here stays
+                // lost, as parts send only what changed — on a busy live
+                // compositor, a panel's glass left behind or never shown)
+                let answer = request(&cmd).or_else(|_| {
+                    std::thread::sleep(std::time::Duration::from_millis(15));
+                    request(&cmd)
+                });
                 if debug {
                     eprintln!("debug: glass {cmd} -> {answer:?}");
                 }
@@ -406,11 +412,14 @@ impl Glass {
         } else {
             let mut held = self.held.borrow_mut();
             let q = held.entry(key).or_default();
-            // (set again before its frame drew: the newer shapes take its place)
+            // (set again before its frame drew: the newer shapes take its
+            // place, but keep its age, or shapes set every turn by an
+            // animation on a surface that can't draw would wait for ever)
+            let mut since = std::time::Instant::now();
             if q.back().is_some_and(|e| e.0.is_none()) {
-                q.pop_back();
+                since = q.pop_back().unwrap().2;
             }
-            q.push_back((None, cmd, std::time::Instant::now()));
+            q.push_back((None, cmd, since));
             while q.len() > 6 {
                 q.pop_front();
             }

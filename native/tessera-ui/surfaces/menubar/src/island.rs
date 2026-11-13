@@ -351,7 +351,10 @@ pub struct View {
 /// `fs_mode`: show | important | compact (Settings → island → in full screen)
 /// `below`: the alerts came while it was open (hovered or pinned): a card under it (IslandAlertStack)
 pub fn view(i: &Island, hover_open: bool, pinned: bool, over_fs: bool, fs_mode: &str, fs_open: bool, below: bool) -> View {
-    let showing = i.event().is_some();
+    // (alerts that are leaving don't hold it open: their content is gone in
+    // 140 ms, and the island stayed open and empty for the rest of
+    // LEAVE_MS and the sweep's 250 ms, a dark pill with nothing in it)
+    let showing = i.alerts.iter().any(|a| !a.leaving);
     let pill = over_fs && fs_mode == "compact" && showing && !fs_open && !i.ringing();
     let event_inside = showing && !below;
     let expanded = (hover_open && !over_fs) || (event_inside && !pill) || (pinned && !over_fs);

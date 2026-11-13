@@ -42,6 +42,11 @@ PANELS=(
     "systemMenu|ipc panels open systemMenu IRICE-TEST|key -k Escape"
     "island|ipc island post bell Speed test|ipc island dismissNewest"
     "islandHover|P glide 960 14 200|P glide 1500 700 200"
+    "islandWifi|ipc island demo wifi|true"
+    "islandBattery|ipc island demo battery|ipc island dismissNewest"
+    "islandDownload|ipc island demo download|ipc island dismissNewest"
+    "islandUsb|ipc island demo usb|ipc island dismissNewest"
+    "quicklook|ipc panels quickLook $WALLS/wall-tiles.jpg|key -k Escape"
 )
 cmd_of() { [[ $1 == sc\ * ]] && echo "hyprctl dispatch 'hl.dsp.global(\"tessera:${1#sc }\")' >/dev/null" || echo "$1"; }
 CLEAN='ipc panels close; ipc island dismissNewest; ipc island dismissNewest; P move 1500 700'

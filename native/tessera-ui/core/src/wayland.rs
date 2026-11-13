@@ -67,6 +67,10 @@ use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
 use std::time::Instant;
 
+/// How long a frame callback may take before it counts as lost (a frame at
+/// 60 Hz is 17 ms; a busy compositor takes a few)
+const LOST_FRAME: std::time::Duration = std::time::Duration::from_millis(250);
+
 // ── One layer surface = one Slint window ────────────────────────────────────
 
 pub struct Surface {
@@ -105,6 +109,10 @@ pub struct Surface {
     configured: Cell<bool>,
     needs_redraw: Cell<bool>,
     frame_pending: Cell<bool>,
+    /// when the pending frame's callback was asked for: one that never comes
+    /// (the compositor can withhold it) would freeze the surface for good,
+    /// and with it the glass shapes waiting for that frame (`recover_lost_frames`)
+    frame_asked: Cell<Option<Instant>>,
     pub mapped: Cell<bool>,
     /// hidden by `hide` until `show`: a configure meanwhile (Hyprland answers
     /// the null buffer with one) must not draw and map it again
@@ -243,6 +251,7 @@ impl Surface {
         self.shown_frames.set(self.shown_frames.get().saturating_add(1));
         self.drew.set(true);
         self.frame_pending.set(true);
+        self.frame_asked.set(Some(Instant::now()));
         self.mapped.set(true);
         // (a window's first frame can come out unpainted, garbage or nothing;
         // one that never animates would keep it: so the first after each
@@ -710,6 +719,7 @@ impl State {
             configured: Cell::new(false),
             needs_redraw: Cell::new(true),
             frame_pending: Cell::new(false),
+            frame_asked: Cell::new(None),
             mapped: Cell::new(false),
             hidden: Cell::new(false),
             retired: Cell::new(false),
@@ -786,6 +796,7 @@ impl State {
 
     /// After each event loop turn: draw what changed
     pub fn render_all(&mut self) {
+        self.recover_lost_frames();
         for s in &self.surfaces {
             s.drew.set(false);
         }
@@ -826,6 +837,29 @@ impl State {
             best
         };
         self.shell.glass.flush(gate);
+    }
+
+    /// A frame callback that hasn't come after LOST_FRAME is taken as lost:
+    /// the frame counts as shown and the surface may draw again. (Live, the
+    /// compositor can keep a callback back — an occluded or idle output — and
+    /// the surface then never drew again: a bar stuck mid-animation, and the
+    /// island's glass waiting on that frame left up as an empty pill.)
+    fn recover_lost_frames(&self) {
+        for s in &self.surfaces {
+            if s.frame_pending.get() && s.frame_asked.get().is_some_and(|t| t.elapsed() >= LOST_FRAME) {
+                if crate::env::is_set("DEBUG") {
+                    eprintln!("debug: frame callback lost on {}: drawing on", s.namespace);
+                }
+                s.frame_pending.set(false);
+                s.presented.set(s.rendered.get());
+            }
+        }
+    }
+
+    /// A surface waits on a frame callback with more to draw: the loop wakes
+    /// by LOST_FRAME to draw on should the callback never come
+    pub fn waits_on_frame(&self) -> bool {
+        self.surfaces.iter().any(|s| s.frame_pending.get() && s.needs_redraw.get() && s.configured.get())
     }
 
     pub fn wants_frame_soon(&self) -> bool {
