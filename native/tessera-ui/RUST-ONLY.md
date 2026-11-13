@@ -29,7 +29,7 @@ sandbox), **done, unchecked** (committed, not yet seen in a screenshot).
 
 | Change | Asked | Status | Commit |
 |---|---|---|---|
-| Circle to Search: breathing edge glow (Glass blue/purple/pink/orange, Material wallpaper tones), entry from the cursor (gesture) or the bottom (key); the circled picture goes to an input bar with chips (What is this?, Search the web, Copy text, Translate) or your own question; the answer streams in a card by the selection with "Continue in sidebar"; Lens "image expired" fixed (the Lens fix **also QML**, shared script) | 13 Nov | in progress | |
+| Circle to Search: breathing edge glow (Glass blue/purple/pink/orange, Material wallpaper tones), entry from the cursor (gesture) or the bottom (key); the circled picture goes to an input bar with chips (What is this?, Search the web, Copy text, Translate) or your own question; the answer streams in a card by the selection with "Continue in sidebar"; Lens "image expired" fixed (the Lens fix **also QML**, shared script) | 13 Nov | Lens fix committed (cause: the upload's session wasn't the browser's; now the browser uploads via a one-time local page; real-browser check pending); glow, input bar, chips, answer card: drafted, not built (scratchpad cts-circle.slint.draft) | f204b11 (Lens) |
 | Image viewer: Super+Q (and the usual close keys) close the viewer instead of the window under it (and the same for every shell overlay that takes the keyboard) | 13 Nov | in progress; **also QML** (in progress) | |
 | Image viewer: redesigned top toolbar (larger icons and buttons, grouping, states, tooltips), both looks | 13 Nov | in progress | |
 
