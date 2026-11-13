@@ -91,6 +91,10 @@ PY
         sleep 1
     }
     log "setup: arena $IRICE_ARENA, code $CODE"
+    # (each sandbox starts once its memory fits beside the builds running:
+    # the shared budget in slot.sh; under memory pressure grim timed out)
+    GATE=$HOME/.local/share/tessera-port/slot.sh
+    [[ -x $GATE ]] && "$GATE" --sandbox true
     # (the same home on both sides: wiped, then `up` copies it afresh from
     # the one .sandbox/home, with the same excludes in both versions; files
     # earlier tests left (screenshots on the desktop…) can't differ)
