@@ -7,6 +7,13 @@
 //! file's details. Space or Esc closes it, Return opens the file in its app.
 //! Closing itself asks the shell (`panels.quickLook` with no path).
 //!
+//! Its toolbar: Close, the name, then Live Text and Mark up (a picture), Copy
+//! (Ctrl+C: the picture, a text file's text, else the file), Share, Move to
+//! Trash (Delete: at once, with Undo in its notification), and Open. Ctrl+W
+//! and the mouse's Back button close it too; Super+Q and Alt+F4 reach it
+//! through the shell (`panels.closeFront`, hypr/tessera/keybinds.lua), not
+//! the window under it.
+//!
 //! Differences from the QML: Slint has no media player, so video plays as
 //! frames ffmpeg decodes into the card (its sound through ffplay, when
 //! installed) and audio through ffplay; pausing stops both processes
@@ -142,6 +149,11 @@ enum Q {
     Close,
     OpenIt,
     Share,
+    Copy,
+    /// Copy's check goes
+    CopiedGone,
+    Markup,
+    Delete,
     ToggleText,
     TogglePlay,
     Closed,
@@ -268,6 +280,7 @@ pub struct QuickLook {
     glow: slint::Timer,
     said: slint::Timer,
     prep: slint::Timer,
+    copied: slint::Timer,
     tx: Option<Sender<Msg>>,
     /// the folder shown: its entries and their icons
     folder: Vec<(String, &'static str)>,
@@ -297,6 +310,7 @@ impl Default for QuickLook {
             glow: slint::Timer::default(),
             said: slint::Timer::default(),
             prep: slint::Timer::default(),
+            copied: slint::Timer::default(),
             tx: None,
             folder: Vec::new(),
             folder_icons: HashMap::new(),
@@ -337,6 +351,9 @@ impl QuickLook {
         on!(on_close_it, | | Q::Close);
         on!(on_open_it, | | Q::OpenIt);
         on!(on_share, | | Q::Share);
+        on!(on_copy_it, | | Q::Copy);
+        on!(on_markup, | | Q::Markup);
+        on!(on_delete_it, | | Q::Delete);
         on!(on_toggle_text, | | Q::ToggleText);
         on!(on_toggle_play, | | Q::TogglePlay);
         on!(on_closed, | | Q::Closed);
@@ -353,7 +370,9 @@ impl QuickLook {
                 let image = ui.get_kind() == "image";
                 let ready = ui.get_text_mode() && live.borrow().status == "ready";
                 let ours = (image && !ctrl && text.eq_ignore_ascii_case("t"))
-                    || (ready && ctrl && (text.eq_ignore_ascii_case("c") || text.eq_ignore_ascii_case("a")))
+                    || (ready && ctrl && text.eq_ignore_ascii_case("a"))
+                    || (ctrl && (text.eq_ignore_ascii_case("c") || text.eq_ignore_ascii_case("w")))
+                    || is(Key::Delete)
                     || is(Key::Escape)
                     || text == " "
                     || is(Key::Return);
@@ -400,8 +419,6 @@ impl QuickLook {
         }
         icons(&ui, st.shell.look.material);
         ui.set_no_icon(ui::StIc::default());
-        ui.set_glyph_x(crate::icons::glyph("x").into());
-        ui.set_glyph_share(crate::icons::glyph("share-network").into());
         ui.set_press_shape(crate::surfaces::shapes::outline("cookie9").into());
         let rows = Rows::new();
         ui.set_rows(rows.model());
@@ -452,6 +469,7 @@ impl QuickLook {
         w.ui.set_file_icon(slint::Image::default());
         w.ui.set_playing(false);
         w.ui.set_position(0.0);
+        w.ui.set_copied(false);
         w.ui.set_shape(crate::surfaces::shapes::outline("cookie12").into());
         w.surface.layer.set_keyboard_interactivity(KeyboardInteractivity::Exclusive);
         w.surface.show(0, 0);
@@ -708,6 +726,58 @@ impl QuickLook {
         }
     }
 
+    /// Copy: a picture as itself (its type), a text file's text, anything
+    /// else (a folder too) as the file, for a file manager to paste; Copy's
+    /// icon turns into a check for a moment
+    fn copy_file(&mut self) {
+        if self.kind.is_empty() || self.path.is_empty() {
+            return;
+        }
+        let (p, kind) = (self.path.clone(), self.kind);
+        let mime = if self.mime.starts_with("image/") && self.mime != "image/svg+xml" { self.mime.clone() } else { "image/png".into() };
+        std::thread::spawn(move || {
+            let wl_copy = |t: &str, stdin: Stdio| std::process::Command::new("wl-copy").args(["--type", t]).stdin(stdin).stdout(Stdio::null()).stderr(Stdio::null()).status();
+            match kind {
+                "image" if mime != "image/png" || p.to_lowercase().ends_with(".png") => {
+                    if let Ok(f) = std::fs::File::open(&p) {
+                        let _ = wl_copy(&mime, Stdio::from(f));
+                    }
+                }
+                "image" => {
+                    // (an SVG or an unknown type: as PNG)
+                    let mut png = Vec::new();
+                    if image::open(&p).ok().and_then(|i| i.write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).ok()).is_some() {
+                        crate::util::pipe_to(&["wl-copy", "--type", "image/png"], png);
+                    }
+                }
+                "text" => {
+                    if let Ok(f) = std::fs::File::open(&p) {
+                        let _ = wl_copy("text/plain;charset=utf-8", Stdio::from(f));
+                    }
+                }
+                _ => crate::util::pipe_to(&["wl-copy", "--type", "text/uri-list"], format!("{}\r\n", file_uri(&p)).into_bytes()),
+            }
+        });
+        if let Some(w) = &self.win {
+            w.ui.set_copied(true);
+        }
+        let tx = self.tx.clone();
+        self.copied.start(slint::TimerMode::SingleShot, Duration::from_millis(1500), move || {
+            if let Some(tx) = &tx {
+                send(tx, Q::CopiedGone);
+            }
+        });
+    }
+
+    /// Move to Trash, at once: the viewer closes, the notification has Undo
+    fn delete_file(&mut self) {
+        if self.path.is_empty() {
+            return;
+        }
+        trash(&self.path);
+        self.close(true);
+    }
+
     fn push(&self) {
         let Some(w) = &self.win else { return };
         let ui = &w.ui;
@@ -756,13 +826,42 @@ impl QuickLook {
                 return;
             }
         }
-        if text == " " || is(Key::Escape) {
+        if ctrl && text.eq_ignore_ascii_case("c") {
+            self.copy_file();
+        } else if is(Key::Delete) && !ctrl {
+            self.delete_file();
+        } else if text == " " || is(Key::Escape) || (ctrl && text.eq_ignore_ascii_case("w")) {
             self.close(true);
         } else if is(Key::Return) {
             crate::shell::ask("files.open", json!([self.path]));
             self.close(true);
         }
     }
+}
+
+/// A path as a file:// URI (text/uri-list): every byte outside the unreserved
+/// set and "/" percent-encoded
+pub fn file_uri(path: &str) -> String {
+    let mut u = String::from("file://");
+    for b in path.bytes() {
+        if b.is_ascii_alphanumeric() || b"/-._~".contains(&b) {
+            u.push(b as char);
+        } else {
+            u += &format!("%{b:02X}");
+        }
+    }
+    u
+}
+
+/// Move to Trash, with Undo in the notification (as the desktop's files.rs
+/// and the QML: gio, then notify-send whose action restores it)
+fn trash(path: &str) {
+    let name = path.rsplit('/').next().unwrap_or(path).to_string();
+    let script = "gio trash -- \"$1\" || exit; a=$(timeout 600 notify-send -a Files -i user-trash -t 8000 -A undo=Undo 'Moved to Trash' \"$2\"); [ \"$a\" = undo ] && gio trash --restore \"trash:///$(basename \"$1\")\"";
+    let argv = vec!["sh".to_string(), "-c".into(), script.into(), "sh".into(), path.to_string(), name];
+    std::thread::spawn(move || {
+        let _ = std::process::Command::new("setsid").arg("-f").args(argv).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status();
+    });
 }
 
 /// The picture's pixels per display px, and the part shown's origin
@@ -778,6 +877,11 @@ fn push_live(live: &Live, ocr: &Ocr, ui: &ui::QuickLook) {
 
 /// The look's icons (again when the look changes: the window is kept)
 fn icons(ui: &ui::QuickLook, m: bool) {
+    ui.set_ic_x(ic("x", m));
+    ui.set_ic_markup(ic("pencil-simple", m));
+    ui.set_ic_share(ic("share-network", m));
+    ui.set_ic_trash(ic("trash", m));
+    ui.set_ic_check(ic("check", m));
     ui.set_ic_text(ic("text-aa", m));
     ui.set_ic_copy(ic("copy", m));
     ui.set_ic_download(ic("download-simple", m));
@@ -972,6 +1076,21 @@ impl Part for QuickLook {
                 self.close(true);
                 crate::shell::ask("panels.share", json!([[p]]));
             }
+            Q::Copy => self.copy_file(),
+            Q::CopiedGone => {
+                if let Some(w) = &self.win {
+                    w.ui.set_copied(false);
+                }
+            }
+            // Mark up: the screenshot editor on this picture, on this screen
+            Q::Markup => {
+                if self.kind == "image" && self.picture_ready {
+                    let (p, screen) = (self.path.clone(), self.win.as_ref().map(|w| w.output.clone()).unwrap_or_default());
+                    self.close(true);
+                    let _ = st.tx.send(Msg::Line(json!({"cmd": "edit", "surface": "screentools", "file": p, "screen": screen}).to_string()));
+                }
+            }
+            Q::Delete => self.delete_file(),
             Q::ToggleText => {
                 self.text_mode = !self.text_mode;
                 self.live_on();
@@ -1088,6 +1207,12 @@ mod tests {
         assert_eq!(kind_of("application/x-sharedlib", "so"), "other");
         assert_eq!(kind_of("", "so"), "");
         assert_eq!(kind_of("", "rs"), "text");
+    }
+
+    #[test]
+    fn file_uris_for_copying() {
+        assert_eq!(file_uri("/home/a/My shot (1).png"), "file:///home/a/My%20shot%20%281%29.png");
+        assert_eq!(file_uri("/tmp/é"), "file:///tmp/%C3%A9");
     }
 
     #[test]

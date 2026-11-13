@@ -112,6 +112,19 @@ impl Model {
         self.cc_page.clear();
     }
 
+    /// A close shortcut: Quick Look first (it is over everything), else the
+    /// open panel; false when neither is open
+    pub fn close_front(&mut self, now: i64) -> bool {
+        if !self.quick_look_path.is_empty() {
+            self.quick_look_path.clear();
+        } else if !self.open.is_empty() {
+            self.close(now);
+        } else {
+            return false;
+        }
+        true
+    }
+
     pub fn open_settings(&mut self, page: Option<&str>, target: Option<&str>, now: i64) {
         self.close(now);
         if let Some(p) = page.filter(|p| !p.is_empty()) {
@@ -300,6 +313,22 @@ impl Panels {
                 // (host-desktop's desktop feed keeps the edit itself: DesktopFeed's
                 // `editing` followed Panels.widgetEditing)
                 h.ask("desktop", json!([if self.m.widget_editing { "edit" } else { "endEdit" }]));
+            }
+            // A close shortcut (Super+Q, Alt+F4) while one of our overlays holds
+            // the keyboard: the frontmost closes, not the window under it.
+            // Quick Look over everything, then the open panel, then whatever
+            // else has the keyboard (a dialog, the switcher…) as Escape would;
+            // with none (it closed meanwhile) the window, as the key would have
+            "closeFront" => {
+                if !self.m.close_front(now) {
+                    if let Some(s) = h.st.keyboard_surface() {
+                        let esc = slint::SharedString::from(slint::platform::Key::Escape);
+                        s.window().dispatch_event(slint::platform::WindowEvent::KeyPressed { text: esc.clone() });
+                        s.window().dispatch_event(slint::platform::WindowEvent::KeyReleased { text: esc });
+                    } else {
+                        let _ = tessera_core::services::hypr::request("dispatch hl.dsp.window.close()");
+                    }
+                }
             }
             // panicReset: close everything, in case something is stuck
             "reset" => {
@@ -788,6 +817,18 @@ mod tests {
         assert_eq!(m.quick_look_path, "/a.png");
         m.quick_look("/a.png");
         assert_eq!(m.quick_look_path, "");
+    }
+
+    #[test]
+    fn close_shortcut_closes_quick_look_then_the_panel() {
+        let mut m = Model::new();
+        m.show("spotlight", Some("DP-1"), None, None, "", "");
+        m.quick_look("/a.png");
+        assert!(m.close_front(1000));
+        assert_eq!((m.quick_look_path.as_str(), m.open.as_str()), ("", "spotlight"));
+        assert!(m.close_front(2000));
+        assert_eq!(m.open, "");
+        assert!(!m.close_front(3000));
     }
 
     #[test]

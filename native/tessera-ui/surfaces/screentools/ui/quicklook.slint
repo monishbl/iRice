@@ -7,9 +7,122 @@
 // screen, as the QML's.
 
 import { Theme } from "@tessera/theme.slint";
-import { IconButton } from "@tessera/widgets.slint";
-import { StIc, StIcon, EditorButton } from "screentools.slint";
+import { StIc, StIcon } from "screentools.slint";
 import { LtBox, LtBar, LiveTextLayer, LiveTextBar } from "shoteditor.slint";
+
+// The toolbar's icon button: 36 px with a 20 px Phosphor icon (Glass), 40 px
+// with a 24 px Material Symbol (Material). Glass: a fill on hover, a firmer
+// one pressed (shrinking a little), the accent's tint when on; Material:
+// state layers on a round shape that squares off pressed or on. A keyboard
+// focus ring, and a tooltip (with its key) after a short hover. `danger`:
+// red on hover (Delete); `done`: a check for a moment (Copy).
+component QlButton inherits Rectangle {
+    in property <StIc> icon;
+    in property <StIc> done-icon;
+    in property <string> tooltip;
+    in property <string> done-tooltip;
+    in property <string> shortcut;
+    in property <bool> selected;
+    in property <bool> danger;
+    in property <bool> done;
+    in property <bool> enabled: true;
+    callback clicked();
+    callback other-key(KeyEvent) -> bool;
+
+    property <bool> hot: touch.has-hover && enabled;
+    property <float> layer: !enabled ? 0 : touch.pressed ? 0.12 : touch.has-hover ? 0.08 : 0;
+    property <color> mfg: !enabled ? Theme.m3-on-surface.with-alpha(0.38) : danger && hot ? Theme.m3-error
+        : selected ? Theme.m3-on-secondary-container : Theme.m3-on-surface-variant;
+    property <color> gfg: !enabled ? Theme.tertiary : danger && hot ? Theme.danger : selected ? Theme.accent : Theme.label;
+
+    width: Theme.material ? 40px : 36px;
+    height: self.width;
+    border-radius: Theme.material ? (touch.pressed && enabled ? 12px : selected ? 14px : self.height / 2) : Theme.radius-control;
+    animate border-radius { duration: 222ms; easing: spring(0.4); } // (springFast)
+    background: Theme.material ? (selected ? Theme.m3-secondary-container.mix(mfg, 1 - layer) : mfg.with-alpha(layer))
+        : selected ? Theme.accent.with-alpha(touch.pressed ? 0.28 : 0.18)
+        : danger && hot ? Theme.danger.with-alpha(touch.pressed ? 0.24 : 0.14)
+        : !enabled ? transparent : touch.pressed ? Theme.fill-pressed : touch.has-hover ? Theme.fill-hover : transparent;
+    animate background { duration: Theme.hover; }
+    transform-scale: touch.pressed && enabled ? (Theme.material ? 1.06 : 0.97) : 1;
+    animate transform-scale { duration: Theme.material ? 290ms : 100ms; easing: Theme.material ? spring(0.57) : cubic-bezier(0.33, 1, 0.68, 1); }
+    accessible-role: button;
+    accessible-label: done ? done-tooltip : tooltip;
+    accessible-enabled: enabled;
+    accessible-action-default => { if enabled { clicked(); } }
+
+    // Keyboard focus ring (Glass: 2 px accent, 2 px out; Material: 3 px secondary, 2 px out)
+    if keys.has-focus: Rectangle {
+        x: Theme.material ? -5px : -4px;
+        y: self.x;
+        width: root.width - 2 * self.x;
+        height: root.height - 2 * self.y;
+        border-radius: root.border-radius - self.x;
+        border-width: Theme.material ? 3px : 2px;
+        border-color: Theme.material ? Theme.m3-secondary : Theme.accent;
+    }
+    StIcon {
+        width: 20px;
+        height: 20px;
+        icon: done ? done-icon : root.icon;
+        fill: Theme.material && (selected || done);
+        size: 20px; // (Material Symbols draw at 1.2x: 24 px)
+        color: done ? (Theme.material ? Theme.m3-primary : Theme.accent) : Theme.material ? mfg : gfg;
+    }
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+    keys := FocusScope {
+        focus-on-click: false;
+        enabled: root.enabled;
+        key-pressed(e) => {
+            if e.text == " " || e.text == Key.Return {
+                root.clicked();
+                return accept;
+            }
+            root.other-key(e) ? accept : reject
+        }
+    }
+
+    // Tooltip after a short hover, under the button
+    property <bool> hov: touch.has-hover;
+    property <bool> tip-ready;
+    changed hov => { if !hov { tip-ready = false; } }
+    Timer {
+        interval: 600ms;
+        running: touch.has-hover && tooltip != "" && !touch.pressed && !tip-ready;
+        triggered => { tip-ready = true; }
+    }
+    if tip-ready && touch.has-hover && tooltip != "": Rectangle {
+        x: (root.width - self.width) / 2;
+        y: root.height + 8px;
+        width: tip-row.preferred-width + 16px;
+        height: Theme.material ? 24px : 28px;
+        border-radius: Theme.material ? 4px : 8px;
+        background: Theme.material ? Theme.m3-inverse-surface : Theme.dark ? #3a3a3f : #1c1c1e;
+        tip-row := HorizontalLayout {
+            alignment: center;
+            spacing: 8px;
+            Text {
+                text: done ? done-tooltip : tooltip;
+                color: Theme.material ? Theme.m3-inverse-on-surface : #f2f2f5;
+                font-size: Theme.small;
+                font-weight: 500;
+                vertical-alignment: center;
+                accessible-role: none;
+            }
+            if shortcut != "": Text {
+                text: shortcut;
+                color: Theme.material ? Theme.m3-inverse-on-surface.with-alpha(0.7) : #ffffff8c;
+                font-size: Theme.small;
+                vertical-alignment: center;
+                accessible-role: none;
+            }
+        }
+    }
+}
 
 export struct QlRow {
     icon: image,
@@ -46,11 +159,18 @@ export component QuickLook inherits Window {
     in property <StIc> ic-play;
     in property <StIc> ic-pause;
     in property <StIc> no-icon;
-    in property <string> glyph-x;
-    in property <string> glyph-share;
+    in property <StIc> ic-x;
+    in property <StIc> ic-markup;
+    in property <StIc> ic-share;
+    in property <StIc> ic-trash;
+    in property <StIc> ic-check;
+    in property <bool> copied; // (Copy's check, for a moment)
     callback close-it();
     callback open-it();
     callback share();
+    callback copy-it();
+    callback markup();
+    callback delete-it();
     callback toggle-text();
     callback toggle-play();
     callback key(string, bool) -> bool; // text, control
@@ -106,10 +226,16 @@ export component QuickLook inherits Window {
         TouchArea {
             enabled: shown;
             clicked => { root.close-it(); }
+            // (the mouse's Back button closes, as Esc)
+            pointer-event(e) => {
+                if e.kind == PointerEventKind.down && e.button == PointerEventButton.back { root.close-it(); }
+            }
         }
     }
 
-    property <length> header: 52px;
+    property <length> header: 56px;
+    // (wide enough for the whole toolbar and some of the name)
+    property <length> min-w: kind == "image" ? (Theme.material ? 600px : 560px) : (Theme.material ? 520px : 480px);
     property <length> footer: text-mode && kind == "image" ? (Theme.material ? 40px : 36px) + 12px : 0;
     property <length> max-w: root.width * 0.8;
     property <length> max-h: root.height * 0.8 - header - footer;
@@ -124,7 +250,7 @@ export component QuickLook inherits Window {
     property <length> pic-h: min(body-h, body-w / aspect);
 
     card := Rectangle {
-        width: max(360px, nat-w * k * 1px);
+        width: max(min-w, nat-w * k * 1px);
         height: nat-h * k * 1px + header + footer;
         x: (root.width - self.width) / 2;
         y: (root.height - self.height) / 2;
@@ -137,88 +263,10 @@ export component QuickLook inherits Window {
         drop-shadow-color: Theme.material ? Theme.m3-shadow.with-alpha(Theme.dark ? 0.4 : 0.16) : transparent;
         accessible-role: groupbox;
         accessible-label: file-name;
-        TouchArea { } // (clicks on the card don't close it)
-
-        // Title bar: close, name and what it is, Text, Share, Open
-        Rectangle {
-            height: header;
-            y: 0;
-            IconButton {
-                x: 12px;
-                icon: glyph-x;
-                label: "Close";
-                clicked => { root.close-it(); }
-            }
-            VerticalLayout {
-                x: 12px + 28px + 10px;
-                width: right-row.x - self.x - 12px;
-                alignment: center;
-                Text {
-                    text: file-name;
-                    overflow: elide;
-                    color: Theme.label;
-                    font-size: Theme.body;
-                    font-weight: 600;
-                }
-                Text {
-                    text: subtitle;
-                    overflow: elide;
-                    color: Theme.secondary;
-                    font-size: Theme.small;
-                }
-            }
-            right-row := HorizontalLayout {
-                x: parent.width - self.preferred-width - (Theme.material ? 16px : 12px);
-                spacing: 6px;
-                alignment: end;
-                // A picture: Live Text on or off
-                if kind == "image": EditorButton {
-                    icon: ic-text;
-                    label: "Text";
-                    selected: text-mode;
-                    tooltip: text-mode ? "Stop selecting text" : "Select the text in this picture";
-                    shortcut: "T";
-                    enabled: picture-ready;
-                    clicked => { root.toggle-text(); }
-                }
-                if kind != "folder": Rectangle {
-                    width: 28px;
-                    IconButton {
-                        icon: glyph-share;
-                        label: "Share";
-                        clicked => { root.share(); }
-                    }
-                }
-                // (Material: a filled primary pill, its corners tightening while pressed)
-                Rectangle {
-                    width: open-text.preferred-width + (Theme.material ? 32px : 28px);
-                    Rectangle {
-                        width: parent.width;
-                        height: Theme.material ? 36px : 28px;
-                        border-radius: Theme.material ? (ot.pressed ? 8px : self.height / 2) : Theme.radius-control;
-                        // (MaterialSpring "fast": springFast 12.8 / 0.54 → ω 28.3, ζ 0.60)
-                        animate border-radius { duration: 222ms; easing: spring(0.4); }
-                        // (ElasticControl, Material: swells by min(6 %, 10 px) on springPress 7.5 / 0.3 → ω 21.7, ζ 0.43)
-                        transform-scale: Theme.material && ot.pressed ? 1 + min(0.06, 10px / max(1px, max(self.width, self.height))) : 1;
-                        animate transform-scale { duration: 290ms; easing: spring(0.57); }
-                        // (Glass: Qt.darker(accent, 1.2) pressed, 1.1 hovered)
-                        background: Theme.material ? Theme.m3-primary.mix(Theme.m3-on-primary, ot.pressed ? 0.9 : ot.has-hover ? 0.92 : 1)
-                            : ot.pressed ? Theme.accent.darker(0.2) : ot.has-hover ? Theme.accent.darker(0.1) : Theme.accent;
-                        accessible-role: button;
-                        accessible-label: open-text.text;
-                        accessible-action-default => { root.open-it(); }
-                        open-text := Text {
-                            text: kind == "folder" ? (Theme.material ? "Open folder" : "Open Folder") : (Theme.material ? "Open file" : "Open File");
-                            color: Theme.on-accent;
-                            font-size: Theme.material ? 14px : Theme.small;
-                            font-weight: 500;
-                        }
-                        ot := TouchArea {
-                            mouse-cursor: pointer;
-                            clicked => { root.open-it(); }
-                        }
-                    }
-                }
+        // (clicks on the card don't close it; the Back button does)
+        TouchArea {
+            pointer-event(e) => {
+                if e.kind == PointerEventKind.down && e.button == PointerEventButton.back { root.close-it(); }
             }
         }
 
@@ -411,6 +459,154 @@ export component QuickLook inherits Window {
             copy-all => { root.lt-copy-all(); }
             retry => { root.lt-retry(); }
             install => { root.lt-install(); }
+        }
+
+        // The toolbar (after the preview: its tooltips draw over the picture).
+        // Close, the name and what it is (both cut short when long), then
+        // the actions in groups: the picture's own (Live Text, Mark up), the
+        // file's (Copy, Share, Move to Trash), and Open. Glass: on the card's
+        // glass, nothing drawn under it; Material: a tonal bar.
+        if Theme.material: Rectangle {
+            y: 0;
+            height: header;
+            border-top-left-radius: card.border-radius;
+            border-top-right-radius: card.border-radius;
+            background: Theme.m3-surface-container-high;
+        }
+        HorizontalLayout {
+            y: 0;
+            height: header;
+            padding-left: 12px;
+            padding-right: 12px;
+            padding-top: (header - (Theme.material ? 40px : 36px)) / 2;
+            padding-bottom: self.padding-top;
+            spacing: 8px;
+            QlButton {
+                icon: ic-x;
+                tooltip: "Close";
+                shortcut: "Esc";
+                clicked => { root.close-it(); }
+                other-key(e) => { root.key(e.text, e.modifiers.control) }
+            }
+            VerticalLayout {
+                horizontal-stretch: 1;
+                min-width: 0px;
+                alignment: center;
+                padding-left: 4px;
+                Text {
+                    min-width: 0px;
+                    text: file-name;
+                    overflow: elide;
+                    color: Theme.material ? Theme.m3-on-surface : Theme.label;
+                    font-size: Theme.material ? 16px : Theme.body;
+                    font-weight: Theme.material ? 500 : 600;
+                }
+                Text {
+                    min-width: 0px;
+                    text: subtitle;
+                    overflow: elide;
+                    color: Theme.material ? Theme.m3-on-surface-variant : Theme.secondary;
+                    font-size: Theme.small;
+                }
+            }
+            // A picture's own: Live Text, Mark up
+            if kind == "image": HorizontalLayout {
+                horizontal-stretch: 0;
+                spacing: 4px;
+                QlButton {
+                    icon: ic-text;
+                    selected: text-mode;
+                    tooltip: text-mode ? "Stop selecting text" : "Select text";
+                    shortcut: "T";
+                    enabled: picture-ready;
+                    clicked => { root.toggle-text(); }
+                    other-key(e) => { root.key(e.text, e.modifiers.control) }
+                }
+                QlButton {
+                    icon: ic-markup;
+                    tooltip: "Mark up";
+                    enabled: picture-ready;
+                    clicked => { root.markup(); }
+                    other-key(e) => { root.key(e.text, e.modifiers.control) }
+                }
+            }
+            // The file's: Copy, Share, Move to Trash
+            HorizontalLayout {
+                horizontal-stretch: 0;
+                spacing: 4px;
+                padding-left: 4px;
+                padding-right: 4px;
+                QlButton {
+                    icon: ic-copy;
+                    done-icon: ic-check;
+                    done: copied;
+                    tooltip: kind == "image" ? "Copy picture" : kind == "text" ? "Copy text" : kind == "folder" ? "Copy folder" : "Copy file";
+                    done-tooltip: "Copied";
+                    shortcut: text-mode ? "" : "Ctrl+C";
+                    enabled: kind != "";
+                    clicked => { root.copy-it(); }
+                    other-key(e) => { root.key(e.text, e.modifiers.control) }
+                }
+                if kind != "folder": QlButton {
+                    icon: ic-share;
+                    tooltip: "Share";
+                    clicked => { root.share(); }
+                    other-key(e) => { root.key(e.text, e.modifiers.control) }
+                }
+                QlButton {
+                    icon: ic-trash;
+                    danger: true;
+                    tooltip: "Move to Trash";
+                    shortcut: "Del";
+                    clicked => { root.delete-it(); }
+                    other-key(e) => { root.key(e.text, e.modifiers.control) }
+                }
+            }
+            // Open, the one primary (Material: a filled pill, its corners
+            // tightening while pressed; Glass: the accent)
+            open-btn := Rectangle {
+                horizontal-stretch: 0;
+                width: open-text.preferred-width + (Theme.material ? 32px : 28px);
+                border-radius: Theme.material ? (ot.pressed ? 12px : self.height / 2) : Theme.radius-control;
+                animate border-radius { duration: 222ms; easing: spring(0.4); } // (springFast)
+                transform-scale: ot.pressed ? (Theme.material ? 1.04 : 0.97) : 1;
+                animate transform-scale { duration: Theme.material ? 290ms : 100ms; easing: Theme.material ? spring(0.57) : cubic-bezier(0.33, 1, 0.68, 1); }
+                background: Theme.material ? Theme.m3-primary.mix(Theme.m3-on-primary, ot.pressed ? 0.88 : ot.has-hover ? 0.92 : 1)
+                    : ot.pressed ? Theme.accent.darker(0.2) : ot.has-hover ? Theme.accent.darker(0.1) : Theme.accent;
+                animate background { duration: Theme.hover; }
+                accessible-role: button;
+                accessible-label: open-text.text;
+                accessible-action-default => { root.open-it(); }
+                if ok.has-focus: Rectangle {
+                    x: Theme.material ? -5px : -4px;
+                    y: self.x;
+                    width: open-btn.width - 2 * self.x;
+                    height: open-btn.height - 2 * self.y;
+                    border-radius: open-btn.border-radius - self.x;
+                    border-width: Theme.material ? 3px : 2px;
+                    border-color: Theme.material ? Theme.m3-secondary : Theme.accent;
+                }
+                open-text := Text {
+                    text: kind == "folder" ? (Theme.material ? "Open folder" : "Open Folder") : (Theme.material ? "Open file" : "Open File");
+                    color: Theme.material ? Theme.m3-on-primary : Theme.on-accent;
+                    font-size: Theme.material ? 14px : Theme.body;
+                    font-weight: 500;
+                }
+                ot := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.open-it(); }
+                }
+                ok := FocusScope {
+                    focus-on-click: false;
+                    key-pressed(e) => {
+                        if e.text == " " || e.text == Key.Return {
+                            root.open-it();
+                            return accept;
+                        }
+                        root.key(e.text, e.modifiers.control) ? accept : reject
+                    }
+                }
+            }
         }
     }
 }
