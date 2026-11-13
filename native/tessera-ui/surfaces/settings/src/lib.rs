@@ -111,6 +111,7 @@ pub enum M {
     Index(Vec<index::Entry>, bool),
     /// show the search target, once the page is drawn
     Reveal,
+    RevealAgain,
     Unflash,
     /// the services' data changed meanwhile: the page built again (DATA_MS)
     DataChanged,
@@ -1040,6 +1041,11 @@ impl Part for Settings {
                 self.target.clear();
                 let s = Self::sender(st);
                 self.flash_timer.start(slint::TimerMode::SingleShot, Duration::from_millis(1050), move || s(M::Unflash));
+                // (again every 300 ms for 3 s: on a busy machine the window
+                // is laid out after the first look, and it stayed at the top)
+                self.reveal_tries = 0;
+                let s2 = Self::sender(st);
+                self.reveal_timer.start(slint::TimerMode::Repeated, Duration::from_millis(300), move || s2(M::RevealAgain));
                 if let Some(w) = &self.win {
                     w.ui.global::<ui::SBus>().set_reveal_hold(true);
                     let weak = w.ui.as_weak();
@@ -1053,6 +1059,20 @@ impl Part for Settings {
             M::DataChanged => {
                 if self.open {
                     self.rebuild(st);
+                }
+            }
+            M::RevealAgain => {
+                self.reveal_tries += 1;
+                if self.reveal_tries >= 10 {
+                    self.reveal_timer.stop();
+                }
+                if let Some(w) = &self.win {
+                    let bus = w.ui.global::<ui::SBus>();
+                    if bus.get_reveal_hold() {
+                        bus.set_reveal_again(bus.get_reveal_again() + 1);
+                    } else {
+                        self.reveal_timer.stop();
+                    }
                 }
             }
             M::Unflash => {

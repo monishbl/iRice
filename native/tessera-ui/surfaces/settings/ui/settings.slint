@@ -246,6 +246,8 @@ component Flash inherits Rectangle {
     // seconds, as Settings.qml's revealSettle; Bluetooth was left short)
     property <length> page-h: SBus.page-h;
     changed page-h => { if mine && my-seq == SBus.reveal-seq && (on || SBus.reveal-hold) { tell(); } }
+    property <int> again: SBus.reveal-again;
+    changed again => { if mine && my-seq == SBus.reveal-seq && (on || SBus.reveal-hold) { tell(); } }
     // (it fills what it's in; the ring reaches 4 px past its sides)
     background: transparent;
     Rectangle {

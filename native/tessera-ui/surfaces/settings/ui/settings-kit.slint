@@ -122,6 +122,9 @@ export global SBus {
     in-out property <int> reveal-seq;
     // (for a few seconds after: the page scrolls back to it as it grows)
     in-out property <bool> reveal-hold;
+    // (bumped a few times in the first seconds: the row says where it is
+    // again, for a window laid out late on a busy machine)
+    in-out property <int> reveal-again;
     // the window's width for the page (custom views size from it)
     in-out property <length> page-width: 600px;
     // the shown page's height (the kept pages sit on top of each other;
