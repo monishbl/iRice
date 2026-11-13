@@ -86,15 +86,35 @@ Variants {
                             required property var modelData
                             required property int index
                             readonly property bool hot: dialog.current === index
-                            // Material: each a big tonal button in its own
-                            // container colour (Shut Down in the error
-                            // colours); the chosen one fills with the solid
-                            // colour and morphs from a rounded square into
-                            // its shape. A state layer for hover and press.
-                            readonly property string role: modelData.role
-                            readonly property color mContainer: !Theme.material ? "transparent" : hot ? Theme.m3[role] : Theme.m3[role + "Container"]
-                            readonly property color mInk: !Theme.material ? "transparent" : hot ? Theme.m3["on" + role.charAt(0).toUpperCase() + role.slice(1)]
-                                : Theme.m3["on" + role.charAt(0).toUpperCase() + role.slice(1) + "Container"]
+                            // Only the chosen option stands out. Material:
+                            // it fills with primary (Restart a blue, Shut Down
+                            // error); the others share one quiet fill a tone
+                            // above the dialog (surfaceContainerHighest, so
+                            // their shapes still show), each keeping its own
+                            // shape, icons onSurfaceVariant (Restart's a faint
+                            // blue, Shut Down's a faint red). Glass: the chosen
+                            // one in the accent (Restart blue, Shut Down red),
+                            // the others the neutral off fill, their icons
+                            // the label colour (Restart's and Shut Down's
+                            // softly tinted). A state layer for hover and press.
+                            readonly property string kind: modelData.id
+                            readonly property color mBlue: Theme.dark ? "#9ecaff" : "#2f6aa8"
+                            readonly property color mOnBlue: Theme.dark ? "#003258" : "#ffffff"
+                            readonly property color mContainer: !Theme.material ? "transparent"
+                                : !hot ? Theme.m3.surfaceContainerHighest
+                                : kind === "restart" ? mBlue : kind === "shutdown" ? Theme.m3.error : Theme.m3.primary
+                            readonly property color mInk: !Theme.material ? "transparent"
+                                : hot ? (kind === "restart" ? mOnBlue : kind === "shutdown" ? Theme.m3.onError : Theme.m3.onPrimary)
+                                : kind === "restart" ? Qt.tint(Theme.m3.onSurfaceVariant, Qt.alpha(mBlue, 0.45))
+                                : kind === "shutdown" ? Qt.tint(Theme.m3.onSurfaceVariant, Qt.alpha(Theme.m3.error, 0.5))
+                                : Theme.m3.onSurfaceVariant
+                            readonly property color gBlue: Theme.accents.blue
+                            readonly property color gFill: !hot ? Theme.color.toggleOff
+                                : kind === "restart" ? gBlue : kind === "shutdown" ? Theme.color.danger : Theme.accent
+                            readonly property color gInk: hot ? (kind === "restart" || kind === "shutdown" ? "white" : Theme.color.onAccent)
+                                : kind === "restart" ? Qt.tint(Theme.color.label, Qt.alpha(gBlue, 0.5))
+                                : kind === "shutdown" ? Qt.tint(Theme.color.label, Qt.alpha(Theme.color.danger, 0.5))
+                                : Theme.color.label
                             width: Theme.material ? 96 : 80
                             spacing: Theme.material ? 12 : 8
 
@@ -103,7 +123,7 @@ Variants {
                                 width: Theme.material ? 88 : 64
                                 height: width
                                 radius: width / 2
-                                color: Theme.material ? "transparent" : option.hot ? (option.modelData.id === "shutdown" || option.modelData.id === "restart" ? Theme.color.danger : Theme.accent) : Theme.color.toggleOff
+                                color: Theme.material ? "transparent" : option.gFill
                                 // (Material's press swell; Glass shrinks by scale instead)
                                 transform: Theme.material ? pressFx1.effects : []
                                 ElasticControl { id: pressFx1; enabled: Theme.material; pressed: Theme.material && mouse.pressed }
@@ -115,7 +135,7 @@ Variants {
                                     anchors.fill: parent
                                     active: Theme.material
                                     sourceComponent: MaterialShape {
-                                        shape: option.hot ? (mouse.pressed ? "square" : option.modelData.shape) : "square"
+                                        shape: mouse.pressed ? "square" : option.modelData.shape
                                         color: Qt.tint(option.mContainer, Qt.alpha(option.mInk, mouse.pressed ? 0.1 : mouse.containsMouse ? 0.08 : 0))
                                         Behavior on color { ColorAnimation { duration: Theme.motion.hover } }
                                     }
@@ -127,9 +147,8 @@ Variants {
                                     bold: !Theme.material
                                     fill: Theme.material && option.hot
                                     size: Theme.material ? 32 : 26
-                                    color: Theme.material ? option.mInk : option.hot ? Theme.color.onAccent : Theme.color.label
+                                    color: Theme.material ? option.mInk : option.gInk
                                     Behavior on color {
-                                        enabled: Theme.material
                                         ColorAnimation { duration: Theme.motion.hover }
                                     }
                                 }
