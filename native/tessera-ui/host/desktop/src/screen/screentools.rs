@@ -51,6 +51,7 @@ impl ScreenSvc {
         h.ask("panels.closeOpen", json!([]));
         self.selecting_screen = focused(h).map(|s| s.name).unwrap_or_default();
         self.selecting = mode.into();
+        self.select_from.clear();
     }
 
     pub(super) fn cancel_select(&mut self, _h: &mut Host) {

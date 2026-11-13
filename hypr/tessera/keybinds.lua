@@ -56,6 +56,8 @@ local function uiBinary()
     return nil
 end
 local UI = uiBinary()
+-- (for gestures.lua: tessera-ui answers names the QML doesn't, e.g. circleSearchPointer)
+TESSERA_UI_STANDALONE = UI ~= nil
 -- A shell shortcut by name: Hyprland's global shortcut, both shells. tessera-ui
 -- registers every name itself (hyprland-global-shortcuts-v1, as Quickshell does
 -- for the QML: core/src/global_shortcuts.rs), so a key press reaches it on an

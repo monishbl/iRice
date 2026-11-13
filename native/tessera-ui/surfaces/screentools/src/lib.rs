@@ -1,5 +1,6 @@
 //! Screen tools (rust.surfaces: screentools), both looks: the region
-//! selector and Circle to Search (RegionSelector.qml), the ⇧⌘5 toolbar and
+//! selector (RegionSelector.qml), Circle to Search (circle.rs: Rust only,
+//! RUST-ONLY.md: its glow, input bar, chips and answer card), the ⇧⌘5 toolbar and
 //! its Options (ScreenToolbar.qml), the recording countdown
 //! (RecordCountdown.qml), the translation card (TranslationCard.qml), and the
 //! screenshot's floating thumbnail and markup editor with Live Text
@@ -42,6 +43,7 @@ tessera_core::theme_global!(ui);
 #[allow(unused_imports)]
 use tessera_core::*;
 
+pub mod circle;
 pub mod draw;
 pub mod geometry;
 pub mod livetext;
@@ -77,6 +79,10 @@ pub fn ic(name: &str, material: bool) -> ui::StIc {
 pub struct Bridge {
     pub select: String,
     pub select_screen: String,
+    /// "pointer": a gesture opened the selection (else a key or a menu)
+    pub select_from: String,
+    /// tesseract's languages ("eng+deu")
+    pub ocr_langs: String,
     pub countdown: i64,
     pub countdown_screen: String,
     pub translation: Option<Value>,
@@ -100,6 +106,8 @@ impl Bridge {
         Bridge {
             select: s("select"),
             select_screen: s("selectScreen"),
+            select_from: s("selectFrom"),
+            ocr_langs: s("ocrLangs"),
             countdown: v["countdown"].as_i64().unwrap_or(0),
             countdown_screen: s("countdownScreen"),
             translation: v.get("translation").filter(|t| t.is_object()).cloned(),
@@ -140,6 +148,7 @@ pub(crate) enum M {
     TranslationCopy,
     TranslationClose,
     Shots(shots::Sm),
+    Circle(circle::Cm),
     /// make the toolbar's and the region selector's windows ahead, so the
     /// first ⇧⌘5 / ⇧⌘4 draws at once
     Prepare,
@@ -169,6 +178,7 @@ pub(crate) fn focused_output(st: &State, bridge: &Bridge) -> Option<String> {
 pub struct ScreenTools {
     bridge: Bridge,
     region: region::Region,
+    circle: circle::Circle,
     toolbar: toolbar::Toolbar,
     countdown: cards::Countdown,
     translation: cards::Translation,
@@ -181,7 +191,14 @@ impl ScreenTools {
         let old = std::mem::replace(&mut self.bridge, Bridge::from_json(v));
         let b = self.bridge.clone();
         if b.select != old.select || b.select_screen != old.select_screen {
-            self.region.select(st, &b.select, &b.select_screen);
+            // (Circle to Search has its own window; the region selector the rest)
+            if b.select == "circle" && circle::ENABLED {
+                self.region.select(st, "", "");
+                self.circle.open(st, &b);
+            } else {
+                self.circle.close(st);
+                self.region.select(st, &b.select, &b.select_screen);
+            }
         }
         if b.countdown != old.countdown {
             let screen = if b.countdown_screen.is_empty() { focused_output(st, &b).unwrap_or_default() } else { b.countdown_screen.clone() };
@@ -223,6 +240,7 @@ impl Part for ScreenTools {
         self.toolbar.config(st, look, &self.bridge);
         if look {
             self.region.look(st);
+            self.circle.look(st);
             self.countdown.look(st);
             self.translation.look(st);
             self.shots.look(st);
@@ -270,10 +288,14 @@ impl Part for ScreenTools {
             M::TranslationCopy => self.translation.copy(),
             M::TranslationClose => crate::shell::ask("screen.do", serde_json::json!(["translationClose"])),
             M::Shots(m) => self.shots.message(st, m, &self.bridge),
+            M::Circle(m) => self.circle.message(st, m, &self.bridge),
             M::Prepare => {
                 if let Some(o) = focused_output(st, &self.bridge) {
                     self.toolbar.make_ahead(st, &o);
                     self.region.make_ahead(st, &o);
+                    if circle::ENABLED {
+                        self.circle.make_ahead(st, &o);
+                    }
                 }
             }
         }
@@ -284,6 +306,7 @@ impl Part for ScreenTools {
 
     fn output_removed(&mut self, st: &mut State, name: &str) {
         self.region.output_removed(st, name);
+        self.circle.output_removed(st, name);
         self.toolbar.output_removed(st, name);
         self.countdown.output_removed(st, name);
         self.translation.output_removed(st, name);
@@ -292,6 +315,7 @@ impl Part for ScreenTools {
 
     fn after_frame(&mut self, st: &mut State) {
         self.region.after_frame(st);
+        self.circle.after_frame(st);
         self.toolbar.after_frame(st);
         self.countdown.after_frame(st);
         self.translation.after_frame(st);
@@ -301,6 +325,7 @@ impl Part for ScreenTools {
     fn a11y(&mut self) -> Vec<&mut crate::a11y::A11y> {
         let mut v = Vec::new();
         v.extend(self.region.a11y());
+        v.extend(self.circle.a11y());
         v.extend(self.toolbar.a11y());
         v.extend(self.translation.a11y());
         v.extend(self.shots.a11y());
@@ -309,6 +334,7 @@ impl Part for ScreenTools {
 
     fn quit(&mut self, _st: &mut State) {
         self.toolbar.quit();
+        self.circle.quit();
         self.countdown.quit();
         self.translation.quit();
         self.shots.quit();

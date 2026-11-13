@@ -63,6 +63,8 @@ pub struct ScreenSvc {
     // ScreenTools
     pub(super) selecting: String,
     pub(super) selecting_screen: String,
+    /// what opened the selection: "pointer" (a gesture) or "" (a key, a menu)
+    pub(super) select_from: String,
     pub(super) translation: Option<Value>,
     pub(super) ocr_langs: String,
     pub(super) ocr_missing: Vec<String>,
@@ -145,6 +147,8 @@ impl ScreenSvc {
         json!({
             "select": self.selecting,
             "selectScreen": if self.selecting.is_empty() { String::new() } else { self.selecting_screen.clone() },
+            "selectFrom": if self.selecting.is_empty() { String::new() } else { self.select_from.clone() },
+            "ocrLangs": self.ocr_lang_arg(),
             "countdown": self.countdown,
             "countdownScreen": if self.countdown > 0 { focused_name.clone() } else { String::new() },
             "translation": t,
@@ -206,7 +210,14 @@ impl ScreenSvc {
             "screen.cancel" | "screen.cancelSelect" => self.cancel_select(h),
             // the shell's shortcuts, menus and panels (ScreenTools.select / screenshotScreen /
             // stopRecording / recordScreen; "record" = the shortcut's start-or-stop)
-            "screen.select" => self.select(h, a[0].as_str().unwrap_or("screenshot")),
+            // (a second argument "pointer": a gesture opened it, so Circle to Search
+            // ripples out from the pointer instead of rising from the bottom)
+            "screen.select" => {
+                self.select(h, a[0].as_str().unwrap_or("screenshot"));
+                if a[1].as_str() == Some("pointer") && !self.selecting.is_empty() {
+                    self.select_from = "pointer".into();
+                }
+            }
             "screen.screenshotScreen" => self.screenshot_screen(h),
             "screen.stopRecording" => self.stop(h),
             // a screenshot to mark up (Report a Bug's "Edit screenshot")

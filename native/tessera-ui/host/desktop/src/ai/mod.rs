@@ -12,6 +12,9 @@
 //!                           (what Search.qml told on every change of Ai.quick)
 //!   ai.stopQuick            stop that answer (the answer so far stays)
 //!   ai.continueQuick        move the exchange into the sidebar chat
+//!   ai.continueCircle [question, answer, picture, screen]
+//!                           Circle to Search's "Continue in sidebar": its
+//!                           picture, question and answer into the open chat
 //!   ai.reloadHistory        the sidebar wrote the chat files; in the QML shell
 //!                           its own chat then reread them. Standalone there is
 //!                           no second chat, so there is nothing to reread.
@@ -315,6 +318,18 @@ impl Service for Ai {
             "ai.quickAsk" => self.ask(h, args[0].as_str().unwrap_or("").to_string()),
             "ai.stopQuick" => self.stop_quick(h),
             "ai.continueQuick" => self.continue_quick(h),
+            "ai.continueCircle" => {
+                let s = |i: usize| args[i].as_str().unwrap_or("").to_string();
+                let (question, answer, picture) = (s(0), s(1), s(2));
+                if answer.is_empty() {
+                    return;
+                }
+                // (only Circle to Search's own pictures, in the runtime folder's tessera-ai)
+                let picture = if picture.contains("/tessera-ai/") && !picture.contains("..") { picture } else { String::new() };
+                h.command("continue", "sidebar", None, json!({"question": question, "answer": answer, "image": picture}));
+                h.ask("sidebar.tab", json!([0]));
+                h.ask("panels.show", json!(["sidebar", s(3)]));
+            }
             "ai.reloadHistory" => {}
             // Settings -> AI (host-system's accounts bridge asks these; Ai.qml's setModel,
             // saveModel, removeModel/restoreModel/forgetCredential, deleteAllChats)

@@ -1,0 +1,730 @@
+// Circle to Search (circle.rs): a soft glow hugging the screen's four edges
+// that breathes and flows round them, a light dim, the stroke as it's
+// drawn; once something is circled, an input bar beside it (its picture, a
+// question field, four chips) and the AI's answer in a card under the bar.
+// Both looks: Glass (the plugin's glass under the bar and the card; an
+// Apple-style blue, purple, pink and orange glow) and Material (tonal
+// surfaces; the glow in the wallpaper's primary, tertiary and secondary).
+//
+// Cheap to draw: the glow is drop shadows of rectangles just outside the
+// screen (each blurred once, then only moved: Slint caches a shadow by its
+// size, radius, blur and colour), sliding along the edges by one slow phase
+// from animation-tick(); nothing per frame in Rust. Closed (or Reduce
+// motion), nothing reads the tick, so nothing redraws.
+//
+// Entry: from the pointer the dim and the glow ripple out from it (a round
+// clip that grows); from a key they rise from the bottom edge. Exit: the
+// same, back, a third faster, ease-in. Everything one window: what is on
+// screen is drawn in one frame.
+
+import { Theme } from "@tessera/theme.slint";
+import { StIc, StIcon, StSpin } from "screentools.slint";
+
+export struct CsChip {
+    label: string,
+    icon: StIc,
+    busy: bool,
+    done: bool,
+}
+
+// A chip: Glass, a pill on the glass; Material, an assist chip (32 px, 8 px
+// corners, an outline; tonal while it works)
+component Chip inherits Rectangle {
+    in property <CsChip> chip;
+    in property <bool> off;
+    callback clicked();
+    height: Theme.material ? 32px : 30px;
+    width: row.preferred-width + (Theme.material ? 24px : 22px);
+    border-radius: Theme.material ? (ta.pressed ? 12px : 8px) : self.height / 2;
+    animate border-radius { duration: 150ms; easing: ease-out; }
+    background: Theme.material
+        ? (chip.busy || chip.done ? Theme.m3-secondary-container : ta.pressed ? Theme.m3-on-surface.with-alpha(0.12) : ta.has-hover ? Theme.m3-on-surface.with-alpha(0.08) : transparent)
+        : (ta.pressed ? Theme.fill-pressed : ta.has-hover ? Theme.fill-hover : Theme.fill);
+    border-width: Theme.material && !(chip.busy || chip.done) ? 1px : 0;
+    border-color: Theme.m3-outline-variant;
+    opacity: off && !chip.busy ? 0.5 : 1;
+    transform-scale: ta.pressed ? 0.97 : 1;
+    animate transform-scale { duration: 100ms; easing: ease-out; }
+    accessible-role: button;
+    accessible-label: chip.label;
+    accessible-action-default => { if !off { root.clicked(); } }
+    row := HorizontalLayout {
+        x: (parent.width - self.width) / 2;
+        width: self.preferred-width;
+        height: parent.height;
+        spacing: 6px;
+        if chip.busy: StSpin {
+            size: 14px;
+            color: Theme.material ? Theme.m3-on-secondary-container : Theme.label;
+        }
+        if !chip.busy: StIcon {
+            width: 16px;
+            icon: chip.icon;
+            size: 15px;
+            color: Theme.material ? (chip.done ? Theme.m3-on-secondary-container : Theme.m3-primary) : (chip.done ? Theme.success : Theme.secondary);
+        }
+        Text {
+            text: chip.label;
+            vertical-alignment: center;
+            font-size: Theme.material ? 14px : 13px;
+            font-weight: 500;
+            color: Theme.material ? (chip.busy || chip.done ? Theme.m3-on-secondary-container : Theme.m3-on-surface-variant) : Theme.label;
+        }
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { if !off { root.clicked(); } }
+    }
+}
+
+// A labelled button (the card's "Continue in sidebar", the fixes)
+component CsButton inherits Rectangle {
+    in property <string> label;
+    in property <StIc> icon;
+    in property <bool> primary;
+    callback clicked();
+    height: Theme.material ? 40px : 30px;
+    width: row.preferred-width + (Theme.material ? 32px : 24px);
+    border-radius: Theme.material ? (ta.pressed ? 12px : self.height / 2) : 9px;
+    animate border-radius { duration: 150ms; easing: ease-out; }
+    background: primary
+        ? (Theme.material ? Theme.m3-primary : Theme.accent).mix(#000000, ta.pressed ? 0.85 : ta.has-hover ? 0.92 : 1)
+        : Theme.material ? Theme.m3-secondary-container.mix(Theme.m3-on-secondary-container, ta.pressed ? 0.88 : ta.has-hover ? 0.92 : 1)
+        : ta.pressed ? Theme.fill-pressed : ta.has-hover ? Theme.fill-hover : Theme.fill;
+    transform-scale: ta.pressed ? 0.97 : 1;
+    animate transform-scale { duration: 100ms; easing: ease-out; }
+    accessible-role: button;
+    accessible-label: label;
+    accessible-action-default => { root.clicked(); }
+    row := HorizontalLayout {
+        x: (parent.width - self.width) / 2;
+        width: self.preferred-width;
+        height: parent.height;
+        spacing: 6px;
+        if icon.t != "": StIcon {
+            width: 16px;
+            icon: root.icon;
+            size: 15px;
+            color: primary ? (Theme.material ? Theme.m3-on-primary : Theme.on-accent) : Theme.material ? Theme.m3-on-secondary-container : Theme.label;
+        }
+        Text {
+            text: label;
+            vertical-alignment: center;
+            font-size: Theme.material ? 14px : 13px;
+            font-weight: 500;
+            color: primary ? (Theme.material ? Theme.m3-on-primary : Theme.on-accent) : Theme.material ? Theme.m3-on-secondary-container : Theme.label;
+        }
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// A round icon button (the card's copy and close)
+component CsIconButton inherits Rectangle {
+    in property <StIc> icon;
+    in property <string> label;
+    callback clicked();
+    width: Theme.material ? 36px : 28px;
+    height: self.width;
+    border-radius: Theme.material && ta.pressed ? 10px : self.width / 2;
+    background: Theme.material ? (ta.pressed ? Theme.m3-on-surface.with-alpha(0.12) : ta.has-hover ? Theme.m3-on-surface.with-alpha(0.08) : transparent)
+        : ta.pressed ? Theme.fill-pressed : ta.has-hover ? Theme.fill-hover : transparent;
+    accessible-role: button;
+    accessible-label: label;
+    accessible-action-default => { root.clicked(); }
+    StIcon {
+        icon: root.icon;
+        bold: !Theme.material;
+        size: Theme.material ? 18px : 14px;
+        color: Theme.material ? Theme.m3-on-surface-variant : Theme.secondary;
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// One edge's glow: rectangles just outside the edge, each one colour of the
+// four, their shadows bleeding in; they slide along by `shift` (0..period)
+// and the pattern repeats every four, so the wrap is seamless.
+component EdgeGlow {
+    in property <bool> horizontal;
+    in property <bool> reverse; // flows right-to-left / bottom-to-top
+    in property <length> along; // the edge's length
+    in property <length> shift;
+    in property <length> reach; // how far in (breathing)
+    in property <[color]> colors;
+    in property <length> seg;
+    in property <length> blur;
+    in property <length> thick;
+    property <length> period: seg * 4;
+    for i in ceil(along / seg) + 5: Rectangle {
+        // (along the edge: from one period before it to past its end)
+        property <length> pos: reverse ? along - (i + 1) * seg + period - shift : i * seg - period + shift;
+        x: horizontal ? pos : -thick + reach;
+        y: horizontal ? -thick + reach : pos;
+        width: horizontal ? seg : thick;
+        height: horizontal ? thick : seg;
+        drop-shadow-blur: blur;
+        drop-shadow-color: colors[mod(i, 4)];
+    }
+}
+
+export component CircleSearch inherits Window {
+    // the window
+    in property <bool> open; // entering/open; false: leaving
+    in property <bool> pointer-origin; // a pointer opened it (else a key)
+    in property <length> ox;
+    in property <length> oy;
+    in property <bool> reduce-motion;
+    in property <bool> busy; // working: the glow quickens
+    in property <string> hint;
+    // circling
+    in property <bool> dragging;
+    in property <string> stroke;
+    in property <bool> chosen;
+    in property <length> sel-x;
+    in property <length> sel-y;
+    in property <length> sel-w;
+    in property <length> sel-h;
+    // the input bar
+    in property <image> thumb;
+    in-out property <string> question;
+    in property <[CsChip]> chips;
+    in property <string> status;
+    in property <bool> status-error;
+    in property <string> status-action;
+    // the answer card
+    in property <bool> card;
+    in property <string> card-question;
+    in property <string> answer;
+    in property <int> answer-state; // 0 thinking, 1 streaming, 2 done, 3 error
+    in property <string> answer-action; // the error's fix, as a button ("" none)
+    in property <string> model-name;
+    in property <StIc> ic-send;
+    in property <StIc> ic-copy;
+    in property <StIc> ic-close;
+    in property <StIc> ic-sidebar;
+    in property <StIc> ic-sparkle;
+    in property <StIc> ic-gear;
+    callback down(length, length, bool);
+    callback moved-to(length, length);
+    callback up(length, length);
+    callback key(string) -> bool;
+    callback dismiss();
+    callback chip(int);
+    callback ask(string);
+    callback status-act();
+    callback answer-act();
+    callback copy-answer();
+    callback continue-sidebar();
+
+    // what the glass goes under (circle.rs: the plugin's shapes, the input region)
+    out property <length> bar-x: col.x;
+    out property <length> bar-y: col.y;
+    out property <length> bar-w: col.width;
+    out property <length> bar-h: bar.height;
+    out property <length> card-y: col.y + answer-card.y;
+    out property <length> card-h: card ? answer-card.height : 0;
+    out property <float> bar-o: bar-shown;
+    out property <length> radius: Theme.material ? 28px : 24px;
+    out property <bool> idle: reveal == 0 && !open;
+
+    background: transparent;
+    no-frame: true;
+    title: "Circle to Search";
+    default-font-family: Theme.font;
+    forward-focus: keys;
+
+    public function focus-keys() {
+        keys.focus();
+    }
+    public function focus-field() {
+        field.focus();
+    }
+
+    // ── Motion ──────────────────────────────────────────────────────────
+    property <float> reveal: 0;
+    states [
+        shown when open: {
+            reveal: 1;
+            in {
+                animate reveal { duration: reduce-motion ? 150ms : 480ms; easing: cubic-bezier(0.2, 0, 0, 1); }
+            }
+            out {
+                animate reveal { duration: reduce-motion ? 100ms : 320ms; easing: cubic-bezier(0.3, 0, 0.8, 0.15); }
+            }
+        }
+    ]
+    // the bar and the card: in after the circle, out with everything
+    property <float> bar-shown: chosen && open ? 1 : 0;
+    animate bar-shown { duration: open ? 220ms : 140ms; easing: open ? ease-out : ease-in; }
+    // working: 0..1, so the glow's change is gradual
+    property <float> work: busy && open ? 1 : 0;
+    animate work { duration: 600ms; easing: ease-in-out; }
+
+    // the clock: only while it shows and moves
+    property <duration> t: open && !reduce-motion ? animation-tick() : 0ms;
+    // one loop round the screen every 18 s; breathing every 5 s (1.1 s working)
+    property <length> seg: Theme.material ? 320px : 280px;
+    property <length> shift: mod(t / 18s, 1) * seg * 4;
+    property <float> calm: sin(t / 5s * 360deg);
+    property <float> quick: sin(t / 1.1s * 360deg);
+    property <length> reach: reduce-motion ? 6px : 5px + (1 - work) * 5px * calm + work * (9px + 7px * quick);
+    property <[color]> glow-colors: Theme.material
+        ? [Theme.m3-primary, Theme.m3-tertiary, Theme.m3-secondary, Theme.m3-tertiary.mix(Theme.m3-primary, 0.5)]
+        : [#2f7bffee, #a35cffee, #ff4fa3ee, #ff9a3cee];
+    property <length> glow-blur: Theme.material ? 54px : 64px;
+    property <color> dim: Theme.material ? Theme.m3-scrim : #000000;
+
+    // the ripple: a round clip growing from the pointer, or a band rising
+    // from the bottom (Reduce motion: a fade)
+    property <length> far: sqrt(max(ox / 1px, root.width / 1px - ox / 1px) * max(ox / 1px, root.width / 1px - ox / 1px)
+        + max(oy / 1px, root.height / 1px - oy / 1px) * max(oy / 1px, root.height / 1px - oy / 1px)) * 1px;
+
+    // ── The dim, with holes for the selection, the bar and the card ─────
+    function rr(x: length, y: length, w: length, h: length, r: length) -> string {
+        if w <= 0 || h <= 0 {
+            return "";
+        }
+        // (whole-number units: Slint's path parser reads plain decimals)
+        return "M " + round((x + r) / 1px) + " " + round(y / 1px)
+            + " L " + round((x + w - r) / 1px) + " " + round(y / 1px)
+            + " A " + round(r / 1px) + " " + round(r / 1px) + " 0 0 1 " + round((x + w) / 1px) + " " + round((y + r) / 1px)
+            + " L " + round((x + w) / 1px) + " " + round((y + h - r) / 1px)
+            + " A " + round(r / 1px) + " " + round(r / 1px) + " 0 0 1 " + round((x + w - r) / 1px) + " " + round((y + h) / 1px)
+            + " L " + round((x + r) / 1px) + " " + round((y + h) / 1px)
+            + " A " + round(r / 1px) + " " + round(r / 1px) + " 0 0 1 " + round(x / 1px) + " " + round((y + h - r) / 1px)
+            + " L " + round(x / 1px) + " " + round((y + r) / 1px)
+            + " A " + round(r / 1px) + " " + round(r / 1px) + " 0 0 1 " + round((x + r) / 1px) + " " + round(y / 1px) + " Z ";
+    }
+
+    stage := Rectangle {
+        property <length> d: pointer-origin ? 2 * far * reveal : 0;
+        x: reduce-motion || reveal >= 1 ? 0 : pointer-origin ? ox - self.d / 2 : 0;
+        y: reduce-motion || reveal >= 1 ? 0 : pointer-origin ? oy - self.d / 2 : root.height * (1 - reveal);
+        width: reduce-motion || reveal >= 1 ? root.width : pointer-origin ? self.d : root.width;
+        height: reduce-motion || reveal >= 1 ? root.height : pointer-origin ? self.d : root.height * reveal;
+        border-radius: pointer-origin && !reduce-motion && reveal < 1 ? self.d / 2 : 0;
+        // (only while it grows or shrinks: a round clip draws through a layer)
+        clip: !reduce-motion && reveal < 1;
+        opacity: reduce-motion ? reveal : 1;
+        Rectangle {
+            x: -parent.x;
+            y: -parent.y;
+            width: root.width;
+            height: root.height;
+            Path {
+                width: 100%;
+                height: 100%;
+                viewbox-width: root.width / 1px;
+                viewbox-height: root.height / 1px;
+                fill-rule: evenodd;
+                fill: dim.with-alpha(chosen ? (Theme.material ? 0.34 : 0.3) : (Theme.material ? 0.2 : 0.16));
+                commands: "M 0 0 L " + round(root.width / 1px) + " 0 L " + round(root.width / 1px) + " " + round(root.height / 1px) + " L 0 " + round(root.height / 1px) + " Z "
+                    + (chosen && !dragging ? rr(sel-x, sel-y, sel-w, sel-h, 14px) : "")
+                    + (bar-shown > 0 ? rr(col.x, col.y, col.width, bar.height, root.radius) : "")
+                    + (bar-shown > 0 && card ? rr(col.x, col.y + answer-card.y, col.width, answer-card.height, root.radius) : "");
+            }
+            // the glow, round all four edges
+            EdgeGlow {
+                x: 0;
+                y: 0;
+                horizontal: true;
+                along: root.width;
+                shift: root.shift;
+                reach: root.reach;
+                colors: glow-colors;
+                seg: root.seg;
+                blur: glow-blur;
+                thick: 40px;
+            }
+            EdgeGlow {
+                x: root.width;
+                y: 0;
+                horizontal: false;
+                along: root.height;
+                shift: root.shift;
+                // (outside the right edge: its own reach, mirrored)
+                reach: -root.reach + 40px;
+                colors: [glow-colors[1], glow-colors[2], glow-colors[3], glow-colors[0]];
+                seg: root.seg;
+                blur: glow-blur;
+                thick: 40px;
+            }
+            EdgeGlow {
+                x: 0;
+                y: root.height;
+                horizontal: true;
+                reverse: true;
+                along: root.width;
+                shift: root.shift;
+                reach: -root.reach + 40px;
+                colors: [glow-colors[2], glow-colors[3], glow-colors[0], glow-colors[1]];
+                seg: root.seg;
+                blur: glow-blur;
+                thick: 40px;
+            }
+            EdgeGlow {
+                x: 0;
+                y: 0;
+                horizontal: false;
+                reverse: true;
+                along: root.height;
+                shift: root.shift;
+                reach: root.reach;
+                colors: [glow-colors[3], glow-colors[0], glow-colors[1], glow-colors[2]];
+                seg: root.seg;
+                blur: glow-blur;
+                thick: 40px;
+            }
+        }
+    }
+
+    // ── Circling ────────────────────────────────────────────────────────
+    TouchArea {
+        mouse-cursor: chosen ? default : crosshair;
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down {
+                root.down(self.mouse-x, self.mouse-y, e.button == PointerEventButton.right);
+            } else if e.kind == PointerEventKind.up && e.button == PointerEventButton.left {
+                root.up(self.mouse-x, self.mouse-y);
+            } else if e.kind == PointerEventKind.move {
+                root.moved-to(self.mouse-x, self.mouse-y);
+            }
+        }
+    }
+
+    // the selection, once chosen
+    Rectangle {
+        x: sel-x - 2px;
+        y: sel-y - 2px;
+        width: sel-w + 4px;
+        height: sel-h + 4px;
+        border-radius: 16px;
+        border-width: 2px;
+        border-color: Theme.material ? Theme.m3-primary : #ffffffe6;
+        opacity: chosen && !dragging && open ? 1 : 0;
+        animate opacity { duration: open ? 200ms : 120ms; easing: open ? ease-out : ease-in; }
+    }
+
+    // the stroke: a soft light under it keeps it apart from a background of
+    // its own colour (drawn whole, then faded, so crossings don't build up)
+    strokes := Rectangle {
+        opacity: dragging ? 1 : 0;
+        animate opacity { duration: dragging ? 0ms : 260ms; easing: ease-in; }
+        Rectangle {
+            opacity: 0.45;
+            Path {
+                width: 100%;
+                height: 100%;
+                viewbox-width: root.width / 1px;
+                viewbox-height: root.height / 1px;
+                commands: root.stroke;
+                stroke: #ffffff;
+                stroke-width: 14px;
+                stroke-line-cap: round;
+                stroke-line-join: round;
+            }
+        }
+        Path {
+            width: 100%;
+            height: 100%;
+            viewbox-width: root.width / 1px;
+            viewbox-height: root.height / 1px;
+            commands: root.stroke;
+            stroke: Theme.material ? Theme.m3-primary : @linear-gradient(90deg, #2f7bff 0%, #a35cff 35%, #ff4fa3 70%, #ff9a3c 100%);
+            stroke-width: 5px;
+            stroke-line-cap: round;
+            stroke-line-join: round;
+        }
+    }
+
+    // the hint (Material: a snackbar-like pill in inverseSurface)
+    Rectangle {
+        y: 48px;
+        x: (root.width - self.width) / 2;
+        width: hint-text.preferred-width + (Theme.material ? 40px : 28px);
+        height: Theme.material ? 48px : 34px;
+        border-radius: self.height / 2;
+        background: Theme.material ? Theme.m3-inverse-surface : #1a1a1fd9;
+        opacity: chosen || dragging ? 0 : reveal;
+        animate opacity { duration: 150ms; easing: ease-out; }
+        hint-text := Text {
+            text: hint;
+            color: Theme.material ? Theme.m3-inverse-on-surface : #ffffff;
+            font-size: Theme.material ? Theme.body : 13px;
+            font-weight: 500;
+        }
+    }
+
+    // ── The bar and the card ────────────────────────────────────────────
+    // (below the selection when they fit, else above it, else at the bottom)
+    property <length> col-h: bar.height + (card ? 12px + answer-card.height : 0);
+    col := Rectangle {
+        width: min(560px, root.width - 48px);
+        height: col-h;
+        x: max(24px, min(sel-x + sel-w / 2 - self.width / 2, root.width - self.width - 24px));
+        y: sel-y + sel-h + 16px + col-h <= root.height - 24px ? sel-y + sel-h + 16px
+            : sel-y - 16px - col-h >= 24px ? sel-y - 16px - col-h
+            : max(24px, root.height - 24px - col-h);
+        opacity: bar-shown;
+        visible: bar-shown > 0;
+        transform-scale: 0.96 + 0.04 * bar-shown;
+
+        bar := Rectangle {
+            x: 0;
+            y: 0;
+            width: parent.width;
+            height: bar-col.preferred-height + 24px;
+            border-radius: root.radius;
+            // (Glass: the plugin's glass draws the panel, its tint and rim)
+            background: Theme.material ? Theme.m3-surface-container-high : Theme.plugin ? transparent : Theme.panel;
+            border-width: Theme.material || Theme.plugin ? 0 : 1px;
+            border-color: Theme.separator;
+            drop-shadow-blur: Theme.material ? 24px : 0;
+            drop-shadow-offset-y: Theme.material ? 6px : 0;
+            drop-shadow-color: Theme.material ? Theme.m3-shadow.with-alpha(Theme.dark ? 0.4 : 0.16) : transparent;
+            accessible-role: groupbox;
+            accessible-label: "Ask about the circled area";
+            TouchArea { clicked => { field.focus(); } }
+            bar-col := VerticalLayout {
+                x: 12px;
+                y: 12px;
+                width: parent.width - 24px;
+                height: self.preferred-height;
+                spacing: 10px;
+                HorizontalLayout {
+                    spacing: 10px;
+                    height: 44px;
+                    Rectangle {
+                        width: 44px;
+                        height: 44px;
+                        horizontal-stretch: 0;
+                        border-radius: Theme.material ? 12px : 10px;
+                        clip: true;
+                        background: Theme.material ? Theme.m3-surface-container-highest : Theme.fill;
+                        Image {
+                            width: 100%;
+                            height: 100%;
+                            source: thumb;
+                            image-fit: cover;
+                            accessible-role: image;
+                            accessible-label: "The circled area";
+                        }
+                    }
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        border-radius: Theme.material ? 22px : 12px;
+                        background: Theme.material ? Theme.m3-surface-container-highest : Theme.field-bg;
+                        border-width: field.has-focus ? (Theme.material ? 2px : 1px) : 0;
+                        border-color: Theme.material ? Theme.m3-primary : Theme.accent;
+                        Text {
+                            x: 14px;
+                            width: parent.width - 28px;
+                            text: "Ask about this…";
+                            visible: field.text == "";
+                            color: Theme.material ? Theme.m3-on-surface-variant : Theme.tertiary;
+                            font-size: Theme.material ? 15px : 14px;
+                            vertical-alignment: center;
+                        }
+                        field := TextInput {
+                            x: 14px;
+                            width: parent.width - 28px;
+                            height: parent.height;
+                            single-line: true;
+                            vertical-alignment: center;
+                            text <=> root.question;
+                            color: Theme.material ? Theme.m3-on-surface : Theme.label;
+                            font-size: Theme.material ? 15px : 14px;
+                            selection-background-color: (Theme.material ? Theme.m3-primary : Theme.accent).with-alpha(0.4);
+                            accessible-label: "Ask about this";
+                            accepted => { root.ask(self.text); }
+                            key-pressed(e) => {
+                                if e.text == Key.Escape {
+                                    root.dismiss();
+                                    return accept;
+                                }
+                                reject
+                            }
+                        }
+                    }
+                    send := Rectangle {
+                        width: 44px;
+                        height: 44px;
+                        horizontal-stretch: 0;
+                        property <bool> can: question != "" && !busy;
+                        border-radius: Theme.material && send-ta.pressed ? 14px : 22px;
+                        background: can ? (Theme.material ? Theme.m3-primary : Theme.accent).mix(#000000, send-ta.pressed ? 0.85 : 1)
+                            : Theme.material ? Theme.m3-on-surface.with-alpha(0.1) : Theme.fill;
+                        accessible-role: button;
+                        accessible-label: "Send";
+                        accessible-enabled: send.can;
+                        accessible-action-default => { if send.can { root.ask(root.question); } }
+                        StIcon {
+                            icon: ic-send;
+                            bold: !Theme.material;
+                            size: 18px;
+                            color: send.can ? (Theme.material ? Theme.m3-on-primary : Theme.on-accent) : Theme.material ? Theme.m3-on-surface.with-alpha(0.38) : Theme.tertiary;
+                        }
+                        send-ta := TouchArea {
+                            mouse-cursor: send.can ? pointer : default;
+                            clicked => { if send.can { root.ask(root.question); } }
+                        }
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+                    for c[i] in chips: Chip {
+                        chip: c;
+                        off: busy;
+                        clicked => { root.chip(i); }
+                    }
+                }
+                if status != "": HorizontalLayout {
+                    spacing: 10px;
+                    Text {
+                        text: status;
+                        wrap: word-wrap;
+                        vertical-alignment: center;
+                        font-size: 13px;
+                        color: status-error ? (Theme.material ? Theme.m3-error : Theme.danger) : Theme.material ? Theme.m3-on-surface-variant : Theme.secondary;
+                    }
+                    if status-action != "": CsButton {
+                        horizontal-stretch: 0;
+                        label: status-action;
+                        clicked => { root.status-act(); }
+                    }
+                }
+            }
+        }
+
+        answer-card := Rectangle {
+            x: 0;
+            y: bar.height + 12px;
+            width: parent.width;
+            height: card ? card-col.preferred-height + 32px : 0;
+            visible: card;
+            border-radius: root.radius;
+            background: Theme.material ? Theme.m3-surface-container-high : Theme.plugin ? transparent : Theme.panel;
+            border-width: Theme.material || Theme.plugin ? 0 : 1px;
+            border-color: Theme.separator;
+            drop-shadow-blur: Theme.material ? 24px : 0;
+            drop-shadow-offset-y: Theme.material ? 6px : 0;
+            drop-shadow-color: Theme.material ? Theme.m3-shadow.with-alpha(Theme.dark ? 0.4 : 0.16) : transparent;
+            accessible-role: groupbox;
+            accessible-label: "Answer";
+            TouchArea { }
+            card-col := VerticalLayout {
+                x: 16px;
+                y: 16px;
+                width: parent.width - 32px;
+                height: self.preferred-height;
+                spacing: 8px;
+                // the header: what it is and who answers; copy, close
+                HorizontalLayout {
+                    spacing: 6px;
+                    height: Theme.material ? 36px : 28px;
+                    StIcon {
+                        width: 18px;
+                        horizontal-stretch: 0;
+                        icon: ic-sparkle;
+                        size: 16px;
+                        color: Theme.material ? Theme.m3-primary : Theme.accent-ink;
+                    }
+                    Text {
+                        horizontal-stretch: 1;
+                        text: model-name == "" ? "AI" : model-name;
+                        overflow: elide;
+                        vertical-alignment: center;
+                        font-size: 13px;
+                        font-weight: 600;
+                        color: Theme.material ? Theme.m3-on-surface-variant : Theme.secondary;
+                    }
+                    if answer-state == 2: CsIconButton {
+                        horizontal-stretch: 0;
+                        icon: ic-copy;
+                        label: "Copy answer";
+                        clicked => { root.copy-answer(); }
+                    }
+                    CsIconButton {
+                        horizontal-stretch: 0;
+                        icon: ic-close;
+                        label: "Close";
+                        clicked => { root.dismiss(); }
+                    }
+                }
+                Text {
+                    text: card-question;
+                    wrap: word-wrap;
+                    font-size: 13px;
+                    color: Theme.material ? Theme.m3-on-surface-variant : Theme.tertiary;
+                }
+                if answer-state == 0: HorizontalLayout {
+                    spacing: 8px;
+                    height: 24px;
+                    alignment: start;
+                    StSpin {
+                        size: 16px;
+                        color: Theme.material ? Theme.m3-primary : Theme.secondary;
+                    }
+                    Text {
+                        text: "Thinking…";
+                        vertical-alignment: center;
+                        font-size: 14px;
+                        color: Theme.material ? Theme.m3-on-surface-variant : Theme.secondary;
+                    }
+                }
+                if answer-state == 1 || answer-state == 2: Flickable {
+                    // (a long answer scrolls; the newest line in view while it streams)
+                    height: min(answer-text.preferred-height, 320px);
+                    content-height: answer-text.preferred-height;
+                    changed content-height => {
+                        if root.answer-state == 1 {
+                            self.content-y = min(0px, self.height - self.content-height);
+                        }
+                    }
+                    answer-text := Text {
+                        width: parent.width;
+                        text: answer;
+                        wrap: word-wrap;
+                        font-size: Theme.material ? 15px : 14px;
+                        color: Theme.material ? Theme.m3-on-surface : Theme.label;
+                    }
+                }
+                if answer-state == 3: Text {
+                    text: answer;
+                    wrap: word-wrap;
+                    font-size: 14px;
+                    color: Theme.material ? Theme.m3-error : Theme.danger;
+                }
+                // the way on
+                HorizontalLayout {
+                    alignment: start;
+                    spacing: 8px;
+                    if answer-state == 2: CsButton {
+                        label: "Continue in sidebar";
+                        icon: ic-sidebar;
+                        clicked => { root.continue-sidebar(); }
+                    }
+                    if answer-state == 3 && answer-action != "": CsButton {
+                        label: answer-action;
+                        icon: ic-gear;
+                        primary: true;
+                        clicked => { root.answer-act(); }
+                    }
+                }
+            }
+        }
+    }
+
+    keys := FocusScope {
+        key-pressed(e) => {
+            if root.key(e.text) { return accept; }
+            reject
+        }
+    }
+}

@@ -18,6 +18,9 @@ local function actionOf(a)
     if type(a) == "string" then return a end
     if type(a) == "table" and a.shell then
         local name = a.shell
+        -- (Circle to Search from the trackpad ripples out from the pointer:
+        -- tessera-ui's own name for it; the QML shell knows only circleSearch)
+        if name == "circleSearch" and TESSERA_UI_STANDALONE then name = "circleSearchPointer" end
         return function() hl.dispatch(hl.dsp.global("tessera:" .. name)) end
     end
     return nil

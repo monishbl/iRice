@@ -1009,7 +1009,21 @@ impl Part for Sidebar {
                 self.run_submitted(st, s);
             }
             "continue" => {
+                let n = self.chat.rows.len();
                 self.chat.continue_quick(cmd["question"].as_str().unwrap_or(""), cmd["answer"].as_str().unwrap_or(""));
+                // Circle to Search's: the circled picture goes with the question
+                // (sent again with the next message, shown on the question, and
+                // the answer's "Search the web" searches it)
+                let path = cmd["image"].as_str().unwrap_or("");
+                if self.chat.rows.len() == n + 2 && !path.is_empty() {
+                    if let Ok(bytes) = std::fs::read(path) {
+                        let h = self.chat.history.len();
+                        self.chat.history[h - 2]["images"] = json!([{"data": base64(&bytes), "mediaType": "image/jpeg"}]);
+                        self.chat.rows[n].image = path.to_string();
+                        self.chat.rows[n + 1].search = path.to_string();
+                        self.chat.save(true);
+                    }
+                }
                 self.tab = 0;
                 self.history_open = false;
                 self.tell_chats();

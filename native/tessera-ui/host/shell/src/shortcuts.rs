@@ -27,7 +27,7 @@ const SNAPS: &[&str] = &["left", "right", "top", "bottom", "fill", "center"];
 /// GlobalShortcut items are (TesseraShell.qml, Osd.qml)
 const OTHERS: &[&str] = &[
     "reset", "lock", "reportBug", "appExpose", "showDesktop", "settings", "screenshotScreen", "screenshotRegion", "ocr", "screenTranslate", "record",
-    "askScreen", "circleSearch", "lens", "darkMode", "caffeine", "replyLatest", "shareSelection", "shelf", "pointerDown", "pointerUp", "dictate",
+    "askScreen", "circleSearch", "circleSearchPointer", "lens", "darkMode", "caffeine", "replyLatest", "shareSelection", "shelf", "pointerDown", "pointerUp", "dictate",
     "dictateRelease", "tabs", "pip", "snap-restore", "switcher", "switcherBack", "switcherCommit", "captions", "findPointer", "superTap",
     "superTapCancel", "superTapRelease", "closeFront", "dismiss", "volumeUp", "volumeDown", "volumeMute", "micMute", "brightnessUp", "brightnessDown",
 ];
@@ -121,6 +121,8 @@ impl Shortcuts {
             "record" => h.ask("screen.recordToggle", json!([])),
             "askScreen" => h.ask("screen.select", json!(["ask"])),
             "circleSearch" => h.ask("screen.select", json!(["circle"])),
+            // (the trackpad's gesture for it, gestures.lua: it ripples out from the pointer)
+            "circleSearchPointer" => h.ask("screen.select", json!(["circle", "pointer"])),
             "lens" => launch_run(&[&script("lens-search.sh").to_string_lossy()], "lens"),
             "darkMode" => h.ask("system.toggleDarkMode", json!([])),
             "caffeine" => h.ask("system.toggleCaffeine", json!([])),
