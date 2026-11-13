@@ -907,6 +907,8 @@ export component ScreenToolbar inherits Window {
                         if t.kind == 0: VerticalLayout {
                             alignment: center;
                             spacing: 4px;
+                            // (Material: 2 px lower, where the QML's icon and label sit)
+                            padding-top: Theme.material ? 4px : 0;
                             StIcon {
                                 // (Material: the symbol's line, 1.2x the size, as Icon.qml's Text)
                                 height: Theme.material ? 26px : 22px;

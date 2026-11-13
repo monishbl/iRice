@@ -132,6 +132,17 @@ PY
             # shellcheck disable=SC2053
             [[ $name == $ONLY ]] || continue
             cmds=$(echo "$cmds" | sed 's/^ *//')
+            # (per look: "glass> <cmds> ^ material> <cmds>", the current look's
+            # alternative; none for this look: nothing is done)
+            if [[ $cmds =~ ^(glass|material)\> ]]; then
+                sel=""
+                IFS='^' read -ra alts <<<"$cmds"
+                for a in "${alts[@]}"; do
+                    a=$(echo "$a" | sed 's/^ *//;s/ *$//')
+                    [[ $a == "$look>"* ]] && sel=${a#"$look>"}
+                done
+                cmds=$(echo "$sel" | sed 's/^ *//')
+            fi
             log "[$look] $name"
             if [[ $cmds == ptr\ * ]]; then
                 # (the pointer: bar menus and island popovers open from clicks and hovers)

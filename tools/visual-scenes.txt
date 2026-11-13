@@ -1,4 +1,5 @@
 # visual-compare.sh's screens: name | commands in the sandbox ("-" none).
+# Per look: name | glass> <commands> ^ material> <commands>
 # After each shot the panels close, the lock unlocks and island alerts go.
 lock | ipc lock lock; sleep 2
 lock-standby | ipc lock lock; sleep 1.5; ipc lock demo standby; sleep 1
@@ -78,9 +79,10 @@ settings-windowrules | ipc panels settings windowrules; sleep 2
 # Bar menus and island popovers: from the pointer (1920×1080, scale 1)
 menu-system | ptr move 300 400 glide 20 12 250 sleep 300 click
 menu-app | ptr move 300 400 glide 72 12 250 sleep 300 click
-menu-battery | ptr move 1500 400 glide 1645 12 250 sleep 300 click
-menu-bluetooth | ptr move 1500 400 glide 1694 12 250 sleep 300 click
-menu-wifi | ptr move 1500 400 glide 1727 12 250 sleep 300 click
-menu-clock | ptr move 1500 400 glide 1845 12 250 sleep 300 click
+# (the Material bar's status items sit elsewhere: its own targets, the same in both versions)
+menu-battery | glass> ptr move 1500 400 glide 1645 12 250 sleep 300 click ^ material> ptr move 1500 400 glide 1782 12 250 sleep 300 click
+menu-bluetooth | glass> ptr move 1500 400 glide 1694 12 250 sleep 300 click ^ material> ptr move 1500 400 glide 1825 12 250 sleep 300 click
+menu-wifi | glass> ptr move 1500 400 glide 1727 12 250 sleep 300 click ^ material> ptr move 1500 400 glide 1862 12 250 sleep 300 click
+menu-clock | glass> ptr move 1500 400 glide 1845 12 250 sleep 300 click ^ material> ptr move 1500 400 glide 1693 12 250 sleep 300 click
 hover-island | ptr move 960 400 glide 960 14 300 sleep 900
 hover-island-stats | ptr move 960 400 glide 960 14 300 sleep 900 glide 1010 60 300 sleep 900

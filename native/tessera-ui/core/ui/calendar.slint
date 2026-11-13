@@ -122,14 +122,14 @@ export struct NcDraft {
 
 // Segmented.qml: Glass, a track with a sliding pill; Material, a connected
 // button group (2 px apart, round ends, 8 px inside; the chosen one fills
-// and turns round). Segments share the width evenly.
+// and turns round). Each segment fits its label plus 24 px; the room to
+// spare is shared equally (too little shrinks them alike).
 export component Segmented inherits Rectangle {
     in property <[string]> options;
     in property <int> current;
     in property <string> label;
     callback selected(int);
     property <length> gap: Theme.material ? 2px : 0;
-    property <length> seg: (self.width - 4px - gap * (options.length - 1)) / max(1, options.length);
     height: Theme.material ? 36px : 30px;
     border-radius: self.height / 2;
     background: Theme.material ? transparent : Theme.toggle-off;
@@ -143,22 +143,33 @@ export component Segmented inherits Rectangle {
             reject
         }
     }
-    if !Theme.material: Rectangle {
-        x: 2px + current * seg;
-        y: 2px;
-        width: seg;
-        height: parent.height - 4px;
-        border-radius: self.height / 2;
-        background: Theme.dark ? #ffffff33 : #ffffff;
-        animate x { duration: 280ms; easing: cubic-bezier(0.2, 0, 0, 1); }
-    }
+    HorizontalLayout {
+    padding-left: 2px;
+    padding-right: 2px;
+    spacing: gap;
     for o[i] in options: Rectangle {
         property <bool> chosen: i == current;
         property <length> full: self.height / 2;
         property <length> inner: chosen ? full : touch.pressed ? 4px : 8px;
-        x: 2px + i * (seg + gap);
-        width: seg;
+        min-width: 0;
+        preferred-width: measure.preferred-width + 24px;
+        horizontal-stretch: 1;
         height: parent.height;
+        measure := Text {
+            visible: false;
+            text: o;
+            font-size: Theme.material ? Theme.body : Theme.small;
+            font-weight: Theme.material ? 500 : 600;
+        }
+        // Glass: the selection pill on the chosen one
+        if !Theme.material: Rectangle {
+            y: 2px;
+            height: parent.height - 4px;
+            border-radius: self.height / 2;
+            background: Theme.dark ? #ffffff33 : #ffffff;
+            opacity: chosen ? 1 : 0;
+            animate opacity { duration: 280ms; easing: cubic-bezier(0.2, 0, 0, 1); }
+        }
         border-top-left-radius: !Theme.material ? 0 : i == 0 ? full : inner;
         border-bottom-left-radius: self.border-top-left-radius;
         border-top-right-radius: !Theme.material ? 0 : i == options.length - 1 ? full : inner;
@@ -185,6 +196,7 @@ export component Segmented inherits Rectangle {
             mouse-cursor: pointer;
             clicked => { root.selected(i); }
         }
+    }
     }
 }
 

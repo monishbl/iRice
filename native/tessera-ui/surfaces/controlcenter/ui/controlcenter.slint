@@ -2210,6 +2210,7 @@ export component ControlCenter inherits Window {
     in property <float> battery-level;
     in property <bool> charging;
     in property <image> avatar;
+    in property <image> avatar-cookie; // (Material: the picture cut into the cookie)
     in property <bool> has-avatar;
     in property <string> user;
     in property <CcMedia> media;
@@ -2843,20 +2844,27 @@ export component ControlCenter inherits Window {
                         y: (grid-h > 0 ? grid-h + 12px : 0) + 12px * (1 - rise);
                         height: 48px;
                         opacity: min(1, rise);
+                        // (QuickSettings.qml: your picture in a cookie, MaterialShape "cookie9")
                         Rectangle {
                             x: 0;
                             width: 40px;
                             height: 40px;
-                            border-radius: 20px;
-                            background: Theme.m3-tertiary-container;
-                            clip: true;
                             accessible-role: text;
                             accessible-label: user;
+                            if !has-avatar: Path {
+                                width: 100%;
+                                height: 100%;
+                                viewbox-width: 40;
+                                viewbox-height: 40;
+                                commands: "M 40.00 20.00 L 39.75 21.15 L 39.07 22.23 L 38.12 23.20 L 37.13 24.06 L 36.30 24.88 L 35.79 25.75 L 35.62 26.74 L 35.73 27.90 L 35.93 29.20 L 36.04 30.55 L 35.87 31.82 L 35.32 32.86 L 34.39 33.58 L 33.18 33.97 L 31.83 34.10 L 30.51 34.12 L 29.35 34.22 L 28.40 34.55 L 27.64 35.20 L 26.97 36.16 L 26.29 37.29 L 25.51 38.39 L 24.56 39.25 L 23.47 39.70 L 22.30 39.65 L 21.12 39.17 L 20.00 38.40 L 18.98 37.57 L 18.02 36.90 L 17.08 36.54 L 16.08 36.56 L 14.95 36.86 L 13.71 37.29 L 12.40 37.63 L 11.12 37.68 L 10.00 37.32 L 9.13 36.53 L 8.53 35.40 L 8.17 34.10 L 7.92 32.80 L 7.62 31.68 L 7.13 30.80 L 6.35 30.16 L 5.30 29.67 L 4.07 29.20 L 2.84 28.62 L 1.83 27.84 L 1.21 26.84 L 1.05 25.67 L 1.32 24.43 L 1.88 23.20 L 2.52 22.04 L 3.01 20.99 L 3.20 20.00 L 3.01 19.01 L 2.52 17.96 L 1.88 16.80 L 1.32 15.57 L 1.05 14.33 L 1.21 13.16 L 1.83 12.16 L 2.84 11.38 L 4.07 10.80 L 5.30 10.33 L 6.35 9.84 L 7.13 9.20 L 7.62 8.32 L 7.92 7.20 L 8.17 5.90 L 8.53 4.60 L 9.13 3.47 L 10.00 2.68 L 11.12 2.32 L 12.40 2.37 L 13.71 2.71 L 14.95 3.14 L 16.08 3.44 L 17.08 3.46 L 18.02 3.10 L 18.98 2.43 L 20.00 1.60 L 21.12 0.83 L 22.30 0.35 L 23.47 0.30 L 24.56 0.75 L 25.51 1.61 L 26.29 2.71 L 26.97 3.84 L 27.64 4.80 L 28.40 5.45 L 29.35 5.78 L 30.51 5.88 L 31.83 5.90 L 33.18 6.03 L 34.39 6.42 L 35.32 7.14 L 35.87 8.18 L 36.04 9.45 L 35.93 10.80 L 35.73 12.10 L 35.62 13.26 L 35.79 14.25 L 36.30 15.12 L 37.13 15.94 L 38.12 16.80 L 39.07 17.77 L 39.75 18.85 Z";
+                                fill: Theme.m3-tertiary-container;
+                                stroke-width: 0;
+                            }
                             if has-avatar: Image {
                                 width: 100%;
                                 height: 100%;
-                                source: avatar;
-                                image-fit: cover;
+                                source: avatar-cookie;
+                                image-fit: fill;
                             }
                             if !has-avatar: Ic {
                                 icon: g.user;

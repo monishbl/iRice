@@ -761,6 +761,7 @@ impl ControlCenter {
         match live::cached_hit(&path) {
             Some(a) => {
                 w.ui.set_has_avatar(a.is_some());
+                w.ui.set_avatar_cookie(a.as_ref().and_then(cookie9).unwrap_or_default());
                 w.ui.set_avatar(a.unwrap_or_default());
             }
             // (a photo can take a while to decode: on a thread, shown when it's ready)
@@ -1546,6 +1547,7 @@ impl Part for ControlCenter {
                 if path == self.said.avatar {
                     if let Some(w) = &self.win {
                         w.ui.set_has_avatar(a.is_some());
+                        w.ui.set_avatar_cookie(a.as_ref().and_then(cookie9).unwrap_or_default());
                         w.ui.set_avatar(a.unwrap_or_default());
                     }
                 }
@@ -1772,4 +1774,37 @@ mod tests {
         assert_eq!(volume_icon(0.2, false), "speaker-none");
         assert_eq!(volume_icon(0.9, false), "speaker-high");
     }
+}
+
+/// The art cut into Material's nine-sided cookie (MaterialShape "cookie9"):
+/// 144 px, centre-cropped, the edge r(θ) = R (0.92 + 0.08 cos 9θ), smoothed
+/// over a pixel; transparent outside
+pub fn cookie9(img: &slint::Image) -> Option<slint::Image> {
+    let src = img.to_rgba8()?;
+    let (w, h) = (src.width() as f32, src.height() as f32);
+    if w < 1.0 || h < 1.0 {
+        return None;
+    }
+    let n = 144usize;
+    let side = w.min(h);
+    let (ox, oy) = ((w - side) / 2.0, (h - side) / 2.0);
+    let px = src.as_slice();
+    let sw = src.width() as usize;
+    let mut out = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(n as u32, n as u32);
+    let o = out.make_mut_slice();
+    let c = n as f32 / 2.0;
+    for y in 0..n {
+        for x in 0..n {
+            let (dx, dy) = (x as f32 + 0.5 - c, y as f32 + 0.5 - c);
+            let r = (dx * dx + dy * dy).sqrt();
+            let edge = c * (0.92 + 0.08 * (9.0 * dy.atan2(dx)).cos());
+            let a = (edge - r + 0.5).clamp(0.0, 1.0);
+            let sx = (ox + (x as f32 + 0.5) / n as f32 * side) as usize;
+            let sy = (oy + (y as f32 + 0.5) / n as f32 * side) as usize;
+            let mut p = px[sy.min(src.height() as usize - 1) * sw + sx.min(sw - 1)];
+            p.a = (p.a as f32 * a) as u8;
+            o[y * n + x] = p;
+        }
+    }
+    Some(slint::Image::from_rgba8(out))
 }

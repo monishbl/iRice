@@ -257,39 +257,6 @@ fn hex(c: u32) -> slint::Color {
     slint::Color::from_rgb_u8((c >> 16) as u8, (c >> 8) as u8, c as u8)
 }
 
-/// The art cut into Material's nine-sided cookie (MaterialShape "cookie9"):
-/// 144 px, centre-cropped, the edge r(θ) = R (0.92 + 0.08 cos 9θ), smoothed
-/// over a pixel; transparent outside
-fn cookie9(img: &slint::Image) -> Option<slint::Image> {
-    let src = img.to_rgba8()?;
-    let (w, h) = (src.width() as f32, src.height() as f32);
-    if w < 1.0 || h < 1.0 {
-        return None;
-    }
-    let n = 144usize;
-    let side = w.min(h);
-    let (ox, oy) = ((w - side) / 2.0, (h - side) / 2.0);
-    let px = src.as_slice();
-    let sw = src.width() as usize;
-    let mut out = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(n as u32, n as u32);
-    let o = out.make_mut_slice();
-    let c = n as f32 / 2.0;
-    for y in 0..n {
-        for x in 0..n {
-            let (dx, dy) = (x as f32 + 0.5 - c, y as f32 + 0.5 - c);
-            let r = (dx * dx + dy * dy).sqrt();
-            let edge = c * (0.92 + 0.08 * (9.0 * dy.atan2(dx)).cos());
-            let a = (edge - r + 0.5).clamp(0.0, 1.0);
-            let sx = (ox + (x as f32 + 0.5) / n as f32 * side) as usize;
-            let sy = (oy + (y as f32 + 0.5) / n as f32 * side) as usize;
-            let mut p = px[sy.min(src.height() as usize - 1) * sw + sx.min(sw - 1)];
-            p.a = (p.a as f32 * a) as u8;
-            o[y * n + x] = p;
-        }
-    }
-    Some(slint::Image::from_rgba8(out))
-}
-
 fn model<T: Clone + 'static>(v: Vec<T>) -> ModelRc<T> {
     ModelRc::new(VecModel::from(v))
 }
@@ -691,7 +658,7 @@ impl StatusMenus {
             }
         }
         if self.cookie.0 != self.art.0 || (self.cookie.1.is_none() && self.art.1.is_some()) {
-            self.cookie = (self.art.0.clone(), self.art.1.as_ref().and_then(cookie9));
+            self.cookie = (self.art.0.clone(), self.art.1.as_ref().and_then(tessera_controlcenter::cookie9));
         }
         let Some(w) = &self.win else { return };
         let np = match &p {
@@ -1045,11 +1012,8 @@ impl Part for StatusMenus {
         }
     }
 
-    fn keyboard_left(&mut self, st: &mut State, s: &Rc<Surface>) {
-        if self.open && self.win.as_ref().is_some_and(|w| Rc::ptr_eq(&w.surface, s)) {
-            self.close(st, true);
-        }
-    }
+    // (no keyboard_left: Popover.qml stays open when the keyboard goes
+    // elsewhere; outside clicks and Escape close it, as the Wi-Fi menu)
 
     fn output_removed(&mut self, st: &mut State, name: &str) {
         if self.win.as_ref().is_some_and(|w| w.output == name) {

@@ -502,6 +502,9 @@ impl Network {
                 self.push_wifi();
                 self.hold();
             } else {
+                if tessera_core::env::is_set("DEBUG") {
+                    eprintln!("debug: network: Escape, closing");
+                }
                 self.close(st, true);
             }
             return;
@@ -654,19 +657,26 @@ impl Part for Network {
             }
             M::AutoClose => {
                 if self.open && !self.hovered && self.menu.is_none() && self.asking.is_none() {
+                    if tessera_core::env::is_set("DEBUG") {
+                        eprintln!("debug: network: auto close");
+                    }
                     self.close(st, true);
                 }
             }
-            M::Dismissed => self.close(st, true),
+            M::Dismissed => {
+                if tessera_core::env::is_set("DEBUG") {
+                    eprintln!("debug: network: dismissed (a click outside), closing");
+                }
+                self.close(st, true)
+            }
             M::Closed => self.closed(st),
         }
     }
 
-    fn keyboard_left(&mut self, st: &mut State, s: &Rc<Surface>) {
-        if self.open && self.win.as_ref().is_some_and(|w| Rc::ptr_eq(&w.surface, s)) {
-            self.close(st, true);
-        }
-    }
+    // (no keyboard_left: Popover.qml stays open when the keyboard goes
+    // elsewhere; outside clicks and Escape close it. Closing on it lost the
+    // Wi-Fi menu the moment it opened when the compositor moved the focus
+    // once more as the new layer mapped: from the Material bar, nothing showed)
 
     fn output_removed(&mut self, st: &mut State, name: &str) {
         if self.win.as_ref().is_some_and(|w| w.output == name) {
