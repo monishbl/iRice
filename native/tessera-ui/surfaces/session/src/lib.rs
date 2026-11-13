@@ -201,19 +201,37 @@ impl Session {
             let mut c = s.chars();
             c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default()
         };
+        // Only the chosen option stands out. The others share one quiet
+        // tonal shape (each keeps its own outline); Restart's and Shut Down's
+        // icons carry a faint blue and red, duller than any chosen colour.
+        // Chosen: the primary colour; Restart blue, Shut Down the error red.
+        let mix = |a: slint::Color, b: slint::Color, t: f32| {
+            let l = |x: u8, y: u8| (x as f32 + (y as f32 - x as f32) * t).round() as u8;
+            slint::Color::from_rgb_u8(l(a.red(), b.red()), l(a.green(), b.green()), l(a.blue(), b.blue()))
+        };
+        let (blue, on_blue) = if look.dark { (hex("#9ecaff"), hex("#003258")) } else { (hex("#2f6aa8"), hex("#ffffff")) };
+        let quiet = r("surfaceContainerHigh");
+        let quiet_ink = r("onSurfaceVariant");
         let opts: Vec<ui::SOpt> = OPTIONS
             .iter()
             .enumerate()
-            .map(|(i, (id, text, icon, shp, role))| ui::SOpt {
-                id: (*id).into(),
-                text: label(text, look.material).into(),
-                icon: (*icon).into(),
-                path: shape::outline("square", shp, self.morph[i], 0.0).into(),
-                fill_hot: r(role),
-                ink_hot: r(&format!("on{}", cap(role))),
-                fill: r(&format!("{role}Container")),
-                ink: r(&format!("on{}Container", cap(role))),
-                danger: *id == "shutdown" || *id == "restart",
+            .map(|(i, (id, text, icon, shp, _role))| {
+                let (fill_hot, ink_hot, ink, kind) = match *id {
+                    "restart" => (blue, on_blue, mix(quiet_ink, blue, 0.45), 1),
+                    "shutdown" => (r("error"), r("onError"), mix(quiet_ink, r("error"), 0.5), 2),
+                    _ => (r("primary"), r("onPrimary"), quiet_ink, 0),
+                };
+                ui::SOpt {
+                    id: (*id).into(),
+                    text: label(text, look.material).into(),
+                    icon: (*icon).into(),
+                    path: shape::outline("square", shp, self.morph[i], 0.0).into(),
+                    fill_hot,
+                    ink_hot,
+                    fill: quiet,
+                    ink,
+                    kind,
+                }
             })
             .collect();
         w.opts.set(opts);

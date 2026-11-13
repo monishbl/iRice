@@ -18,7 +18,8 @@ export struct SOpt {
     ink-hot: color,
     fill: color,
     ink: color,
-    danger: bool,
+    // 0 the others, 1 Restart (blue), 2 Shut Down (red)
+    kind: int,
 }
 
 export struct SRow {
@@ -119,7 +120,7 @@ export component SessionDialog inherits Window {
                             width: Theme.material ? 88px : 64px;
                             height: self.width;
                             border-radius: self.width / 2;
-                            background: Theme.material ? transparent : hot ? (o.danger ? Theme.danger : Theme.accent) : Theme.toggle-off;
+                            background: Theme.material ? transparent : hot ? (o.kind == 1 ? Theme.blue : o.kind == 2 ? Theme.danger : Theme.accent) : Theme.toggle-off;
                             animate background { duration: Theme.hover; }
                             // (Material: ElasticControl on springPress; Glass: 94 % over `press`, linear)
                             transform-scale: Theme.material ? (ta.pressed ? 1 + min(0.06, 10px / max(1px, self.width)) : 1) : ta.pressed ? 0.94 : 1;
@@ -147,7 +148,9 @@ export component SessionDialog inherits Window {
                                 text: o.icon;
                                 bold: true;
                                 font-size: 26px;
-                                color: hot ? Theme.on-accent : Theme.label;
+                                // (the others: a faint blue and red, duller than the chosen fill)
+                                color: hot ? Theme.on-accent : o.kind == 1 ? Theme.blue.mix(Theme.label, 0.5) : o.kind == 2 ? Theme.danger.mix(Theme.label, 0.5) : Theme.label;
+                                animate color { duration: Theme.hover; }
                             }
                             ta := TouchArea {
                                 changed has-hover => { if self.has-hover && !root.keyboard-confirm { root.hover(i); } }
