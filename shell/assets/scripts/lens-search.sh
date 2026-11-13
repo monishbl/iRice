@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Select an area of the screen and search it with Google Lens (like end4).
-# The picture goes straight to Lens (lens-upload.py, as circle to search's
-# "Search the web" does), then its results open in the browser. Nothing is
+# The browser sends the picture to Lens itself (lens-upload.py serves it a
+# one-time page on 127.0.0.1, as circle to search's "Search the web" does), so
+# the results open in the browser's own Lens session (uploaded from here,
+# they belonged to another session and showed "image expired"). Nothing is
 # uploaded if the selection is cancelled.
 set -uo pipefail
 for c in grim slurp jq python3; do
