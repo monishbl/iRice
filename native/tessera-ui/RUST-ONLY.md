@@ -22,8 +22,8 @@ sandbox), **done, unchecked** (committed, not yet seen in a screenshot).
 
 | Change | Asked | Status | Commit |
 |---|---|---|---|
-| Password field as see-through frosted glass (lock and login), light rim, readable text, focus state | 13 Nov | in progress | |
-| Fingerprint animation "ridges trace in": ridges glow in turn while waiting, fill to a tick on success, shake red on failure; static under Reduce Motion | 13 Nov | in progress | |
+| Password field as see-through frosted glass (lock and login), light rim, readable text, focus state | 13 Nov | done on the lock (arena 6, both wallpapers); login unchecked | e23fdef |
+| Fingerprint animation "ridges trace in": ridges glow in turn while waiting, fill to a tick on success, shake red on failure; static under Reduce Motion | 13 Nov | waiting loop and miss checked; match tick, Reduce Motion and login unchecked | e23fdef |
 
 ## Screen tools
 
@@ -37,4 +37,4 @@ sandbox), **done, unchecked** (committed, not yet seen in a screenshot).
 
 | Change | Asked | Status | Commit |
 |---|---|---|---|
-| Text rendering tuned on femtovg to match the QML's weight and sharpness (not Skia) | 13 Nov | in progress | |
+| Text rendering tuned on femtovg to match the QML's weight and sharpness (not Skia). Causes found: Material weights (Qt ignores weights < bold for Google Sans Flex, Slint applies them: up to +28% ink), Glass hinting (femtovg hints, Qt doesn't). Fixes written, not built (worktree-agent-ab514c47608928d27, uncommitted) | 13 Nov | in progress | |
