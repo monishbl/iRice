@@ -4,7 +4,9 @@ What the Rust shell (tessera-ui, branch `rust-rewrite`) does differently from
 the last all-QML version (`main`, 342a6ac) **on purpose**: features and fixes
 the user asked for in Rust only. Parity work (making Rust match the QML) is
 not listed here. When the QML is retired these are simply how Tessera works;
-until then, don't "fix" them back to the QML's behaviour.
+until then, don't "fix" them back to the QML's behaviour. Rows marked
+**also QML** were later ported to `main` too (13 Nov: the user asked for
+the vital ones there).
 
 Status: **planned**, **in progress**, **done** (built and checked in a
 sandbox), **done, unchecked** (committed, not yet seen in a screenshot).
@@ -13,8 +15,8 @@ sandbox), **done, unchecked** (committed, not yet seen in a screenshot).
 
 | Change | Asked | Status | Commit |
 |---|---|---|---|
-| Super+Shift+Escape and Ctrl+Alt+Backspace end the session only on a second press within 3 s; Hyprland's own "Press again to log out" notice, so it works with the shell frozen (`sandbox/confirm-exit.sh`, `sandbox/hypr/tty.lua`) | 13 Nov | done | 59e984e |
-| Power menu: only the chosen option stands out (Material primary / Glass accent; Restart blue, Shut Down red when chosen); the others share one quiet shape colour, keeping their own outlines, with Restart's and Shut Down's icons a faint blue and red, both looks | 13 Nov | done, unchecked | 6d14b2f |
+| Super+Shift+Escape and Ctrl+Alt+Backspace end the session only on a second press within 3 s; Hyprland's own "Press again to log out" notice, so it works with the shell frozen (`sandbox/confirm-exit.sh`, `sandbox/hypr/tty.lua`) | 13 Nov | done; **also QML** (main, in progress) | 59e984e |
+| Power menu: only the chosen option stands out (Material primary / Glass accent; Restart blue, Shut Down red when chosen); the others share one quiet shape colour, keeping their own outlines, with Restart's and Shut Down's icons a faint blue and red, both looks | 13 Nov | done, unchecked; **also QML** (in progress) | 6d14b2f |
 
 ## Lock and login
 
@@ -27,8 +29,8 @@ sandbox), **done, unchecked** (committed, not yet seen in a screenshot).
 
 | Change | Asked | Status | Commit |
 |---|---|---|---|
-| Circle to Search: breathing edge glow (Glass blue/purple/pink/orange, Material wallpaper tones), entry from the cursor (gesture) or the bottom (key); the circled picture goes to an input bar with chips (What is this?, Search the web, Copy text, Translate) or your own question; the answer streams in a card by the selection with "Continue in sidebar"; Lens "image expired" fixed | 13 Nov | in progress | |
-| Image viewer: Super+Q (and the usual close keys) close the viewer instead of the window under it (and the same for every shell overlay that takes the keyboard) | 13 Nov | in progress | |
+| Circle to Search: breathing edge glow (Glass blue/purple/pink/orange, Material wallpaper tones), entry from the cursor (gesture) or the bottom (key); the circled picture goes to an input bar with chips (What is this?, Search the web, Copy text, Translate) or your own question; the answer streams in a card by the selection with "Continue in sidebar"; Lens "image expired" fixed (the Lens fix **also QML**, shared script) | 13 Nov | in progress | |
+| Image viewer: Super+Q (and the usual close keys) close the viewer instead of the window under it (and the same for every shell overlay that takes the keyboard) | 13 Nov | in progress; **also QML** (in progress) | |
 | Image viewer: redesigned top toolbar (larger icons and buttons, grouping, states, tooltips), both looks | 13 Nov | in progress | |
 
 ## Text
