@@ -281,8 +281,11 @@ pub struct Glass {
     /// shapes set but not sent yet: they wait for their surface's frame
     /// (`flush`, from State::flush_glass after every part's after_frame)
     /// (the frame each belongs to, once its surface drew it; newest last)
-    held: std::cell::RefCell<BTreeMap<(String, String), std::collections::VecDeque<(Option<u32>, String)>>>,
+    held: std::cell::RefCell<BTreeMap<(String, String), std::collections::VecDeque<(Option<u32>, String, std::time::Instant)>>>,
 }
+
+/// The longest glass shapes wait for their surface's frame (6 frames at 60 Hz)
+const MAX_HOLD: std::time::Duration = std::time::Duration::from_millis(100);
 
 /// What `Glass::flush` needs to know of the surface a namespace's shapes
 /// belong to (State::flush_glass)
@@ -407,7 +410,7 @@ impl Glass {
             if q.back().is_some_and(|e| e.0.is_none()) {
                 q.pop_back();
             }
-            q.push_back((None, cmd));
+            q.push_back((None, cmd, std::time::Instant::now()));
             while q.len() > 6 {
                 q.pop_front();
             }
@@ -431,8 +434,17 @@ impl Glass {
             let send = |cmd: String| {
                 let _ = self.tx.send((format!("{monitor}\n{ns}"), cmd));
             };
+            // (never longer than MAX_HOLD: a frame the compositor never takes
+            // back — on the live screen it can happen — left the old shapes up
+            // for good, an empty expanded island after its alert had gone)
+            if q.front().is_some_and(|e| e.2.elapsed() >= MAX_HOLD) {
+                if let Some((_, cmd, _)) = q.pop_back() {
+                    send(cmd);
+                }
+                return false;
+            }
             let Some(g) = gate(monitor, ns) else {
-                if let Some((_, cmd)) = q.pop_back() {
+                if let Some((_, cmd, _)) = q.pop_back() {
                     send(cmd);
                 }
                 return false;
@@ -444,7 +456,7 @@ impl Glass {
                 match g.drew {
                     Some(f) => last.0 = Some(f),
                     None if g.idle => {
-                        let (_, cmd) = q.pop_back().unwrap();
+                        let (_, cmd, _) = q.pop_back().unwrap();
                         send(cmd);
                         return false;
                     }
@@ -453,11 +465,16 @@ impl Glass {
             }
             let due = |f: u32| drawn || g.presented.wrapping_sub(f) < u32::MAX / 2;
             if let Some(i) = q.iter().rposition(|e| e.0.is_some_and(due)) {
-                let (_, cmd) = q.drain(..=i).last().unwrap();
+                let (_, cmd, _) = q.drain(..=i).last().unwrap();
                 send(cmd);
             }
             !q.is_empty()
         });
+    }
+    /// Shapes still waiting for their frame: the loop wakes soon to send
+    /// them (at the latest MAX_HOLD after they were set)
+    pub fn has_held(&self) -> bool {
+        !self.held.borrow().is_empty()
     }
     /// Blocking: used on the way out, so the shapes don't outlive the bar
     pub fn clear_now(monitor: &str, ns: &str) {

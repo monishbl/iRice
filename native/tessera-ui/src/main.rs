@@ -276,6 +276,10 @@ fn main() {
             Some(Duration::ZERO)
         } else if state.animating_unpaced() {
             Some(Duration::from_millis(16))
+        } else if state.shell.glass.has_held() {
+            // (glass shapes waiting for their frame: they go at the latest
+            // after Glass's MAX_HOLD, so wake for it)
+            Some(slint::platform::duration_until_next_timer_update().map_or(Duration::from_millis(16), |d| d.min(Duration::from_millis(16))))
         } else if prewarm.is_some() && first_frame_at.is_some() {
             // (wake for the next prewarm even when nothing else happens)
             Some(slint::platform::duration_until_next_timer_update().map_or(Duration::from_millis(100), |d| d.min(Duration::from_millis(100))))
