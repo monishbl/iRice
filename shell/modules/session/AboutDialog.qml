@@ -68,7 +68,8 @@ Variants {
                         ["Processor", SystemInfo.cpu],
                         ["Graphics", SystemInfo.gpu],
                         ["Memory", SystemInfo.memory],
-                        ["Kernel", SystemInfo.kernel]
+                        ["Kernel", SystemInfo.kernel],
+                        ["Shell", "Tessera (QML)"] // (which shell this session runs: this one, QML)
                     ]
                     Item {
                         required property var modelData
