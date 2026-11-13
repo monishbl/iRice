@@ -6,7 +6,7 @@
 //! Enter confirms (not a key still repeating from Search), Esc or a click
 //! outside cancels; a click on an option chooses it. Material: each a big
 //! tonal shape in its role's colours (Shut Down in the error colours), the
-//! chosen one filled and morphed from a rounded square into its shape
+//! chosen one filled; each keeps its own shape and a press squares it
 //! (tessera_core::surfaces::polar mixes the outlines).
 //!
 //! ── Roles ─────────────────────────────────────────────────────────────────
@@ -251,8 +251,8 @@ impl Session {
         if which == "session" {
             self.current = start_at(&self.action);
             self.pressed = None;
-            for (i, m) in self.morph.iter_mut().enumerate() {
-                *m = if i == self.current { 1.0 } else { 0.0 };
+            for m in self.morph.iter_mut() {
+                *m = 1.0; // (every option in its own shape, as SessionDialog.qml)
             }
         }
         self.options(st);
@@ -308,7 +308,8 @@ impl Session {
     fn frame(&mut self, st: &State) {
         let mut moving = false;
         for i in 0..self.morph.len() {
-            let target = if i == self.current && self.pressed != Some(i) { 1.0 } else { 0.0 };
+            // (each keeps its own shape; a press squares it, as SessionDialog.qml)
+            let target = if self.pressed == Some(i) { 0.0 } else { 1.0 };
             let d = target - self.morph[i];
             if d.abs() > 0.004 {
                 self.morph[i] += d * 0.22;
