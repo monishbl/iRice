@@ -64,8 +64,11 @@ Worktree agents share one scratchpad: give logs and images unique names.
 ## Build and check (others build and capture at the same time)
 
 Build in your worktree, through the gate, with your own target dir:
-    cd native/tessera-ui && CARGO_TARGET_DIR=$PWD/target SLOT_JOBS=3 SLOT_MEM_HIGH=7G SLOT_MEM_MAX=8G RUST_MIN_STACK=67108864 ~/.local/share/tessera-port/slot.sh cargo build --release -p tessera-ui
-(about 5 min clean-ish; the machine has 15 GB: never more jobs than that)
+    cd native/tessera-ui && CARGO_TARGET_DIR=$PWD/target SLOT_MEM_MAX=8G RUST_MIN_STACK=67108864 ~/.local/share/tessera-port/slot.sh cargo build --release -p tessera-ui
+The gate is a shared memory budget: it starts your build when the memory
+fits (first come, first served), picks the jobs from the memory granted (all
+cores when yours runs alone) and shares compiled dependencies through
+sccache. Don't set SLOT_JOBS or bypass it; a wait message is normal.
 
 Check your screens against the same QML shots, in **your own arena** only:
     tools/visual-compare.sh --bin $PWD/native/tessera-ui/target/release/tessera-ui \
