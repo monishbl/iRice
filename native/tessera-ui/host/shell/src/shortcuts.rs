@@ -29,7 +29,7 @@ const OTHERS: &[&str] = &[
     "reset", "lock", "reportBug", "appExpose", "showDesktop", "settings", "screenshotScreen", "screenshotRegion", "ocr", "screenTranslate", "record",
     "askScreen", "circleSearch", "lens", "darkMode", "caffeine", "replyLatest", "shareSelection", "shelf", "pointerDown", "pointerUp", "dictate",
     "dictateRelease", "tabs", "pip", "snap-restore", "switcher", "switcherBack", "switcherCommit", "captions", "findPointer", "superTap",
-    "superTapCancel", "superTapRelease", "closeFront", "volumeUp", "volumeDown", "volumeMute", "micMute", "brightnessUp", "brightnessDown",
+    "superTapCancel", "superTapRelease", "closeFront", "dismiss", "volumeUp", "volumeDown", "volumeMute", "micMute", "brightnessUp", "brightnessDown",
 ];
 
 /// A name keybinds.lua binds to a key coming up (`release = true`)
@@ -101,7 +101,9 @@ impl Shortcuts {
             "reset" => h.ask("panels.reset", json!([])),
             // Super+Q / Alt+F4 while an overlay of ours holds the keyboard
             // (keybinds.lua asks only then): that overlay closes, not the window under it
-            "closeFront" => h.ask("panels.closeFront", json!([])),
+            // ("dismiss": keybinds.lua's TESSERA_CLOSE, the close shortcuts while a
+            // shell overlay holds the keyboard; the QML answers the same name)
+            "closeFront" | "dismiss" => h.ask("panels.closeFront", json!([])),
             "lock" => h.ask("lock.lock", json!([])),
             // (screenshot first, then the report page: Settings → Report a Bug)
             "reportBug" => h.ask("bugreport.start", json!([])),
