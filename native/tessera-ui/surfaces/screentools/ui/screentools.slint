@@ -30,7 +30,7 @@ export component StIcon {
         text: icon.t;
         color: root.color;
         font-size: icon.s ? round(size * 1.2 / 1px) * 1px : size;
-        font-family: icon.s ? "Tessera Symbols" : fill ? "Phosphor-Fill" : bold ? "Phosphor-Bold" : "Phosphor";
+        font-family: icon.s ? (fill ? "Tessera Symbols Fill" : "Tessera Symbols") : fill ? "Phosphor-Fill" : bold ? "Phosphor-Bold" : "Phosphor";
         vertical-alignment: center;
         horizontal-alignment: center;
         accessible-role: none;

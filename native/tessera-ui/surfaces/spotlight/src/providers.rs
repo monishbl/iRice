@@ -174,7 +174,7 @@ pub fn glyph(name: &str, material: bool, fill: bool, bold: bool) -> (String, Str
     let g = crate::icons::glyph(name);
     let sym = crate::icons::symbol(g);
     if material && !sym.is_empty() {
-        return (sym.into(), "Tessera Symbols".into(), 1.2);
+        return (sym.into(), if fill { "Tessera Symbols Fill" } else { "Tessera Symbols" }.into(), 1.2);
     }
     (g.into(), if fill { "Phosphor-Fill" } else if bold { "Phosphor-Bold" } else { "Phosphor" }.into(), 1.0)
 }

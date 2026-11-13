@@ -259,7 +259,7 @@ component WxIcon inherits Rectangle {
     if Theme.material: Text {
         text: LockData.weather-sym;
         color: ink;
-        font-family: "Tessera Symbols";
+        font-family: "Tessera Symbols Fill";
         font-size: round(size * 1.2 / 1px) * 1px;
         horizontal-alignment: center;
         vertical-alignment: center;
@@ -604,8 +604,15 @@ component Plate inherits Rectangle {
     property <bool> see-through: LockData.plate != "solid";
     border-radius: radius;
     clip: true;
-    background: !see-through ? (LockData.dark-ink ? #FFFFFF : #232327) : transparent;
-    if see-through && LockData.has-wallpaper: Image {
+    // Glass: LockGlass.qml's Plate is liquid Glass, but on the lock surface
+    // Glass.qml finds no host window (QsWindow.window), so it refracts no
+    // backdrop: the QML draws it near-black, the rim and shadow kept
+    background: !see-through ? (LockData.dark-ink ? #FFFFFF : #232327)
+        : LockData.plate == "glass" ? @linear-gradient(180deg, #171514 0%, #0a0807 100%) : transparent;
+    drop-shadow-blur: LockData.plate == "glass" ? 12px : 0;
+    drop-shadow-offset-y: 2px;
+    drop-shadow-color: #00000059;
+    if see-through && LockData.plate != "glass" && LockData.has-wallpaper: Image {
         x: 0;
         y: 0;
         width: root.width;
@@ -618,7 +625,7 @@ component Plate inherits Rectangle {
         source-clip-height: round(max(1, root.height / root.win-h * LockData.soft.height));
         accessible-role: none;
     }
-    if see-through: Rectangle {
+    if see-through && LockData.plate != "glass": Rectangle {
         background: LockData.plate == "frost" ? (LockData.dark-ink ? #ffffff6b : #00000047) : LockData.dark-ink ? #ffffff4d : #16161a8c;
     }
     // (glass: a brighter rim along the top, the light catching its edge)

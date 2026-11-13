@@ -116,7 +116,7 @@ component Glyph inherits Text {
     in property <length> size: 16px;
     in property <bool> fill;
     in property <bool> bold;
-    font-family: Theme.material ? "Tessera Symbols" : fill ? "Phosphor-Fill" : bold ? "Phosphor-Bold" : "Phosphor";
+    font-family: Theme.material ? (fill ? "Tessera Symbols Fill" : "Tessera Symbols") : fill ? "Phosphor-Fill" : bold ? "Phosphor-Bold" : "Phosphor";
     font-size: Theme.material ? round(size * 1.2 / 1px) * 1px : size;
     font-weight: Theme.material && bold ? 600 : 400;
     horizontal-alignment: center;

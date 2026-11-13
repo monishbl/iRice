@@ -24,7 +24,7 @@ export component GIcon {
         color: root.color;
         // (Material Symbols draw a little larger: their glyphs sit in a padded square)
         font-size: sym ? Math.round(size * 1.2 / 1px) * 1px : size;
-        font-family: sym ? "Tessera Symbols" : fill ? "Phosphor-Fill" : bold ? "Phosphor-Bold" : "Phosphor";
+        font-family: sym ? (fill ? "Tessera Symbols Fill" : "Tessera Symbols") : fill ? "Phosphor-Fill" : bold ? "Phosphor-Bold" : "Phosphor";
         horizontal-alignment: center;
         vertical-alignment: center;
         accessible-role: none;
