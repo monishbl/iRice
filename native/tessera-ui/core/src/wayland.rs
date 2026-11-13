@@ -86,6 +86,12 @@ pub struct Surface {
     /// came back between two turns of the loop)
     pub enters: Cell<u32>,
     pub presented: Cell<u32>,
+    /// frames drawn since `show` (0 after `hide`), and whether one was drawn
+    /// in this turn of the loop: the glass plugin's shapes for this surface
+    /// wait for them (State::flush_glass), so glass never shows over a frame
+    /// that isn't on screen yet, or over an empty first frame
+    shown_frames: Cell<u32>,
+    drew: Cell<bool>,
     pub wl: WlSurface,
     /// what it is to the compositor (`Role`): `layer` derefs to the layer
     /// surface, as it always did, for every part's layer surfaces
@@ -213,6 +219,13 @@ impl Surface {
         self.needs_redraw.set(false);
         self.wl.frame(qh, self.wl.clone());
         let t = Instant::now();
+        // (the first two frames after `show` are drawn whole: the first can
+        // come out empty, and the second, drawn to fix it, found "nothing
+        // changed" and fixed nothing: a frosted panel left empty until
+        // something in it moved)
+        if self.shown_frames.get() < 2 {
+            self.renderer.damage.all();
+        }
         // What changed since the last frame: the compositor repaints only that
         if self.egl.has_damage() {
             let (w, h) = self.logical.get();
@@ -227,11 +240,14 @@ impl Surface {
         }
         self.stats.borrow_mut().rendered(t.elapsed());
         self.rendered.set(self.rendered.get().wrapping_add(1));
+        self.shown_frames.set(self.shown_frames.get().saturating_add(1));
+        self.drew.set(true);
         self.frame_pending.set(true);
         self.mapped.set(true);
         // (a window's first frame can come out unpainted, garbage or nothing;
-        // one that never animates would keep it: so the first is drawn twice)
-        if self.rendered.get() == 1 {
+        // one that never animates would keep it: so the first after each
+        // `show` is drawn twice)
+        if self.shown_frames.get() == 1 {
             self.needs_redraw.set(true);
         }
         // (no "redraw while animations run" here: Slint's animation clock is
@@ -259,6 +275,7 @@ impl Surface {
         self.configured.set(false);
         self.frame_pending.set(false);
         self.mapped.set(false);
+        self.shown_frames.set(0);
         self.hidden.set(true);
         self.presented.set(self.rendered.get()); // (a frame in flight won't be shown now)
     }
@@ -680,6 +697,8 @@ impl State {
             rendered: Cell::new(0),
             enters: Cell::new(0),
             presented: Cell::new(0),
+            shown_frames: Cell::new(0),
+            drew: Cell::new(false),
             wl,
             layer,
             viewport,
@@ -767,12 +786,46 @@ impl State {
 
     /// After each event loop turn: draw what changed
     pub fn render_all(&mut self) {
+        for s in &self.surfaces {
+            s.drew.set(false);
+        }
         for s in self.surfaces.clone() {
             crate::perf::time(|| format!("render {}", s.namespace), || s.render(&self.qh));
         }
         if IME_DIRTY.replace(false) {
             self.sync_text_input();
         }
+    }
+
+    /// Glass shapes a part set for one of its surfaces go to the plugin only
+    /// with the frame they belong to (Glass::set holds them): when that
+    /// surface drew in this turn, or has nothing to draw (its content stands
+    /// still; the shapes moved on their own). Not while a frame is still on
+    /// its way (the shapes would run ahead of the picture: an island pill's
+    /// glass wider than the pill), nor before the surface has a good frame on
+    /// screen (unmapped, or its very first frame, which can come out empty:
+    /// a frosted panel with nothing in it). Clearing is never held. Call
+    /// after every part's after_frame.
+    pub fn flush_glass(&self) {
+        let gate = |monitor: &str, ns: &str| {
+            let mut best: Option<crate::services::hypr::GlassGate> = None;
+            for s in self.surfaces.iter().filter(|s| s.output == monitor && s.namespace == ns && !s.retired.get()) {
+                // (a surface's first frame ever is drawn twice: render())
+                let good = s.mapped.get() && s.shown_frames.get() >= 1 && s.rendered.get() >= 2;
+                let g = crate::services::hypr::GlassGate {
+                    good,
+                    drew: s.drew.get().then(|| s.rendered.get()),
+                    idle: !s.frame_pending.get() && !(s.needs_redraw.get() && s.configured.get()),
+                    presented: s.presented.get(),
+                };
+                // (several with one namespace: the one that's on screen)
+                if best.as_ref().is_none_or(|b| !b.good && good) {
+                    best = Some(g);
+                }
+            }
+            best
+        };
+        self.shell.glass.flush(gate);
     }
 
     pub fn wants_frame_soon(&self) -> bool {

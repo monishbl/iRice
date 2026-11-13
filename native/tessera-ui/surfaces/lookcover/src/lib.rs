@@ -492,6 +492,7 @@ pub fn run(args: &[String], started: Instant) {
         slint::platform::update_timers_and_animations();
         state.render_all();
         state.each_part(|p, st| p.after_frame(st));
+        state.flush_glass();
     }
     state.each_part(|p, st| p.quit(st));
 }

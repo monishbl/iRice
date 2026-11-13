@@ -278,6 +278,24 @@ pub struct Glass {
     tx: mpsc::Sender<(String, String)>,
     /// (monitor, namespace) pairs that have shapes on screen now
     live: std::cell::RefCell<std::collections::BTreeSet<(String, String)>>,
+    /// shapes set but not sent yet: they wait for their surface's frame
+    /// (`flush`, from State::flush_glass after every part's after_frame)
+    /// (the frame each belongs to, once its surface drew it; newest last)
+    held: std::cell::RefCell<BTreeMap<(String, String), std::collections::VecDeque<(Option<u32>, String)>>>,
+}
+
+/// What `Glass::flush` needs to know of the surface a namespace's shapes
+/// belong to (State::flush_glass)
+pub struct GlassGate {
+    /// it has a good frame on screen (mapped, drawn since shown, not its
+    /// very first frame ever)
+    pub good: bool,
+    /// it drew a frame in this turn: that frame's number
+    pub drew: Option<u32>,
+    /// no frame is coming (nothing to draw, none in flight): shapes go now
+    pub idle: bool,
+    /// the frames the compositor has taken (wl_surface.frame done)
+    pub presented: u32,
 }
 
 /// The queue key that asks the sender thread to ping the plugin again
@@ -332,12 +350,13 @@ impl Glass {
                 }
             }
         });
-        Self { tx, live: Default::default() }
+        Self { tx, live: Default::default(), held: Default::default() }
     }
     /// Every shape this process put on screen taken off (the look turned
     /// Material, or the plugin went: a part then stops sending, and what it
     /// sent last would stay, as glass behind the Material dock)
     pub fn clear_all(&self) {
+        self.held.borrow_mut().clear();
         let live = std::mem::take(&mut *self.live.borrow_mut());
         for (monitor, ns) in live {
             let _ = self.tx.send((format!("{monitor}\n{ns}"), format!("{} set {monitor} {ns} 0", glass_cmd())));
@@ -371,12 +390,74 @@ impl Glass {
             }
         }
         let mut cmd = format!("{} set {monitor} {ns} {}", glass_cmd(), shapes.len());
-        for s in shapes {
+        for s in &shapes {
             for v in &s[..per] {
                 cmd.push_str(&format!(" {}", (v * 1000.0).round() / 1000.0));
             }
         }
-        let _ = self.tx.send((format!("{monitor}\n{ns}"), cmd));
+        // (taking glass away is never held: the content went with this turn)
+        let key = (monitor.to_string(), ns.to_string());
+        if shapes.is_empty() {
+            self.held.borrow_mut().remove(&key);
+            let _ = self.tx.send((format!("{monitor}\n{ns}"), cmd));
+        } else {
+            let mut held = self.held.borrow_mut();
+            let q = held.entry(key).or_default();
+            // (set again before its frame drew: the newer shapes take its place)
+            if q.back().is_some_and(|e| e.0.is_none()) {
+                q.pop_back();
+            }
+            q.push_back((None, cmd));
+            while q.len() > 6 {
+                q.pop_front();
+            }
+        }
+    }
+    /// Send the held shapes as their frames reach the screen: each set of
+    /// shapes is tagged with the frame its surface drew in that turn, and
+    /// goes once the compositor has taken that frame (its frame callback),
+    /// so the glass and the picture over it change together. Shapes for a
+    /// surface with no frame coming go at once; for none found (a namespace
+    /// no surface here has), as before.
+    pub fn flush(&self, gate: impl Fn(&str, &str) -> Option<GlassGate>) {
+        let mut held = self.held.borrow_mut();
+        if held.is_empty() {
+            return;
+        }
+        // (TESSERA_GLASS_SYNC=drawn: with the frame as it's drawn, not as it's taken)
+        static DRAWN: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        let drawn = *DRAWN.get_or_init(|| crate::env::var("GLASS_SYNC").is_some_and(|v| v == "drawn"));
+        held.retain(|(monitor, ns), q| {
+            let send = |cmd: String| {
+                let _ = self.tx.send((format!("{monitor}\n{ns}"), cmd));
+            };
+            let Some(g) = gate(monitor, ns) else {
+                if let Some((_, cmd)) = q.pop_back() {
+                    send(cmd);
+                }
+                return false;
+            };
+            if !g.good {
+                return true;
+            }
+            if let Some(last) = q.back_mut().filter(|e| e.0.is_none()) {
+                match g.drew {
+                    Some(f) => last.0 = Some(f),
+                    None if g.idle => {
+                        let (_, cmd) = q.pop_back().unwrap();
+                        send(cmd);
+                        return false;
+                    }
+                    None => {}
+                }
+            }
+            let due = |f: u32| drawn || g.presented.wrapping_sub(f) < u32::MAX / 2;
+            if let Some(i) = q.iter().rposition(|e| e.0.is_some_and(due)) {
+                let (_, cmd) = q.drain(..=i).last().unwrap();
+                send(cmd);
+            }
+            !q.is_empty()
+        });
     }
     /// Blocking: used on the way out, so the shapes don't outlive the bar
     pub fn clear_now(monitor: &str, ns: &str) {

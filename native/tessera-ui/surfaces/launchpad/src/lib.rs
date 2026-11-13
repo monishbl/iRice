@@ -352,6 +352,32 @@ impl Launchpad {
         }
     }
 
+    /// The icons the first page shows (every folder's previews, as `push`
+    /// draws them), drawn ahead while it's closed: opened, the panel then
+    /// shows them in its first frame (drawn on demand, the folders came up
+    /// as empty glass tiles for a few frames)
+    fn warm_icons(&mut self, st: &mut State) {
+        let Some(w) = &self.win else { return };
+        let m = st.shell.look.material;
+        let scale = w.ui.window().scale_factor().max(1.0);
+        for f in &self.lib.folders {
+            let n = f.apps.len();
+            let shown: Vec<(usize, f32)> = if m {
+                f.apps.iter().take(4).map(|&i| (i, 60.0)).collect()
+            } else if n > 4 {
+                f.apps.iter().take(3).map(|&i| (i, 64.0)).chain(f.apps.iter().skip(3).take(4).map(|&i| (i, 27.0))).collect()
+            } else {
+                f.apps.iter().map(|&i| (i, 64.0)).collect()
+            };
+            for (i, sz) in shown {
+                if let Some(a) = self.lib.apps.get(i) {
+                    let _ = self.icons.get(st, &a.id, sz, scale, true);
+                }
+            }
+        }
+        self.icons.flush(send(st));
+    }
+
     /// Everything into the window
     fn push(&mut self, st: &mut State) {
         let Some(w) = &self.win else { return };
@@ -783,6 +809,8 @@ impl Part for Launchpad {
         self.look(st);
         if self.open {
             self.push(st);
+        } else {
+            self.warm_icons(st);
         }
     }
 
@@ -792,6 +820,17 @@ impl Part for Launchpad {
             w.glass_sent.clear();
         }
         self.look(st);
+    }
+
+    // (the window made ahead and left unmapped, its first page's icons drawn)
+    fn prewarm(&mut self, st: &mut State) {
+        let Some(out) = st.likely_output() else { return };
+        if self.win.is_none() && !self.open && self.window(st, &out) {
+            if let Some(w) = &self.win {
+                w.surface.hide();
+            }
+            self.warm_icons(st);
+        }
     }
 
     fn data(&mut self, st: &mut State, what: std::any::TypeId) {
@@ -918,6 +957,8 @@ impl Part for Launchpad {
                 self.lib.set_apps(list);
                 if self.open {
                     self.push(st);
+                } else {
+                    self.warm_icons(st);
                 }
             }
             M::Scroll => self.glide_step(),

@@ -123,9 +123,10 @@ impl Cheatsheet {
         w.elements.set(els);
     }
 
-    fn open(&mut self, st: &mut State, screen: Option<String>) {
-        let output = screen.or_else(|| self.win.as_ref().map(|w| w.output.clone())).or_else(|| st.outputs_now().first().map(|o| o.1.clone()));
-        let Some(output) = output else { return };
+    /// The window on `output` (kept while closed, made ahead: prewarm; made
+    /// anew on each open it came up half a second late, its opening spring
+    /// already over, after a frame of empty glass)
+    fn window(&mut self, st: &mut State, output: &str) -> bool {
         if self.win.as_ref().is_some_and(|w| w.output != output) {
             let w = self.win.take().unwrap();
             st.shell.glass.set(&w.output, NS, &[]);
@@ -133,11 +134,11 @@ impl Cheatsheet {
             st.drop_surface(&w.surface);
         }
         if self.win.is_none() {
-            let Some(wl_output) = st.output_named(&output) else { return };
+            let Some(wl_output) = st.output_named(output) else { return false };
             let surface = st.prepare_surface(Spec {
                 layer: Layer::Overlay,
                 namespace: NS,
-                output: Some((&wl_output, &output)),
+                output: Some((&wl_output, output)),
                 anchor: Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT,
                 size: (0, 0),
                 exclusive: -1,
@@ -155,9 +156,18 @@ impl Cheatsheet {
             ui.set_elements(elements.model());
             ui.show().expect("show cheatsheet");
             let a11y = crate::a11y::A11y::new(&surface, st.tx.clone());
-            self.win = Some(Win { output: output.clone(), surface, ui, a11y, shown: false, glass_sent: String::new(), settled: false, rows, elements });
+            self.win = Some(Win { output: output.to_string(), surface, ui, a11y, shown: false, glass_sent: String::new(), settled: false, rows, elements });
             self.set_groups(st);
             self.set_elements(st);
+        }
+        true
+    }
+
+    fn open(&mut self, st: &mut State, screen: Option<String>) {
+        let output = screen.or_else(|| self.win.as_ref().map(|w| w.output.clone())).or_else(|| st.outputs_now().first().map(|o| o.1.clone()));
+        let Some(output) = output else { return };
+        if !self.window(st, &output) {
+            return;
         }
         let w = self.win.as_mut().unwrap();
         w.ui.set_on_glass(st.shell.plugin && !st.shell.look.material);
@@ -188,11 +198,11 @@ impl Cheatsheet {
     }
 
     fn closed(&mut self, st: &mut State) {
-        if self.win.as_ref().is_some_and(|w| !w.shown) {
-            let w = self.win.take().unwrap();
+        if let Some(w) = self.win.as_mut().filter(|w| !w.shown) {
+            // (kept, unmapped, for the next open)
             st.shell.glass.set(&w.output, NS, &[]);
-            w.surface.hide(); // (unmapped now: dropping the window alone leaves it on screen)
-            st.drop_surface(&w.surface);
+            w.glass_sent.clear();
+            w.surface.hide();
         }
     }
 }
@@ -200,6 +210,16 @@ impl Cheatsheet {
 impl Part for Cheatsheet {
     fn name(&self) -> &'static str {
         NAME
+    }
+
+    // (the window made ahead and left unmapped)
+    fn prewarm(&mut self, st: &mut State) {
+        let Some(out) = st.likely_output() else { return };
+        if self.win.is_none() && self.window(st, &out) {
+            if let Some(w) = &self.win {
+                w.surface.hide();
+            }
+        }
     }
 
     fn command(&mut self, st: &mut State, cmd: &Command) {

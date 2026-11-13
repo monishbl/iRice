@@ -129,8 +129,14 @@ impl AppIcons {
     pub fn restyle(&mut self, st: &State, accent: slint::Color, container: slint::Color, on_container: slint::Color) {
         let themed = (rgb(container), rgb(on_container));
         let (m, dark) = (st.shell.look.material, st.shell.look.dark);
-        self.styled = Some(Style::from_settings(&st.shell.cfg, m, dark, rgb(accent), themed));
-        self.plain = Some(Style::from_settings(&serde_json::json!({"appearance": {"iconStyle": "plain", "iconShape": "none"}}), m, dark, [0, 0, 0], ([0, 0, 0], [0, 0, 0])));
+        let styled = Some(Style::from_settings(&st.shell.cfg, m, dark, rgb(accent), themed));
+        let plain = Some(Style::from_settings(&serde_json::json!({"appearance": {"iconStyle": "plain", "iconShape": "none"}}), m, dark, [0, 0, 0], ([0, 0, 0], [0, 0, 0])));
+        // (any setting changing calls this: the icons drawn stay unless their style changed)
+        if styled == self.styled && plain == self.plain {
+            return;
+        }
+        self.styled = styled;
+        self.plain = plain;
         self.cache.clear();
         self.pending.clear();
     }
