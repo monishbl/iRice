@@ -81,6 +81,11 @@ export global LockData {
     in property <image> wallpaper;
     in property <image> soft;
     in property <bool> has-wallpaper;
+    // How light the blurred wallpaper is behind the password field (0..1:
+    // its darkest and brightest few percent), so the field's glass is
+    // tinted just enough for its words to read
+    in property <float> field-lo: 0.1;
+    in property <float> field-hi: 0.1;
     // Time
     in property <string> date;
     in property <string> time;
@@ -643,42 +648,164 @@ component Plate inherits Rectangle {
     }
 }
 
-// What the reader is doing (FingerGlyph.qml): waiting pulses, a miss shakes
-// red, a match pops green
+// The password field as glass (the user: "make this glass/transparent"):
+// the wallpaper behind it, blurred (the lock's own soft copy: a session-lock
+// surface is no layer, so the glass plugin draws nothing here), a tint
+// just strong enough for the words to read over that part of the picture
+// (LockData.field-lo/hi: 4.5:1 or more, the placeholder too), a sheen along
+// the top and a rim lit from the top left, as the shell's glass is lit.
+component GlassField inherits Rectangle {
+    in property <length> win-w: 1920px;
+    in property <length> win-h: 1080px;
+    in property <bool> bad;
+    // focus: the rim lit all round, 1.5 px (a ring outside it read as a
+    // second edge); without it, only the top left catches the light
+    in property <bool> focused;
+    // (Reduce Transparency: solid, as the cards are)
+    property <bool> solid: LockData.plate == "solid";
+    property <bool> dark: LockData.dark-ink;
+    // light ink: a faint white frost, then dark glass as the picture gets
+    // brighter (its brightest part, frosted, kept under ~88 of 255)
+    property <float> hi: LockData.field-hi * 255 * 0.9 + 25.5;
+    property <float> shade: dark ? 0 : Math.clamp((hi - 88) / Math.max(1, hi - 16), 0, 0.75);
+    // dark ink: white frost until its darkest part is ~165 of 255 or lighter
+    property <float> lo: LockData.field-lo * 255;
+    property <float> frost: dark ? Math.clamp((165 - lo) / Math.max(1, 255 - lo), 0.2, 0.85) : 0.1;
+    border-radius: self.height / 2;
+    clip: true;
+    background: solid ? (dark ? #FFFFFF : #232327) : transparent;
+    if !solid && LockData.has-wallpaper: Image {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        source: LockData.soft;
+        image-fit: fill;
+        source-clip-x: round(max(0, root.absolute-position.x / root.win-w * LockData.soft.width));
+        source-clip-y: round(max(0, root.absolute-position.y / root.win-h * LockData.soft.height));
+        source-clip-width: round(max(1, root.width / root.win-w * LockData.soft.width));
+        source-clip-height: round(max(1, root.height / root.win-h * LockData.soft.height));
+        accessible-role: none;
+    }
+    if !solid: Rectangle { background: rgba(255, 255, 255, root.frost); }
+    if !solid: Rectangle { background: rgba(16, 16, 20, root.shade); }
+    // (the light on its top half)
+    if !solid: Rectangle {
+        y: 0;
+        height: root.height / 2;
+        background: @linear-gradient(180deg, #ffffff29 0%, #ffffff00 100%);
+    }
+    @children
+    // The rim: bright where the light falls (top left), a glint opposite
+    Rectangle {
+        border-radius: root.border-radius;
+        background: transparent;
+        border-width: root.focused ? 1.5px : 1px;
+        border-color: root.bad ? Theme.danger.with-alpha(0.85)
+            : root.focused ? (dark ? @linear-gradient(120deg, #18181Bd9 0%, #18181B80 45%, #18181Bb3 100%) : @linear-gradient(120deg, #ffffffeb 0%, #ffffff8c 40%, #ffffff66 65%, #ffffffa6 100%))
+            : solid ? (dark ? #00000014 : #ffffff1f)
+            : @linear-gradient(120deg, #ffffffc0 0%, #ffffff4d 30%, #ffffff1f 62%, #ffffff59 100%);
+    }
+}
+
+// What the reader is doing, its ridges drawn one by one so each can light
+// in turn (the user's "ridges trace in"): waiting, a soft light runs
+// through the ridges from the core outwards, on a loop; a match fills them
+// one after another and they turn into a tick; a miss shakes and goes red
+// for a moment, then waits again. Reduce Motion: a still glyph, only its
+// colour changes (green on a match, red on a miss).
 component FingerGlyph inherits Rectangle {
-    in property <string> phase;
+    in property <string> phase; // "" | waiting | match | miss
     in property <color> ink: Theme.label;
+    in property <color> good: Theme.success;
+    in property <color> bad: Theme.danger;
     in property <length> size: 22px;
+    // (false where the glyph's container shakes instead: Material)
+    in property <bool> shakes: true;
+    in property <bool> still: LockData.reduce-motion;
     width: size;
     height: size;
+    // The first moments of a phase (k: ms since it began)
     property <duration> t0;
-    property <bool> moving;
-    property <float> k: moving ? (animation-tick() - t0) / 1ms : 1000;
+    property <bool> fresh;
     changed phase => {
-        if !LockData.reduce-motion && phase != "" {
-            t0 = animation-tick();
-            moving = true;
-        }
+        t0 = animation-tick();
+        fresh = true;
     }
     Timer {
-        interval: 460ms;
-        running: root.moving;
-        triggered => { root.moving = false; }
+        interval: 1300ms;
+        running: root.fresh;
+        triggered => { root.fresh = false; }
     }
-    // (waiting: 1 → 1.14 → 1; match: 0.6 → 1.12 → 1; miss: a shake)
-    property <float> s: phase == "waiting" ? (k < 180 ? 1 + 0.14 * k / 180 : k < 440 ? 1.14 - 0.14 * (k - 180) / 260 : 1)
-        : phase == "match" ? (k < 200 ? 0.6 + 0.52 * k / 200 : k < 340 ? 1.12 - 0.12 * (k - 200) / 140 : 1) : 1;
-    property <length> dx: phase != "miss" ? 0px : k < 50 ? -4px * k / 50 : k < 120 ? -4px + 8px * (k - 50) / 70 : k < 180 ? 4px - 7px * (k - 120) / 60 : k < 230 ? -3px + 5px * (k - 180) / 50 : k < 270 ? 2px - 2px * (k - 230) / 40 : 0px;
-    Icon {
+    property <float> k: fresh && !still ? (animation-tick() - t0) / 1ms : 5000;
+    // a miss: red at once, back to the ink after 1.1 s (150 ms each way)
+    property <float> red: phase != "miss" ? 0 : still ? (fresh ? 1 : 0)
+        : k < 150 ? 1 - (1 - k / 150) * (1 - k / 150) : k < 1100 ? 1 : k < 1250 ? 1 - (k - 1100) / 150 : 0;
+    // waiting (or a miss gone back to waiting): the loop, 2.4 s, linear
+    property <bool> looping: !still && (phase == "waiting" || (phase == "miss" && red <= 0));
+    property <float> lt: looping ? Math.mod(animation-tick() / 1ms, 2400) / 2400 : -1;
+    pure function glow(i: int) -> float {
+        if !looping {
+            return 1;
+        }
+        // (each ridge's light peaks in turn, core first, then a rest)
+        let d = Math.abs(lt - (0.12 + i * 0.16)) / 0.2;
+        let g = Math.max(0, 1 - d);
+        0.5 + 0.5 * g * g * (3 - 2 * g)
+    }
+    // a match: the ridges fill (40 ms apart, 140 ms each, ease-out), then
+    // give way to the tick (from 300 ms, 200 ms)
+    pure function fill(i: int) -> float {
+        if phase != "match" {
+            return 0;
+        }
+        let f = Math.clamp((k - 40 * i) / 140, 0, 1);
+        1 - (1 - f) * (1 - f)
+    }
+    property <float> tick: phase != "match" || still ? 0 : Math.clamp((k - 300) / 200, 0, 1);
+    property <float> tick-e: 1 - (1 - tick) * (1 - tick);
+    property <color> base: ink.mix(bad, 1 - red);
+    property <length> dx: !shakes || phase != "miss" ? 0px : k < 50 ? -4px * k / 50 : k < 120 ? -4px + 8px * (k - 50) / 70 : k < 180 ? 4px - 7px * (k - 120) / 60 : k < 230 ? -3px + 5px * (k - 180) / 50 : k < 270 ? 2px - 2px * (k - 230) / 40 : 0px;
+    ridges := Rectangle {
         x: dx;
         width: root.width;
         height: root.height;
-        transform-scale: s;
-        text: phase == "match" ? "\u{e184}" : "\u{e23e}";
-        fill: phase == "match";
-        font-size: size;
-        color: phase == "miss" ? Theme.danger : phase == "match" ? Theme.success : ink;
-        animate color { duration: 150ms; }
+        opacity: 1 - tick-e;
+        transform-scale: 1 - 0.12 * tick-e;
+        transform-origin: { x: self.width / 2, y: self.height / 2 };
+        // core to the outer ridge (a 24-unit box)
+        for c[i] in [
+            "M 10 15.5 L 10 12.5 A 2 2 0 0 1 14 12.5 L 14 18.5",
+            "M 7.5 19.5 L 7.5 12.5 A 4.5 4.5 0 0 1 16.5 12.5 L 16.5 15.5",
+            "M 5 16.5 L 5 12.5 A 7 7 0 0 1 19 12.5 L 19 20",
+            "M 2.5 14 L 2.5 12.5 A 9.5 9.5 0 0 1 21.5 12.5 L 21.5 16",
+        ]: Path {
+            width: root.width;
+            height: root.height;
+            viewbox-width: 24;
+            viewbox-height: 24;
+            commands: c;
+            fill: transparent;
+            stroke: root.base.mix(root.good, 1 - root.fill(i)).with-alpha(root.glow(i));
+            stroke-width: 1.6px;
+            stroke-line-cap: round;
+            accessible-role: none;
+        }
+    }
+    if tick > 0: Path {
+        width: root.width;
+        height: root.height;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M 6 12.5 L 10.2 16.7 L 18.5 8";
+        fill: transparent;
+        stroke: root.good;
+        stroke-width: 2.2px;
+        stroke-line-cap: round;
+        opacity: tick-e;
+        transform-scale: 0.8 + 0.2 * tick-e;
+        transform-origin: { x: self.width / 2, y: self.height / 2 };
+        accessible-role: none;
     }
 }
 
@@ -1079,13 +1206,14 @@ component GlassLock inherits Rectangle {
             Rectangle {
                 width: 240px;
                 height: 36px;
-                Plate {
+                GlassField {
                     x: shake-x;
                     width: 240px;
                     height: 36px;
-                    radius: 18px;
                     win-w: W;
                     win-h: H;
+                    bad: LockData.error != "";
+                    focused: input.has-focus && !LockData.busy;
                     input := TextInput {
                         x: 16px;
                         width: parent.width - 32px - 24px;
@@ -1107,7 +1235,8 @@ component GlassLock inherits Rectangle {
                         height: parent.height;
                         vertical-alignment: center;
                         text: LockData.finger-state != "" ? "Fingerprint or Password" : "Enter Password";
-                        color: ink2;
+                        // (stronger than ink2: it sits on glass, 4.5:1 with the field's tint)
+                        color: ink.with-alpha(0.82);
                         font-size: Theme.body;
                         accessible-role: none;
                     }
@@ -1949,11 +2078,14 @@ component MaterialLock inherits Rectangle {
                             fill: finger.phase == "match" ? Theme.m3-primary-container : finger.phase == "miss" ? Theme.m3-error-container : finger.phase == "waiting" ? Theme.m3-secondary-container : transparent;
                             animate fill { duration: 150ms; }
                         }
-                        SymIcon {
-                            text: finger.phase == "match" ? "\u{e182}" : "\u{e23e}";
-                            font-size: 22px;
-                            color: finger.phase == "match" ? Theme.m3-on-primary-container : finger.phase == "miss" ? Theme.m3-on-error-container : Theme.m3-primary;
-                            animate color { duration: 150ms; }
+                        // (the ridges trace in, as on Glass; the pill shakes, not the glyph)
+                        FingerGlyph {
+                            phase: finger.phase;
+                            size: 22px;
+                            shakes: false;
+                            ink: Theme.m3-primary;
+                            good: Theme.m3-on-primary-container;
+                            bad: Theme.m3-on-error-container;
                         }
                     }
                 }

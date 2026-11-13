@@ -40,6 +40,8 @@ pub enum Finger {
     None,
     Waiting,
     Miss,
+    /// it let you in (the session starts: the glyph turns into a tick)
+    Match,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -358,7 +360,10 @@ impl Model {
                 self.failed(if description.is_empty() { "Login failed. Try again." } else { &description });
             }
             (_, Response::Success) => {
-                // (ready to launch)
+                // (ready to launch; with no password sent, the reader let you in)
+                if self.finger != Finger::None && !self.busy {
+                    self.finger = Finger::Match;
+                }
                 self.busy = false;
                 self.open = false;
                 self.launch();

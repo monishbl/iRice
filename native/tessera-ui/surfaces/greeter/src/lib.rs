@@ -22,7 +22,8 @@
 //! password "tessera" "logs in" (it quits), Escape quits (Settings' Preview).
 //! `--demo` draws it with made-up people and sessions (never anyone's real
 //! account) in one of its states, for the sandbox and for review:
-//!   users (default), typing, wrong, busy, finger, finger-miss, session,
+//!   users (default), typing, wrong, busy, finger, finger-miss,
+//!   finger-match, session,
 //!   power, other, none (no one listed), single (one person)
 //! A demo still talks to $GREETD_SOCK when it's set (the sandbox's fake
 //! greetd: native/tessera-ui/tools/fake-greetd.py), else it's a preview.
@@ -360,6 +361,8 @@ impl Greeter {
             g.set_error(m.error.clone().into());
             g.set_finger_on(m.finger != Finger::None);
             g.set_finger_miss(m.finger == Finger::Miss);
+            g.set_finger_match(m.finger == Finger::Match);
+            g.set_reduce_motion(st.shell.cfg["appearance"]["reduceMotion"].as_bool().unwrap_or(false));
             g.set_finger_say(if m.message.is_empty() { "Fingerprint".into() } else { m.message.clone().into() });
             g.set_power_choice(m.power_choice.clone().into());
             g.set_say(say.clone().into());
@@ -508,6 +511,7 @@ fn demo_state(m: &mut Model, state: &str) {
         "busy" => m.force(true, "", "", Finger::None),
         "finger" => m.force(false, "", "Place your finger on the fingerprint reader", Finger::Waiting),
         "finger-miss" => m.force(false, "", "Failed to match fingerprint", Finger::Miss),
+        "finger-match" => m.force(false, "", "", Finger::Match),
         "session" => {
             m.next_session(1);
             m.set_row(0);

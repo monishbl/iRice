@@ -94,6 +94,14 @@ export global Greet {
     in property <string> error;
     in property <bool> finger-on;
     in property <bool> finger-miss;
+    // the reader matched (the session starts: the ridges fill, a tick)
+    in property <bool> finger-match;
+    // appearance.reduceMotion: the fingerprint holds still
+    in property <bool> reduce-motion;
+    // the fingerprint's phase, as the lock's: "" | waiting | miss | match
+    pure public function finger-phase() -> string {
+        finger-match ? "match" : finger-miss ? "miss" : finger-on ? "waiting" : ""
+    }
     in property <string> finger-say; // what a screen reader says for the fingerprint
     in property <string> power-choice;
     // what the line under the field says (the style's words), and whether it's bad news
@@ -252,6 +260,108 @@ component Secret inherits Rectangle {
             root.blink = true;
             root.edited(self.text);
         }
+    }
+}
+
+// What the reader is doing, its ridges drawn one by one so each can light
+// in turn (the user's "ridges trace in"): waiting, a soft light runs
+// through the ridges from the core outwards, on a loop; a match fills them
+// one after another and they turn into a tick; a miss shakes and goes red
+// for a moment, then waits again. Reduce Motion: a still glyph, only its
+// colour changes (green on a match, red on a miss).
+// (The lock's FingerGlyph, lock.slint: keep the two the same.)
+component FingerGlyph inherits Rectangle {
+    in property <string> phase; // "" | waiting | match | miss
+    in property <color> ink: white;
+    in property <color> good: Theme.success;
+    in property <color> bad: Theme.danger;
+    in property <length> size: 22px;
+    // (false where the glyph's container shakes instead: Material)
+    in property <bool> shakes: true;
+    in property <bool> still: Greet.reduce-motion;
+    width: size;
+    height: size;
+    // The first moments of a phase (k: ms since it began)
+    property <duration> t0;
+    property <bool> fresh;
+    changed phase => {
+        t0 = animation-tick();
+        fresh = true;
+    }
+    Timer {
+        interval: 1300ms;
+        running: root.fresh;
+        triggered => { root.fresh = false; }
+    }
+    property <float> k: fresh && !still ? (animation-tick() - t0) / 1ms : 5000;
+    // a miss: red at once, back to the ink after 1.1 s (150 ms each way)
+    property <float> red: phase != "miss" ? 0 : still ? (fresh ? 1 : 0)
+        : k < 150 ? 1 - (1 - k / 150) * (1 - k / 150) : k < 1100 ? 1 : k < 1250 ? 1 - (k - 1100) / 150 : 0;
+    // waiting (or a miss gone back to waiting): the loop, 2.4 s, linear
+    property <bool> looping: !still && (phase == "waiting" || (phase == "miss" && red <= 0));
+    property <float> lt: looping ? Math.mod(animation-tick() / 1ms, 2400) / 2400 : -1;
+    pure function glow(i: int) -> float {
+        if !looping {
+            return 1;
+        }
+        // (each ridge's light peaks in turn, core first, then a rest)
+        let d = Math.abs(lt - (0.12 + i * 0.16)) / 0.2;
+        let g = Math.max(0, 1 - d);
+        0.5 + 0.5 * g * g * (3 - 2 * g)
+    }
+    // a match: the ridges fill (40 ms apart, 140 ms each, ease-out), then
+    // give way to the tick (from 300 ms, 200 ms)
+    pure function fill(i: int) -> float {
+        if phase != "match" {
+            return 0;
+        }
+        let f = Math.clamp((k - 40 * i) / 140, 0, 1);
+        1 - (1 - f) * (1 - f)
+    }
+    property <float> tick: phase != "match" || still ? 0 : Math.clamp((k - 300) / 200, 0, 1);
+    property <float> tick-e: 1 - (1 - tick) * (1 - tick);
+    property <color> base: ink.mix(bad, 1 - red);
+    property <length> dx: !shakes || phase != "miss" ? 0px : k < 50 ? -4px * k / 50 : k < 120 ? -4px + 8px * (k - 50) / 70 : k < 180 ? 4px - 7px * (k - 120) / 60 : k < 230 ? -3px + 5px * (k - 180) / 50 : k < 270 ? 2px - 2px * (k - 230) / 40 : 0px;
+    ridges := Rectangle {
+        x: dx;
+        width: root.width;
+        height: root.height;
+        opacity: 1 - tick-e;
+        transform-scale: 1 - 0.12 * tick-e;
+        transform-origin: { x: self.width / 2, y: self.height / 2 };
+        // core to the outer ridge (a 24-unit box)
+        for c[i] in [
+            "M 10 15.5 L 10 12.5 A 2 2 0 0 1 14 12.5 L 14 18.5",
+            "M 7.5 19.5 L 7.5 12.5 A 4.5 4.5 0 0 1 16.5 12.5 L 16.5 15.5",
+            "M 5 16.5 L 5 12.5 A 7 7 0 0 1 19 12.5 L 19 20",
+            "M 2.5 14 L 2.5 12.5 A 9.5 9.5 0 0 1 21.5 12.5 L 21.5 16",
+        ]: Path {
+            width: root.width;
+            height: root.height;
+            viewbox-width: 24;
+            viewbox-height: 24;
+            commands: c;
+            fill: transparent;
+            stroke: root.base.mix(root.good, 1 - root.fill(i)).with-alpha(root.glow(i));
+            stroke-width: 1.6px;
+            stroke-line-cap: round;
+            accessible-role: none;
+        }
+    }
+    if tick > 0: Path {
+        width: root.width;
+        height: root.height;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M 6 12.5 L 10.2 16.7 L 18.5 8";
+        fill: transparent;
+        stroke: root.good;
+        stroke-width: 2.2px;
+        stroke-line-cap: round;
+        opacity: tick-e;
+        transform-scale: 0.8 + 0.2 * tick-e;
+        transform-origin: { x: self.width / 2, y: self.height / 2 };
+        accessible-role: none;
     }
 }
 
@@ -654,7 +764,9 @@ component GlassStyle inherits Rectangle {
         }
     }
 
-    // The frosted field
+    // The field, as glass (the user: "make this glass/transparent"): a light
+    // frost, a sheen along its top and a rim lit from the top left, as the
+    // shell's glass is lit (no wallpaper here: the dark shows through)
     field := Rectangle {
         visible: Greet.primary;
         x: (root.width - self.width) / 2 + sh.dx;
@@ -662,9 +774,21 @@ component GlassStyle inherits Rectangle {
         width: 240px;
         height: 34px;
         border-radius: 17px;
-        background: rgba(255, 255, 255, 0.18);
-        border-width: 1px;
-        border-color: Greet.error != "" ? rgba(255, 140, 140, 0.8) : rgba(255, 255, 255, 0.25);
+        clip: true;
+        background: @linear-gradient(180deg, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.12) 100%);
+        Rectangle {
+            y: 0;
+            height: parent.height / 2;
+            background: @linear-gradient(180deg, #ffffff24 0%, #ffffff00 100%);
+        }
+        // (the rim: lit from the top left; focused, lit all round, 1.5 px)
+        Rectangle {
+            border-radius: parent.border-radius;
+            border-width: pw.focused && !Greet.busy ? 1.5px : 1px;
+            border-color: Greet.error != "" ? rgba(255, 140, 140, 0.85)
+                : pw.focused && !Greet.busy ? @linear-gradient(120deg, #ffffffeb 0%, #ffffff8c 40%, #ffffff66 65%, #ffffffa6 100%)
+                : @linear-gradient(120deg, #ffffffb3 0%, #ffffff47 30%, #ffffff1a 62%, #ffffff52 100%);
+        }
         pw := Secret {
             x: 14px;
             width: parent.width - 14px - 36px;
@@ -709,7 +833,7 @@ component GlassStyle inherits Rectangle {
             height: parent.height;
             vertical-alignment: center;
             text: Greet.placeholder;
-            color: rgba(255, 255, 255, 0.6);
+            color: rgba(255, 255, 255, 0.72);
             font-family: "Inter";
             font-size: 13px;
             accessible-role: none;
@@ -729,11 +853,17 @@ component GlassStyle inherits Rectangle {
             accessible-action-default => {
                 Greet.submit(pw.text);
             }
-            PIcon {
-                text: pw.text != "" ? Greet.ic.arrow-right : Greet.ic.fingerprint;
-                color: pw.text == "" && Greet.finger-miss ? #FF9C9C : white;
-                size: pw.text != "" ? 13px : 18px;
-                family: pw.text != "" ? "Phosphor-Bold" : "Phosphor";
+            if pw.text != "": PIcon {
+                text: Greet.ic.arrow-right;
+                color: white;
+                size: 13px;
+                family: "Phosphor-Bold";
+            }
+            if pw.text == "": FingerGlyph {
+                phase: Greet.finger-phase();
+                size: 20px;
+                ink: white;
+                bad: #FF9C9C;
             }
             send := TouchArea {
                 enabled: pw.text != "";
@@ -1040,10 +1170,11 @@ component PlainStyle inherits Rectangle {
             height: 22px;
             accessible-role: AccessibleRole.text;
             accessible-label: Greet.finger-say;
-            PIcon {
-                text: Greet.ic.fingerprint;
-                color: Greet.finger-miss ? root.bad : root.accent;
+            FingerGlyph {
+                phase: Greet.finger-phase();
                 size: 22px;
+                ink: root.accent;
+                bad: root.bad;
             }
         }
     }
@@ -1986,13 +2117,17 @@ component MaterialStyle inherits Rectangle {
             width: root.fingered ? 40px : 0px;
             height: 40px;
             border-radius: 20px;
-            background: !root.fingered ? transparent : Greet.finger-miss ? Greet.m.error-container : Greet.m.secondary-container;
+            background: !root.fingered ? transparent : Greet.finger-match ? Greet.m.primary-container : Greet.finger-miss ? Greet.m.error-container : Greet.m.secondary-container;
+            animate background { duration: 150ms; easing: ease-out; }
             accessible-role: AccessibleRole.text;
             accessible-label: Greet.finger-say;
-            if root.fingered: MIcon {
-                g: Greet.sy.fingerprint;
+            if root.fingered: FingerGlyph {
+                phase: Greet.finger-phase();
                 size: 22px;
-                color: Greet.finger-miss ? Greet.m.on-error-container : Greet.m.primary;
+                shakes: false;
+                ink: Greet.m.primary;
+                good: Greet.m.on-primary-container;
+                bad: Greet.m.on-error-container;
             }
         }
         // A click on the closed pill opens it; on the name, types another

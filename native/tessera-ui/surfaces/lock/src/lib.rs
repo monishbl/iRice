@@ -450,6 +450,27 @@ fn decode_pair(path: &str, w: u32, h: u32) -> Option<(slint::SharedPixelBuffer<s
     Some((sharp, soft))
 }
 
+/// How light the blurred wallpaper is where Glass's password field sits
+/// (the bottom middle): its darkest and brightest few percent, 0..1, so the
+/// field's glass takes a tint just strong enough for its words to read
+fn field_light(soft: &slint::SharedPixelBuffer<slint::Rgb8Pixel>) -> (f32, f32) {
+    let (w, h) = (soft.width() as usize, soft.height() as usize);
+    let px = soft.as_slice();
+    let mut l: Vec<u8> = Vec::new();
+    for y in (h * 78 / 100)..(h * 96 / 100).max(h * 78 / 100 + 1).min(h) {
+        for x in (w * 42 / 100)..(w * 58 / 100).max(w * 42 / 100 + 1).min(w) {
+            let p = px[y * w + x];
+            l.push((0.2126 * p.r as f32 + 0.7152 * p.g as f32 + 0.0722 * p.b as f32) as u8);
+        }
+    }
+    if l.is_empty() {
+        return (0.1, 0.1);
+    }
+    l.sort_unstable();
+    let at = |q: usize| l[(l.len() - 1) * q / 100] as f32 / 255.0;
+    (at(3), at(97))
+}
+
 /// Your picture (~/.face, else AccountsService's), square and in a cookie
 fn avatar_files() -> Option<(Vec<u8>, Vec<u8>)> {
     let home = std::env::var("HOME").unwrap_or_default();
@@ -1801,12 +1822,15 @@ impl Part for Lock {
                     self.wins.iter_mut().for_each(reveal);
                     return;
                 };
+                let (lo, hi) = field_light(&soft);
                 let (sharp, soft) = (Image::from_rgb8(sharp), Image::from_rgb8(soft));
                 for w in &mut self.wins {
                     if w.picture.0 == path && w.picture.1 == size {
                         let d = w.ui.global::<ui::LockData>();
                         d.set_wallpaper(sharp.clone());
                         d.set_soft(soft.clone());
+                        d.set_field_lo(lo);
+                        d.set_field_hi(hi);
                         d.set_has_wallpaper(true);
                         w.sharp = Some(sharp.clone());
                     }
