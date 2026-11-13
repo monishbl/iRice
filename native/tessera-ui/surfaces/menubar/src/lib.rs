@@ -2378,14 +2378,14 @@ impl Part for Menubar {
             }
             let ui = &b.ui;
             let (w, _) = b.surface.logical_size();
-            let mut shapes: Vec<[f32; 19]> = Vec::new();
+            let mut shapes: Vec<tessera_core::theme::GlassShape> = Vec::new();
             if strip && ui.get_chrome() && ui.get_revealed() {
-                shapes.push(theme::glass_shape(&look, 0.0, 0.0, w as f32, BAR_H as f32, 0.0, 1.0, 1.0));
+                shapes.push(theme::shadow_margin(theme::glass_shape(&look, 0.0, 0.0, w as f32, BAR_H as f32, 0.0, 1.0, 1.0), 0.0));
             }
             // the island: glass under its lower rim as it opens
             let fade = ui.get_isl_fade();
             if cfg.island && fade > 0.01 && ui.get_revealed() {
-                shapes.push(theme::glass_shape(&look, ui.get_isl_x(), ui.get_isl_y(), ui.get_isl_w(), ui.get_isl_h(), ui.get_isl_r(), fade, 1.0));
+                shapes.push(theme::shadow_margin(theme::glass_shape(&look, ui.get_isl_x(), ui.get_isl_y(), ui.get_isl_w(), ui.get_isl_h(), ui.get_isl_r(), fade, 1.0), 16.0));
             }
             // the hover tip
             let o = ui.get_tip_o();

@@ -2005,7 +2005,7 @@ impl Part for Desktop {
         if !w.surface.mapped.get() {
             return;
         }
-        let mut shapes: Vec<[f32; 19]> = Vec::new();
+        let mut shapes: Vec<tessera_core::theme::GlassShape> = Vec::new();
         // (while LockFx runs, each widget's glass zooms and fades with it)
         let fx = w.ui.get_fx_now();
         let zoom = w.ui.get_fx_zoom();
@@ -2030,11 +2030,12 @@ impl Part for Desktop {
                 x = ncx - pw * s / 2.0;
                 y = ncy - ph * s / 2.0;
             }
-            shapes.push(theme::glass_shape(&look, x, y, pw * s, ph * s, 36.0 * s, a, 1.0));
+            // (on the wallpaper: the QML's WidgetFrame glass, mode 0, bevel 20, margin 20)
+            shapes.push(theme::wallpaper_glass_shape(&look, x, y, pw * s, ph * s, 36.0 * s, a, 20.0 * s, 20.0 * s));
         }
         if w.ui.get_stack_open() {
             let rows = (w.ui.get_stack_files().row_count().min(16).div_ceil(4)) as f32;
-            shapes.push(theme::glass_shape(&look, w.ui.get_stack_x(), w.ui.get_stack_y(), 4.0 * 96.0 + 24.0, rows * 96.0 + 48.0, 18.0, 1.0, 1.0));
+            shapes.push(theme::wallpaper_glass_shape(&look, w.ui.get_stack_x(), w.ui.get_stack_y(), 4.0 * 96.0 + 24.0, rows * 96.0 + 48.0, 18.0, 1.0, 18.0, 20.0));
         }
         let key = format!("{shapes:?}");
         if key != w.glass_sent {

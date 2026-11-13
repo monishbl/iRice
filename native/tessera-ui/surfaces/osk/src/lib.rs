@@ -211,7 +211,7 @@ impl Part for Osk {
         // inside the window's shadow room. Screen coordinates put it below
         // the screen, and the keyboard had no glass at all)
         let (ww, wh) = (w.size.0 as f32, w.size.1 as f32);
-        let shape = theme::glass_shape(&st.shell.look, M, M, ww - 2.0 * M, wh - 2.0 * M, 26.0, 1.0, 1.0);
+        let shape = theme::shadow_margin(theme::glass_shape(&st.shell.look, M, M, ww - 2.0 * M, wh - 2.0 * M, 26.0, 1.0, 1.0), M);
         let key = tessera_core::theme::glass_key(&shape);
         if key != w.glass_sent {
             st.shell.glass.set(&w.output, NS, std::slice::from_ref(&shape));

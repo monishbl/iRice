@@ -8,6 +8,7 @@
 // (its Calendar, Todos and Timers) and does what they're asked.
 
 import { Theme, Icon } from "@tessera/theme.slint";
+import { Squircle } from "@tessera/squircle.slint";
 import { IconButton, StateShape } from "@tessera/widgets.slint";
 import { CalendarTab, TodoTab, Segmented, NcDay, NcItem, NcTodo, NcTarget, NcDraft } from "@tessera/calendar.slint";
 import { Banner, GlassCard, MaterialCard, Expander, Frost } from "notifications.slint";
@@ -70,14 +71,15 @@ component Platter inherits Rectangle {
     in property <bool> plugin: true;
     border-radius: 18px;
     background: !Theme.material && chip && !plugin ? Frost.tint : transparent;
-    Rectangle {
-        border-radius: parent.border-radius;
+    Squircle {
+        radius: parent.border-radius;
         // (Material, see-through: Theme.qml's controlAlpha on its containers)
-        background: Theme.material ? Theme.m3-surface-container-high.with-alpha(Theme.blur ? 1 - 0.4 * (1 - Theme.panel-alpha) / 0.55 : 1) : chip ? (Theme.dark ? #ffffff12 : #ffffff47) : Theme.platter;
-        // (on the plugin's glass its rim is the edge: a circular one here
-        // parted from the squircle at the corners, a second rounding)
-        border-width: chip && !Theme.material && !plugin ? 1px : 0;
-        border-color: Theme.dark ? #ffffff0f : #ffffff4d;
+        fill: Theme.material ? Theme.m3-surface-container-high.with-alpha(Theme.blur ? 1 - 0.4 * (1 - Theme.panel-alpha) / 0.55 : 1) : chip ? (Theme.dark ? #ffffff12 : #ffffff47) : Theme.platter;
+        // (on the glass's own curve, Platter.qml's Squircle: a circular fill
+        // parted from the plugin's squircle at the corners, a second rounding;
+        // a chip's hairline lies on the glass's edge)
+        line-width: chip && !Theme.material ? 1px : 0;
+        line-color: Theme.dark ? #ffffff0f : #ffffff4d;
     }
 }
 

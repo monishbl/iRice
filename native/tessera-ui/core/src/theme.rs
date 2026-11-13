@@ -217,6 +217,27 @@ impl GlassMaterial {
     pub fn gloss(&self) -> f32 {
         self.lens * (1.0 - 0.85 * self.frost) * (1.0 - self.solid)
     }
+    /// Theme.glass.rim: the specular rim glass.frag draws itself (mode 0)
+    pub fn rim(&self) -> f32 {
+        if self.material_look {
+            0.0
+        } else if self.dark {
+            0.5
+        } else {
+            0.65
+        }
+    }
+    /// Theme.glass.shadow: the drop shadow's strength (Material see-through,
+    /// the veil: none)
+    pub fn shadow(&self) -> f32 {
+        match (self.material_look, self.dark) {
+            (true, _) if self.name == "veil" => 0.0,
+            (true, true) => 0.24,
+            (true, false) => 0.1,
+            (false, true) => 0.32,
+            (false, false) => 0.14,
+        }
+    }
     /// Theme.glass.tier: the nearest named material
     pub fn tier(&self) -> &'static str {
         if self.solid >= 0.97 {
@@ -875,9 +896,15 @@ pub fn contrast_ratio(a: Color, b: Color) -> f32 {
 /// `lens: 0.35`.) The solid tier, which the QML draws itself without the
 /// plugin, is the plugin's solid shape here (mode 2, the solid colour).
 /// (Theme.qml glides 0.6 s between materials; here a change shows at once.)
-pub fn glass_shape(look: &Look, x: f32, y: f32, w: f32, h: f32, radius: f32, opacity: f32, lens: f32) -> [f32; 19] {
+///
+/// The last two numbers are the soft drop shadow Glass.qml draws round plugin
+/// glass, outside the shape only (glass.frag's mode 3): its strength
+/// (Theme.glass.shadow, × 0.6 over the plugin's glass) and how far it reaches
+/// (Glass.qml's shadowMargin, 24 unless the part says: `shadow_margin`).
+pub fn glass_shape(look: &Look, x: f32, y: f32, w: f32, h: f32, radius: f32, opacity: f32, lens: f32) -> GlassShape {
     let g = &look.glass;
-    let p = if g.tier() == "solid" { GlassMaterial { solid: 1.0, ..g.clone() }.preset(w.min(h)) } else { g.preset(w.min(h)) };
+    let solid = g.tier() == "solid";
+    let p = if solid { GlassMaterial { solid: 1.0, ..g.clone() }.preset(w.min(h)) } else { g.preset(w.min(h)) };
     [
         x, y, w, h, radius, p.mode,
         p.refraction * lens,
@@ -890,7 +917,50 @@ pub fn glass_shape(look: &Look, x: f32, y: f32, w: f32, h: f32, radius: f32, opa
         p.saturation,
         opacity,
         p.gloss,
+        // (the QML's solid tier is its own glass, mode 2: the full shadow)
+        g.shadow() * if solid { 1.0 } else { 0.6 },
+        24.0,
     ]
+}
+
+/// One plugin glass shape: its 19 numbers and its shadow's two (glass_shape)
+pub type GlassShape = [f32; 21];
+
+/// `s` with its shadow reaching `margin` px (Glass.qml's shadowMargin); 0: none
+pub fn shadow_margin(mut s: GlassShape, margin: f32) -> GlassShape {
+    s[20] = margin;
+    if margin <= 0.0 {
+        s[19] = 0.0;
+    }
+    s
+}
+
+/// Glass on the wallpaper, as the QML's desktop widgets draw it: not the
+/// plugin's material but glass.frag's mode 0 (Glass.qml outside a glass
+/// window), which refracts the wallpaper baked fully blurred: so frost 1, the
+/// glass's own lens (Theme.glass.refraction, chroma, `bevel` × the band) and
+/// rim (Theme.glass.rim, brighter than the plugin presets'), the clear tint,
+/// and the full shadow. The solid tier is the plugin's solid shape as anywhere.
+pub fn wallpaper_glass_shape(look: &Look, x: f32, y: f32, w: f32, h: f32, radius: f32, opacity: f32, bevel: f32, margin: f32) -> GlassShape {
+    let g = &look.glass;
+    let mut s = glass_shape(look, x, y, w, h, radius, opacity, 1.0);
+    if g.tier() == "solid" {
+        return shadow_margin(s, margin);
+    }
+    // (mode 0's rim band: bevel × band, at most twice the radius; its colour
+    // fringe is the lens's offset × chroma, the plugin's × chroma × 0.4)
+    s[5] = 0.0;
+    s[6] = 36.0 * g.bend;
+    s[7] = 0.0;
+    s[8] = (bevel * g.band).min(radius * 2.0);
+    s[9] = 1.0;
+    s[10] = 0.12 * g.dispersion / 0.4;
+    s[11] = g.rim() * (1.0 - g.solid);
+    s[12..16].copy_from_slice(&g.tint);
+    s[16] = 1.35;
+    s[19] = g.shadow();
+    s[20] = margin;
+    s
 }
 
 /// What a part's after_frame compares to tell whether its glass shapes (or
@@ -962,8 +1032,8 @@ mod tests {
         assert_eq!(glass_key(&a.to_vec()), glass_key(&b.to_vec()));
         b[1][18] = 2.001;
         assert_ne!(glass_key(&a.to_vec()), glass_key(&b.to_vec()));
-        assert_ne!(glass_key(&Vec::<[f32; 19]>::new()), glass_key(&vec![[0.0f32; 19]]));
-        assert!(!glass_key(&None::<[f32; 19]>).is_empty());
+        assert_ne!(glass_key(&Vec::<[f32; 21]>::new()), glass_key(&vec![[0.0f32; 19]]));
+        assert!(!glass_key(&None::<[f32; 21]>).is_empty());
     }
 
     fn none(_: &str) -> Option<String> {

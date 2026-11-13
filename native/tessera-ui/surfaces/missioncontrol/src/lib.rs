@@ -470,7 +470,7 @@ impl MissionControl {
             }
             let p = w.ui.get_progress().clamp(0.0, 1.0);
             // borderless: no lens, no rim (MissionControl.qml's Glass)
-            let mut s = theme::glass_shape(&look, 0.0, 0.0, w.size.0, w.size.1, 0.0, p, 0.0);
+            let mut s = theme::shadow_margin(theme::glass_shape(&look, 0.0, 0.0, w.size.0, w.size.1, 0.0, p, 0.0), 0.0);
             s[11] = 0.0;
             let shapes = [s];
             let key = tessera_core::theme::glass_key(&shapes);

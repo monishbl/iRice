@@ -185,7 +185,7 @@ impl Part for Tiling {
             let (o, s) = (ui.get_shown_opacity(), ui.get_shown_scale());
             let (x, y, ww, hh) = (ui.get_ax(), ui.get_ay(), ui.get_aw(), ui.get_ah());
             let (sw, sh) = (ww * s, hh * s);
-            let shape = theme::glass_shape(&st.shell.look, x + (ww - sw) / 2.0, y + (hh - sh) / 2.0, sw, sh, ui.get_radius() * s, o, 1.0);
+            let shape = theme::shadow_margin(theme::glass_shape(&st.shell.look, x + (ww - sw) / 2.0, y + (hh - sh) / 2.0, sw, sh, ui.get_radius() * s, o, 1.0), 16.0);
             let key = tessera_core::theme::glass_key(&shape);
             if key != w.glass_sent {
                 st.shell.glass.set(&w.output, NS, if o > 0.01 && sw >= 1.0 { std::slice::from_ref(&shape) } else { &[] });

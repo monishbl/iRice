@@ -146,7 +146,7 @@ pub(crate) enum M {
 }
 
 /// The glass under one window's shapes, sent when they change
-pub(crate) fn send_glass(st: &mut State, output: &str, ns: &str, shapes: &[[f32; 19]], sent: &mut String) {
+pub(crate) fn send_glass(st: &mut State, output: &str, ns: &str, shapes: &[tessera_core::theme::GlassShape], sent: &mut String) {
     let key = tessera_core::theme::glass_key(&shapes);
     if key != *sent {
         st.shell.glass.set(output, ns, shapes);

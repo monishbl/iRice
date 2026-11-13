@@ -588,13 +588,13 @@ impl Part for Overlay {
         let mut shapes = Vec::new();
         if open {
             let (x, y, ww, hh) = (w.ui.get_bar_x(), w.ui.get_bar_y(), w.ui.get_bar_w(), w.ui.get_bar_h());
-            shapes.push(theme::glass_shape(look, x, y, ww, hh, 26.0, 1.0, 1.0));
+            shapes.push(theme::shadow_margin(theme::glass_shape(look, x, y, ww, hh, 26.0, 1.0, 1.0), 20.0));
         }
         for id in model::ids(g) {
             let x = model::widget(&widgets, id);
             if x.shown(id, open, g) {
                 let o = if !open && x.clickthrough { 0.55 } else { 1.0 };
-                shapes.push(theme::glass_shape(look, x.x as f32, x.y as f32, x.w as f32, x.h as f32, 20.0, o, 1.0));
+                shapes.push(theme::shadow_margin(theme::glass_shape(look, x.x as f32, x.y as f32, x.w as f32, x.h as f32, 20.0, o, 1.0), 18.0));
             }
         }
         let _ = M;

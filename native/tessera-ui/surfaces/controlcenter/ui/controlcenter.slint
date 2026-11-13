@@ -7,6 +7,7 @@
 // sliders) in ListRow.qml's and DetailPage.qml's looks.
 
 import { Theme } from "@tessera/theme.slint";
+import { Squircle } from "@tessera/squircle.slint";
 
 // An icon: Phosphor, or in Material the matching Material Symbols glyph (sym)
 export struct CcIc {
@@ -349,14 +350,16 @@ component GlassModule {
         border-radius: shape-radius;
         background: Theme.panel;
     }
-    if m.kind != 2: Rectangle {
-        border-radius: shape-radius;
-        background: is-round ? (m.on ? #ffffff : bg.has-hover ? Theme.fill-hover : idle) : idle;
-        animate background { duration: 150ms; }
-        // (on the plugin's glass its rim is the edge: a second, circular one
-        // here parted from its squircle at the corners)
-        border-width: chip && Theme.plugin ? 0 : 1px;
-        border-color: #ffffff.with-alpha(Theme.dark ? 0.06 : 0.3);
+    property <color> tile-fill: is-round ? (m.on ? #ffffff : bg.has-hover ? Theme.fill-hover : idle) : idle;
+    animate tile-fill { duration: 150ms; }
+    // (on the glass's own curve, Platter's Squircle: a circular fill parted
+    // from the plugin's squircle at the corners, a second rounding; a chip's
+    // faint hairline lies on the glass's edge, as Platter's)
+    if m.kind != 2: Squircle {
+        radius: shape-radius;
+        fill: tile-fill;
+        line-width: chip ? 1px : 0;
+        line-color: #ffffff.with-alpha(Theme.dark ? 0.06 : 0.3);
     }
     if kbd-focus: Rectangle {
         x: -4px;
@@ -2165,7 +2168,7 @@ component GlassFooterButton inherits Rectangle {
     border-radius: 20px;
     background: accent ? (t.has-hover ? Theme.accent.darker(0.08) : Theme.accent)
         : t.pressed ? Theme.fill-pressed : t.has-hover ? Theme.fill-hover : chip ? (Theme.dark ? #ffffff12 : #ffffff47) : Theme.platter;
-    border-width: chip && !accent && !Theme.plugin ? 1px : 0;
+    border-width: chip && !accent ? 1px : 0; // (a pill: on the glass's own round ends, Platter's hairline)
     border-color: #ffffff.with-alpha(Theme.dark ? 0.06 : 0.3);
     transform-scale: t.pressed ? 0.95 : 1;
     animate transform-scale { duration: 150ms; }
@@ -2532,7 +2535,7 @@ export component ControlCenter inherits Window {
                             height: 40px;
                             border-radius: 20px;
                             background: bare ? (Theme.dark ? #ffffff12 : #ffffff47) : Theme.platter;
-                            border-width: bare && !Theme.plugin ? 1px : 0;
+                            border-width: bare ? 1px : 0; // (pills: on the glass's round ends)
                             border-color: #ffffff.with-alpha(Theme.dark ? 0.06 : 0.3);
                             clip: true;
                             accessible-role: text;
@@ -2557,7 +2560,7 @@ export component ControlCenter inherits Window {
                             height: 40px;
                             border-radius: 20px;
                             background: bare ? (Theme.dark ? #ffffff12 : #ffffff47) : Theme.platter;
-                            border-width: bare && !Theme.plugin ? 1px : 0;
+                            border-width: bare ? 1px : 0; // (pills: on the glass's round ends)
                             border-color: #ffffff.with-alpha(Theme.dark ? 0.06 : 0.3);
                             accessible-role: text;
                             accessible-label: "Battery " + round(battery-level * 100) + "%" + (charging ? ", charging" : "");

@@ -1088,7 +1088,7 @@ impl Part for Dock {
             }
             let ui = &w.ui;
             let shown = ui.get_slide() < 0.999 && !self.items.is_empty();
-            let shapes: Vec<[f32; 19]> = if shown { vec![theme::glass_shape(&look, ui.get_pill_x(), ui.get_pill_y(), ui.get_pill_width(), m.bar_h, m.corner, 1.0, 1.0)] } else { Vec::new() };
+            let shapes: Vec<tessera_core::theme::GlassShape> = if shown { vec![theme::glass_shape(&look, ui.get_pill_x(), ui.get_pill_y(), ui.get_pill_width(), m.bar_h, m.corner, 1.0, 1.0)] } else { Vec::new() };
             let key = format!("{shapes:?}");
             if key != w.glass_sent {
                 st.shell.glass.set(&w.output, NS, &shapes);

@@ -1423,7 +1423,7 @@ impl Part for Sidebar {
         }
         let ui = &w.ui;
         let p = ui.get_progress();
-        let shapes: Vec<[f32; 19]> = if p > 0.002 { vec![theme::glass_shape(&st.shell.look, ui.get_slide_x(), ui.get_panel_y(), settings::PANEL_W, ui.get_panel_h(), 26.0, p, 1.0)] } else { Vec::new() };
+        let shapes: Vec<tessera_core::theme::GlassShape> = if p > 0.002 { vec![theme::glass_shape(&st.shell.look, ui.get_slide_x(), ui.get_panel_y(), settings::PANEL_W, ui.get_panel_h(), 26.0, p, 1.0)] } else { Vec::new() };
         let key = tessera_core::theme::glass_key(&shapes);
         if key != w.glass_sent {
             st.shell.glass.set(&w.output, NS, &shapes);

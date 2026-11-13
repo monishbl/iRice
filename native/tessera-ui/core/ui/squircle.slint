@@ -1,0 +1,72 @@
+// A rounded rectangle on the glass's own curve (Squircle.qml): continuous
+// corners, a superellipse (n = 4) reaching 1.28 × the radius along the sides,
+// easing back to a circular arc as it nears a pill, exactly as the
+// tessera-glass plugin's sdRoundBox draws the glass under it. A fill or rim
+// drawn on plugin glass with a plain Rectangle's circular corners parts from
+// the glass at the corners (a second, lighter rounding); this one lies on it.
+// Material: ordinary round corners (`circular`). Each corner is one cubic
+// whose handles put its midpoint on the superellipse.
+
+import { Theme } from "theme.slint";
+
+component SquirclePath inherits Path {
+    in property <length> radius;
+    in property <bool> circular;
+    in property <length> inset; // (a border: its path half its width in)
+    property <float> w: max(0, self.width / 1px - 2 * inset / 1px);
+    property <float> h: max(0, self.height / 1px - 2 * inset / 1px);
+    property <float> o: inset / 1px;
+    property <float> hm: max(0.001, min(w, h) / 2);
+    property <float> r: max(0, min(radius / 1px - o, hm));
+    property <float> t: circular ? 1 : max(0, min(1, (r / hm - 0.65) / 0.35));
+    property <float> k: circular ? 1 : t * t * (3 - 2 * t);
+    property <float> n: 4 - 2 * k;
+    property <float> re: min(r * (1.28 - 0.28 * k), hm);
+    // the handle: (8 · 2^(-1/n) − 4) / 3 of the corner, from each end
+    property <float> c: re * (1 - (8 * pow(2, -1 / n) - 4) / 3);
+    viewbox-x: 0;
+    viewbox-y: 0;
+    viewbox-width: self.width / 1px;
+    viewbox-height: self.height / 1px;
+    clip: false;
+
+    MoveTo { x: o + re; y: o; }
+    LineTo { x: o + w - re; y: o; }
+    CubicTo { control-1-x: o + w - c; control-1-y: o; control-2-x: o + w; control-2-y: o + c; x: o + w; y: o + re; }
+    LineTo { x: o + w; y: o + h - re; }
+    CubicTo { control-1-x: o + w; control-1-y: o + h - c; control-2-x: o + w - c; control-2-y: o + h; x: o + w - re; y: o + h; }
+    LineTo { x: o + re; y: o + h; }
+    CubicTo { control-1-x: o + c; control-1-y: o + h; control-2-x: o; control-2-y: o + h - c; x: o; y: o + h - re; }
+    LineTo { x: o; y: o + re; }
+    CubicTo { control-1-x: o; control-1-y: o + c; control-2-x: o + c; control-2-y: o; x: o + re; y: o; }
+    Close { }
+}
+
+// (a Rectangle only for its size: it fills its parent as a Rectangle does;
+// its own background and border stay unset, `fill` and `line` are the shape's)
+export component Squircle inherits Rectangle {
+    in property <length> radius;
+    in property <brush> fill: transparent;
+    in property <length> line-width: 0;
+    in property <brush> line-color: transparent;
+    in property <bool> circular: Theme.material;
+
+    if root.width > 0 && root.height > 0: SquirclePath {
+        width: root.width;
+        height: root.height;
+        radius: root.radius;
+        circular: root.circular;
+        fill: root.fill;
+    }
+    if root.line-width > 0 && root.width > 0 && root.height > 0: SquirclePath {
+        width: root.width;
+        height: root.height;
+        radius: root.radius;
+        circular: root.circular;
+        inset: root.line-width / 2;
+        fill: transparent;
+        stroke: root.line-color;
+        stroke-width: root.line-width;
+    }
+    @children
+}

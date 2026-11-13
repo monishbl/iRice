@@ -12,9 +12,10 @@
 //
 // hyprctl tessera-glass set <monitor> <namespace> <n> [<16 floats per shape>...]
 // hyprctl tessera-glass clear [<monitor> <namespace>]
-// hyprctl tessera-glass ping            -> "tessera-glass 5" (2: gloss; 3: pointer boundaries;
+// hyprctl tessera-glass ping            -> "tessera-glass 5 shadow" (2: gloss; 3: pointer boundaries;
 //                                       4: pointer-follow, input-age; 5: glass fades
-//                                       with its layer)
+//                                       with its layer; "shadow": a shape may carry
+//                                       a drop shadow, two more numbers)
 // hyprctl tessera-glass pointer-follow <0|1> (hover focus: windows brought forward take the pointer)
 // hyprctl tessera-glass input-age       -> ms since the last key or button press
 // hyprctl tessera-glass pointer-policy <0..2> <corner px>
@@ -29,7 +30,10 @@
 // bevel frost chroma rim tintR tintG tintB tintA saturation opacity
 // [gloss] (mode 0 liquid, 1 frosted, 2 solid; tint straight alpha; gloss 0..1
 // scales the 3D lighting: 1 glass, ~0 frost (an even thin border), optional
-// so shells that send 18 numbers still work). See kFloats.
+// so shells that send 18 numbers still work) [shadow margin] (optional, both
+// or neither: the soft drop shadow Glass.qml draws round plugin glass, outside
+// the shape only; its strength 0..1 and how far it reaches in px, 0: none;
+// the QML shell draws its own and never sends them). See kFloats.
 
 #define WLR_USE_UNSTABLE
 #include <hyprland/src/plugins/PluginAPI.hpp>
@@ -76,7 +80,8 @@ static CFunctionHook* g_hook  = nullptr;
 static SP<SHyprCtlCommand> g_cmd;
 static SP<SHyprCtlCommand> g_oldCmd; // (irice-glass)
 
-constexpr int kFloats = 19; // the 19th (gloss) is optional
+constexpr int kFloats = 21; // the 19th (gloss) is optional, and the last two (shadow, margin)
+constexpr int kBase   = 19; // (a shape without a shadow)
 struct SShape {
     float         v[kFloats];
     mutable float drawnFrost = -1; // frost it was last drawn with (over windows: see windowFrost)
@@ -120,6 +125,8 @@ struct SCopyTarget {
     GLuint fb = 0, tex = 0;
 };
 static std::map<std::pair<int, int>, SCopyTarget> g_copyTargets;
+static GLuint g_shadowProg = 0;
+static GLint  us_rect, us_radius, us_margin, us_strength;
 static GLint  u_sharp, u_blurred, u_fbSize, u_rect, u_copyRect, u_radius, u_mode, u_refraction, u_depth, u_bevel, u_frost, u_chroma, u_rim, u_tint, u_saturation,
     u_opacity, u_solid, u_hasBlur, u_gloss;
 
@@ -238,6 +245,42 @@ void main() {
 }
 )";
 
+// The drop shadow round a shape, outside it only (Glass.qml's mode 3, what
+// the QML shell draws itself round plugin glass): it falls off over `margin`,
+// a little below the shape. Nothing inside the shape, so see-through glass
+// isn't darkened. Premultiplied black.
+static const char* kShadowFrag = R"(#version 300 es
+precision highp float;
+uniform vec4  rect;
+uniform float radius, margin, strength;
+out vec4 fragColor;
+
+float sdRoundBox(vec2 p, vec2 b, float r) {
+    float hm = min(b.x, b.y);
+    float k = smoothstep(0.65, 1.0, clamp(r / max(hm, 1e-3), 0.0, 1.0));
+    float n = mix(4.0, 2.0, k);
+    float re = min(r * mix(1.28, 1.0, k), hm);
+    vec2 q = abs(p) - b + re;
+    vec2 m = max(q, 0.0);
+    float l = pow(pow(m.x, n) + pow(m.y, n), 1.0 / n);
+    return l + min(max(q.x, q.y), 0.0) - re;
+}
+
+void main() {
+    vec2 px = gl_FragCoord.xy;
+    vec2 hb = rect.zw * 0.5;
+    vec2 p = px - (rect.xy + hb);
+    float r = min(radius, min(hb.x, hb.y));
+    float cov = clamp(0.5 - sdRoundBox(p, hb, r), 0.0, 1.0);
+    float sd = sdRoundBox(p - vec2(0.0, margin * 0.2), hb, r);
+    float fall = 1.0 - smoothstep(-margin * 0.5, margin * 0.8, sd);
+    float a = strength * fall * fall * fall * (1.0 - cov);
+    if (a <= 0.0005)
+        discard;
+    fragColor = vec4(0.0, 0.0, 0.0, a);
+}
+)";
+
 static GLuint compile(GLenum type, const char* src) {
     GLuint s = glCreateShader(type);
     glShaderSource(s, 1, &src, nullptr);
@@ -295,6 +338,28 @@ static bool ensureProgram() {
     U(gloss);
 #undef U
     glGenVertexArrays(1, &g_vao);
+    // (the shadow's own small program; without it the glass still draws)
+    GLuint vs2 = compile(GL_VERTEX_SHADER, kVert), fs2 = compile(GL_FRAGMENT_SHADER, kShadowFrag);
+    if (vs2 && fs2) {
+        g_shadowProg = glCreateProgram();
+        glAttachShader(g_shadowProg, vs2);
+        glAttachShader(g_shadowProg, fs2);
+        glLinkProgram(g_shadowProg);
+        glGetProgramiv(g_shadowProg, GL_LINK_STATUS, &ok);
+        if (!ok) {
+            glDeleteProgram(g_shadowProg);
+            g_shadowProg = 0;
+        } else {
+            us_rect     = glGetUniformLocation(g_shadowProg, "rect");
+            us_radius   = glGetUniformLocation(g_shadowProg, "radius");
+            us_margin   = glGetUniformLocation(g_shadowProg, "margin");
+            us_strength = glGetUniformLocation(g_shadowProg, "strength");
+        }
+    }
+    if (vs2)
+        glDeleteShader(vs2);
+    if (fs2)
+        glDeleteShader(fs2);
     return true;
 }
 
@@ -421,7 +486,48 @@ static void drawGlass(const std::vector<SShape>& shapes, const CBox& box, const 
         cy1 = std::max(cy1, std::min(fbH, (int)std::ceil(ext.y + ext.h) + margin));
         placed.push_back({&s, v, x, y, w, h, std::move(region)});
     }
+    // The drop shadows (shapes that carry one), after all the glass: each
+    // outside its own shape only, over a neighbour's glass as in the QML,
+    // where each Glass item's shadow lies over the plugin's glass. Cut to the
+    // layer (whose redraws clear it) and the damage.
+    auto shadows = [&] {
+        if (!g_shadowProg)
+            return;
+        bool bound = false;
+        for (const auto& s : shapes) {
+            const float* v = s.v;
+            if (v[19] <= 0.001f || v[20] < 1.f || v[17] <= 0.001f || v[2] < 1 || v[3] < 1)
+                continue;
+            const float x = box.x + v[0] * scale, y = box.y + v[1] * scale, w = v[2] * scale, h = v[3] * scale, m = v[20] * scale;
+            CRegion     region(x - m, y - m, w + 2 * m, h + 2 * m + m * 0.2f);
+            region.intersect(CRegion(box.x, box.y, box.w, box.h));
+            if (data.damage)
+                region.intersect(*data.damage);
+            if (region.empty())
+                continue;
+            if (!bound) {
+                glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fb->getFBID());
+                glViewport(0, 0, fbW, fbH);
+                glUseProgram(g_shadowProg);
+                glBindVertexArray(g_vao);
+                glEnable(GL_BLEND);
+                glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+                glDisable(GL_STENCIL_TEST);
+                glEnable(GL_SCISSOR_TEST);
+                bound = true;
+            }
+            glUniform4f(us_rect, x, y, w, h);
+            glUniform1f(us_radius, v[4] * scale);
+            glUniform1f(us_margin, m);
+            glUniform1f(us_strength, std::clamp(v[19], 0.f, 1.f) * v[17] * fade);
+            for (auto& r : region.getRects()) {
+                glScissor(r.x1, r.y1, r.x2 - r.x1, r.y2 - r.y1);
+                glDrawArrays(GL_TRIANGLES, 0, 3);
+            }
+        }
+    };
     if (placed.empty() || cx1 <= cx0 || cy1 <= cy0) {
+        shadows();
         st.restore();
         return;
     }
@@ -484,6 +590,7 @@ static void drawGlass(const std::vector<SShape>& shapes, const CBox& box, const 
             glDrawArrays(GL_TRIANGLES, 0, 3);
         }
     }
+    shadows();
     st.restore();
 }
 
@@ -611,7 +718,7 @@ static std::string onCommand(eHyprCtlOutputFormat, std::string request) {
     if (verb == "pointer-policy" || verb == "pointer-confine" || verb == "pointer-refocus" || verb == "pointer-follow" || verb == "input-age")
         return pointerCommand(verb, in);
     if (verb == "ping")
-        return pointerReady() ? "tessera-glass 5" : "tessera-glass 2";
+        return pointerReady() ? "tessera-glass 5 shadow" : "tessera-glass 2 shadow";
     if (verb == "frametimes") {
         std::string arg;
         in >> arg;
@@ -689,16 +796,20 @@ static std::string onCommand(eHyprCtlOutputFormat, std::string request) {
         std::vector<float> nums;
         for (float f; in >> f;)
             nums.push_back(f);
-        // 19 numbers per shape, or 18 from older shells (gloss then defaults to 1)
-        const int per = n > 0 && nums.size() == (size_t)n * kFloats ? kFloats : kFloats - 1;
+        // 21 numbers per shape (with a shadow), 19, or 18 from older shells
+        // (gloss then defaults to 1); no shadow unless sent
+        int per = kBase - 1;
+        for (int c : {kFloats, kBase})
+            if (n > 0 && nums.size() == (size_t)n * c)
+                per = c;
         if (nums.size() != (size_t)n * per)
-            return "error: expected " + std::to_string(n * kFloats) + " numbers";
+            return "error: expected " + std::to_string(n * kBase) + " or " + std::to_string(n * kFloats) + " numbers";
         std::vector<SShape> shapes(n);
         for (int i = 0; i < n; i++) {
-            for (int k = 0; k < per; k++)
-                shapes[i].v[k] = nums[i * per + k];
-            if (per < kFloats)
-                shapes[i].v[kFloats - 1] = 1.f;
+            for (int k = 0; k < kFloats; k++)
+                shapes[i].v[k] = k < per ? nums[i * per + k] : 0.f;
+            if (per < kBase)
+                shapes[i].v[kBase - 1] = 1.f;
         }
         const std::string key = mon + "\n" + ns;
         // Repaint so the change shows even if nothing else moved: only where
@@ -725,7 +836,8 @@ static std::string onCommand(eHyprCtlOutputFormat, std::string request) {
             auto add = [&](const std::vector<SShape>& list) {
                 for (const auto& sh : list) {
                     const float* v = sh.v;
-                    const double r = std::ceil(v[6] + 4 + v[7] * std::max(v[2], v[3]) * 0.08f) + 1;
+                    // (and its shadow's reach: up to its margin, a fifth more below)
+                    const double r = std::max<double>(std::ceil(v[6] + 4 + v[7] * std::max(v[2], v[3]) * 0.08f), v[19] > 0.001f ? std::ceil(v[20] * 1.2f) : 0.0) + 1;
                     dmg.add(CBox{std::floor(g.x + v[0] - r), std::floor(g.y + v[1] - r), std::ceil(v[2] + 2 * r) + 1, std::ceil(v[3] + 2 * r) + 1});
                 }
             };
@@ -813,6 +925,8 @@ APICALL EXPORT void PLUGIN_EXIT() {
         glDeleteVertexArrays(1, &g_vao);
     if (g_prog)
         glDeleteProgram(g_prog);
-    g_vao = g_prog = 0;
+    if (g_shadowProg)
+        glDeleteProgram(g_shadowProg);
+    g_vao = g_prog = g_shadowProg = 0;
     // The hook itself is removed by Hyprland
 }

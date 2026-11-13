@@ -254,6 +254,9 @@ fn glass_cmd() -> &'static str {
 /// The plugin's version from its last ping (`tessera-glass 5`); 0: not loaded.
 /// 2+: shapes carry gloss (a 19th number); 3 and 4: see mouse.rs
 static GLASS_VERSION: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+/// Whether the plugin draws shapes' drop shadows (its ping says "shadow"):
+/// shapes then go out with their two shadow numbers, else without
+static GLASS_SHADOW: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 pub fn plugin_version() -> i64 {
     GLASS_VERSION.load(std::sync::atomic::Ordering::Relaxed)
 }
@@ -292,8 +295,11 @@ impl Glass {
                 let found = find_plugin(|c| request(c).ok());
                 if let Some(n) = found {
                     let _ = GLASS_CMD.set(n);
-                    let v = request(&format!("{} ping", glass_cmd())).map(|a| version_of(&a)).unwrap_or(1);
+                    let answer = request(&format!("{} ping", glass_cmd())).ok();
+                    let v = answer.as_deref().map(version_of).unwrap_or(1);
                     GLASS_VERSION.store(v, std::sync::atomic::Ordering::Relaxed);
+                    let sh = answer.is_some_and(|a| a.split_whitespace().any(|w| w == "shadow"));
+                    GLASS_SHADOW.store(sh, std::sync::atomic::Ordering::Relaxed);
                 } else {
                     GLASS_VERSION.store(0, std::sync::atomic::Ordering::Relaxed);
                 }
@@ -349,11 +355,13 @@ impl Glass {
     pub fn window_frost(&self, amount: f32) {
         let _ = self.tx.send(("window-frost".into(), format!("\0glass window-frost {amount:.2}")));
     }
-    /// `shapes`: each shape's 19 numbers (see hypr/plugin/tessera-glass/main.cpp)
-    pub fn set(&self, monitor: &str, ns: &str, shapes: &[[f32; 19]]) {
+    /// `shapes`: each shape's 19 numbers and its shadow's 2 (see
+    /// hypr/plugin/tessera-glass/main.cpp; a plugin without shadows gets the 19)
+    pub fn set(&self, monitor: &str, ns: &str, shapes: &[crate::theme::GlassShape]) {
         // (a shape with no size still gets the plugin's shadow: a dot on
         // screen, as under the closed island)
-        let shapes: Vec<&[f32; 19]> = shapes.iter().filter(|s| s[2] >= 1.0 && s[3] >= 1.0).collect();
+        let shapes: Vec<&crate::theme::GlassShape> = shapes.iter().filter(|s| s[2] >= 1.0 && s[3] >= 1.0).collect();
+        let per = if GLASS_SHADOW.load(std::sync::atomic::Ordering::Relaxed) { 21 } else { 19 };
         {
             let mut live = self.live.borrow_mut();
             if shapes.is_empty() {
@@ -364,7 +372,7 @@ impl Glass {
         }
         let mut cmd = format!("{} set {monitor} {ns} {}", glass_cmd(), shapes.len());
         for s in shapes {
-            for v in s {
+            for v in &s[..per] {
                 cmd.push_str(&format!(" {}", (v * 1000.0).round() / 1000.0));
             }
         }

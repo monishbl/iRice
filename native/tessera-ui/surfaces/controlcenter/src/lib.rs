@@ -1677,23 +1677,23 @@ impl Part for ControlCenter {
                     let kind = defs::def(&r.id).map_or(Kind::Action, |d| d.kind);
                     let rad = chip_radius(kind, r.cols as u8, r.rows as u8, r.w, r.h);
                     let dim = if paging && !r.focused { 0.4 } else { 1.0 };
-                    shapes.push(theme::glass_shape(look, gx + r.x, gy + r.y, r.w, r.h, rad, o * dim, 1.0));
+                    shapes.push(theme::shadow_margin(theme::glass_shape(look, gx + r.x, gy + r.y, r.w, r.h, rad, o * dim, 1.0), 12.0));
                 }
                 let fy = gy + ui.get_footer_y();
                 let fo = o * if paging { 0.45 } else { 1.0 };
-                shapes.push(theme::glass_shape(look, gx, fy, 40.0, 40.0, 20.0, fo, 1.0));
+                shapes.push(theme::shadow_margin(theme::glass_shape(look, gx, fy, 40.0, 40.0, 20.0, fo, 1.0), 12.0));
                 if ui.get_battery() {
-                    shapes.push(theme::glass_shape(look, gx + 48.0, fy, ui.get_battery_w(), 40.0, 20.0, fo, 1.0));
+                    shapes.push(theme::shadow_margin(theme::glass_shape(look, gx + 48.0, fy, ui.get_battery_w(), 40.0, 20.0, fo, 1.0), 12.0));
                 }
                 let done = if editing { 74.0 } else { 40.0 };
                 let mut x = gx + GLASS_W - done;
-                shapes.push(theme::glass_shape(look, x, fy, done, 40.0, 20.0, fo, 1.0));
+                shapes.push(theme::shadow_margin(theme::glass_shape(look, x, fy, done, 40.0, 20.0, fo, 1.0), 12.0));
                 for _ in 0..2 {
                     x -= 48.0;
-                    shapes.push(theme::glass_shape(look, x, fy, 40.0, 40.0, 20.0, fo, 1.0));
+                    shapes.push(theme::shadow_margin(theme::glass_shape(look, x, fy, 40.0, 40.0, 20.0, fo, 1.0), 12.0));
                 }
                 if editing {
-                    shapes.push(theme::glass_shape(look, px, py, 260.0 + 2.0 * PAD, ui.get_gallery_h() + 2.0 * PAD, 36.0 + PAD, o, 1.0));
+                    shapes.push(theme::shadow_margin(theme::glass_shape(look, px, py, 260.0 + 2.0 * PAD, ui.get_gallery_h() + 2.0 * PAD, 36.0 + PAD, o, 1.0), 16.0));
                 }
             }
             let s = ui.get_sub_shown();

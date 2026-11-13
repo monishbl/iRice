@@ -7,6 +7,7 @@
 // pop in without their ripples, shakes and flips.)
 
 import { Theme } from "@tessera/theme.slint";
+import { Squircle } from "@tessera/squircle.slint";
 import { Symbols, SymIcon } from "@tessera/symbols.slint";
 
 // The drawn battery (BatteryGlyph): a capsule, its fill, the nub; a bolt or
@@ -1981,11 +1982,13 @@ export component Island inherits Rectangle {
             // (with no blur Slint still draws it, hard: a dark line under the pill)
             drop-shadow-color: expanded || mode == 3 ? Theme.m3-shadow.with-alpha(Theme.dark ? 0.4 : 0.16) : transparent;
         }
-        // Glass: black at the top melting into the glass below (the plugin's)
-        if !Theme.material: Rectangle {
-            border-radius: radius;
+        // Glass: black at the top melting into the glass below (the plugin's),
+        // on the glass's own curve (IslandView's SquircleClip: a circular
+        // corner parted from the glass, a second, lighter rounding round it)
+        if !Theme.material: Squircle {
+            radius: radius;
             opacity: shape.fade;
-            background: @linear-gradient(180deg, #000000f0 0%, #000000e6 30%, #0000001f 100%);
+            fill: @linear-gradient(180deg, #000000f0 0%, #000000e6 30%, #0000001f 100%);
         }
         // Glass, music playing, open: the album art is the island itself, solid
         // up top and melting into the glass below like the black (faded in Rust)
@@ -2010,9 +2013,9 @@ export component Island inherits Rectangle {
             }
         }
         // running hot, closed: the chip's glow (no ripples: Slint has no shaders)
-        if !Theme.material && hot && !filled: Rectangle {
-            border-radius: radius;
-            background: #ff3b3026;
+        if !Theme.material && hot && !filled: Squircle {
+            radius: radius;
+            fill: #ff3b3026;
         }
         // a faint rim on the same curve (without the plugin: on its glass,
         // the glass's own rim is the outline, and a second, circular one
