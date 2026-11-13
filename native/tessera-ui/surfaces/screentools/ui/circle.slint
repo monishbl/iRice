@@ -265,8 +265,10 @@ export component CircleSearch inherits Window {
     property <float> work: busy && open ? 1 : 0;
     animate work { duration: 600ms; easing: ease-in-out; }
 
-    // the clock: only while it shows and moves
-    property <duration> t: open && !reduce-motion ? animation-tick() : 0ms;
+    // the clock: only while the AI works (the glow moving says it's thinking).
+    // At rest the glow holds still: a full-screen layer of large blurs redrawn
+    // every frame stuttered and kept the GPU busy the whole time it was open
+    property <duration> t: open && busy && !reduce-motion ? animation-tick() : 0ms;
     // one loop round the screen every 18 s; breathing every 5 s (1.1 s working)
     property <length> seg: Theme.material ? 320px : 280px;
     property <length> shift: mod(t / 18s, 1) * seg * 4;
@@ -481,8 +483,12 @@ export component CircleSearch inherits Window {
             height: bar-col.preferred-height + 24px;
             border-radius: root.radius;
             // (Glass: the plugin's glass draws the panel, its tint and rim)
-            background: Theme.material ? Theme.m3-surface-container-high : Theme.plugin ? transparent : Theme.panel;
-            border-width: Theme.material || Theme.plugin ? 0 : 1px;
+            // (Glass: a solid frosted tint of its own, not the plugin's glass alone:
+            // this window isn't blurred (rules.lua, a full-screen layer), so with
+            // a clear backing the text under it showed through and the bar was
+            // unreadable)
+            background: Theme.material ? Theme.m3-surface-container-high : (Theme.dark ? #1c1c21eb : #f7f7faeb);
+            border-width: Theme.material ? 0 : 1px;
             border-color: Theme.separator;
             drop-shadow-blur: Theme.material ? 24px : 0;
             drop-shadow-offset-y: Theme.material ? 6px : 0;
@@ -609,8 +615,12 @@ export component CircleSearch inherits Window {
             height: card ? card-col.preferred-height + 32px : 0;
             visible: card;
             border-radius: root.radius;
-            background: Theme.material ? Theme.m3-surface-container-high : Theme.plugin ? transparent : Theme.panel;
-            border-width: Theme.material || Theme.plugin ? 0 : 1px;
+            // (Glass: a solid frosted tint of its own, not the plugin's glass alone:
+            // this window isn't blurred (rules.lua, a full-screen layer), so with
+            // a clear backing the text under it showed through and the bar was
+            // unreadable)
+            background: Theme.material ? Theme.m3-surface-container-high : (Theme.dark ? #1c1c21eb : #f7f7faeb);
+            border-width: Theme.material ? 0 : 1px;
             border-color: Theme.separator;
             drop-shadow-blur: Theme.material ? 24px : 0;
             drop-shadow-offset-y: Theme.material ? 6px : 0;
