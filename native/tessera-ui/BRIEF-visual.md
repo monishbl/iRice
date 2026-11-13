@@ -63,6 +63,10 @@ Worktree agents share one scratchpad: give logs and images unique names.
 
 ## Build and check (others build and capture at the same time)
 
+Before your first build, seed your target dir from the main checkout's full
+build (btrfs copy-on-write: seconds, no extra disk; a fresh target compiles
+every dependency, ~40 min with the memory shared):
+    cp -a --reflink=always /home/user/Projects/Personal/iRice/native/tessera-ui/target/release native/tessera-ui/target/
 Build in your worktree, through the gate, with your own target dir:
     cd native/tessera-ui && CARGO_TARGET_DIR=$PWD/target SLOT_MEM_MAX=8G RUST_MIN_STACK=67108864 ~/.local/share/tessera-port/slot.sh cargo build --release -p tessera-ui
 The gate is a shared memory budget: it starts your build when the memory
