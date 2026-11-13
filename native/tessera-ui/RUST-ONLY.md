@@ -16,7 +16,7 @@ sandbox), **done, unchecked** (committed, not yet seen in a screenshot).
 | Change | Asked | Status | Commit |
 |---|---|---|---|
 | Super+Shift+Escape and Ctrl+Alt+Backspace end the session only on a second press within 3 s; Hyprland's own "Press again to log out" notice, so it works with the shell frozen (`sandbox/confirm-exit.sh`, `sandbox/hypr/tty.lua`) | 13 Nov | done; **also QML** (main 98f3153, live on the laptop) | 59e984e |
-| Power menu: only the chosen option stands out (Material primary / Glass accent; Restart blue, Shut Down red when chosen); the others share one quiet shape colour, keeping their own outlines, with Restart's and Shut Down's icons a faint blue and red, both looks | 13 Nov | done (checked both looks, rr-8 / rr8-sess); **also QML**: not started (deadline) | 6d14b2f, quiet tone fix |
+| Power menu: only the chosen option stands out (Material primary / Glass accent; Restart blue, Shut Down red when chosen); the others share one quiet shape colour, keeping their own outlines, with Restart's and Shut Down's icons a faint blue and red, both looks | 13 Nov | done (checked both looks, rr-8 / rr8-sess); **also QML**: done (main ef107bc, live on the laptop) | 6d14b2f, quiet tone fix, own shapes |
 
 ## Lock and login
 
