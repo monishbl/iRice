@@ -26,7 +26,8 @@
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
-export IRICE_ARENA=9 TESSERA_ARENA=9
+# (GREETER_ARENA: another hidden arena, when 9 is someone else's)
+export IRICE_ARENA=${GREETER_ARENA:-9} TESSERA_ARENA=${GREETER_ARENA:-9}
 ROOT="$REPO"
 . "$REPO/sandbox/lib.sh"
 dev() { "$REPO/dev.sh" "$@"; }
@@ -44,7 +45,7 @@ G="$TESSERA_HOME/greeter-test"
 # (the socket in the arena's runtime folder: a path under its home is longer
 # than the 108 bytes a socket's path may have)
 SOCK="$TESSERA_RT/fake-greetd.sock"
-BIN="$HERE/target/${PROFILE:-release}/tessera-ui"
+BIN="${GREETER_BIN:-$HERE/target/${PROFILE:-release}/tessera-ui}"
 mkdir -p "$OUT" "$G"
 tag="$which-$look-$style${FACE:+-$FACE}"
 shot() { sleep "${2:-1}"; dev shot "$OUT/$tag-$1.png" >/dev/null && echo "shot $tag-$1"; }

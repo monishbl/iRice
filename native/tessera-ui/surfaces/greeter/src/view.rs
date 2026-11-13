@@ -80,12 +80,12 @@ pub fn say(style: Style, m: &Model) -> (String, bool) {
 }
 
 /// The password field's placeholder. (Glass's used to name a product's
-/// fingerprint feature while a reader listens; it says it in words now,
-/// here and in the QML)
+/// fingerprint feature while a reader listens; it says it in words now, as
+/// the lock does: "Use Fingerprint or Enter Password" ran past the 240 px field)
 pub fn placeholder(style: Style, m: &Model) -> String {
     match style {
         _ if m.busy && style != Style::Text => "Logging in…".into(),
-        Style::Glass if m.finger != Finger::None => "Use Fingerprint or Enter Password".into(),
+        Style::Glass if m.finger != Finger::None => "Fingerprint or Password".into(),
         Style::Glass => "Enter Password".into(),
         Style::Plain => "Password".into(),
         Style::Material => "Enter password".into(),
@@ -288,7 +288,7 @@ mod tests {
         assert_eq!(placeholder(Style::Plain, &m), "Password");
         assert_eq!(placeholder(Style::Material, &m), "Enter password");
         m.finger = Finger::Waiting;
-        assert_eq!(placeholder(Style::Glass, &m), "Use Fingerprint or Enter Password");
+        assert_eq!(placeholder(Style::Glass, &m), "Fingerprint or Password");
         m.busy = true;
         assert_eq!(placeholder(Style::Material, &m), "Logging in…");
         assert_eq!(session_label(Style::Glass, &m), "Tessera  ▾");
