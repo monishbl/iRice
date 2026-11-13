@@ -436,9 +436,11 @@ impl Glass {
         if held.is_empty() {
             return;
         }
-        // (TESSERA_GLASS_SYNC=drawn: with the frame as it's drawn, not as it's taken)
+        // (with the frame as it's drawn, by default: waiting for the compositor to take
+        // it left Glass panels' content up to 100 ms ahead of their glass;
+        // TESSERA_GLASS_SYNC=taken waits, as before)
         static DRAWN: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-        let drawn = *DRAWN.get_or_init(|| crate::env::var("GLASS_SYNC").is_some_and(|v| v == "drawn"));
+        let drawn = *DRAWN.get_or_init(|| crate::env::var("GLASS_SYNC").map_or(true, |v| v != "taken"));
         held.retain(|(monitor, ns), q| {
             let send = |cmd: String| {
                 let _ = self.tx.send((format!("{monitor}\n{ns}"), cmd));
