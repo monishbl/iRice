@@ -15,8 +15,8 @@ sandbox), **done, unchecked** (committed, not yet seen in a screenshot).
 
 | Change | Asked | Status | Commit |
 |---|---|---|---|
-| Super+Shift+Escape and Ctrl+Alt+Backspace end the session only on a second press within 3 s; Hyprland's own "Press again to log out" notice, so it works with the shell frozen (`sandbox/confirm-exit.sh`, `sandbox/hypr/tty.lua`) | 13 Nov | done; **also QML** (main, in progress) | 59e984e |
-| Power menu: only the chosen option stands out (Material primary / Glass accent; Restart blue, Shut Down red when chosen); the others share one quiet shape colour, keeping their own outlines, with Restart's and Shut Down's icons a faint blue and red, both looks | 13 Nov | done, unchecked; **also QML** (in progress) | 6d14b2f |
+| Super+Shift+Escape and Ctrl+Alt+Backspace end the session only on a second press within 3 s; Hyprland's own "Press again to log out" notice, so it works with the shell frozen (`sandbox/confirm-exit.sh`, `sandbox/hypr/tty.lua`) | 13 Nov | done; **also QML** (main 98f3153, live on the laptop) | 59e984e |
+| Power menu: only the chosen option stands out (Material primary / Glass accent; Restart blue, Shut Down red when chosen); the others share one quiet shape colour, keeping their own outlines, with Restart's and Shut Down's icons a faint blue and red, both looks | 13 Nov | done, unchecked; **also QML**: not started (deadline) | 6d14b2f |
 
 ## Lock and login
 
@@ -30,7 +30,7 @@ sandbox), **done, unchecked** (committed, not yet seen in a screenshot).
 | Change | Asked | Status | Commit |
 |---|---|---|---|
 | Circle to Search: breathing edge glow (Glass blue/purple/pink/orange, Material wallpaper tones), entry from the cursor (gesture) or the bottom (key); the circled picture goes to an input bar with chips (What is this?, Search the web, Copy text, Translate) or your own question; the answer streams in a card by the selection with "Continue in sidebar"; Lens "image expired" fixed (the Lens fix **also QML**, shared script) | 13 Nov | Lens fix committed (cause: the upload's session wasn't the browser's; now the browser uploads via a one-time local page; real-browser check pending); glow, input bar, chips, answer card: drafted, not built (scratchpad cts-circle.slint.draft) | f204b11 (Lens) |
-| Image viewer: Super+Q (and the usual close keys) close the viewer instead of the window under it (and the same for every shell overlay that takes the keyboard) | 13 Nov | in progress; **also QML** (in progress) | |
+| Image viewer: Super+Q (and the usual close keys) close the viewer instead of the window under it (and the same for every shell overlay that takes the keyboard) | 13 Nov | in progress; **also QML**: done (main 70f3c40, live; Hyprland Lua TESSERA_CLOSE + the shell's `dismiss` shortcut; Rust needs only to register `dismiss`) | |
 | Image viewer: redesigned top toolbar (larger icons and buttons, grouping, states, tooltips), both looks | 13 Nov | in progress | |
 
 ## Text
