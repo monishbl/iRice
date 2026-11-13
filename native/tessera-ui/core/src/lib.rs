@@ -36,6 +36,7 @@ pub mod spacemap;
 pub mod stats;
 pub mod sysstat; // (the last minute of CPU, memory, network: desktop, resources, overlay)
 pub mod surfaces;
+pub mod textflex; // (Material's text face drawn as Qt draws it: textflex.rs)
 pub mod theme;
 pub mod touch; // (wl_touch as the pointer: taps, drags, long presses; every surface)
 pub mod util;

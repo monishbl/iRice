@@ -112,7 +112,8 @@ pub fn drain_deferred(state: &mut State, budget: std::time::Duration) {
 }
 
 /// Fonts that aren't system fonts: Phosphor (icons) and Google Sans Flex
-/// ("Tessera Sans Flex", Material's), mapped from the repo, registered with
+/// ("Tessera Sans Flex", Material's, and its Qt-like copy "Tessera Text
+/// Flex", textflex.rs), mapped from the repo, registered with
 /// Slint's font collection at run time (not compiled in)
 pub fn register_fonts() {
     use slint::fontique_011::fontique;
@@ -127,6 +128,16 @@ pub fn register_fonts() {
             continue;
         };
         if let Ok(map) = unsafe { memmap2::Mmap::map(&file) } {
+            // (Material's text face, "Tessera Text Flex": its weights as the
+            // QML's Qt draws them, textflex.rs; Theme.font in Material)
+            if f.ends_with("GoogleSansFlex.ttf") {
+                match crate::textflex::derive(&map) {
+                    Some(text) => {
+                        collection.register_fonts(fontique::Blob::new(std::sync::Arc::new(text)), None);
+                    }
+                    None => eprintln!("tessera-ui: {f}: no Tessera Text Flex (not the variable font expected)"),
+                }
+            }
             collection.register_fonts(fontique::Blob::new(std::sync::Arc::new(map)), None);
         }
     }

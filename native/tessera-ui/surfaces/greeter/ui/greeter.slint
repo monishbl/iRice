@@ -1827,7 +1827,7 @@ component MaterialStyle inherits Rectangle {
         if Greet.show-date: Text {
             text: Greet.date;
             color: Greet.m.date;
-            font-family: "Tessera Sans Flex";
+            font-family: "Tessera Text Flex";
             font-size: 18px;
             font-weight: 500;
         }
@@ -1841,7 +1841,7 @@ component MaterialStyle inherits Rectangle {
     name-probe := Text {
         visible: false;
         text: Greet.full;
-        font-family: "Tessera Sans Flex";
+        font-family: "Tessera Text Flex";
         font-size: 16px;
         font-weight: 500;
     }
@@ -1859,7 +1859,7 @@ component MaterialStyle inherits Rectangle {
     say-probe := Text {
         visible: false;
         text: Greet.say;
-        font-family: "Tessera Sans Flex";
+        font-family: "Tessera Text Flex";
         font-size: 14px;
         font-weight: 500;
     }
@@ -1878,7 +1878,7 @@ component MaterialStyle inherits Rectangle {
             horizontal-alignment: center;
             text: Greet.say;
             color: Greet.say-bad ? Greet.m.error : Greet.m.on-surface;
-            font-family: "Tessera Sans Flex";
+            font-family: "Tessera Text Flex";
             font-size: 14px;
             font-weight: 500;
         }
@@ -1893,7 +1893,7 @@ component MaterialStyle inherits Rectangle {
         ink: Greet.m.on-surface;
         size: 16px;
         weight: 500;
-        family: "Tessera Sans Flex";
+        family: "Tessera Text Flex";
         hover-fill: Greet.m.high;
         clicked => {
             Greet.edit-name();
@@ -1915,7 +1915,7 @@ component MaterialStyle inherits Rectangle {
             width: parent.width - 48px;
             height: parent.height;
             color: Greet.m.on-surface;
-            font-family: "Tessera Sans Flex";
+            font-family: "Tessera Text Flex";
             font-size: 18px;
             selection-background-color: Greet.m.primary;
             selection-foreground-color: Greet.m.on-primary;
@@ -1929,7 +1929,7 @@ component MaterialStyle inherits Rectangle {
             vertical-alignment: center;
             text: "Username";
             color: Greet.m.on-surface-variant;
-            font-family: "Tessera Sans Flex";
+            font-family: "Tessera Text Flex";
             font-size: 16px;
             accessible-role: none;
         }
@@ -2020,7 +2020,7 @@ component MaterialStyle inherits Rectangle {
             color: Greet.m.on-surface;
             opacity: 1 - root.ot;
             visible: self.opacity > 0.01;
-            font-family: "Tessera Sans Flex";
+            font-family: "Tessera Text Flex";
             font-size: 16px;
             font-weight: 500;
             accessible-role: none;
@@ -2033,7 +2033,7 @@ component MaterialStyle inherits Rectangle {
             ink: Greet.m.on-surface;
             size: 18px;
             spacing: 2px;
-            family: "Tessera Sans Flex";
+            family: "Tessera Text Flex";
             ro: Greet.busy || Greet.power-choice != "";
             edited => {
                 root.wake();
@@ -2076,7 +2076,7 @@ component MaterialStyle inherits Rectangle {
             opacity: root.ot;
             text: Greet.placeholder;
             color: Greet.m.on-surface-variant;
-            font-family: "Tessera Sans Flex";
+            font-family: "Tessera Text Flex";
             font-size: 16px;
             accessible-role: none;
         }
@@ -2166,7 +2166,7 @@ component MaterialStyle inherits Rectangle {
             session-text := Text {
                 text: Greet.session;
                 color: Greet.m.on-surface;
-                font-family: "Tessera Sans Flex";
+                font-family: "Tessera Text Flex";
                 font-size: 14px;
                 font-weight: 500;
                 accessible-role: none;

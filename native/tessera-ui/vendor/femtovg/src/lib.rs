@@ -2186,6 +2186,17 @@ where
                 if paint.text.font_size * scale > 92.0 {
                     // Cached bitmap would be too large.
                     Rasterization::Path
+                } else if matches!(paint.flavor, PaintFlavor::Color(_)) {
+                    // (Tessera: plain-colour text always takes the scaled
+                    // path, a scale of 1 included, so its glyphs are placed
+                    // in device pixels: a text at a fractional position
+                    // (centred, laid out) had its whole-pixel glyph quads
+                    // land between pixels, sampled linearly: soft text)
+                    Rasterization::ScaledAtlas {
+                        scale,
+                        true_scale,
+                        translation: (tx, ty),
+                    }
                 } else if scale == 1.0 {
                     // Pure translation (within a quantization step): nothing to bake.
                     Rasterization::Atlas
@@ -2252,9 +2263,22 @@ where
         // When baking scale into the rasterization, pre-multiply glyph positions
         // by `effective_scale` so that under a translation-only canvas transform
         // they still land at the original screen position.
+        // (Tessera: on the scaled path the translation goes in too, over the
+        // residual scale, and the glyphs are presented with no translation:
+        // device = residual * (g * scale + t / residual) = true_scale * g + t
+        // as before, but with a residual of 1 (the usual case) the glyph's
+        // subpixel offset and its whole-pixel quad are the device pixel's)
+        let (glyph_dx, glyph_dy) = match rasterization {
+            Rasterization::ScaledAtlas {
+                scale,
+                true_scale,
+                translation: (tx, ty),
+            } => (tx * scale / true_scale, ty * scale / true_scale),
+            _ => (0.0, 0.0),
+        };
         let scaled = |g: &PositionedGlyph| PositionedGlyph {
-            x: g.x * effective_scale,
-            y: g.y * effective_scale,
+            x: g.x * effective_scale + glyph_dx,
+            y: g.y * effective_scale + glyph_dy,
             glyph_id: g.glyph_id,
         };
 
@@ -2336,11 +2360,7 @@ where
         // swap — and since it is infallible, the transform is always restored even
         // though the fallible rendering above used `?`.
         match rasterization {
-            Rasterization::ScaledAtlas {
-                scale,
-                true_scale,
-                translation: (tx, ty),
-            } => {
+            Rasterization::ScaledAtlas { scale, true_scale, .. } => {
                 // Rasterize at the quantized scale (cache-stable) but position with
                 // the TRUE scale: present the pre-scaled quads under the residual
                 // scale true/quantized (within one 1/16 step of 1.0) plus the true
@@ -2349,7 +2369,7 @@ where
                 // quantization error times the glyph's distance from the origin.
                 let residual = true_scale / scale;
                 let saved = self.state().transform;
-                self.state_mut().transform = Transform2D::new(residual, 0.0, 0.0, residual, tx, ty);
+                self.state_mut().transform = Transform2D::new(residual, 0.0, 0.0, residual, 0.0, 0.0);
                 self.draw_glyph_commands(draw_commands, paint);
                 self.state_mut().transform = saved;
             }

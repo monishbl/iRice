@@ -754,12 +754,22 @@ impl GlyphAtlas {
             None => return Ok(None),
         };
 
+        // (Tessera: Qt's synthetic bold for "Tessera Text Flex", core
+        // textflex.rs: its avar maps a weight of 700 and up to the smallest
+        // step over the default; drawn at the default, grown as FreeType's
+        // FT_GlyphSlot_Embolden grows it, ppem / 24, the advances unchanged)
+        let mut coords_buf = [0i16; 8];
+        let (normalized_coords, embolden) = match faux_bold(&font_ref, normalized_coords, &mut coords_buf) {
+            Some(coords) => (coords, font_size * faux_bold_strength()),
+            None => (normalized_coords, 0.0),
+        };
+
         let image = {
             let mut scale_context = self.swash_scale_context.borrow_mut();
             let scaler_builder = scale_context
                 .builder(font_ref)
                 .size(font_size)
-                .hint(true)
+                .hint(text_hinting())
                 .normalized_coords(normalized_coords);
             let mut scaler = scaler_builder.build();
 
@@ -770,6 +780,7 @@ impl GlyphAtlas {
             ])
             .format(Format::Alpha)
             .offset(swash::zeno::Vector::new(subpixel_x, 0.0))
+            .embolden(embolden)
             .render(&mut scaler, glyph_id)
         };
 
@@ -1019,4 +1030,47 @@ pub fn render_direct<T: Renderer>(
     }
 
     Ok(())
+}
+
+/// (Tessera) Hinting of glyphs drawn through the atlas. Off by default: the
+/// QML shell's Qt Quick draws text from distance fields, unhinted, and
+/// swash's TrueType hinting snapped Inter's x-height and cap height to whole
+/// pixels (up to a pixel taller, harder horizontals: "heavier"). Set
+/// TESSERA_TEXT_HINT=1 to hint again.
+#[cfg(feature = "swash")]
+fn text_hinting() -> bool {
+    static HINT: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *HINT.get_or_init(|| std::env::var("TESSERA_TEXT_HINT").is_ok_and(|v| v == "1"))
+}
+
+/// (Tessera) Synthetic bold's strength per pixel of font size. FreeType
+/// (Qt) grows a glyph by ppem / 24 in all; swash's embolden grows it by
+/// twice its strength, so 1/48. TESSERA_FAUX_BOLD overrides (a factor).
+#[cfg(feature = "swash")]
+fn faux_bold_strength() -> f32 {
+    static S: std::sync::OnceLock<f32> = std::sync::OnceLock::new();
+    *S.get_or_init(|| {
+        std::env::var("TESSERA_FAUX_BOLD")
+            .ok()
+            .and_then(|v| v.parse::<f32>().ok())
+            .filter(|v| (0.0..=0.2).contains(v))
+            .unwrap_or(1.0 / 48.0)
+    })
+}
+
+/// (Tessera) The synthetic-bold marker of "Tessera Text Flex" (core
+/// textflex.rs): the font's private `TSfb` table names its wght axis; a
+/// coordinate of 1..=2 (F2DOT14) on it means "Bold or more, drawn as Qt's
+/// synthetic bold". Returns the coordinates with that axis back at the
+/// default, or None for every other font and weight.
+#[cfg(feature = "swash")]
+fn faux_bold<'a>(font: &swash::FontRef<'_>, coords: &[i16], buf: &'a mut [i16; 8]) -> Option<&'a [i16]> {
+    let axis = *font.table(swash::tag_from_bytes(b"TSfb"))?.first()? as usize;
+    let c = *coords.get(axis)?;
+    if !(1..=2).contains(&c) || coords.len() > buf.len() {
+        return None;
+    }
+    buf[..coords.len()].copy_from_slice(coords);
+    buf[axis] = 0;
+    Some(&buf[..coords.len()])
 }

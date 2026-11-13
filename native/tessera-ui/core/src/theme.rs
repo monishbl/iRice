@@ -679,7 +679,9 @@ pub fn tokens(look: &Look, plugin: bool) -> Tokens {
     if look.material {
         let roles = look_roles(look);
         let r = |k: &str| hex(roles.iter().find(|(n, _)| n == k).map(|(_, v)| v.as_str()).unwrap_or("#ff00ff"));
-        t.set_font("Tessera Sans Flex".into());
+        // (Google Sans Flex with its weights as the QML's Qt draws them:
+        // under Bold all regular, Bold and up a synthetic bold; textflex.rs)
+        t.set_font("Tessera Text Flex".into());
         // (Theme.font.body is 13 in both looks; the places the QML sets 14
         // for Material, the menu bar's, say 14px themselves)
         t.set_body(13.0);
