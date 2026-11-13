@@ -64,7 +64,7 @@ impl Item {
     /// Icon names to look up, and fallbacks (Apps.iconFor, DockItem's choices)
     pub fn icon_names(&self, trash_full: bool) -> (Vec<String>, Vec<&'static str>) {
         let own = |e: &Option<Entry>, id: &str| {
-            if id == "org.quickshell" {
+            if tessera_core::wm::own_window(id) {
                 return vec!["preferences-system".to_string()];
             }
             match e.as_ref().map(|e| e.icon.clone()).filter(|i| !i.is_empty()) {
@@ -181,7 +181,7 @@ pub fn build(s: &Settings, apps: &Apps, w: &Windows, recent: &[String]) -> Vec<I
 /// The window in front changed to this app: it goes first in the recent
 /// list (Apps.qml: the shell's own windows don't count; at most 12 kept)
 pub fn note_recent(recent: &mut Vec<String>, id: &str) -> bool {
-    if id.is_empty() || id == "org.quickshell" || recent.first().map(String::as_str) == Some(id) {
+    if id.is_empty() || tessera_core::wm::own_window(id) || recent.first().map(String::as_str) == Some(id) {
         return false;
     }
     recent.retain(|x| x != id);

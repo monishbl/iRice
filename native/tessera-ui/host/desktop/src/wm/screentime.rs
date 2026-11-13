@@ -49,7 +49,7 @@ impl ScreenTime {
         let Some(w) = h.st.shell.get::<Windows>() else { return String::new() };
         let Some(c) = w.active_client() else { return String::new() };
         let id = h.st.shell.get::<Entries>().and_then(|a| a.entry_for(&c.class)).map(|e| e.id.clone()).unwrap_or_default();
-        if id == "org.quickshell" {
+        if tessera_core::wm::own_window(&id) {
             String::new()
         } else {
             id

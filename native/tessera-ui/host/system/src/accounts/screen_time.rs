@@ -103,7 +103,7 @@ impl ScreenTime {
             h.st.shell.get::<tessera_core::services::clients::Windows>().and_then(|w| w.active_client().map(|c| c.class.to_lowercase()))
         });
         let id = id.unwrap_or_default();
-        if id == "org.quickshell" { String::new() } else { id }
+        if tessera_core::wm::own_window(&id) { String::new() } else { id }
     }
 }
 

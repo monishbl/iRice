@@ -296,7 +296,7 @@ impl Mouse {
         let cls = opened.as_ref().map(|(c, _)| c.clone()).filter(|c| !c.is_empty()).unwrap_or_else(|| class.clone());
         // Tessera's own windows are only opened on purpose: they come forward,
         // never as a "wants your attention" alert
-        if fresh || cls == "org.quickshell" {
+        if fresh || tessera_core::wm::own_window(&cls) {
             if !active {
                 self.bring_forward(h, &address);
             }

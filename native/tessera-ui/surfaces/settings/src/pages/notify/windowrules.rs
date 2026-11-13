@@ -240,7 +240,7 @@ pub fn open_apps(classes: &[String], name_of: impl Fn(&str) -> Option<String>) -
     let mut seen = std::collections::HashSet::new();
     let mut out: Vec<App> = Vec::new();
     for c in classes {
-        if c.is_empty() || c == "org.quickshell" || !seen.insert(c.clone()) {
+        if c.is_empty() || tessera_core::wm::own_window(c) || !seen.insert(c.clone()) {
             continue;
         }
         out.push(App { cls: c.clone(), name: name_of(c).unwrap_or_else(|| c.clone()) });

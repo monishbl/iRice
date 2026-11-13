@@ -141,7 +141,7 @@ impl AppIcons {
         let icons = st.shell.get::<Icons>()?;
         let entry = apps.and_then(|a| a.by_id(class_or_id).or_else(|| a.entry_for(class_or_id)));
         let name = entry.map(|e| e.icon.clone()).filter(|i| !i.is_empty()).unwrap_or_else(|| class_or_id.to_string());
-        if class_or_id == "org.quickshell" {
+        if own_window(class_or_id) {
             return icons.path(&["preferences-system"], &["application-x-executable"]);
         }
         if name.starts_with('/') {
@@ -408,4 +408,10 @@ mod tests {
         assert_eq!(addr("0x5f1"), "0x5f1");
     }
 
+}
+
+/// The shell's own windows (Settings, Software): the QML shell's were all
+/// "org.quickshell"; tessera-ui names its own (Apps.qml iconFor/activeName)
+pub fn own_window(id: &str) -> bool {
+    matches!(id, "org.quickshell" | "tessera-settings" | "tessera-appstore")
 }

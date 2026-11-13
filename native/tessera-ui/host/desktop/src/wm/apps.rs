@@ -49,7 +49,7 @@ impl AppsSvc {
         let Some(c) = w.active_client() else { return };
         let Some(e) = h.st.shell.get::<Entries>().and_then(|a| a.entry_for(&c.class)) else { return };
         let id = e.id.clone();
-        if id == "org.quickshell" {
+        if tessera_core::wm::own_window(&id) {
             return;
         }
         let cur = hx::state_get("recentApps");
