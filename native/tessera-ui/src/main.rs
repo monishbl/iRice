@@ -308,5 +308,14 @@ fn main() {
         }
     }
     state.each_part(|p, st| p.quit(st));
+    // (an orderly exit — a look switch, a restart asked for — isn't a failed
+    // start: launch-shell.sh's count of them fell back to the QML shell after
+    // three look switches within a minute)
+    {
+        let state = std::env::var_os("XDG_STATE_HOME")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".local/state"));
+        let _ = std::fs::remove_file(state.join("tessera/standalone-starts"));
+    }
     eprintln!("tessera-ui: bye");
 }

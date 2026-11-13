@@ -71,6 +71,8 @@ component FpSheet inherits Rectangle {
     TouchArea {}
     // Esc: Cancel (or Done), the sheet's last button (FingerprintSheet.qml 118–122)
     keys := FocusScope {
+        // (a click goes to what's under it: keys only; it covered link rows and choices, which then took two clicks or none)
+        focus-on-click: false;
         key-pressed(e) => {
             if e.text == Key.Escape {
                 if b.rows.length > 0 { SBus.act(b.rows[b.rows.length - 1].id, 0, 0, ""); }

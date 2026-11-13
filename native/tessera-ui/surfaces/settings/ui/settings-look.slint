@@ -51,6 +51,8 @@ component LookPreview {
     accessible-action-default => { chosen(); }
     forward-focus: fs;
     fs := FocusScope {
+        // (a click goes to what's under it: keys only; it covered link rows and choices, which then took two clicks or none)
+        focus-on-click: false;
         key-pressed(e) => {
             if !e.repeat && (e.text == " " || e.text == Key.Return) { root.chosen(); return accept; }
             reject
@@ -571,6 +573,8 @@ component ClockFaces inherits Rectangle {
     property <length> grab-x;
     property <float> shown: pos - drag / 184px;
     fs := FocusScope {
+        // (a click goes to what's under it: keys only; it covered link rows and choices, which then took two clicks or none)
+        focus-on-click: false;
         key-pressed(e) => {
             if e.text == Key.LeftArrow && r.index > 0 { SBus.act(r.id, r.index - 1, 0, ""); return accept; }
             if e.text == Key.RightArrow && r.index < r.data.length - 1 { SBus.act(r.id, r.index + 1, 0, ""); return accept; }
@@ -687,6 +691,8 @@ component BootCards inherits Rectangle {
         accessible-action-default => { SBus.act(r.id, i, 0, ""); }
         // Keyboard: a Tab stop each; Space or Return choose it (BootAnimations.qml 37–42)
         cfs := FocusScope {
+            // (a click goes to what's under it: keys only; it covered link rows and choices, which then took two clicks or none)
+            focus-on-click: false;
             key-pressed(e) => {
                 if usable && !e.repeat && (e.text == " " || e.text == Key.Return) { SBus.act(r.id, i, 0, ""); return accept; }
                 reject

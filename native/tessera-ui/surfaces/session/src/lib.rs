@@ -367,6 +367,8 @@ impl Part for Session {
                             .iter()
                             .filter(|(_, k)| !s(k).is_empty())
                             .map(|(l, k)| ui::SRow { label: (*l).into(), value: s(k).into() })
+                            // (which shell this session runs: this one, Rust)
+                            .chain(std::iter::once(ui::SRow { label: "Shell".into(), value: "Tessera (Rust)".into() }))
                             .collect();
                         w.rows.set(rows);
                         let logo = s("logo");

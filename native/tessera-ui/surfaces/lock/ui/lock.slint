@@ -2151,6 +2151,8 @@ component Bedside inherits Rectangle {
 
     // Keys: arrows change the view, anything else brings the field back
     fs := FocusScope {
+        // (a click goes to what's under it: keys only; it covered link rows and choices, which then took two clicks or none)
+        focus-on-click: false;
         key-pressed(e) => {
             if e.text == Key.LeftArrow || e.text == Key.RightArrow {
                 LockData.step(e.text == Key.RightArrow ? 1 : -1);

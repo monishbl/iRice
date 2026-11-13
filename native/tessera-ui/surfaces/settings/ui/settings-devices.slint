@@ -56,6 +56,8 @@ component GhostIcon inherits Rectangle {
     accessible-action-default => { clicked(); }
     // Keyboard: a Tab stop; Space or Enter press it
     fs := FocusScope {
+        // (a click goes to what's under it: keys only; it covered link rows and choices, which then took two clicks or none)
+        focus-on-click: false;
         key-pressed(e) => {
             if !e.repeat && (e.text == " " || e.text == Key.Return) { root.clicked(); return accept; }
             reject
@@ -223,6 +225,8 @@ component DevList inherits Rectangle {
     property <int> keyed: -1;
     property <bool> keys-on: fs.has-focus;
     fs := FocusScope {
+        // (a click goes to what's under it: keys only; it covered link rows and choices, which then took two clicks or none)
+        focus-on-click: false;
         key-pressed(e) => {
             let n = r.data.length;
             if n == 0 { return reject; }
@@ -323,6 +327,8 @@ component SpeedCard inherits VerticalLayout {
                 animate transform-scale { duration: SM.press; }
                 // Keyboard: a Tab stop; Space or Return press it
                 sfs := FocusScope {
+                    // (a click goes to what's under it: keys only; it covered link rows and choices, which then took two clicks or none)
+                    focus-on-click: false;
                     key-pressed(e) => {
                         if !e.repeat && (e.text == " " || e.text == Key.Return) { SBus.act(r.id, 0, 0, "test"); return accept; }
                         reject

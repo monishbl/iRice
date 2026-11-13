@@ -137,6 +137,8 @@ export component Segmented inherits Rectangle {
     accessible-label: label;
     forward-focus: keys;
     keys := FocusScope {
+        // (a click goes to what's under it: keys only; it covered link rows and choices, which then took two clicks or none)
+        focus-on-click: false;
         key-pressed(e) => {
             if e.text == Key.LeftArrow && current > 0 { selected(current - 1); return accept; }
             if e.text == Key.RightArrow && current < options.length - 1 { selected(current + 1); return accept; }
@@ -344,6 +346,8 @@ component CalChoice inherits Rectangle {
     accessible-action-default => { clicked(); }
     forward-focus: keys;
     keys := FocusScope {
+        // (a click goes to what's under it: keys only; it covered link rows and choices, which then took two clicks or none)
+        focus-on-click: false;
         key-pressed(e) => {
             if e.text == " " || e.text == Key.Return { root.clicked(); return accept; }
             if e.text == Key.UpArrow { root.step(-1); return accept; }
@@ -1239,6 +1243,8 @@ export component CalendarTab {
                 drop-shadow-color: #00000033;
                 TouchArea { }
                 menu-keys := FocusScope {
+                    // (a click goes to what's under it: keys only; it covered link rows and choices, which then took two clicks or none)
+                    focus-on-click: false;
                     init => { self.focus(); }
                     key-pressed(e) => {
                         if e.text == Key.UpArrow { menu-hi = max(0, menu-hi - 1); return accept; }

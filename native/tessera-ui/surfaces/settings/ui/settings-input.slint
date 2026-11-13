@@ -154,6 +154,8 @@ component BindRow inherits Tile {
     }
     // Keyboard: a Tab stop; Return, Enter, Space or the Menu key open its menu
     fs := FocusScope {
+        // (a click goes to what's under it: keys only; it covered link rows and choices, which then took two clicks or none)
+        focus-on-click: false;
         key-pressed(e) => {
             if e.text == Key.Return || e.text == " " || e.text == Key.Menu { dots.open(); return accept; }
             reject
@@ -333,6 +335,8 @@ component Recorder inherits Tile {
                 }
                 // One key, then the box lets go (it never traps the keyboard)
                 fs := FocusScope {
+                    // (a click goes to what's under it: keys only; it covered link rows and choices, which then took two clicks or none)
+                    focus-on-click: false;
                     key-pressed(e) => {
                         if e.text == Key.Shift || e.text == Key.ShiftR || e.text == Key.Control || e.text == Key.ControlR || e.text == Key.Alt || e.text == Key.AltGr || e.text == Key.Meta || e.text == Key.MetaR {
                             return accept;
@@ -402,6 +406,8 @@ component AppRow inherits Tile {
     }
     // Keyboard: a Tab stop; Space or Return choose it (shortcuts.qml 542–562)
     afs := FocusScope {
+        // (a click goes to what's under it: keys only; it covered link rows and choices, which then took two clicks or none)
+        focus-on-click: false;
         key-pressed(e) => {
             if !e.repeat && (e.text == " " || e.text == Key.Return) { SBus.act(r.id, 0, 0, ""); return accept; }
             reject

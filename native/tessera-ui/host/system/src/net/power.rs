@@ -549,6 +549,17 @@ impl Service for Power {
             "idleLater" => self.idle_later(h),
             _ => {}
         }
+        // (a choice applies now, not on the next second's tick; the menus show
+        // the daemon's profile, so it shows the new one straight away: it was
+        // a beat late and looked like the click hadn't taken)
+        let mode = self.mode();
+        if mode != self.last_mode {
+            self.last_mode = mode.clone();
+            self.apply();
+            if self.ppd && !tessera_core::env::sandboxed() {
+                self.profile = mode;
+            }
+        }
         self.publish(h);
     }
     fn message(&mut self, h: &mut Host, msg: Box<dyn Any + Send>) {

@@ -722,6 +722,8 @@ export component CircleSearch inherits Window {
     }
 
     keys := FocusScope {
+        // (a click goes to what's under it: keys only; it covered link rows and choices, which then took two clicks or none)
+        focus-on-click: false;
         key-pressed(e) => {
             if root.key(e.text) { return accept; }
             reject

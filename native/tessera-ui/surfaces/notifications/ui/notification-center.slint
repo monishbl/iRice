@@ -364,6 +364,8 @@ export component Center inherits Window {
     }
     // Esc closes (Popover.qml); it has the keys from the start
     keys := FocusScope {
+        // (a click goes to what's under it: keys only; it covered link rows and choices, which then took two clicks or none)
+        focus-on-click: false;
         key-pressed(e) => {
             if e.text == Key.Escape { dismissed(); return accept; }
             reject

@@ -949,17 +949,10 @@ pub fn wallpaper_glass_shape(look: &Look, x: f32, y: f32, w: f32, h: f32, radius
     if g.tier() == "solid" {
         return shadow_margin(s, margin);
     }
-    // (mode 0's rim band: bevel × band, at most twice the radius; its colour
-    // fringe is the lens's offset × chroma, the plugin's × chroma × 0.4)
-    s[5] = 0.0;
-    s[6] = 36.0 * g.bend;
-    s[7] = 0.0;
+    // (the desktop's widgets follow Settings → Glass like every other glass
+    // surface: material, frost, lens, tint, rim and saturation all come from
+    // the preset; only their bevel and shadow are the wallpaper glass's)
     s[8] = (bevel * g.band).min(radius * 2.0);
-    s[9] = 1.0;
-    s[10] = 0.12 * g.dispersion / 0.4;
-    s[11] = g.rim() * (1.0 - g.solid);
-    s[12..16].copy_from_slice(&g.tint);
-    s[16] = 1.35;
     s[19] = g.shadow();
     s[20] = margin;
     s

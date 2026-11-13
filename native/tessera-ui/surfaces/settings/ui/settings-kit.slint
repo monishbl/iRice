@@ -230,6 +230,8 @@ export component SSwitch {
     accessible-action-default => { if enabled { toggled(); } }
     forward-focus: fs;
     fs := FocusScope {
+        // (a click goes to what's under it: keys only; it covered link rows and choices, which then took two clicks or none)
+        focus-on-click: false;
         key-pressed(e) => {
             if enabled && !e.repeat && (e.text == " " || e.text == Key.Return) {
                 root.toggled();
@@ -332,6 +334,8 @@ export component SSlider {
     }
     forward-focus: fs;
     fs := FocusScope {
+        // (a click goes to what's under it: keys only; it covered link rows and choices, which then took two clicks or none)
+        focus-on-click: false;
         key-pressed(e) => {
             if e.text == Key.LeftArrow || e.text == Key.DownArrow { nudge(value - key-step); return accept; }
             if e.text == Key.RightArrow || e.text == Key.UpArrow { nudge(value + key-step); return accept; }
@@ -486,6 +490,8 @@ export component SSegmented {
         if i >= 0 && i < opts.length && !opts[i].off { selected(i); }
     }
     fs := FocusScope {
+        // (a click goes to what's under it: keys only; it covered link rows and choices, which then took two clicks or none)
+        focus-on-click: false;
         key-pressed(e) => {
             if e.text == Key.LeftArrow || e.text == Key.UpArrow { step(-1); return accept; }
             if e.text == Key.RightArrow || e.text == Key.DownArrow { step(1); return accept; }
@@ -610,6 +616,8 @@ export component SChoice {
     }
     forward-focus: fs;
     fs := FocusScope {
+        // (a click goes to what's under it: keys only; it covered link rows and choices, which then took two clicks or none)
+        focus-on-click: false;
         key-pressed(e) => {
             // (its list is open: the keys are the list's, the window passes them on)
             if open { return reject; }
@@ -727,6 +735,8 @@ export component SButton {
     accessible-action-default => { if active { clicked(); } }
     forward-focus: fs;
     fs := FocusScope {
+        // (a click goes to what's under it: keys only; it covered link rows and choices, which then took two clicks or none)
+        focus-on-click: false;
         key-pressed(e) => {
             if active && !e.repeat && (e.text == " " || e.text == Key.Return) { root.clicked(); return accept; }
             reject

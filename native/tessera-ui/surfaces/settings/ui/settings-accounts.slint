@@ -90,6 +90,8 @@ component IconBtn inherits Rectangle {
     accessible-action-default => { clicked(); }
     // Keyboard: a Tab stop; Space or Enter press it
     fs := FocusScope {
+        // (a click goes to what's under it: keys only; it covered link rows and choices, which then took two clicks or none)
+        focus-on-click: false;
         key-pressed(e) => {
             if !e.repeat && (e.text == " " || e.text == Key.Return) { root.clicked(); return accept; }
             reject

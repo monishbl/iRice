@@ -51,7 +51,7 @@ use std::time::Duration;
 /// the circling, the bar and Esc worked, but a click on a chip and typed
 /// text drew no change, so the answer path is unchecked. Off, "circle"
 /// opens the region selector's circle mode, as before.
-pub const ENABLED: bool = false;
+pub const ENABLED: bool = true;
 
 const NS: &str = "tessera:circle";
 /// circle.slint's exit (320 ms), and a frame to spare

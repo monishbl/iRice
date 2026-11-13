@@ -64,6 +64,8 @@ component WButton inherits Rectangle {
     accessible-label: text;
     accessible-action-default => { clicked(); }
     fs := FocusScope {
+        // (a click goes to what's under it: keys only; it covered link rows and choices, which then took two clicks or none)
+        focus-on-click: false;
         key-pressed(e) => {
             if (e.text == " " || e.text == Key.Return) && !e.repeat { root.clicked(); return accept; }
             reject
@@ -97,6 +99,8 @@ component Choice inherits Rectangle {
     accessible-checked: selected;
     accessible-action-default => { chosen(); }
     fs := FocusScope {
+        // (a click goes to what's under it: keys only; it covered link rows and choices, which then took two clicks or none)
+        focus-on-click: false;
         key-pressed(e) => {
             if (e.text == " " || e.text == Key.Return) && !e.repeat { root.chosen(); return accept; }
             reject
@@ -176,6 +180,8 @@ component LookMini inherits Rectangle {
     accessible-checked: selected;
     accessible-action-default => { chosen(); }
     fs := FocusScope {
+        // (a click goes to what's under it: keys only; it covered link rows and choices, which then took two clicks or none)
+        focus-on-click: false;
         enabled: focusable;
         key-pressed(e) => {
             if (e.text == " " || e.text == Key.Return) && !e.repeat { root.chosen(); return accept; }

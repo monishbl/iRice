@@ -1110,6 +1110,8 @@ component History inherits Rectangle {
             }
         }
         keys := FocusScope {
+            // (a click goes to what's under it: keys only; it covered link rows and choices, which then took two clicks or none)
+            focus-on-click: false;
             key-pressed(e) => {
                 by-keys = true;
                 if e.text == Key.DownArrow { move(1); return accept; }
@@ -1696,6 +1698,8 @@ component Toggle inherits Rectangle {
     accessible-action-default => { toggled(); }
     forward-focus: fs;
     fs := FocusScope {
+        // (a click goes to what's under it: keys only; it covered link rows and choices, which then took two clicks or none)
+        focus-on-click: false;
         key-pressed(e) => {
             if e.text == " " || e.text == Key.Return { toggled(); return accept; }
             reject

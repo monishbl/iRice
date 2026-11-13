@@ -711,6 +711,8 @@ export component ShotEditor inherits Window {
     }
 
     keys := FocusScope {
+        // (a click goes to what's under it: keys only; it covered link rows and choices, which then took two clicks or none)
+        focus-on-click: false;
         key-pressed(e) => {
             if root.key(e.text, e.modifiers.control, e.modifiers.shift) { return accept; }
             reject

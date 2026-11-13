@@ -484,6 +484,8 @@ component RowView {
     }
     if link: Rectangle {
         lfs := FocusScope {
+            // (a click goes to what's under it: keys only; it covered link rows and choices, which then took two clicks or none)
+            focus-on-click: false;
             key-pressed(e) => {
                 if r.enabled && !e.repeat && (e.text == Key.Return || e.text == " ") { SBus.act(r.id, 0, 0, ""); return accept; }
                 reject
@@ -549,6 +551,8 @@ component MoreButton {
     accessible-action-default => { SBus.act(b.id, 0, 0, ""); }
     forward-focus: fs;
     fs := FocusScope {
+        // (a click goes to what's under it: keys only; it covered link rows and choices, which then took two clicks or none)
+        focus-on-click: false;
         key-pressed(e) => {
             if e.text == " " || e.text == Key.Return { SBus.act(b.id, 0, 0, ""); return accept; }
             reject
@@ -949,6 +953,8 @@ export component SettingsWindow inherits Window {
             // The pages list's keys (one Tab stop: Up, Down, Home, End open
             // the previous, next, first, last page)
             side-keys := FocusScope {
+                // (a click goes to what's under it: keys only; it covered link rows and choices, which then took two clicks or none)
+                focus-on-click: false;
                 width: 0;
                 height: 0;
                 // (the ring is for focus from the keyboard only: FocusRing.qml)

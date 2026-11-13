@@ -66,6 +66,8 @@ export component UpdateScreen inherits Window {
 
         // Return and Escape close the error screen (it has the keyboard then)
         keys := FocusScope {
+            // (a click goes to what's under it: keys only; it covered link rows and choices, which then took two clicks or none)
+            focus-on-click: false;
             x: 0;
             y: 0;
             width: 0;

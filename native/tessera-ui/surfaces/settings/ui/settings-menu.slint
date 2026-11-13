@@ -67,6 +67,8 @@ export component SettingsMenu inherits Window {
     }
     forward-focus: keys;
     keys := FocusScope {
+        // (a click goes to what's under it: keys only; it covered link rows and choices, which then took two clicks or none)
+        focus-on-click: false;
         key-pressed(e) => {
             if e.text == Key.Escape { root.dismiss(); return accept; }
             if e.text == Key.DownArrow { step(1); return accept; }

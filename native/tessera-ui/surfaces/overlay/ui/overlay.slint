@@ -527,6 +527,8 @@ export component OverlayUi inherits Window {
     }
 
     keys := FocusScope {
+        // (a click goes to what's under it: keys only; it covered link rows and choices, which then took two clicks or none)
+        focus-on-click: false;
         width: 0;
         height: 0;
         key-pressed(e) => {
