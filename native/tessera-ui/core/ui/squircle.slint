@@ -51,14 +51,26 @@ export component Squircle inherits Rectangle {
     in property <brush> line-color: transparent;
     in property <bool> circular: Theme.material;
 
-    if root.width > 0 && root.height > 0: SquirclePath {
+    // (a circle or pill, and Material's round corners: an exact round
+    // rectangle. The plugin's curve is a circular arc there too, and the
+    // path's four joins showed as small bumps on full circles)
+    property <bool> round: root.circular || root.radius >= min(root.width, root.height) / 2 - 0.5px;
+    if root.round && root.width > 0 && root.height > 0: Rectangle {
+        width: root.width;
+        height: root.height;
+        border-radius: min(root.radius, min(root.width, root.height) / 2);
+        background: root.fill;
+        border-width: root.line-width;
+        border-color: root.line-color;
+    }
+    if !root.round && root.width > 0 && root.height > 0: SquirclePath {
         width: root.width;
         height: root.height;
         radius: root.radius;
         circular: root.circular;
         fill: root.fill;
     }
-    if root.line-width > 0 && root.width > 0 && root.height > 0: SquirclePath {
+    if !root.round && root.line-width > 0 && root.width > 0 && root.height > 0: SquirclePath {
         width: root.width;
         height: root.height;
         radius: root.radius;
