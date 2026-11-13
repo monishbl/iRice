@@ -107,8 +107,34 @@ local function space(a)
     return function() TESSERA_SPACE(op, n, step) end
 end
 
+-- Close: while one of the shell's overlays holds the keyboard (Quick Look,
+-- Search, the app drawer, Mission Control, emoji, clipboard, the power
+-- menu …: a mapped "tessera…" layer with exclusive keyboard interactivity),
+-- the close shortcuts close that overlay (the shell's "dismiss" shortcut),
+-- not the window under it; otherwise the focused window, as before.
+-- Shell-agnostic: any Tessera shell that answers tessera:dismiss.
+function TESSERA_OVERLAY_HAS_KEYS()
+    local ok, layers = pcall(hl.get_layers)
+    if not ok or type(layers) ~= "table" then return false end
+    for _, l in ipairs(layers) do
+        if l.mapped and l.interactivity == 1 and type(l.namespace) == "string"
+            and l.namespace:find("^tessera") then
+            return true
+        end
+    end
+    return false
+end
+function TESSERA_CLOSE()
+    if TESSERA_OVERLAY_HAS_KEYS() then
+        hl.dispatch(hl.dsp.global("tessera:dismiss"))
+    else
+        hl.dispatch(hl.dsp.window.close())
+    end
+end
+
 local function actionOf(a)
     if type(a) ~= "table" then return nil, "no action" end
+    if a.dsp and a.dsp:gsub("%s", "") == "hl.dsp.window.close()" then return TESSERA_CLOSE end
     if a.space then return space(a) end
     if a.shell then return hl.dsp.global("tessera:" .. a.shell) end
     -- ($IRICE_SHELL: a shortcut saved before iRice became Tessera)

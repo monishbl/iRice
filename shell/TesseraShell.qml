@@ -253,6 +253,20 @@ ShellRoot {
                 root.superDown = 0;
         }
     }
+    // The close shortcuts while a shell overlay holds the keyboard
+    // (keybinds.lua, TESSERA_CLOSE): Quick Look first (it sits over the
+    // rest), else whatever panel or tool is open
+    GlobalShortcut {
+        appid: "tessera"
+        name: "dismiss"
+        description: "Close the open overlay"
+        onPressed: {
+            if (Panels.quickLookPath !== "")
+                Panels.quickLookPath = "";
+            else
+                root.panicReset();
+        }
+    }
     GlobalShortcut { appid: "tessera"; name: "reset"; description: "Close everything (if something is stuck)"; onPressed: root.panicReset() }
     GlobalShortcut { appid: "tessera"; name: "lock"; description: "Lock the screen"; onPressed: System.power("lock") }
     // (screenshot first, then the report page: Settings → Report a Bug)
