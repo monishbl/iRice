@@ -210,7 +210,8 @@ impl Session {
             slint::Color::from_rgb_u8(l(a.red(), b.red()), l(a.green(), b.green()), l(a.blue(), b.blue()))
         };
         let (blue, on_blue) = if look.dark { (hex("#9ecaff"), hex("#003258")) } else { (hex("#2f6aa8"), hex("#ffffff")) };
-        let quiet = r("surfaceContainerHigh");
+        // (one tone above the dialog's own surface, so each shape still shows)
+        let quiet = r("surfaceContainerHighest");
         let quiet_ink = r("onSurfaceVariant");
         let opts: Vec<ui::SOpt> = OPTIONS
             .iter()
