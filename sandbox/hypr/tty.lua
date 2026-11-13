@@ -1,7 +1,7 @@
 -- Tessera test session on its own TTY (real Hyprland, real input; not nested).
 -- Started by `./dev.sh tty` from a text console. Uses the real Tessera modules
 -- with SUPER as the modifier. Super+Shift+Escape (or Ctrl+Alt+Backspace)
--- ends the session; Super+Ctrl+Alt+R force-restarts a frozen shell. If the
+-- pressed twice within 3 s ends the session; Super+Ctrl+Alt+R force-restarts a frozen shell. If the
 -- whole session hangs, run `./dev.sh tty-stop` from another console.
 
 local root = (os.getenv("TESSERA_ROOT") or os.getenv("IRICE_ROOT"))
@@ -61,8 +61,10 @@ pcall(dofile, root .. "/hypr/tessera/glass.lua")
 -- state and cache in the sandbox home; a watchdog restarts it if it freezes.
 local ctl = root .. "/sandbox/tty-shell.sh"
 
-hl.bind("SUPER + SHIFT + Escape", hl.dsp.exit(), { description = "Session: End test session" })
-hl.bind("CTRL + ALT + BackSpace", hl.dsp.exit(), { description = "Session: End test session (emergency)" })
+-- (asks first: a second press within 3 s ends it; Hyprland's own notice, so
+-- it works with the shell frozen)
+hl.bind("SUPER + SHIFT + Escape", hl.dsp.exec_cmd(root .. "/sandbox/confirm-exit.sh"), { description = "Session: End test session (press twice)" })
+hl.bind("CTRL + ALT + BackSpace", hl.dsp.exec_cmd(root .. "/sandbox/confirm-exit.sh"), { description = "Session: End test session, emergency (press twice)" })
 hl.bind("SUPER + CTRL + ALT + R", hl.dsp.exec_cmd(ctl .. " restart"), { description = "Session: Force-restart a frozen shell" })
 
 hl.on("hyprland.start", function()
