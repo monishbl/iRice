@@ -44,7 +44,7 @@ sandbox), **done, unchecked** (committed, not yet seen in a screenshot).
 | Change | Asked | Status | Commit |
 |---|---|---|---|
 | Glass goes out with the frame that's drawn (default sync "drawn"; `TESSERA_GLASS_SYNC=taken` for the old way), held at most 100 ms: Control Center and Launchpad no longer show content before their glass | 14 Nov | done (arena) | bd91803, 65d1961, a703041 |
-| Desktop widgets follow Settings → Glass (frost, tint…); only the bevel, shadow and margin are their own | 14 Nov | done, unchecked | 45dffab |
+| Desktop widgets follow Settings → Glass (frost, tint…); only the bevel, shadow and margin are their own | 14 Nov | done (arena 2: Liquid vs Frosted differ as elsewhere) | 45dffab |
 | Island (Glass, music): the album art clipped to the glass squircle, no second rounding at the corners | 14 Nov | done, unchecked | 6297768 |
 
 ## Other
