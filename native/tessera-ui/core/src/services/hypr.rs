@@ -178,9 +178,9 @@ pub fn reconnect() {
 }
 
 const RELEVANT: &[&str] = &[
-    "workspacev2>>", "focusedmonv2>>", "activewindow>>", "createworkspacev2>>", "destroyworkspacev2>>",
+    "workspacev2>>", "focusedmonv2>>", "activewindowv2>>", "createworkspacev2>>", "destroyworkspacev2>>",
     "moveworkspacev2>>", "openwindow>>", "closewindow>>", "movewindowv2>>", "monitoraddedv2>>", "monitorremovedv2>>",
-    "fullscreen>>", "changefloatingmode>>", "pin>>", "windowtitlev2>>", "togglegroup>>", "moveintogroup>>", "moveoutofgroup>>",
+    "fullscreen>>", "changefloatingmode>>", "pin>>", "togglegroup>>", "moveintogroup>>", "moveoutofgroup>>",
 ];
 
 /// Watches socket2; sends a fresh snapshot after each burst of relevant events
@@ -204,19 +204,22 @@ pub fn spawn_events(tx: Sender<Msg>) {
         }
         let mut r = BufReader::new(stream);
         let mut line = String::new();
-        let mut dirty = false;
+        let mut burst = Burst::default();
         LAST_EVENT.store(now_ms(), std::sync::atomic::Ordering::Relaxed);
         loop {
-            line.clear();
+            let _ = r.get_ref().set_read_timeout(burst.wait());
             match r.read_line(&mut line) {
-                Ok(0) | Err(_) => break,
-                Ok(_) => {}
+                Ok(0) => break,
+                Ok(_) => {
+                    LAST_EVENT.store(now_ms(), std::sync::atomic::Ordering::Relaxed);
+                    burst.feed(&line, RELEVANT);
+                    line.clear();
+                }
+                Err(e) if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => {}
+                Err(_) => break,
             }
-            LAST_EVENT.store(now_ms(), std::sync::atomic::Ordering::Relaxed);
-            dirty |= RELEVANT.iter().any(|p| line.starts_with(p));
-            // coalesce: answer once the burst is read
-            if dirty && r.buffer().is_empty() {
-                dirty = false;
+            // coalesce: answer once the burst is read (title changes at most once a second)
+            if r.buffer().is_empty() && burst.due() {
                 if let Some(s) = snapshot() {
                     if tx.send(Msg::Data(Box::new(s))).is_err() {
                         return;
@@ -226,6 +229,47 @@ pub fn spawn_events(tx: Sender<Msg>) {
         }
         std::thread::sleep(Duration::from_millis(500));
     });
+}
+
+/// What a run of socket2 events asks of a watcher: a fresh look at once for
+/// a relevant event, but for a window's title changing at most once a second
+/// (a terminal's spinner retitles it many times a second: every change
+/// re-read clients, monitors and the active window and redrew the dock)
+#[derive(Default)]
+pub struct Burst {
+    dirty: bool,
+    title: bool,
+    last: Option<std::time::Instant>,
+}
+
+pub const TITLE_EVERY: Duration = Duration::from_millis(1000);
+
+impl Burst {
+    pub fn feed(&mut self, line: &str, relevant: &[&str]) {
+        if line.starts_with("windowtitlev2>>") || line.starts_with("windowtitle>>") {
+            self.title = true;
+        } else if relevant.iter().any(|p| line.starts_with(p)) {
+            self.dirty = true;
+        }
+    }
+    /// Look now? (clears what it answers)
+    pub fn due(&mut self) -> bool {
+        let title_ok = self.title && self.last.is_none_or(|t| t.elapsed() >= TITLE_EVERY);
+        if self.dirty || title_ok {
+            self.dirty = false;
+            self.title = false;
+            self.last = Some(std::time::Instant::now());
+            return true;
+        }
+        false
+    }
+    /// How long a read may wait: until a held title change is due
+    pub fn wait(&self) -> Option<Duration> {
+        if !self.title {
+            return None;
+        }
+        Some(self.last.map_or(Duration::from_millis(1), |t| TITLE_EVERY.saturating_sub(t.elapsed())).max(Duration::from_millis(1)))
+    }
 }
 
 /// A dispatch (Hyprland's Lua: `hl.dsp.window.float({ … })`), on a thread

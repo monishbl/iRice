@@ -154,7 +154,7 @@ fn snapshot(urgent: &BTreeSet<String>) -> Option<Windows> {
 }
 
 const RELEVANT: &[&str] = &[
-    "openwindow>>", "closewindow>>", "movewindow>>", "movewindowv2>>", "activewindowv2>>", "windowtitlev2>>",
+    "openwindow>>", "closewindow>>", "movewindow>>", "movewindowv2>>", "activewindowv2>>",
     "changefloatingmode>>", "fullscreen>>", "workspacev2>>", "focusedmonv2>>", "monitoraddedv2>>", "monitorremovedv2>>",
     "urgent>>", "minimized>>", "resizewindow>>",
 ];
@@ -191,17 +191,21 @@ pub fn spawn(tx: Sender<Msg>) {
             };
             let mut r = BufReader::new(stream);
             let mut line = String::new();
-            let mut dirty = false;
+            let mut burst = crate::services::hypr::Burst::default();
             loop {
-                line.clear();
+                let _ = r.get_ref().set_read_timeout(burst.wait());
                 match r.read_line(&mut line) {
-                    Ok(0) | Err(_) => break,
-                    Ok(_) => {}
+                    Ok(0) => break,
+                    Ok(_) => {
+                        note_urgent(&mut urgent, line.trim_end());
+                        burst.feed(&line, RELEVANT);
+                        line.clear();
+                    }
+                    Err(e) if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => {}
+                    Err(_) => break,
                 }
-                note_urgent(&mut urgent, line.trim_end());
-                dirty |= RELEVANT.iter().any(|p| line.starts_with(p));
-                if dirty && r.buffer().is_empty() {
-                    dirty = false;
+                // (title changes at most once a second: hypr::Burst)
+                if r.buffer().is_empty() && burst.due() {
                     if let Some(s) = snapshot(&urgent) {
                         if tx.send(Msg::Data(Box::new(s))).is_err() {
                             return;

@@ -92,7 +92,7 @@ pub fn strips(groups: &[Group], clients: &[Client], monitors: &[Monitor]) -> Vec
 pub fn kind(line: &str) -> Option<bool> {
     let (name, data) = line.split_once(">>").unwrap_or((line, ""));
     const MOVING: &[&str] = &["workspace", "workspacev2", "movewindow", "movewindowv2", "changefloatingmode", "fullscreen", "openwindow", "closewindow", "tessera-drag", "irice-drag", "moveworkspace", "moveworkspacev2", "configreloaded", "monitoradded", "monitorremoved"];
-    const GROUPING: &[&str] = &["togglegroup", "moveintogroup", "moveoutofgroup", "activewindow", "activewindowv2", "lockgroups", "ignoregrouplock"];
+    const GROUPING: &[&str] = &["togglegroup", "moveintogroup", "moveoutofgroup", "activewindowv2", "lockgroups", "ignoregrouplock"];
     if MOVING.contains(&name) {
         // (a drag that ends doesn't hide them)
         Some(!((name == "tessera-drag" || name == "irice-drag") && data.starts_with("drop")))
@@ -173,17 +173,35 @@ impl Tabs {
             let mut r = BufReader::new(stream);
             let mut line = String::new();
             let mut moving: Option<bool> = None;
+            // (a title changing — activewindow>> repeats on every retitle of the
+            // focused window, a busy terminal's spinner many times a second —
+            // looks again at most once a second: tab bars show titles)
+            let mut title = false;
+            let mut last = std::time::Instant::now() - Duration::from_secs(5);
             loop {
-                line.clear();
+                let wait = title.then(|| Duration::from_millis(1000).saturating_sub(last.elapsed()).max(Duration::from_millis(1)));
+                let _ = r.get_ref().set_read_timeout(wait);
                 match r.read_line(&mut line) {
-                    Ok(0) | Err(_) => break,
-                    Ok(_) => {}
-                }
-                if let Some(m) = kind(line.trim_end()) {
-                    moving = Some(moving.unwrap_or(false) || m);
+                    Ok(0) => break,
+                    Ok(_) => {
+                        let l = line.trim_end();
+                        if let Some(m) = kind(l) {
+                            moving = Some(moving.unwrap_or(false) || m);
+                        } else if l.starts_with("activewindow>>") || l.starts_with("windowtitlev2>>") {
+                            title = true;
+                        }
+                        line.clear();
+                    }
+                    Err(e) if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => {}
+                    Err(_) => break,
                 }
                 if r.buffer().is_empty() {
+                    if title && moving.is_none() && last.elapsed() >= Duration::from_millis(1000) {
+                        moving = Some(false);
+                    }
                     if let Some(m) = moving.take() {
+                        title = false;
+                        last = std::time::Instant::now();
                         to(Box::new(M::Event(m)));
                     }
                 }

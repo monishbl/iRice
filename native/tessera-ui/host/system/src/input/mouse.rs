@@ -331,7 +331,8 @@ impl Service for Mouse {
     }
     fn start(&mut self, h: &mut Host) {
         self.sig = signature(h.cfg());
-        spawn_hypr_events(&[], h.sender("Mouse"));
+        // (only the events it acts on: every title change of a busy terminal woke it)
+        spawn_hypr_events(&["configreloaded", "openwindow", "urgent", "workspace", "workspacev2", "activespecial", "activespecialv2", "closewindow", "movewindowv2", "changefloatingmode"], h.sender("Mouse"));
         // the glass plugin: its name and version (a ping answers "<name> <version>")
         let send = h.sender("Mouse");
         std::thread::spawn(move || {
