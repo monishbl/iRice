@@ -106,9 +106,9 @@ impl Service for StatusMenusFeed {
     fn calls(&self) -> &'static [&'static str] {
         &["statusmenus"]
     }
-    fn start(&mut self, h: &mut Host) {
-        let send = h.sender(NAME);
-        self.tick.start(slint::TimerMode::Repeated, Duration::from_millis(250), move || send(Box::new(M::Tick)));
+    fn start(&mut self, _h: &mut Host) {
+        // (the readings' tick runs only while a status menu is open: it woke
+        // the shell four times a second for nothing; `settled` sees one open)
     }
     fn call(&mut self, h: &mut Host, call: &str, args: &Value) {
         let a = if call == "statusmenus" {
@@ -169,7 +169,13 @@ impl Service for StatusMenusFeed {
                     let opened = !open.is_empty();
                     self.open = open;
                     if opened {
+                        if !self.tick.running() {
+                            let send = h.sender(NAME);
+                            self.tick.start(slint::TimerMode::Repeated, Duration::from_millis(250), move || send(Box::new(M::Tick)));
+                        }
                         self.send(h, true);
+                    } else {
+                        self.tick.stop();
                     }
                     return;
                 }

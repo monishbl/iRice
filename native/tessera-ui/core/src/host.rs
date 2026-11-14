@@ -88,6 +88,10 @@ pub struct Host<'a> {
 impl Host<'_> {
     /// A line as RustUi.qml would write it to stdin (handled as one)
     pub fn say(&mut self, line: Value) {
+        if crate::wayland::wakes_on() {
+            let what = ["to", "kind", "cmd"].iter().find_map(|k| line[*k].as_str()).unwrap_or("?").to_string();
+            crate::wayland::WAKE_MSGS.with(|w| *w.borrow_mut().entry(format!("say/{what}")).or_default() += 1);
+        }
         let _ = self.st.tx.send(Msg::Line(line.to_string()));
     }
     /// A command for a surface ("open" on a screen, "close", or its own)
@@ -122,6 +126,9 @@ impl Host<'_> {
         if at[keys[keys.len() - 1]] != v {
             at[keys[keys.len() - 1]] = v;
             *self.state_dirty = true;
+            if crate::wayland::wakes_on() {
+                crate::wayland::WAKE_MSGS.with(|w| *w.borrow_mut().entry(format!("state/{path}")).or_default() += 1);
+            }
         }
     }
     pub fn state(&self, path: &str) -> &Value {

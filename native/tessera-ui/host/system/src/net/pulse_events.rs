@@ -60,6 +60,11 @@ impl Service for PulseEvents {
                     &["pactl", "subscribe"],
                     None,
                     |line| {
+                        // (an app connecting or leaving, the shell's own pactl
+                        // calls among them: no listener wants those)
+                        if line.contains(" on client #") {
+                            return;
+                        }
                         if let Ok(s) = subs().lock() {
                             s.iter().for_each(|f| f(&line));
                         }

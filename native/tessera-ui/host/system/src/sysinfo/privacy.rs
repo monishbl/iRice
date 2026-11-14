@@ -345,21 +345,14 @@ impl Service for Privacy {
     fn start(&mut self, h: &mut Host) {
         let tx = helpers::tx(h, "Privacy");
         self.tx = Some(tx.clone());
-        // Microphone: the shell's pactl subscribe (services/PulseEvents),
-        // here its own line reader so this crate stands alone
+        // Microphone: the shell's one `pactl subscribe` (PulseEvents), only
+        // the recording lines
         let t = tx.clone();
-        std::thread::spawn(move || loop {
-            use std::process::{Command, Stdio};
-            if let Ok(mut c) = Command::new("pactl").arg("subscribe").stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn() {
-                if let Some(o) = c.stdout.take() {
-                    for l in BufReader::new(o).lines().map_while(Result::ok) {
-                        t(Box::new(Ev::Pulse(l)));
-                    }
-                }
-                let _ = c.wait();
+        crate::net::pulse_events::subscribe(Box::new(move |l: &str| {
+            if l.contains("source-output") || l.contains("'source'") {
+                t(Box::new(Ev::Pulse(l.to_string())));
             }
-            std::thread::sleep(Duration::from_secs(5));
-        });
+        }));
         self.mic_list();
         // Camera and location (their scripts; the events service may also say
         // them through the calls)

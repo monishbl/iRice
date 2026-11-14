@@ -50,19 +50,25 @@ pub fn links(inputs: &str, sinks: &str) -> BTreeMap<u32, String> {
 
 enum M {
     Links(BTreeMap<u32, String>),
+    /// a stream or an output came, went or changed (PulseEvents)
+    Poke,
 }
 
 #[derive(Default)]
 pub struct AudioStreams {
     links: BTreeMap<u32, String>,
-    tick: slint::Timer,
     last: Value,
     busy: bool,
+    again: bool,
 }
 
 impl AudioStreams {
     fn refresh(&mut self, h: &mut Host) {
-        if self.busy || !has_tool("pactl") {
+        if !has_tool("pactl") {
+            return;
+        }
+        if self.busy {
+            self.again = true;
             return;
         }
         self.busy = true;
@@ -102,22 +108,33 @@ impl Service for AudioStreams {
     }
     fn start(&mut self, h: &mut Host) {
         h.st.shell.want("audio");
+        // (which output each stream plays to: read again when a stream or an
+        // output changes, not every second: each read is two pactl runs, and
+        // each run woke every pactl listener)
         let send = h.sender(NAME);
-        self.tick.start(slint::TimerMode::Repeated, std::time::Duration::from_millis(1000), move || send(Box::new(())));
+        super::pulse_events::subscribe(Box::new(move |l: &str| {
+            if l.contains(" on sink-input #") || l.contains(" on sink #") {
+                send(Box::new(M::Poke));
+            }
+        }));
+        self.refresh(h);
+    }
+    fn data(&mut self, h: &mut Host, what: std::any::TypeId) {
+        if what == std::any::TypeId::of::<Sound>() {
+            self.publish(h);
+        }
     }
     fn message(&mut self, h: &mut Host, msg: Box<dyn Any + Send>) {
-        match msg.downcast::<M>() {
-            Ok(m) => {
-                let M::Links(l) = *m;
+        let Ok(m) = msg.downcast::<M>() else { return };
+        match *m {
+            M::Links(l) => {
                 self.busy = false;
                 self.links = l;
-            }
-            Err(_) => {
-                // (a second's tick: the streams move rarely; links only while some play)
-                if h.st.shell.get::<Sound>().is_some_and(|s| !s.streams.is_empty()) {
+                if std::mem::take(&mut self.again) {
                     self.refresh(h);
                 }
             }
+            M::Poke => self.refresh(h),
         }
         self.publish(h);
     }
@@ -137,7 +154,6 @@ impl Service for AudioStreams {
         }
     }
     fn quit(&mut self, _h: &mut Host) {
-        self.tick.stop();
     }
 }
 

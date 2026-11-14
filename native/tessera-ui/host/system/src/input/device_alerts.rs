@@ -443,21 +443,16 @@ impl Service for DeviceAlerts {
             }
             std::thread::sleep(std::time::Duration::from_secs(10));
         });
-        // the sound server's events (the shell's one `pactl subscribe`)
+        // the sound server's events: the shell's one `pactl subscribe`
+        // (PulseEvents), only the lines this acts on (each line woke the
+        // shell's loop; a line per app connecting to the sound server)
         let send = h.sender("DeviceAlerts");
-        std::thread::spawn(move || loop {
-            let child = Command::new("pactl").arg("subscribe").stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn();
-            if let Ok(mut c) = child {
-                if let Some(out) = c.stdout.take() {
-                    send(Box::new(M::PulseUp));
-                    for line in BufReader::new(out).lines().map_while(Result::ok) {
-                        send(Box::new(M::PulseLine(line)));
-                    }
-                }
-                let _ = c.wait();
+        send(Box::new(M::PulseUp));
+        crate::net::pulse_events::subscribe(Box::new(move |line: &str| {
+            if line.contains(" on sink #") || line.contains(" on server #") || line.contains(" on card #") {
+                send(Box::new(M::PulseLine(line.to_string())));
             }
-            std::thread::sleep(std::time::Duration::from_secs(5));
-        });
+        }));
     }
     fn call(&mut self, _h: &mut Host, call: &str, args: &Value) {
         if call.ends_with(".openDrive") {

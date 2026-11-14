@@ -261,8 +261,14 @@ impl Service for NetworkFeed {
     }
     fn start(&mut self, h: &mut Host) {
         h.st.shell.want("status");
-        let send = h.sender(NAME);
-        self.tick.start(slint::TimerMode::Repeated, Duration::from_millis(250), move || send(Box::new(M::Tick)));
+        // (the tick runs only while the Wi-Fi menu is open: `settled` sees it
+        // open; it woke the shell four times a second for nothing)
+    }
+    fn settled(&mut self, h: &mut Host) {
+        let open = h.state("open") == "wifiMenu";
+        if open != self.open {
+            self.message(h, Box::new(M::Tick));
+        }
     }
     fn call(&mut self, h: &mut Host, call: &str, args: &Value) {
         // `network` [what, …] (the Wi-Fi menu), or `network.<what>` […] (the other crates': the same, without the first word)
@@ -365,10 +371,15 @@ impl Service for NetworkFeed {
                     self.refresh(true);
                     h.ask("speedtest.probe", Value::Null);
                     self.open = true;
+                    if !self.tick.running() {
+                        let send = h.sender(NAME);
+                        self.tick.start(slint::TimerMode::Repeated, Duration::from_millis(250), move || send(Box::new(M::Tick)));
+                    }
                     self.send(h, true);
                     return;
                 }
                 if !open {
+                    self.tick.stop();
                     self.open = false;
                     self.hovered = false;
                     self.asking = false;
