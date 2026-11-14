@@ -29,9 +29,11 @@ sandbox), **done, unchecked** (committed, not yet seen in a screenshot).
 
 | Change | Asked | Status | Commit |
 |---|---|---|---|
-| Circle to Search: breathing edge glow (Glass blue/purple/pink/orange, Material wallpaper tones), entry from the cursor (gesture) or the bottom (key); the circled picture goes to an input bar with chips (What is this?, Search the web, Copy text, Translate) or your own question; the answer streams in a card by the selection with "Continue in sidebar"; Lens "image expired" fixed (the Lens fix **also QML**, shared script) | 13 Nov | on and live: glow, circling, input bar with chips and typing checked in arena 2; the bar and card have their own solid tint in Glass (the circle layer isn't blurred, so text behind showed through); the glow holds still at rest and moves only while the AI works; the AI answer card, chip actions and Material unchecked | f204b11 (Lens); 5dff917, 45dffab, 96c1537 |
+| Circle to Search: an edge glow of smooth gradient bands (no blur) whose colours flow round the screen (Glass blue/purple/pink/orange, Material wallpaper tones), a ring of light from the pointer (gesture) or a band rising from the bottom (key) as it opens; the screen holds still while you circle; the circled picture goes to an input bar with chips (What is this?, Search the web, Copy text, Translate) or your own question; the answer streams in a card by the selection with "Continue in sidebar"; Lens "image expired" fixed (the Lens fix **also QML**, shared script) | 13–14 Nov | live: glow, entry, freeze, circling, input bar with chips and typing checked in arena 2; the AI answer card, chip actions and Material unchecked | f204b11 (Lens); 5dff917, 45dffab, 96c1537, 3320b58 |
 | Image viewer: Super+Q (and the usual close keys) close the viewer instead of the window under it (and the same for every shell overlay that takes the keyboard) | 13 Nov | done, unchecked; **also QML**: done (main 70f3c40, live; Hyprland Lua TESSERA_CLOSE + the shell's `dismiss` shortcut) | 1871e37, bb53564 |
 | Image viewer: redesigned top toolbar (larger icons and buttons, grouping, Copy, Mark up, Move to Trash with undo, tooltips), both looks | 13 Nov | done, unchecked | 1871e37 |
+
+| The screen freezes while you pick: Screenshot area, Text Capture, Translate and Ask take the area from the picture taken as the selector opened; the colour picker freezes every screen (hyprpicker -r); recording stays live | 14 Nov | screenshot from the frozen picture checked (arena 2) | 3320b58 |
 
 ## Text
 
@@ -53,3 +55,5 @@ sandbox), **done, unchecked** (committed, not yet seen in a screenshot).
 |---|---|---|---|
 | About This Computer: a Shell row, Tessera (Rust) / Tessera (QML) | 14 Nov | done; **also QML** (f9cb132) | 45dffab |
 | Clicks: key-only FocusScopes no longer take the click (Settings links, power mode needed two clicks) | 14 Nov | done (arena) | 45dffab |
+| Idle CPU: a window's title changing (a terminal's spinner) re-reads Hyprland's windows at most once a second (it re-read them and redrew the dock on every change); Mouse takes only its events | 14 Nov | done (live: ~10% → ~6% idle while a terminal spins) | 145638a |
+| Sandboxes can't change the laptop's Wi-Fi, Bluetooth, radios or power mode (sandbox/shims) | 14 Nov | done (a test's clicks turned the real Wi-Fi off) | 3320b58 |
