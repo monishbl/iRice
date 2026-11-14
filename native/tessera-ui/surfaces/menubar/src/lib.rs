@@ -1299,7 +1299,7 @@ impl Menubar {
             match b {
                 "screenshot" => Self::toggle_at(&output, "screenTools", x),
                 "keyboard" => Self::toggle_at(&output, "keyboard", x),
-                "colorPicker" => bridge::run(&["hyprpicker", "-a"]),
+                "colorPicker" => bridge::run(&["hyprpicker", "-a", "-r"]),
                 "mic" => act("mic", ""),
                 "darkMode" => act("darkMode", ""),
                 "powerProfile" => act("powerProfile", ""),

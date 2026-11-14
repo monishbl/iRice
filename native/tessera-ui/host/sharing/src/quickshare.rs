@@ -85,6 +85,10 @@ impl Sharing {
     }
     /// The user's "Turn on Bluetooth" (Powered = true on the adapter), off the loop
     pub fn bluetooth_turn_on(&self) {
+        // (a test sandbox shares the real system bus: never the laptop's radio)
+        if tessera_core::env::sandboxed() {
+            return;
+        }
         std::thread::spawn(|| {
             let Ok(c) = zbus::blocking::Connection::system() else { return };
             let _ = c.call_method(
@@ -104,7 +108,7 @@ impl Sharing {
     }
     pub fn quick_configure(&mut self) {
         let folder = self.quick_folder();
-        let m = json!({"cmd": "config", "visible": self.quick_visible(), "name": self.my_name(), "folder": if folder.is_empty() { "~/Downloads".to_string() } else { folder }, "pause_wifi": self.cfg_bool("sharing.quickShareHotspot", true)});
+        let m = json!({"cmd": "config", "visible": self.quick_visible(), "name": self.my_name(), "folder": if folder.is_empty() { "~/Downloads".to_string() } else { folder }, "pause_wifi": self.cfg_bool("sharing.quickShareHotspot", true) && !tessera_core::env::sandboxed()});
         self.quick_tell(m);
     }
 

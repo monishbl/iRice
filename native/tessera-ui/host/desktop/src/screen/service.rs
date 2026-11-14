@@ -205,7 +205,9 @@ impl ScreenSvc {
                 let want = a[1].as_str().unwrap_or("");
                 let scr = all.iter().find(|s| s.name == want).cloned().or_else(|| all.iter().find(|s| s.name == self.selecting_screen).cloned()).or_else(|| focused(h));
                 let n = |i: usize| a[i].as_f64().unwrap_or(0.0);
-                self.captured(h, a[0].as_str().unwrap_or(""), scr, (n(2), n(3), n(4), n(5)));
+                // (a[6]: the area cut from the selector's frozen picture, our own runtime file)
+                let frozen = a[6].as_str().filter(|f| f.starts_with(&format!("{}/tessera-shots/frozen-", util::runtime()))).map(String::from);
+                self.captured(h, a[0].as_str().unwrap_or(""), scr, (n(2), n(3), n(4), n(5)), frozen);
             }
             "screen.cancel" | "screen.cancelSelect" => self.cancel_select(h),
             // the shell's shortcuts, menus and panels (ScreenTools.select / screenshotScreen /

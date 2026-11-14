@@ -15,7 +15,34 @@ use slint::{ComponentHandle, SharedString};
 use smithay_client_toolkit::shell::wlr_layer::{Anchor, KeyboardInteractivity, Layer};
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::process::{Command, Stdio};
 use std::time::Duration;
+
+/// The area `r` (logical px on a screen `size`) of the screen's picture (its
+/// own pixels), saved owner-only in the runtime folder: a JPEG for the AI, a
+/// PNG otherwise. None: couldn't (the shell then captures the live screen).
+fn crop_to_file(img: &image::RgbaImage, size: (f32, f32), r: Rect, jpeg: bool) -> Option<String> {
+    let k = img.width() as f32 / size.0.max(1.0);
+    let x = ((r.x * k).floor().max(0.0) as u32).min(img.width().saturating_sub(1));
+    let y = ((r.y * k).floor().max(0.0) as u32).min(img.height().saturating_sub(1));
+    let cw = (((r.x + r.w) * k).ceil() as u32).min(img.width()).saturating_sub(x).max(1);
+    let ch = (((r.y + r.h) * k).ceil() as u32).min(img.height()).saturating_sub(y).max(1);
+    let part = image::imageops::crop_imm(img, x, y, cw, ch).to_image();
+    let dir = std::path::PathBuf::from(std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into())).join("tessera-shots");
+    std::fs::create_dir_all(&dir).ok()?;
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).ok()?;
+    let path = dir.join(format!("frozen-{}.{}", crate::util::now_ms(), if jpeg { "jpg" } else { "png" }));
+    let res = if jpeg {
+        std::fs::File::create(&path).map_err(image::ImageError::IoError).and_then(|f| {
+            image::DynamicImage::ImageRgba8(part).to_rgb8().write_with_encoder(image::codecs::jpeg::JpegEncoder::new_with_quality(std::io::BufWriter::new(f), 85))
+        })
+    } else {
+        part.save_with_format(&path, image::ImageFormat::Png)
+    };
+    res.ok()?;
+    Some(path.to_string_lossy().into_owned())
+}
 
 const NS: &str = "tessera:region";
 
@@ -86,6 +113,15 @@ pub struct Region {
     screen: String,
     drag: Rc<RefCell<Drag>>,
     delay: slint::Timer,
+    // the screen held still: its picture as the selector opened (not while
+    // recording: that's of the live screen), and which opening it's for
+    shot: Option<std::sync::Arc<image::RgbaImage>>,
+    gen: u64,
+}
+
+/// Modes whose result is a still picture: taken from the frozen screen
+fn freezes(mode: &str) -> bool {
+    !matches!(mode, "record" | "record-window" | "")
 }
 
 impl Region {
@@ -212,6 +248,11 @@ impl Region {
     /// put it away ("")
     pub fn select(&mut self, st: &mut State, mode: &str, screen: &str) {
         self.delay.stop();
+        self.gen += 1;
+        self.shot = None;
+        if let Some(w) = &self.win {
+            w.ui.set_frozen(slint::Image::default());
+        }
         self.mode = mode.to_string();
         if mode.is_empty() {
             if let Some(w) = &self.win {
@@ -235,8 +276,20 @@ impl Region {
         win.ui.set_stroke("".into());
         self.drag.borrow().apply(&win.ui);
         win.surface.layer.set_keyboard_interactivity(KeyboardInteractivity::Exclusive);
-        win.surface.show(0, 0);
-        win.ui.invoke_focus_keys();
+        if freezes(mode) {
+            // the picture first, then the selector over it (nothing of ours in it)
+            let (to, gen, out) = (st.shell.sender(super::NAME), self.gen, output.clone());
+            std::thread::spawn(move || {
+                let img = Command::new("grim").args(["-l", "0", "-o", &out, "-"]).stdin(Stdio::null()).stderr(Stdio::null()).output().ok()
+                    .filter(|o| o.status.success())
+                    .and_then(|o| image::load_from_memory(&o.stdout).ok())
+                    .map(|i| std::sync::Arc::new(i.to_rgba8()));
+                to(Box::new(M::RegionFrozen(gen, img)));
+            });
+        } else {
+            win.surface.show(0, 0);
+            win.ui.invoke_focus_keys();
+        }
         // the windows to click: Hyprland's, on this monitor's showing workspace
         let to = st.shell.sender(super::NAME);
         std::thread::spawn(move || {
@@ -244,6 +297,21 @@ impl Region {
             let list = geometry::windows_on(&j("j/monitors"), &j("j/clients"), &output);
             to(Box::new(M::RegionWindows(output, list)));
         });
+    }
+
+    /// The screen's picture is in: show the selector over it (no picture:
+    /// over the live screen, captured after as before)
+    pub fn frozen(&mut self, _st: &mut State, gen: u64, img: Option<std::sync::Arc<image::RgbaImage>>) {
+        if gen != self.gen || self.mode.is_empty() {
+            return;
+        }
+        let Some(win) = &self.win else { return };
+        if let Some(i) = &img {
+            win.ui.set_frozen(slint::Image::from_rgba8(slint::SharedPixelBuffer::clone_from_slice(i.as_raw(), i.width(), i.height())));
+        }
+        self.shot = img;
+        win.surface.show(0, 0);
+        win.ui.invoke_focus_keys();
     }
 
     pub fn windows(&mut self, screen: &str, list: Vec<Rect>) {
@@ -264,6 +332,20 @@ impl Region {
             win.surface.hide();
         }
         let (mode, screen) = (self.mode.clone(), self.screen.clone());
+        if let Some(img) = self.shot.take().filter(|_| freezes(&mode)) {
+            // cut from the frozen picture (what was on screen as it opened), in a
+            // file only we can read; the shell takes it from there
+            let to = st.shell.sender(super::NAME);
+            std::thread::spawn(move || {
+                let file = crop_to_file(&img, (w, h), r, mode == "ask" || mode == "circle");
+                let mut a = serde_json::json!([mode, screen, r.x, r.y, r.w, r.h]);
+                if let Some(f) = file {
+                    a.as_array_mut().unwrap().push(f.into());
+                }
+                to(Box::new(M::RegionCaptured(a)));
+            });
+            return;
+        }
         self.delay.start(slint::TimerMode::SingleShot, Duration::from_millis(160), move || {
             crate::shell::ask("screen.captured", serde_json::json!([mode, screen, r.x, r.y, r.w, r.h]));
         });

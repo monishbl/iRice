@@ -6,16 +6,17 @@
 // Apple-style blue, purple, pink and orange glow) and Material (tonal
 // surfaces; the glow in the wallpaper's primary, tertiary and secondary).
 //
-// Cheap to draw: the glow is drop shadows of rectangles just outside the
-// screen (each blurred once, then only moved: Slint caches a shadow by its
-// size, radius, blur and colour), sliding along the edges by one slow phase
-// from animation-tick(); nothing per frame in Rust. Closed (or Reduce
-// motion), nothing reads the tick, so nothing redraws.
+// The screen holds still: the picture taken as it opens is drawn under
+// everything (the same as the live screen, so nothing jumps), and fades back
+// to the live screen as it leaves.
 //
-// Entry: from the pointer the dim and the glow ripple out from it (a round
-// clip that grows); from a key they rise from the bottom edge. Exit: the
-// same, back, a third faster, ease-in. Everything one window: what is on
-// screen is drawn in one frame.
+// Cheap to draw: the glow is thin gradient bands along the four edges (no
+// blur, no layers), fading inwards; their colours flow round the screen and
+// the glow breathes (Reduce motion: still).
+//
+// Entry: from the pointer a ring of light spreads out from it; from a key a
+// band of light rises from the bottom; the glow grows in from the edges and
+// swells once. Exit: everything fades, a third faster, ease-in.
 
 import { Theme } from "@tessera/theme.slint";
 import { StIc, StIcon, StSpin } from "screentools.slint";
@@ -146,29 +147,36 @@ component CsIconButton inherits Rectangle {
     }
 }
 
-// One edge's glow: rectangles just outside the edge, each one colour of the
-// four, their shadows bleeding in; they slide along by `shift` (0..period)
-// and the pattern repeats every four, so the wrap is seamless.
-component EdgeGlow {
+// One edge's glow: thin bands from the edge inwards, each a gradient along
+// the edge through the five colours (one full turn of the palette, so the
+// four edges meet seamlessly at the corners), fading as they go in (alpha
+// baked into the colours: no layers, no blur). `angle`: which way along the
+// edge the colours run (90 top, 180 right, 270 bottom, 0 left).
+component EdgeBand {
     in property <bool> horizontal;
-    in property <bool> reverse; // flows right-to-left / bottom-to-top
-    in property <length> along; // the edge's length
-    in property <length> shift;
-    in property <length> reach; // how far in (breathing)
-    in property <[color]> colors;
-    in property <length> seg;
-    in property <length> blur;
-    in property <length> thick;
-    property <length> period: seg * 4;
-    for i in ceil(along / seg) + 5: Rectangle {
-        // (along the edge: from one period before it to past its end)
-        property <length> pos: reverse ? along - (i + 1) * seg + period - shift : i * seg - period + shift;
-        x: horizontal ? pos : -thick + reach;
-        y: horizontal ? -thick + reach : pos;
-        width: horizontal ? seg : thick;
-        height: horizontal ? thick : seg;
-        drop-shadow-blur: blur;
-        drop-shadow-color: colors[mod(i, 4)];
+    in property <bool> far-side; // the bottom or right edge (bands go up / left)
+    in property <length> along;
+    in property <length> depth;
+    in property <float> strength;
+    in property <angle> angle;
+    in property <[color]> c; // five: the start, three between, the end
+    property <int> n: 16;
+    // nested bands, all from the edge: band i reaches (i+1)/n of the depth,
+    // on whole pixels, and carries the falloff's drop over its last step, so
+    // they add up to a smooth fade with no seams (strips side by side showed
+    // lines where their edges met)
+    function target(f: float) -> float {
+        return f >= 1 ? 0 : 0.06 * (1 - f) + 0.94 * pow(1 - f, 2.6);
+    }
+    for i in n: Rectangle {
+        property <float> a: strength * (target(i / n) - target((i + 1) / n));
+        property <length> reach: max(1px, round((i + 1) * depth / n / 1px) * 1px);
+        x: horizontal ? 0 : (far-side ? -self.reach : 0);
+        y: horizontal ? (far-side ? -self.reach : 0) : 0;
+        width: horizontal ? along : self.reach;
+        height: horizontal ? self.reach : along;
+        background: @linear-gradient(angle, c[0].with-alpha(a) 0%, c[1].with-alpha(a) 25%,
+            c[2].with-alpha(a) 50%, c[3].with-alpha(a) 75%, c[4].with-alpha(a) 100%);
     }
 }
 
@@ -181,6 +189,7 @@ export component CircleSearch inherits Window {
     in property <bool> reduce-motion;
     in property <bool> busy; // working: the glow quickens
     in property <string> hint;
+    in property <image> frozen; // the screen when it opened
     // circling
     in property <bool> dragging;
     in property <string> stroke;
@@ -265,24 +274,32 @@ export component CircleSearch inherits Window {
     property <float> work: busy && open ? 1 : 0;
     animate work { duration: 600ms; easing: ease-in-out; }
 
-    // the clock: only while the AI works (the glow moving says it's thinking).
-    // At rest the glow holds still: a full-screen layer of large blurs redrawn
-    // every frame stuttered and kept the GPU busy the whole time it was open
-    property <duration> t: open && busy && !reduce-motion ? animation-tick() : 0ms;
-    // one loop round the screen every 18 s; breathing every 5 s (1.1 s working)
-    property <length> seg: Theme.material ? 320px : 280px;
-    property <length> shift: mod(t / 18s, 1) * seg * 4;
-    property <float> calm: sin(t / 5s * 360deg);
-    property <float> quick: sin(t / 1.1s * 360deg);
-    property <length> reach: reduce-motion ? 6px : 5px + (1 - work) * 5px * calm + work * (9px + 7px * quick);
-    property <[color]> glow-colors: Theme.material
-        ? [Theme.m3-primary, Theme.m3-tertiary, Theme.m3-secondary, Theme.m3-tertiary.mix(Theme.m3-primary, 0.5)]
-        : [#2f7bffee, #a35cffee, #ff4fa3ee, #ff9a3cee];
-    property <length> glow-blur: Theme.material ? 54px : 64px;
+    // the clock: while it's open (Reduce motion: none). The glow is gradient
+    // bands, no blur, so a frame is cheap; the colours flow round the screen
+    // once every 6 s (2.4 s while the AI works) and the glow breathes.
+    property <duration> t: (open || reveal > 0) && !reduce-motion ? animation-tick() : 0ms;
+    property <float> phase: t / 1ms / 6000 * (1 + 1.5 * work);
+    property <float> breathe: 0.5 + 0.5 * sin(t / 3.2s * 360deg);
+    property <[color]> pal: Theme.material
+        ? [Theme.m3-primary, Theme.m3-tertiary, Theme.m3-secondary, Theme.m3-primary.mix(Theme.m3-tertiary, 0.5)]
+        : [#3d82ff, #a463ff, #ff5aa8, #ff9d45];
+    // the palette, continuous: x in quarters of a turn (flowing with phase)
+    function hue(x: float) -> color {
+        let p = x + phase * 4;
+        let i = mod(floor(p), 4);
+        let f = p - floor(p);
+        return pal[i].mix(pal[mod(i + 1, 4)], 1 - f);
+    }
+    property <[color]> ring: [hue(0), hue(1), hue(2), hue(3), hue(4)];
+    // how far in, and how bright: grows in with the reveal, breathes, swells while working
+    property <float> grown: 1 - pow(1 - reveal, 3);
+    property <length> depth: (Theme.material ? 96px : 110px) * grown * (0.86 + 0.14 * breathe + 0.35 * work);
+    property <float> strength: (Theme.material ? 0.55 : 0.62) * grown * (0.85 + 0.15 * breathe + 0.3 * work)
+        // (a brief swell as it arrives)
+        + (open && !reduce-motion ? 0.5 * sin(reveal * 180deg) : 0);
     property <color> dim: Theme.material ? Theme.m3-scrim : #000000;
 
-    // the ripple: a round clip growing from the pointer, or a band rising
-    // from the bottom (Reduce motion: a fade)
+    // the ripple (from the pointer): how far it must reach
     property <length> far: sqrt(max(ox / 1px, root.width / 1px - ox / 1px) * max(ox / 1px, root.width / 1px - ox / 1px)
         + max(oy / 1px, root.height / 1px - oy / 1px) * max(oy / 1px, root.height / 1px - oy / 1px)) * 1px;
 
@@ -303,86 +320,90 @@ export component CircleSearch inherits Window {
             + " A " + round(r / 1px) + " " + round(r / 1px) + " 0 0 1 " + round((x + r) / 1px) + " " + round(y / 1px) + " Z ";
     }
 
-    stage := Rectangle {
-        property <length> d: pointer-origin ? 2 * far * reveal : 0;
-        x: reduce-motion || reveal >= 1 ? 0 : pointer-origin ? ox - self.d / 2 : 0;
-        y: reduce-motion || reveal >= 1 ? 0 : pointer-origin ? oy - self.d / 2 : root.height * (1 - reveal);
-        width: reduce-motion || reveal >= 1 ? root.width : pointer-origin ? self.d : root.width;
-        height: reduce-motion || reveal >= 1 ? root.height : pointer-origin ? self.d : root.height * reveal;
-        border-radius: pointer-origin && !reduce-motion && reveal < 1 ? self.d / 2 : 0;
-        // (only while it grows or shrinks: a round clip draws through a layer)
-        clip: !reduce-motion && reveal < 1;
-        opacity: reduce-motion ? reveal : 1;
-        Rectangle {
-            x: -parent.x;
-            y: -parent.y;
-            width: root.width;
-            height: root.height;
-            Path {
-                width: 100%;
-                height: 100%;
-                viewbox-width: root.width / 1px;
-                viewbox-height: root.height / 1px;
-                fill-rule: evenodd;
-                fill: dim.with-alpha(chosen ? (Theme.material ? 0.34 : 0.3) : (Theme.material ? 0.2 : 0.16));
-                commands: "M 0 0 L " + round(root.width / 1px) + " 0 L " + round(root.width / 1px) + " " + round(root.height / 1px) + " L 0 " + round(root.height / 1px) + " Z "
-                    + (chosen && !dragging ? rr(sel-x, sel-y, sel-w, sel-h, 14px) : "")
-                    + (bar-shown > 0 ? rr(col.x, col.y, col.width, bar.height, root.radius) : "")
-                    + (bar-shown > 0 && card ? rr(col.x, col.y + answer-card.y, col.width, answer-card.height, root.radius) : "");
-            }
-            // the glow, round all four edges
-            EdgeGlow {
-                x: 0;
-                y: 0;
-                horizontal: true;
-                along: root.width;
-                shift: root.shift;
-                reach: root.reach;
-                colors: glow-colors;
-                seg: root.seg;
-                blur: glow-blur;
-                thick: 40px;
-            }
-            EdgeGlow {
-                x: root.width;
-                y: 0;
-                horizontal: false;
-                along: root.height;
-                shift: root.shift;
-                // (outside the right edge: its own reach, mirrored)
-                reach: -root.reach + 40px;
-                colors: [glow-colors[1], glow-colors[2], glow-colors[3], glow-colors[0]];
-                seg: root.seg;
-                blur: glow-blur;
-                thick: 40px;
-            }
-            EdgeGlow {
-                x: 0;
-                y: root.height;
-                horizontal: true;
-                reverse: true;
-                along: root.width;
-                shift: root.shift;
-                reach: -root.reach + 40px;
-                colors: [glow-colors[2], glow-colors[3], glow-colors[0], glow-colors[1]];
-                seg: root.seg;
-                blur: glow-blur;
-                thick: 40px;
-            }
-            EdgeGlow {
-                x: 0;
-                y: 0;
-                horizontal: false;
-                reverse: true;
-                along: root.height;
-                shift: root.shift;
-                reach: root.reach;
-                colors: [glow-colors[3], glow-colors[0], glow-colors[1], glow-colors[2]];
-                seg: root.seg;
-                blur: glow-blur;
-                thick: 40px;
-            }
-        }
+    // the screen as it was when it opened: everything holds still while you
+    // circle (in place at once, it matches the live screen; it fades back to
+    // the live screen as it leaves)
+    Image {
+        width: root.width;
+        height: root.height;
+        source: frozen;
+        image-fit: fill;
+        opacity: open ? 1 : reveal;
+    }
+    Path {
+        width: root.width;
+        height: root.height;
+        viewbox-width: root.width / 1px;
+        viewbox-height: root.height / 1px;
+        fill-rule: evenodd;
+        opacity: reveal;
+        fill: dim.with-alpha(chosen ? (Theme.material ? 0.34 : 0.3) : (Theme.material ? 0.18 : 0.14));
+        commands: "M 0 0 L " + round(root.width / 1px) + " 0 L " + round(root.width / 1px) + " " + round(root.height / 1px) + " L 0 " + round(root.height / 1px) + " Z "
+            + (chosen && !dragging ? rr(sel-x, sel-y, sel-w, sel-h, 14px) : "")
+            + (bar-shown > 0 ? rr(col.x, col.y, col.width, bar.height, root.radius) : "")
+            + (bar-shown > 0 && card ? rr(col.x, col.y + answer-card.y, col.width, answer-card.height, root.radius) : "");
+    }
+
+    // entry, from the pointer: a ring of light spreading out from it
+    if pointer-origin && open && reveal < 1 && !reduce-motion: Rectangle {
+        property <length> d: 2 * far * grown + 2px;
+        x: ox - self.d / 2;
+        y: oy - self.d / 2;
+        width: self.d;
+        height: self.d;
+        property <float> k: 0.55 * (1 - reveal);
+        background: @radial-gradient(circle, transparent 0%, transparent 72%, pal[0].with-alpha(k * 0.6) 84%, pal[1].with-alpha(k) 92%, pal[2].with-alpha(k * 0.5) 97%, transparent 100%);
+    }
+    // entry, from a key: a soft band of light rising from the bottom edge
+    if !pointer-origin && open && reveal < 1 && !reduce-motion: Rectangle {
+        property <length> band: 260px;
+        x: 0;
+        width: root.width;
+        height: self.band;
+        y: root.height - (root.height + self.band) * grown;
+        property <float> k: 0.32 * (1 - reveal);
+        background: @linear-gradient(180deg, transparent 0%, hue(0.5).with-alpha(k) 55%, hue(2.5).with-alpha(k * 1.3) 80%, transparent 100%);
+    }
+
+    // the glow, round all four edges (the colours run clockwise: top
+    // left→right, right top→bottom, bottom right→left, left bottom→top)
+    EdgeBand {
+        x: 0; y: 0;
+        horizontal: true;
+        along: root.width;
+        depth: root.depth;
+        strength: root.strength;
+        angle: 90deg;
+        c: ring;
+    }
+    EdgeBand {
+        x: root.width; y: 0;
+        horizontal: false;
+        far-side: true;
+        along: root.height;
+        depth: root.depth;
+        strength: root.strength;
+        angle: 180deg;
+        c: ring;
+    }
+    EdgeBand {
+        x: 0; y: root.height;
+        horizontal: true;
+        far-side: true;
+        along: root.width;
+        depth: root.depth;
+        strength: root.strength;
+        angle: 270deg;
+        c: ring;
+    }
+    EdgeBand {
+        x: 0; y: 0;
+        horizontal: false;
+        along: root.height;
+        depth: root.depth;
+        strength: root.strength;
+        angle: 0deg;
+        c: ring;
     }
 
     // ── Circling ────────────────────────────────────────────────────────

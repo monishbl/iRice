@@ -67,6 +67,9 @@ export XDG_CONFIG_HOME="$HOME/.config" XDG_CACHE_HOME="$HOME/.cache" \
        XDG_DATA_HOME="$HOME/.local/share" XDG_STATE_HOME="$HOME/.local/state"
 export TESSERA_ROOT="$ROOT" SHELL=/bin/bash TESSERA_SANDBOX=1 LANG=C.UTF-8 LC_ALL=C.UTF-8
 # Real system bus (NetworkManager, UPower, BlueZ), so status items show real data
+# …read only: the shims refuse what would change the laptop's own Wi-Fi,
+# Bluetooth, radios or power mode (sandbox/shims/guard)
+export PATH="$ROOT/sandbox/shims:$PATH"
 export DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/host/run/dbus/system_bus_socket
 
 LOG="$RT/hyprland.log"

@@ -1,0 +1,40 @@
+#!/bin/bash
+# Sandbox shim (inner.sh puts this folder first in PATH): the test sessions
+# share the real system bus, so their clicks on Wi-Fi, Bluetooth or power
+# tiles changed the laptop's own radios (Wi-Fi and Bluetooth went off during
+# verification). Reads pass through to the real tool; changes are refused
+# (exit 0, so the shell carries on as if it had worked) and logged.
+name=${0##*/}
+real=""
+IFS=: read -ra dirs <<<"$PATH"
+for d in "${dirs[@]}"; do
+    [[ $d == "${BASH_SOURCE[0]%/*}" || -z $d ]] && continue
+    [[ -x $d/$name && ! $d/$name -ef $0 ]] && { real=$d/$name; break; }
+done
+args=" $* "
+block=0
+case $name in
+    nmcli)
+        for w in connect disconnect down up delete modify add reapply rescan; do
+            [[ $args == *" $w "* ]] && block=1
+        done
+        # (radio / networking alone only read the state; with on/off they change it)
+        [[ ($args == *" radio "* || $args == *" networking "*) && ($args == *" on "* || $args == *" off "*) ]] && block=1
+        # (a list with --rescan yes would scan: make it read the cache)
+        [[ $args == *" --rescan yes "* || $args == *" --rescan auto "* ]] && block=1 ;;
+    bluetoothctl)
+        [[ $# -eq 0 ]] && block=1 # interactive: could do anything
+        for w in power connect disconnect pair cancel-pairing remove trust untrust block unblock scan discoverable pairable agent default-agent; do
+            [[ $args == *" $w "* ]] && block=1
+        done ;;
+    rfkill) [[ $args == *" block "* || $args == *" unblock "* || $args == *" toggle "* ]] && block=1 ;;
+    powerprofilesctl) [[ $args == *" set "* || $args == *" launch "* ]] && block=1 ;;
+    warp-cli) [[ $args == *" connect "* || $args == *" disconnect "* || $args == *" mode "* ]] && block=1 ;;
+    *) block=1 ;;
+esac
+if (( block )); then
+    echo "sandbox: refused $name $*" >>"${XDG_RUNTIME_DIR:-/tmp}/sandbox-refused.log"
+    exit 0
+fi
+[[ -n $real ]] || exit 127
+exec "$real" "$@"

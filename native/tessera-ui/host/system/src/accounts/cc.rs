@@ -1296,7 +1296,7 @@ impl ControlCenter {
             "screenshot" => ask(h, "panels.show", json!(["screenTools"])),
             "colorPicker" => {
                 ask(h, "panels.close", json!([]));
-                spawn_cmd(strs(&["sh", "-c", "sleep 0.3; hyprpicker -a"]));
+                spawn_cmd(strs(&["sh", "-c", "sleep 0.3; hyprpicker -a -r"]));
             }
             "musicRecognition" => {
                 ask(h, "panels.close", json!([]));

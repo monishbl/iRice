@@ -504,6 +504,7 @@ impl Circle {
         ui.set_stroke("".into());
         ui.set_chosen(false);
         ui.set_thumb(slint::Image::default());
+        ui.set_frozen(slint::Image::default());
         ui.set_question("".into());
         ui.set_card(false);
         self.set_status("", false);
@@ -775,6 +776,10 @@ impl Circle {
                 if img.is_none() {
                     w.ui.set_hint("Couldn't take a picture of the screen. Make sure grim is installed, then try again.".into());
                 }
+                // (the screen held still: its picture under everything)
+                if let Some(i) = &img {
+                    w.ui.set_frozen(slint::Image::from_rgba8(SharedPixelBuffer::clone_from_slice(i.as_raw(), i.width(), i.height())));
+                }
                 self.shot = img;
                 w.ui.set_open(true);
             }
@@ -983,6 +988,7 @@ impl Circle {
                     w.ui.set_card(false);
                     w.ui.set_stroke("".into());
                     w.ui.set_thumb(slint::Image::default());
+                    w.ui.set_frozen(slint::Image::default());
                 }
             }
         }

@@ -1461,3 +1461,37 @@ fn make_renderer(gl: GlSurface) -> crate::damage::Inner {
     let surface = crate::skia::SkiaGl::new(gl).expect("Skia on EGL");
     SHARED.with(|c| crate::skia::SkiaRenderer::new_with_surface(c, Box::new(surface)))
 }
+
+/// TESSERA_WAKES=1: once a second, why the loop woke and which surfaces drew
+/// or were animating (finding what keeps an idle shell busy)
+#[derive(Default)]
+pub struct Wakes {
+    since: Option<std::time::Instant>,
+    turns: std::collections::BTreeMap<&'static str, u32>,
+    drew: std::collections::BTreeMap<String, u32>,
+    anim: std::collections::BTreeMap<String, u32>,
+}
+
+impl Wakes {
+    pub fn note(&mut self, why: &'static str, st: &State) {
+        static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        if !*ON.get_or_init(|| crate::env::is_set("WAKES")) {
+            return;
+        }
+        *self.turns.entry(why).or_default() += 1;
+        for s in &st.surfaces {
+            if s.drew.get() {
+                *self.drew.entry(s.namespace.clone()).or_default() += 1;
+            }
+            if s.window.has_active_animations() {
+                *self.anim.entry(format!("{}{}", s.namespace, if s.mapped.get() { "" } else { "(hidden)" })).or_default() += 1;
+            }
+        }
+        let now = std::time::Instant::now();
+        let since = *self.since.get_or_insert(now);
+        if now.duration_since(since) >= std::time::Duration::from_secs(1) {
+            eprintln!("wakes: {:?} drew {:?} animating {:?}", self.turns, self.drew, self.anim);
+            *self = Wakes { since: Some(now), ..Default::default() };
+        }
+    }
+}

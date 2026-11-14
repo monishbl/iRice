@@ -267,29 +267,38 @@ fn main() {
     // part per turn of the loop, from 2 s after the first frame)
     let mut prewarm: Option<usize> = Some(0);
     let mut first_frame_at: Option<Instant> = None;
+    let mut wakes = tessera_core::wayland::Wakes::default();
     while !state.exit {
         if first_frame_at.is_none() && state.first_frame_logged {
             first_frame_at = Some(Instant::now());
         }
         let prewarm_due = prewarm.is_some() && first_frame_at.is_some_and(|t| t.elapsed() >= Duration::from_secs(2));
+        let why;
         let timeout = if state.wants_frame_soon() || !state.shell.deferred.is_empty() {
+            why = if state.shell.deferred.is_empty() { "frame" } else { "deferred" };
             Some(Duration::ZERO)
         } else if state.animating_unpaced() {
+            why = "animating";
             Some(Duration::from_millis(16))
         } else if state.shell.glass.has_held() {
+            why = "glass";
             // (glass shapes waiting for their frame: they go at the latest
             // after Glass's MAX_HOLD, so wake for it)
             Some(slint::platform::duration_until_next_timer_update().map_or(Duration::from_millis(16), |d| d.min(Duration::from_millis(16))))
         } else if state.waits_on_frame() {
+            why = "frame-wait";
             // (a frame callback that never comes is taken as lost after a
             // while: wayland.rs's LOST_FRAME; wake for it)
             Some(slint::platform::duration_until_next_timer_update().map_or(Duration::from_millis(50), |d| d.min(Duration::from_millis(50))))
         } else if prewarm.is_some() && first_frame_at.is_some() {
+            why = "prewarm";
             // (wake for the next prewarm even when nothing else happens)
             Some(slint::platform::duration_until_next_timer_update().map_or(Duration::from_millis(100), |d| d.min(Duration::from_millis(100))))
         } else {
+            why = "timers";
             slint::platform::duration_until_next_timer_update()
         };
+        wakes.note(why, &state);
         if let Err(e) = event_loop.dispatch(timeout, &mut state) {
             eprintln!("tessera-ui: event loop: {e}");
             break;

@@ -354,7 +354,7 @@
   "group": "Screen",
   "label": "Pick a colour",
   "action": {
-   "exec": "hyprpicker -a"
+   "exec": "hyprpicker -a -r"
   }
  },
  {

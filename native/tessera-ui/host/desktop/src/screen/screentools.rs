@@ -58,26 +58,65 @@ impl ScreenSvc {
         self.selecting.clear();
     }
 
-    /// The overlay is hidden and a region was chosen
-    pub(super) fn captured(&mut self, h: &mut Host, mode: &str, scr: Option<Screen>, rect: (f64, f64, f64, f64)) {
+    /// The overlay is hidden and a region was chosen. `frozen`: the area as
+    /// it was when the selector opened (the screen held still), already cut
+    /// out; else the live screen is captured now
+    pub(super) fn captured(&mut self, h: &mut Host, mode: &str, scr: Option<Screen>, rect: (f64, f64, f64, f64), frozen: Option<String>) {
         self.selecting.clear();
         let Some(scr) = scr else { return };
         let rect = clip(rect, scr.w, scr.h);
         if rect.2 < 1.0 || rect.3 < 1.0 {
+            if let Some(f) = frozen {
+                let _ = std::fs::remove_file(f);
+            }
             return;
         }
         let geo = geometry(&scr, rect);
+        let ocr = |s: &Self| match &frozen {
+            Some(f) => format!("tesseract {f} stdout -l '{}' 2>/dev/null; s=$?; rm -f {f}; exit $s", s.ocr_lang_arg(), f = util::q(f)),
+            None => s.ocr_command(&geo),
+        };
         match mode {
-            "screenshot" => self.shoot(h, &["-g".into(), geo], true),
-            "ocr" => self.run(h, "ocr", self.ocr_command(&geo)),
+            "screenshot" => match &frozen {
+                Some(f) => self.shoot_from(h, f),
+                None => self.shoot(h, &["-g".into(), geo], true),
+            },
+            "ocr" => {
+                let c = ocr(self);
+                self.run(h, "ocr", c)
+            }
             "translate" => {
                 self.translation = Some(json!({"x": rect.0, "y": rect.1, "w": rect.2, "h": rect.3, "screen": scr.name, "source": "", "text": "", "busy": true, "error": ""}));
-                self.run(h, "translate", self.ocr_command(&geo));
+                let c = ocr(self);
+                self.run(h, "translate", c);
             }
             "record" | "record-window" => self.start_recording(h, geo),
-            "ask" | "circle" => self.ask_about(h, &["-g".into(), geo], mode),
+            "ask" | "circle" => match &frozen {
+                Some(f) => self.ask_from(h, f, mode),
+                None => self.ask_about(h, &["-g".into(), geo], mode),
+            },
             _ => {}
         }
+    }
+
+    /// An area screenshot from the frozen picture (a PNG): moved into Screenshots
+    fn shoot_from(&mut self, h: &mut Host, src: &str) {
+        let dir = Self::shots_dir();
+        let file = format!("{}/Screenshot {}-{}.png", dir, util::stamp(true), util::nonce());
+        let kind = if !self.has_editor(h) && h.cfg()["screenshot"]["markup"].as_bool().unwrap_or(false) && util::has("swappy") { "shotMarkup" } else { "shot" };
+        let script = format!("mkdir -p {d} && mv -f {s} {f} && wl-copy < {f} && echo {f}", d = util::q(&dir), s = util::q(src), f = util::q(&file));
+        self.run(h, kind, script);
+    }
+
+    /// Ask AI about the frozen picture's area (a JPEG): as ask_about
+    fn ask_from(&mut self, h: &mut Host, src: &str, kind: &str) {
+        let dir = format!("{}/tessera-ai", util::runtime());
+        let file = format!("{}/shot-{}.jpg", dir, tessera_core::util::now_ms());
+        let script = format!(
+            "umask 077; mkdir -p {d} && find {d} -name 'shot-*.jpg' -mmin +1440 -delete; mv -f {s} {f} && echo {f} && base64 -w0 {f}",
+            d = util::q(&dir), s = util::q(src), f = util::q(&file)
+        );
+        self.run(h, kind, script);
     }
 
     fn ocr_command(&self, geo: &str) -> String {

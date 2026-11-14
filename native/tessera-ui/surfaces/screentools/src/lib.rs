@@ -130,6 +130,10 @@ pub(crate) enum M {
     RegionFinish(geometry::Rect),
     RegionCancel,
     RegionWindows(String, Vec<geometry::Rect>),
+    /// the screen's picture for the selector (gen, it)
+    RegionFrozen(u64, Option<std::sync::Arc<image::RgbaImage>>),
+    /// cut from the frozen picture: screen.captured's arguments
+    RegionCaptured(serde_json::Value),
     Tool(i32),
     Record,
     RecordArea(String),
@@ -270,6 +274,8 @@ impl Part for ScreenTools {
             M::RegionFinish(r) => self.region.finish(st, r),
             M::RegionCancel => crate::shell::ask("screen.cancel", serde_json::json!([])),
             M::RegionWindows(screen, w) => self.region.windows(&screen, w),
+            M::RegionFrozen(gen, img) => self.region.frozen(st, gen, img),
+            M::RegionCaptured(a) => crate::shell::ask("screen.captured", a),
             M::Tool(i) => self.toolbar.tool(st, i),
             M::Record => self.toolbar.record(st),
             M::RecordArea(a) => self.toolbar.record_area(st, &a),
