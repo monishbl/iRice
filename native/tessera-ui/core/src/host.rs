@@ -316,6 +316,9 @@ impl crate::shell::Part for HostPart {
         };
         if let Ok(t) = msg.downcast::<ToService>() {
             let ToService(name, m) = *t;
+            if crate::wayland::wakes_on() {
+                crate::wayland::WAKE_MSGS.with(|w| *w.borrow_mut().entry(format!("host/{name}")).or_default() += 1);
+            }
             self.one(st, |s| s.name() == name, |s, h| s.message(h, m));
             self.settle(st);
         }

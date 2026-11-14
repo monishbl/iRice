@@ -7,6 +7,16 @@ use crate::Msg;
 
 /// One message for the loop (Slint's timers brought to now first)
 pub fn handle(state: &mut State, msg: Msg) {
+    if crate::wayland::wakes_on() {
+        let what = match &msg {
+            Msg::Run(_) => "run".to_string(),
+            Msg::Data(_) => "data".into(),
+            Msg::Part(n, _) => n.to_string(),
+            Msg::Line(_) => "line".into(),
+            _ => "other".into(),
+        };
+        crate::wayland::WAKE_MSGS.with(|m| *m.borrow_mut().entry(what).or_default() += 1);
+    }
     if crate::perf::on() {
         let what = match &msg {
             Msg::Run(_) => "msg run".to_string(),

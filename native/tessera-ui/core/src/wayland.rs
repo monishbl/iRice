@@ -1474,8 +1474,7 @@ pub struct Wakes {
 
 impl Wakes {
     pub fn note(&mut self, why: &'static str, st: &State) {
-        static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-        if !*ON.get_or_init(|| crate::env::is_set("WAKES")) {
+        if !wakes_on() {
             return;
         }
         *self.turns.entry(why).or_default() += 1;
@@ -1490,8 +1489,35 @@ impl Wakes {
         let now = std::time::Instant::now();
         let since = *self.since.get_or_insert(now);
         if now.duration_since(since) >= std::time::Duration::from_secs(1) {
-            eprintln!("wakes: {:?} drew {:?} animating {:?}", self.turns, self.drew, self.anim);
+            let msgs = WAKE_MSGS.with(|m| std::mem::take(&mut *m.borrow_mut()));
+            eprintln!("wakes: {:?} drew {:?} animating {:?} msgs {:?}", self.turns, self.drew, self.anim, msgs);
             *self = Wakes { since: Some(now), ..Default::default() };
         }
     }
+}
+
+thread_local! {
+    /// TESSERA_WAKES: the loop's messages this second, by part
+    pub static WAKE_MSGS: std::cell::RefCell<std::collections::BTreeMap<String, u32>> = Default::default();
+}
+
+/// TESSERA_WAKES set, or the file $XDG_RUNTIME_DIR/tessera-wakes there
+/// (looked at every 2 s: on and off without a restart)
+pub fn wakes_on() -> bool {
+    static ENV: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    if *ENV.get_or_init(|| crate::env::is_set("WAKES")) {
+        return true;
+    }
+    thread_local! {
+        static FILE: std::cell::Cell<(bool, Option<std::time::Instant>)> = const { std::cell::Cell::new((false, None)) };
+    }
+    FILE.with(|f| {
+        let (on, at) = f.get();
+        if at.is_some_and(|t| t.elapsed() < std::time::Duration::from_secs(2)) {
+            return on;
+        }
+        let on = std::path::Path::new(&std::env::var("XDG_RUNTIME_DIR").unwrap_or_default()).join("tessera-wakes").exists();
+        f.set((on, Some(std::time::Instant::now())));
+        on
+    })
 }
