@@ -29,12 +29,27 @@ sandbox), **done, unchecked** (committed, not yet seen in a screenshot).
 
 | Change | Asked | Status | Commit |
 |---|---|---|---|
-| Circle to Search: breathing edge glow (Glass blue/purple/pink/orange, Material wallpaper tones), entry from the cursor (gesture) or the bottom (key); the circled picture goes to an input bar with chips (What is this?, Search the web, Copy text, Translate) or your own question; the answer streams in a card by the selection with "Continue in sidebar"; Lens "image expired" fixed (the Lens fix **also QML**, shared script) | 13 Nov | on (fb2cf32): glow, circling, input bar with chips and typing checked in arena 2; the AI answer card, chip actions and Material unchecked | f204b11 (Lens); 8264ed4 + 2246372 (Circle, off) |
-| Image viewer: Super+Q (and the usual close keys) close the viewer instead of the window under it (and the same for every shell overlay that takes the keyboard) | 13 Nov | in progress; **also QML**: done (main 70f3c40, live; Hyprland Lua TESSERA_CLOSE + the shell's `dismiss` shortcut; Rust needs only to register `dismiss`) | |
-| Image viewer: redesigned top toolbar (larger icons and buttons, grouping, states, tooltips), both looks | 13 Nov | in progress | |
+| Circle to Search: breathing edge glow (Glass blue/purple/pink/orange, Material wallpaper tones), entry from the cursor (gesture) or the bottom (key); the circled picture goes to an input bar with chips (What is this?, Search the web, Copy text, Translate) or your own question; the answer streams in a card by the selection with "Continue in sidebar"; Lens "image expired" fixed (the Lens fix **also QML**, shared script) | 13 Nov | on and live: glow, circling, input bar with chips and typing checked in arena 2; the bar and card have their own solid tint in Glass (the circle layer isn't blurred, so text behind showed through); the glow holds still at rest and moves only while the AI works; the AI answer card, chip actions and Material unchecked | f204b11 (Lens); 5dff917, 45dffab, 96c1537 |
+| Image viewer: Super+Q (and the usual close keys) close the viewer instead of the window under it (and the same for every shell overlay that takes the keyboard) | 13 Nov | done, unchecked; **also QML**: done (main 70f3c40, live; Hyprland Lua TESSERA_CLOSE + the shell's `dismiss` shortcut) | 1871e37, bb53564 |
+| Image viewer: redesigned top toolbar (larger icons and buttons, grouping, Copy, Mark up, Move to Trash with undo, tooltips), both looks | 13 Nov | done, unchecked | 1871e37 |
 
 ## Text
 
 | Change | Asked | Status | Commit |
 |---|---|---|---|
-| Text rendering tuned on femtovg to match the QML's weight and sharpness (not Skia). Causes found: Material weights (Qt ignores weights < bold for Google Sans Flex, Slint applies them: up to +28% ink), Glass hinting (femtovg hints, Qt doesn't). Fixes written, not built (worktree-agent-ab514c47608928d27, uncommitted) | 13 Nov | in progress | |
+| Text rendering tuned on femtovg to match the QML's weight and sharpness (not Skia): Material weights under bold drawn at 400 as Qt does, glyphs unhinted as Qt's, plain text on whole pixels | 13 Nov | done; live on the laptop (the user found it sharp after a restart) | aee5291 |
+
+## Glass and transitions
+
+| Change | Asked | Status | Commit |
+|---|---|---|---|
+| Glass goes out with the frame that's drawn (default sync "drawn"; `TESSERA_GLASS_SYNC=taken` for the old way), held at most 100 ms: Control Center and Launchpad no longer show content before their glass | 14 Nov | done (arena) | bd91803, 65d1961, a703041 |
+| Desktop widgets follow Settings → Glass (frost, tint…); only the bevel, shadow and margin are their own | 14 Nov | done, unchecked | 45dffab |
+| Island (Glass, music): the album art clipped to the glass squircle, no second rounding at the corners | 14 Nov | done, unchecked | 6297768 |
+
+## Other
+
+| Change | Asked | Status | Commit |
+|---|---|---|---|
+| About This Computer: a Shell row, Tessera (Rust) / Tessera (QML) | 14 Nov | done; **also QML** (f9cb132) | 45dffab |
+| Clicks: key-only FocusScopes no longer take the click (Settings links, power mode needed two clicks) | 14 Nov | done (arena) | 45dffab |
