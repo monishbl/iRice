@@ -1671,16 +1671,17 @@ impl Part for ControlCenter {
                 let editing = ui.get_editing();
                 let gx = px + PAD + if editing { 260.0 + 16.0 + 2.0 * PAD } else { 0.0 };
                 let gy = py + PAD;
-                let paging = ui.get_paging();
                 for k in 0..self.model.row_count() {
                     let r = self.model.row_data(k).unwrap();
                     let kind = defs::def(&r.id).map_or(Kind::Action, |d| d.kind);
                     let rad = chip_radius(kind, r.cols as u8, r.rows as u8, r.w, r.h);
-                    let dim = if paging && !r.focused { 0.4 } else { 1.0 };
-                    shapes.push(theme::shadow_margin(theme::glass_shape(look, gx + r.x, gy + r.y, r.w, r.h, rad, o * dim, 1.0), 12.0));
+                    // (while a page is open the other controls fade, but their
+                    // glass stays whole: at 40% it lost its blur and what's
+                    // behind showed through sharp)
+                    shapes.push(theme::shadow_margin(theme::glass_shape(look, gx + r.x, gy + r.y, r.w, r.h, rad, o, 1.0), 12.0));
                 }
                 let fy = gy + ui.get_footer_y();
-                let fo = o * if paging { 0.45 } else { 1.0 };
+                let fo = o;
                 shapes.push(theme::shadow_margin(theme::glass_shape(look, gx, fy, 40.0, 40.0, 20.0, fo, 1.0), 12.0));
                 if ui.get_battery() {
                     shapes.push(theme::shadow_margin(theme::glass_shape(look, gx + 48.0, fy, ui.get_battery_w(), 40.0, 20.0, fo, 1.0), 12.0));

@@ -136,6 +136,40 @@ struct Drag {
     h: f32,
 }
 
+impl Drag {
+    /// The last `n` points as a path (the trail's brighter part, near the pointer)
+    fn tail(&self, n: usize) -> String {
+        let pts = &self.stroke[self.stroke.len().saturating_sub(n)..];
+        let mut s = String::new();
+        for (i, p) in pts.iter().enumerate() {
+            s += &format!("{} {:.1} {:.1} ", if i == 0 { "M" } else { "L" }, p.0, p.1);
+        }
+        if pts.len() == 1 {
+            s += &format!("L {:.1} {:.1}", pts[0].0 + 0.01, pts[0].1);
+        }
+        s
+    }
+
+    /// The whole stroke and its trail, to the window
+    fn show(&self, ui: &ui::CircleSearch) {
+        ui.set_stroke(self.path.as_str().into());
+        ui.set_stroke_mid(self.tail(60).into());
+        ui.set_stroke_head(self.tail(22).into());
+        // (its box: the trail's colours run across the stroke, not the screen)
+        let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+        for p in &self.stroke {
+            (x0, y0, x1, y1) = (x0.min(p.0), y0.min(p.1), x1.max(p.0), y1.max(p.1));
+        }
+        if x0 <= x1 {
+            let pad = 16.0;
+            ui.set_stroke_box_x(x0 - pad);
+            ui.set_stroke_box_y(y0 - pad);
+            ui.set_stroke_box_w(x1 - x0 + 2.0 * pad);
+            ui.set_stroke_box_h(y1 - y0 + 2.0 * pad);
+        }
+    }
+}
+
 struct Win {
     output: String,
     surface: Rc<Surface>,
@@ -352,7 +386,7 @@ impl Circle {
                 d.dragging = true;
                 ui.set_chosen(false);
                 ui.set_card(false);
-                ui.set_stroke(d.path.as_str().into());
+                d.show(&ui);
                 ui.set_dragging(true);
             });
         }
@@ -370,7 +404,7 @@ impl Circle {
                     d.stroke.push(p);
                     d.path += &format!(" L {:.1} {:.1}", p.0, p.1);
                     if let Some(ui) = weak.upgrade() {
-                        ui.set_stroke(d.path.as_str().into());
+                        d.show(&ui);
                     }
                 }
             });
@@ -502,6 +536,8 @@ impl Circle {
         ui.set_hint(super::geometry::hint("circle").into());
         ui.set_dragging(false);
         ui.set_stroke("".into());
+        ui.set_stroke_mid("".into());
+        ui.set_stroke_head("".into());
         ui.set_chosen(false);
         ui.set_thumb(slint::Image::default());
         ui.set_frozen(slint::Image::default());
@@ -987,6 +1023,8 @@ impl Circle {
                     w.ui.set_chosen(false);
                     w.ui.set_card(false);
                     w.ui.set_stroke("".into());
+                    w.ui.set_stroke_mid("".into());
+                    w.ui.set_stroke_head("".into());
                     w.ui.set_thumb(slint::Image::default());
                     w.ui.set_frozen(slint::Image::default());
                 }

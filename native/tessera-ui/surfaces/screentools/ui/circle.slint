@@ -1,22 +1,20 @@
-// Circle to Search (circle.rs): a soft glow hugging the screen's four edges
-// that breathes and flows round them, a light dim, the stroke as it's
-// drawn; once something is circled, an input bar beside it (its picture, a
-// question field, four chips) and the AI's answer in a card under the bar.
-// Both looks: Glass (the plugin's glass under the bar and the card; an
-// Apple-style blue, purple, pink and orange glow) and Material (tonal
-// surfaces; the glow in the wallpaper's primary, tertiary and secondary).
+// Circle to Search (circle.rs): the screen holds still and dims a little
+// as a band of colour shimmers across it once; you circle with a glowing
+// trail that fades behind the pointer; the circled area lifts out (a little
+// larger, rounded, a shadow, the rest dimmer); then an input bar beside it
+// (its picture, a question field, four chips) and the AI's answer in a card
+// under the bar. While the AI works, a shimmer runs across the circled area.
+// Both looks: Glass (the plugin's glass under the bar and the card; blue,
+// purple, pink and orange) and Material (tonal surfaces; blue, red, yellow
+// and green).
 //
 // The screen holds still: the picture taken as it opens is drawn under
 // everything (the same as the live screen, so nothing jumps), and fades back
 // to the live screen as it leaves.
 //
-// Cheap to draw: the glow is thin gradient bands along the four edges (no
-// blur, no layers), fading inwards; their colours flow round the screen and
-// the glow breathes (Reduce motion: still).
-//
-// Entry: from the pointer a ring of light spreads out from it; from a key a
-// band of light rises from the bottom; the glow grows in from the edges and
-// swells once. Exit: everything fades, a third faster, ease-in.
+// Cheap to draw: no blur and no clock while it sits open (the shimmer is one
+// moving gradient, only while it runs). Reduce motion: no shimmer, fades only.
+// Exit: everything fades, a third faster, ease-in.
 
 import { Theme } from "@tessera/theme.slint";
 import { StIc, StIcon, StSpin } from "screentools.slint";
@@ -147,37 +145,28 @@ component CsIconButton inherits Rectangle {
     }
 }
 
-// One edge's glow: thin bands from the edge inwards, each a gradient along
-// the edge through the five colours (one full turn of the palette, so the
-// four edges meet seamlessly at the corners), fading as they go in (alpha
-// baked into the colours: no layers, no blur). `angle`: which way along the
-// edge the colours run (90 top, 180 right, 270 bottom, 0 left).
-component EdgeBand {
-    in property <bool> horizontal;
-    in property <bool> far-side; // the bottom or right edge (bands go up / left)
-    in property <length> along;
-    in property <length> depth;
-    in property <float> strength;
-    in property <angle> angle;
-    in property <[color]> c; // five: the start, three between, the end
-    property <int> n: 16;
-    // nested bands, all from the edge: band i reaches (i+1)/n of the depth,
-    // on whole pixels, and carries the falloff's drop over its last step, so
-    // they add up to a smooth fade with no seams (strips side by side showed
-    // lines where their edges met)
-    function target(f: float) -> float {
-        return f >= 1 ? 0 : 0.06 * (1 - f) + 0.94 * pow(1 - f, 2.6);
-    }
-    for i in n: Rectangle {
-        property <float> a: strength * (target(i / n) - target((i + 1) / n));
-        property <length> reach: max(1px, round((i + 1) * depth / n / 1px) * 1px);
-        x: horizontal ? 0 : (far-side ? -self.reach : 0);
-        y: horizontal ? (far-side ? -self.reach : 0) : 0;
-        width: horizontal ? along : self.reach;
-        height: horizontal ? self.reach : along;
-        background: @linear-gradient(angle, c[0].with-alpha(a) 0%, c[1].with-alpha(a) 25%,
-            c[2].with-alpha(a) 50%, c[3].with-alpha(a) 75%, c[4].with-alpha(a) 100%);
-    }
+// A part of the stroke, in window coordinates over the stroke's box (a
+// Path fits its viewbox inside its size less the stroke's width, so the
+// element is grown by that much: every width lands on the same points)
+component TrailPath inherits Path {
+    in property <length> sw;
+    in property <brush> brush;
+    in property <length> bx;
+    in property <length> by;
+    in property <length> bw;
+    in property <length> bh;
+    x: bx - sw / 2;
+    y: by - sw / 2;
+    width: bw + sw;
+    height: bh + sw;
+    viewbox-x: bx / 1px;
+    viewbox-y: by / 1px;
+    viewbox-width: bw / 1px;
+    viewbox-height: bh / 1px;
+    stroke: brush;
+    stroke-width: sw;
+    stroke-line-cap: round;
+    stroke-line-join: round;
 }
 
 export component CircleSearch inherits Window {
@@ -187,12 +176,18 @@ export component CircleSearch inherits Window {
     in property <length> ox;
     in property <length> oy;
     in property <bool> reduce-motion;
-    in property <bool> busy; // working: the glow quickens
+    in property <bool> busy; // working: a shimmer runs across the circled area
     in property <string> hint;
     in property <image> frozen; // the screen when it opened
     // circling
     in property <bool> dragging;
     in property <string> stroke;
+    in property <string> stroke-mid; // its last stretch
+    in property <string> stroke-head; // its last few points, at the pointer
+    in property <length> stroke-box-x; // the stroke's box
+    in property <length> stroke-box-y;
+    in property <length> stroke-box-w;
+    in property <length> stroke-box-h;
     in property <bool> chosen;
     in property <length> sel-x;
     in property <length> sel-y;
@@ -270,38 +265,20 @@ export component CircleSearch inherits Window {
     // the bar and the card: in after the circle, out with everything
     property <float> bar-shown: chosen && open ? 1 : 0;
     animate bar-shown { duration: open ? 220ms : 140ms; easing: open ? ease-out : ease-in; }
-    // working: 0..1, so the glow's change is gradual
-    property <float> work: busy && open ? 1 : 0;
-    animate work { duration: 600ms; easing: ease-in-out; }
-
-    // the clock: while it's open (Reduce motion: none). The glow is gradient
-    // bands, no blur, so a frame is cheap; the colours flow round the screen
-    // once every 6 s (2.4 s while the AI works) and the glow breathes.
-    property <duration> t: (open || reveal > 0) && !reduce-motion ? animation-tick() : 0ms;
-    property <float> phase: t / 1ms / 6000 * (1 + 1.5 * work);
-    property <float> breathe: 0.5 + 0.5 * sin(t / 3.2s * 360deg);
+    // the shimmer as it opens: once across, top left to bottom right
+    property <float> sweep: open && !reduce-motion ? 1 : 0;
+    animate sweep { duration: open ? 1100ms : 0ms; easing: cubic-bezier(0.4, 0, 0.2, 1); }
+    // the circled area lifting out
+    property <float> lift: chosen && !dragging && open ? 1 : 0;
+    animate lift { duration: open ? 280ms : 140ms; easing: open ? cubic-bezier(0.2, 0, 0, 1) : ease-in; }
+    // the clock: only while the AI works (a shimmer across the circled area, every 1.4 s)
+    property <duration> t: busy && open && !reduce-motion ? animation-tick() : 0ms;
+    property <float> cycle: mod(t / 1ms, 1400) / 1400;
     property <[color]> pal: Theme.material
-        ? [Theme.m3-primary, Theme.m3-tertiary, Theme.m3-secondary, Theme.m3-primary.mix(Theme.m3-tertiary, 0.5)]
+        ? [#4c8df6, #ea5a4f, #f6be2c, #3fb36b]
         : [#3d82ff, #a463ff, #ff5aa8, #ff9d45];
-    // the palette, continuous: x in quarters of a turn (flowing with phase)
-    function hue(x: float) -> color {
-        let p = x + phase * 4;
-        let i = mod(floor(p), 4);
-        let f = p - floor(p);
-        return pal[i].mix(pal[mod(i + 1, 4)], 1 - f);
-    }
-    property <[color]> ring: [hue(0), hue(1), hue(2), hue(3), hue(4)];
-    // how far in, and how bright: grows in with the reveal, breathes, swells while working
-    property <float> grown: 1 - pow(1 - reveal, 3);
-    property <length> depth: (Theme.material ? 96px : 110px) * grown * (0.86 + 0.14 * breathe + 0.35 * work);
-    property <float> strength: (Theme.material ? 0.55 : 0.62) * grown * (0.85 + 0.15 * breathe + 0.3 * work)
-        // (a brief swell as it arrives)
-        + (open && !reduce-motion ? 0.5 * sin(reveal * 180deg) : 0);
+    property <brush> trail: @linear-gradient(135deg, pal[0] 0%, pal[1] 35%, pal[2] 70%, pal[3] 100%);
     property <color> dim: Theme.material ? Theme.m3-scrim : #000000;
-
-    // the ripple (from the pointer): how far it must reach
-    property <length> far: sqrt(max(ox / 1px, root.width / 1px - ox / 1px) * max(ox / 1px, root.width / 1px - ox / 1px)
-        + max(oy / 1px, root.height / 1px - oy / 1px) * max(oy / 1px, root.height / 1px - oy / 1px)) * 1px;
 
     // ── The dim, with holes for the selection, the bar and the card ─────
     function rr(x: length, y: length, w: length, h: length, r: length) -> string {
@@ -337,73 +314,25 @@ export component CircleSearch inherits Window {
         viewbox-height: root.height / 1px;
         fill-rule: evenodd;
         opacity: reveal;
-        fill: dim.with-alpha(chosen ? (Theme.material ? 0.34 : 0.3) : (Theme.material ? 0.18 : 0.14));
+        fill: dim.with-alpha((Theme.material ? 0.2 : 0.16) + (Theme.material ? 0.26 : 0.28) * lift);
         commands: "M 0 0 L " + round(root.width / 1px) + " 0 L " + round(root.width / 1px) + " " + round(root.height / 1px) + " L 0 " + round(root.height / 1px) + " Z "
-            + (chosen && !dragging ? rr(sel-x, sel-y, sel-w, sel-h, 14px) : "")
             + (bar-shown > 0 ? rr(col.x, col.y, col.width, bar.height, root.radius) : "")
             + (bar-shown > 0 && card ? rr(col.x, col.y + answer-card.y, col.width, answer-card.height, root.radius) : "");
     }
 
-    // entry, from the pointer: a ring of light spreading out from it
-    if pointer-origin && open && reveal < 1 && !reduce-motion: Rectangle {
-        property <length> d: 2 * far * grown + 2px;
-        x: ox - self.d / 2;
-        y: oy - self.d / 2;
-        width: self.d;
-        height: self.d;
-        property <float> k: 0.55 * (1 - reveal);
-        background: @radial-gradient(circle, transparent 0%, transparent 72%, pal[0].with-alpha(k * 0.6) 84%, pal[1].with-alpha(k) 92%, pal[2].with-alpha(k * 0.5) 97%, transparent 100%);
-    }
-    // entry, from a key: a soft band of light rising from the bottom edge
-    if !pointer-origin && open && reveal < 1 && !reduce-motion: Rectangle {
-        property <length> band: 260px;
-        x: 0;
-        width: root.width;
-        height: self.band;
-        y: root.height - (root.height + self.band) * grown;
-        property <float> k: 0.32 * (1 - reveal);
-        background: @linear-gradient(180deg, transparent 0%, hue(0.5).with-alpha(k) 55%, hue(2.5).with-alpha(k * 1.3) 80%, transparent 100%);
-    }
-
-    // the glow, round all four edges (the colours run clockwise: top
-    // left→right, right top→bottom, bottom right→left, left bottom→top)
-    EdgeBand {
-        x: 0; y: 0;
-        horizontal: true;
-        along: root.width;
-        depth: root.depth;
-        strength: root.strength;
-        angle: 90deg;
-        c: ring;
-    }
-    EdgeBand {
-        x: root.width; y: 0;
-        horizontal: false;
-        far-side: true;
-        along: root.height;
-        depth: root.depth;
-        strength: root.strength;
-        angle: 180deg;
-        c: ring;
-    }
-    EdgeBand {
-        x: 0; y: root.height;
-        horizontal: true;
-        far-side: true;
-        along: root.width;
-        depth: root.depth;
-        strength: root.strength;
-        angle: 270deg;
-        c: ring;
-    }
-    EdgeBand {
-        x: 0; y: 0;
-        horizontal: false;
-        along: root.height;
-        depth: root.depth;
-        strength: root.strength;
-        angle: 0deg;
-        c: ring;
+    // the shimmer: a soft band of colour crossing the screen once, on a
+    // gradient three screens wide that slides across (tilted 20°)
+    if sweep > 0 && sweep < 1: Rectangle {
+        property <length> s: root.width;
+        property <float> k: 0.5 * min(1, 5 * sweep, 4 * (1 - sweep));
+        x: -1.9 * self.s + sweep * 1.8 * self.s;
+        y: 0;
+        width: 3 * self.s;
+        height: root.height;
+        background: @linear-gradient(110deg, transparent 0%, transparent 44.5%,
+            pal[0].with-alpha(self.k * 0.6) 46.8%, pal[1].with-alpha(self.k) 49.2%,
+            pal[2].with-alpha(self.k) 50.8%, pal[3].with-alpha(self.k * 0.6) 53.2%,
+            transparent 55.5%, transparent 100%);
     }
 
     // ── Circling ────────────────────────────────────────────────────────
@@ -420,49 +349,74 @@ export component CircleSearch inherits Window {
         }
     }
 
-    // the selection, once chosen
-    Rectangle {
-        x: sel-x - 2px;
-        y: sel-y - 2px;
-        width: sel-w + 4px;
-        height: sel-h + 4px;
-        border-radius: 16px;
-        border-width: 2px;
-        border-color: Theme.material ? Theme.m3-primary : #ffffffe6;
-        opacity: chosen && !dragging && open ? 1 : 0;
-        animate opacity { duration: open ? 200ms : 120ms; easing: open ? ease-out : ease-in; }
+    // the circled area, lifted out: the same picture, a little larger, with
+    // rounded corners, a shadow and a rim (the rest of the screen dims further)
+    if lift > 0: Rectangle {
+        x: sel-x;
+        y: sel-y;
+        width: sel-w;
+        height: sel-h;
+        transform-scale: 1 + 0.03 * lift;
+        border-radius: 14px;
+        background: dim;
+        drop-shadow-blur: 28px;
+        drop-shadow-offset-y: 10px;
+        drop-shadow-color: #000000.with-alpha(0.45 * lift);
+        Rectangle {
+            border-radius: 14px;
+            clip: true;
+            Image {
+                width: parent.width;
+                height: parent.height;
+                source: frozen;
+                image-fit: fill;
+                source-clip-x: frozen.width > 0 ? round(sel-x / root.width * frozen.width) : 0;
+                source-clip-y: frozen.height > 0 ? round(sel-y / root.height * frozen.height) : 0;
+                source-clip-width: frozen.width > 0 ? max(1, round(sel-w / root.width * frozen.width)) : 0;
+                source-clip-height: frozen.height > 0 ? max(1, round(sel-h / root.height * frozen.height)) : 0;
+            }
+            // while the AI works: a shimmer across it, again and again
+            if busy && !reduce-motion: Rectangle {
+                x: -2.2 * sel-w + cycle * 2.4 * sel-w;
+                width: 3 * sel-w;
+                height: parent.height;
+                background: @linear-gradient(110deg, transparent 0%, transparent 42%,
+                    pal[0].with-alpha(0.22) 46%, #ffffff.with-alpha(0.3) 50%, pal[2].with-alpha(0.22) 54%,
+                    transparent 58%, transparent 100%);
+            }
+        }
+        Rectangle {
+            border-radius: 14px;
+            border-width: 2px;
+            border-color: Theme.material ? Theme.m3-primary : #ffffffd9;
+            opacity: lift;
+        }
     }
 
-    // the stroke: a soft light under it keeps it apart from a background of
-    // its own colour (drawn whole, then faded, so crossings don't build up)
+    // the stroke: a glowing trail in the palette, brightest at the pointer
+    // and fading behind it (each part drawn whole, then faded, so crossings
+    // don't build up)
     strokes := Rectangle {
         opacity: dragging ? 1 : 0;
         animate opacity { duration: dragging ? 0ms : 260ms; easing: ease-in; }
         Rectangle {
-            opacity: 0.45;
-            Path {
-                width: 100%;
-                height: 100%;
-                viewbox-width: root.width / 1px;
-                viewbox-height: root.height / 1px;
-                commands: root.stroke;
-                stroke: #ffffff;
-                stroke-width: 14px;
-                stroke-line-cap: round;
-                stroke-line-join: round;
-            }
+            opacity: 0.2;
+            TrailPath { commands: root.stroke; sw: 18px; brush: trail; bx: stroke-box-x; by: stroke-box-y; bw: stroke-box-w; bh: stroke-box-h; }
         }
-        Path {
-            width: 100%;
-            height: 100%;
-            viewbox-width: root.width / 1px;
-            viewbox-height: root.height / 1px;
-            commands: root.stroke;
-            stroke: Theme.material ? Theme.m3-primary : @linear-gradient(90deg, #2f7bff 0%, #a35cff 35%, #ff4fa3 70%, #ff9a3c 100%);
-            stroke-width: 5px;
-            stroke-line-cap: round;
-            stroke-line-join: round;
+        Rectangle {
+            opacity: 0.5;
+            TrailPath { commands: root.stroke; sw: 4px; brush: trail; bx: stroke-box-x; by: stroke-box-y; bw: stroke-box-w; bh: stroke-box-h; }
         }
+        Rectangle {
+            opacity: 0.3;
+            TrailPath { commands: root.stroke-mid; sw: 22px; brush: trail; bx: stroke-box-x; by: stroke-box-y; bw: stroke-box-w; bh: stroke-box-h; }
+        }
+        Rectangle {
+            opacity: 0.5;
+            TrailPath { commands: root.stroke-mid; sw: 5px; brush: trail; bx: stroke-box-x; by: stroke-box-y; bw: stroke-box-w; bh: stroke-box-h; }
+        }
+        TrailPath { commands: root.stroke-head; sw: 6px; brush: trail; bx: stroke-box-x; by: stroke-box-y; bw: stroke-box-w; bh: stroke-box-h; }
+        TrailPath { commands: root.stroke-head; sw: 2px; brush: #ffffffcc; bx: stroke-box-x; by: stroke-box-y; bw: stroke-box-w; bh: stroke-box-h; }
     }
 
     // the hint (Material: a snackbar-like pill in inverseSurface)
