@@ -33,7 +33,10 @@ case $name in
     *) block=1 ;;
 esac
 if (( block )); then
-    echo "sandbox: refused $name $*" >>"${XDG_RUNTIME_DIR:-/tmp}/sandbox-refused.log"
+    # (also to the real runtime folder: the sandbox's own is removed when it stops)
+    line="$(date +%T) sandbox: refused $name $*"
+    echo "$line" >>"${XDG_RUNTIME_DIR:-/tmp}/sandbox-refused.log"
+    echo "$line" >>"/run/user/$(id -u)/sandbox-refused.log" 2>/dev/null
     exit 0
 fi
 [[ -n $real ]] || exit 127
