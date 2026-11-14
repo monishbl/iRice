@@ -185,6 +185,9 @@ struct MenuEntry {
 
 #[derive(Default)]
 pub struct Menubar {
+    /// what of Hyprland's snapshot the bar shows, as it last drew it (a
+    /// title-only change — a terminal's spinner — needn't redraw it)
+    snap_key: String,
     /// the resources sampler asked for while an island is expanded (its last
     /// line shows CPU and memory: IslandStatus.qml's Resources.desktopUsers)
     island_res: bool,
@@ -273,6 +276,15 @@ impl Menubar {
             keyboard: KeyboardInteractivity::None,
             margin_left: 0,
         }
+    }
+
+    /// The parts of Hyprland's snapshot the bar draws from (the window's
+    /// title only when the bar shows it)
+    fn snap_key(st: &State) -> String {
+        let Some(s) = st.shell.get::<Snapshot>() else { return String::new() };
+        let title = if Self::cfg(st).window_title { s.window.title.as_str() } else { "" };
+        let clients: Vec<(i32, i32, bool)> = s.clients.iter().map(|c| (c.workspace.id, c.fullscreen as i32, c.hidden)).collect();
+        format!("{:?}|{:?}|{}|{}|{}|{}|{:?}", s.workspaces, s.active, s.class, s.focused, s.window.address, title, clients)
     }
 
     fn cfg(st: &State) -> settings::Bar {
@@ -2222,6 +2234,13 @@ impl Part for Menubar {
         }
         if what == TypeId::of::<Snapshot>() || what == TypeId::of::<ShellState>() {
             self.live_menu_rows(st);
+        }
+        if what == TypeId::of::<Snapshot>() {
+            let key = Self::snap_key(st);
+            if key == self.snap_key {
+                return;
+            }
+            self.snap_key = key;
         }
         if [TypeId::of::<Snapshot>(), TypeId::of::<Battery>(), TypeId::of::<Wifi>(), TypeId::of::<Bluetooth>(), TypeId::of::<Players>(), TypeId::of::<Tray>(), TypeId::of::<WallTop>()].contains(&what) {
             self.refresh(st);

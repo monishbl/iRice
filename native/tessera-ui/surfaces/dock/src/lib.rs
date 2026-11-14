@@ -920,6 +920,15 @@ impl Part for Dock {
                     }
                 }
             }
+            // (only if what the dock shows changed: a window's title changing
+            // — a terminal's spinner, many times a second — rebuilt the
+            // model and redrew the dock each time)
+            if self.recent_read && st.shell.get::<Apps>().is_some() {
+                let items = model::build(&Self::settings(st), st.shell.get::<Apps>().unwrap(), &w, &self.recent);
+                if items == self.items && w.urgent == self.urgent {
+                    return;
+                }
+            }
             self.rebuild(st);
         } else if what == TypeId::of::<Apps>() || what == TypeId::of::<Icons>() {
             if let Some(i) = st.shell.get::<Icons>().filter(|_| what == TypeId::of::<Icons>()) {
