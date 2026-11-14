@@ -36,7 +36,8 @@ thread_local! {
 /// Run `f` as the named piece of work; logged when it takes longer than a frame
 #[inline]
 pub fn time<R>(what: impl FnOnce() -> String, f: impl FnOnce() -> R) -> R {
-    if !on() {
+    let acc = crate::wayland::wakes_on();
+    if !on() && !acc {
         return f();
     }
     WHAT.with(|w| w.borrow_mut().push(what()));
@@ -47,8 +48,12 @@ pub fn time<R>(what: impl FnOnce() -> String, f: impl FnOnce() -> R) -> R {
     DEPTH.with(|d| d.set(d.get() - 1));
     let path = WHAT.with(|w| {
         let mut w = w.borrow_mut();
-        let p = if ms > STALL_MS { Some(w.join(" > ")) } else { None };
-        w.pop();
+        let p = if ms > STALL_MS && on() { Some(w.join(" > ")) } else { None };
+        if let Some(label) = w.pop() {
+            if acc {
+                SPENT.with(|m| *m.borrow_mut().entry(label).or_default() += ms);
+            }
+        }
         p
     });
     if let Some(p) = path {
@@ -56,6 +61,20 @@ pub fn time<R>(what: impl FnOnce() -> String, f: impl FnOnce() -> R) -> R {
         eprintln!("debug: stall {ms:.1} ms: {p}");
     }
     r
+}
+
+thread_local! {
+    /// The wake log's (TESSERA_WAKES): ms spent this second, by what
+    pub static SPENT: RefCell<std::collections::HashMap<String, f64>> = RefCell::new(Default::default());
+}
+
+/// The wake log's: the costliest things this second (taken)
+pub fn spent_top(n: usize) -> Vec<(String, f64)> {
+    let mut v: Vec<(String, f64)> = SPENT.with(|m| std::mem::take(&mut *m.borrow_mut())).into_iter().collect();
+    v.sort_by(|a, b| b.1.total_cmp(&a.1));
+    v.truncate(n);
+    v.iter_mut().for_each(|x| x.1 = (x.1 * 10.0).round() / 10.0);
+    v
 }
 
 static STALLS: AtomicU64 = AtomicU64::new(0);

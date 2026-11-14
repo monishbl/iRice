@@ -40,6 +40,9 @@ struct Mirror {
     resources_on: Option<bool>,
     /// the About card's logo path, looked up once per logo name
     logo: Option<(String, String)>,
+    /// the bus's generation as last mirrored (after a turn that changed
+    /// nothing there, there's nothing to mirror: it ran after every turn)
+    seen: Option<u64>,
 }
 
 fn hm(secs: i64) -> String {
@@ -130,9 +133,17 @@ impl Service for Mirror {
         "SystemMirror"
     }
     fn settled(&mut self, h: &mut tessera_core::host::Host) {
+        let g = bus::generation();
+        if self.seen == Some(g) {
+            return;
+        }
+        self.seen = Some(g);
         self.publish(h);
     }
     fn data(&mut self, h: &mut tessera_core::host::Host, _what: std::any::TypeId) {
+        self.publish(h);
+    }
+    fn config_changed(&mut self, h: &mut tessera_core::host::Host) {
         self.publish(h);
     }
 }

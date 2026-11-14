@@ -305,7 +305,10 @@ fn main() {
         }
         tessera_core::perf::time(|| "slint timers".into(), slint::platform::update_timers_and_animations);
         tessera_core::perf::time(|| "render".into(), || state.render_all());
-        tessera_core::perf::time(|| "after_frame".into(), || state.each_part(|p, st| p.after_frame(st)));
+        tessera_core::perf::time(|| "after_frame".into(), || state.each_part(|p, st| {
+            let n = p.name();
+            tessera_core::perf::time(|| format!("after_frame {n}"), || p.after_frame(st))
+        }));
         // (the glass shapes parts set go out with the frames they belong to)
         state.flush_glass();
         // (readings held back while a window animated: a few each turn, ~4 ms)

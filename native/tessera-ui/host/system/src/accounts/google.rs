@@ -616,7 +616,16 @@ impl Service for Google {
                     self.arm_resend();
                 }
             }
-            M::Poll => self.poll(h),
+            M::Poll => {
+                // (once a second: published only if it started or finished
+                // something; every task and event made again each second was
+                // most of the shell's idle time after the mirror)
+                let was = (self.running, self.deleting.len(), self.queue.len(), self.offline, self.last_error.clone(), self.operation.clone());
+                self.poll(h);
+                if was == (self.running, self.deleting.len(), self.queue.len(), self.offline, self.last_error.clone(), self.operation.clone()) {
+                    return;
+                }
+            }
         }
         self.publish();
     }

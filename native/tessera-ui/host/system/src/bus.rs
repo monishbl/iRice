@@ -14,11 +14,22 @@ fn map() -> &'static Mutex<HashMap<&'static str, Value>> {
     M.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+static GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 /// Publish a service's state (whole value replaced)
 pub fn put(name: &'static str, v: Value) {
     if let Ok(mut m) = map().lock() {
-        m.insert(name, v);
+        if m.get(name) != Some(&v) {
+            m.insert(name, v);
+            GEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }
     }
+}
+
+/// Bumped by every `put` that changed something (a reader that mirrors the
+/// bus can skip a turn in which nothing changed)
+pub fn generation() -> u64 {
+    GEN.load(std::sync::atomic::Ordering::Relaxed)
 }
 
 /// A service's last published state (Null if none yet)
@@ -28,7 +39,9 @@ pub fn get(name: &str) -> Value {
 
 /// One field of it: `field("power", "percent")`
 pub fn field(name: &str, key: &str) -> Value {
-    get(name)[key].clone()
+    // (the field alone: cloning the whole state for it was most of the
+    // shell's idle time, read after every turn)
+    map().lock().ok().and_then(|m| m.get(name).map(|v| v[key].clone())).unwrap_or(Value::Null)
 }
 
 #[cfg(test)]

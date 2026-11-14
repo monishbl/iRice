@@ -1490,7 +1490,7 @@ impl Wakes {
         let since = *self.since.get_or_insert(now);
         if now.duration_since(since) >= std::time::Duration::from_secs(1) {
             let msgs = WAKE_MSGS.with(|m| std::mem::take(&mut *m.borrow_mut()));
-            eprintln!("wakes: {:?} drew {:?} animating {:?} msgs {:?}", self.turns, self.drew, self.anim, msgs);
+            eprintln!("wakes: {:?} drew {:?} animating {:?} msgs {:?} ms {:?}", self.turns, self.drew, self.anim, msgs, crate::perf::spent_top(14));
             *self = Wakes { since: Some(now), ..Default::default() };
         }
     }

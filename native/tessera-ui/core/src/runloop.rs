@@ -17,7 +17,7 @@ pub fn handle(state: &mut State, msg: Msg) {
         };
         crate::wayland::WAKE_MSGS.with(|m| *m.borrow_mut().entry(what).or_default() += 1);
     }
-    if crate::perf::on() {
+    if crate::perf::on() || crate::wayland::wakes_on() {
         let what = match &msg {
             Msg::Run(_) => "msg run".to_string(),
             Msg::Quit => "msg quit".into(),
