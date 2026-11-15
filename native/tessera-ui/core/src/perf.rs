@@ -48,7 +48,7 @@ pub fn time<R>(what: impl FnOnce() -> String, f: impl FnOnce() -> R) -> R {
     DEPTH.with(|d| d.set(d.get() - 1));
     let path = WHAT.with(|w| {
         let mut w = w.borrow_mut();
-        let p = if ms > STALL_MS && on() { Some(w.join(" > ")) } else { None };
+        let p = if ms > STALL_MS && (on() || acc) { Some(w.join(" > ")) } else { None };
         if let Some(label) = w.pop() {
             if acc {
                 SPENT.with(|m| *m.borrow_mut().entry(label).or_default() += ms);

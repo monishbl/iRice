@@ -247,6 +247,9 @@ impl Surface {
             eprintln!("tessera-ui: render failed: {e}");
         }
         self.stats.borrow_mut().rendered(t.elapsed());
+        if wakes_on() {
+            drew_after_press(&self.namespace, t.elapsed().as_secs_f64() * 1000.0);
+        }
         self.rendered.set(self.rendered.get().wrapping_add(1));
         self.shown_frames.set(self.shown_frames.get().saturating_add(1));
         self.drew.set(true);
@@ -851,7 +854,7 @@ impl State {
     fn recover_lost_frames(&self) {
         for s in &self.surfaces {
             if s.frame_pending.get() && s.frame_asked.get().is_some_and(|t| t.elapsed() >= LOST_FRAME) {
-                if crate::env::is_set("DEBUG") {
+                if crate::env::is_set("DEBUG") || wakes_on() {
                     eprintln!("debug: frame callback lost on {}: drawing on", s.namespace);
                 }
                 s.frame_pending.set(false);
@@ -1195,7 +1198,7 @@ impl KeyboardHandler for State {
 
 impl PointerHandler for State {
     fn pointer_frame(&mut self, c: &Connection, q: &QueueHandle<Self>, p: &WlPointer, events: &[PointerEvent]) {
-        if crate::perf::on() {
+        if crate::perf::on() || wakes_on() {
             let what = events.iter().find_map(|e| self.find(&e.surface).map(|s| format!("pointer {} on {}", match e.kind {
                 PointerEventKind::Enter { .. } => "enter",
                 PointerEventKind::Leave { .. } => "leave",
@@ -1249,6 +1252,9 @@ impl State {
                         INPUT_SERIAL.set(serial);
                     }
                     if matches!(e.kind, PointerEventKind::Press { .. }) {
+                        if wakes_on() {
+                            pressed_now(&s.namespace);
+                        }
                         s.window.dispatch_event(WindowEvent::PointerPressed { position, button });
                     } else {
                         s.window.dispatch_event(WindowEvent::PointerReleased { position, button });
@@ -1464,6 +1470,29 @@ fn make_renderer(gl: GlSurface) -> crate::damage::Inner {
     }
     let surface = crate::skia::SkiaGl::new(gl).expect("Skia on EGL");
     SHARED.with(|c| crate::skia::SkiaRenderer::new_with_surface(c, Box::new(surface)))
+}
+
+thread_local! {
+    /// the last pointer press (wake log): when, on which surface, and the
+    /// surfaces that have drawn since (each logged once, for 2 s)
+    static PRESS: RefCell<Option<(Instant, String, Vec<String>)>> = const { RefCell::new(None) };
+}
+fn pressed_now(ns: &str) {
+    PRESS.with(|p| *p.borrow_mut() = Some((Instant::now(), ns.to_string(), Vec::new())));
+}
+/// A surface drew: the first time since the last press, how long after it
+/// (`click <surface> -> <surface> drew <ms> after, render <ms>`)
+fn drew_after_press(ns: &str, render_ms: f64) {
+    PRESS.with(|p| {
+        let mut p = p.borrow_mut();
+        let Some((at, on, seen)) = p.as_mut() else { return };
+        let ms = at.elapsed().as_secs_f64() * 1000.0;
+        if ms > 2000.0 || seen.iter().any(|s| s == ns) {
+            return;
+        }
+        seen.push(ns.to_string());
+        eprintln!("click {on} -> {ns} drew {ms:.0} ms after, render {render_ms:.1} ms");
+    });
 }
 
 /// TESSERA_WAKES=1: once a second, why the loop woke and which surfaces drew
