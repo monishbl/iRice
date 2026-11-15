@@ -682,6 +682,8 @@ impl Service for Panels {
                     f => f,
                 };
                 let a = if func == "widgets" { vec![json!(args.first().is_some_and(|s| s == "true"))] } else { a };
+                // `qs ipc call panels share <file>…`: the share sheet with those files
+                let a = if func == "share" { vec![json!(args)] } else { a };
                 self.act(h, func, &Value::Array(a));
                 None
             }
