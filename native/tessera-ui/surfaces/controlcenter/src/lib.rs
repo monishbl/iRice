@@ -1682,9 +1682,9 @@ impl Part for ControlCenter {
                 }
                 let fy = gy + ui.get_footer_y();
                 let fo = o;
-                shapes.push(theme::shadow_margin(theme::glass_shape(look, gx, fy, 40.0, 40.0, 20.0, fo, 1.0), 12.0));
+                // (the battery first: no picture of you there since 16 Nov)
                 if ui.get_battery() {
-                    shapes.push(theme::shadow_margin(theme::glass_shape(look, gx + 48.0, fy, ui.get_battery_w(), 40.0, 20.0, fo, 1.0), 12.0));
+                    shapes.push(theme::shadow_margin(theme::glass_shape(look, gx, fy, ui.get_battery_w(), 40.0, 20.0, fo, 1.0), 12.0));
                 }
                 let done = if editing { 74.0 } else { 40.0 };
                 let mut x = gx + GLASS_W - done;

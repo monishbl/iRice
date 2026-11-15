@@ -228,6 +228,12 @@ pub fn spawn(tx: Sender<Msg>) {
                     }
                     c.events.clear();
                     let now = read(&mut c)?;
+                    // A Bluetooth output that just appeared (headphones
+                    // connected) becomes the default, as a phone does; not
+                    // ones already there when the shell started
+                    if let Some(new) = new_bluetooth_sink(&last, &now) {
+                        send(Cmd::DefaultSink(new));
+                    }
                     if now != last {
                         last = now.clone();
                         tx.send(Msg::Data(Box::new(now))).map_err(|_| std::io::ErrorKind::BrokenPipe)?;
@@ -249,6 +255,15 @@ pub fn spawn(tx: Sender<Msg>) {
             wait = (wait * 2).min(30);
         }
     });
+}
+
+/// A Bluetooth output in `now` that `before` didn't have, unless it's
+/// already the default
+pub fn new_bluetooth_sink(before: &Sound, now: &Sound) -> Option<String> {
+    now.sinks
+        .iter()
+        .find(|d| d.bluetooth && d.name != now.default_sink && !before.sinks.iter().any(|b| b.name == d.name))
+        .map(|d| d.name.clone())
 }
 
 // ── Changing things ─────────────────────────────────────────────────────────
@@ -377,6 +392,20 @@ mod tests {
         assert_eq!(list_name(&a), "Built-in Audio Analog Stereo");
         assert_eq!((b.index, b.volume, b.muted, b.bluetooth), (43, 0.25, true, true));
         assert_eq!(name_of(&b), "Buds");
+    }
+
+    #[test]
+    fn bluetooth_output_that_appears_becomes_default() {
+        let d = |n: &str, bt: bool| Device { name: n.into(), bluetooth: bt, ..Default::default() };
+        let before = Sound { up: true, default_sink: "alsa".into(), sinks: vec![d("alsa", false)], ..Default::default() };
+        let now = Sound { sinks: vec![d("alsa", false), d("bluez_output.AA", true)], ..before.clone() };
+        assert_eq!(new_bluetooth_sink(&before, &now).as_deref(), Some("bluez_output.AA"));
+        // (already there, already the default, or not Bluetooth: no switch)
+        assert_eq!(new_bluetooth_sink(&now, &now), None);
+        let chosen = Sound { default_sink: "bluez_output.AA".into(), ..now.clone() };
+        assert_eq!(new_bluetooth_sink(&before, &chosen), None);
+        let usb = Sound { sinks: vec![d("alsa", false), d("usb", false)], ..before.clone() };
+        assert_eq!(new_bluetooth_sink(&before, &usb), None);
     }
 
     #[test]

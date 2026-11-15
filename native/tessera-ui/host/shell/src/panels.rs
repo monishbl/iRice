@@ -291,6 +291,10 @@ impl Panels {
             "share" => {
                 // [paths, screen?, note?]
                 let paths: Vec<String> = a.get(0).and_then(Value::as_array).map(|l| l.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default();
+                // (Sharing keeps what the sheet sends and looks for devices
+                // while it's open: Panels.share's Sharing.sheetPaths. Without
+                // this the sheet said "0 files" and Quick Share never started)
+                h.ask("share", json!(["paths", paths.clone(), str_arg(a, 2)]));
                 self.m.share(paths, str_arg(a, 2));
                 self.m.show("share", opt(str_arg(a, 1)), None, None, &f, &first);
             }

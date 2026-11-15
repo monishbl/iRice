@@ -2388,7 +2388,9 @@ export component ControlCenter inherits Window {
                     width: 260px + 2 * pad;
                     height: gal-col.preferred-height + 2 * pad;
                     border-radius: 36px + pad;
-                    background: Theme.panel;
+                    // (the plugin's glass is under it: no tint over that, or
+                    // it looks solid; without the plugin the tint stands in)
+                    background: Theme.plugin ? transparent : Theme.panel;
                 }
                 // The gallery: everything not in Control Center yet
                 gal-col := VerticalLayout {
@@ -2529,7 +2531,9 @@ export component ControlCenter inherits Window {
                         height: 40px;
                         opacity: paging ? 0.45 : 1;
                         animate opacity { duration: 220ms; }
+                        // (no picture of you here: the user asked it gone, 16 Nov)
                         Rectangle {
+                            visible: false;
                             x: 0;
                             width: 40px;
                             height: 40px;
@@ -2538,8 +2542,7 @@ export component ControlCenter inherits Window {
                             border-width: bare ? 1px : 0; // (pills: on the glass's round ends)
                             border-color: #ffffff.with-alpha(Theme.dark ? 0.06 : 0.3);
                             clip: true;
-                            accessible-role: text;
-                            accessible-label: user;
+                            accessible-role: none;
                             if has-avatar: Image {
                                 width: 100%;
                                 height: 100%;
@@ -2555,7 +2558,7 @@ export component ControlCenter inherits Window {
                         }
                         Rectangle {
                             visible: battery;
-                            x: 48px;
+                            x: 0;
                             width: battery-w;
                             height: 40px;
                             border-radius: 20px;
@@ -2849,11 +2852,11 @@ export component ControlCenter inherits Window {
                         opacity: min(1, rise);
                         // (QuickSettings.qml: your picture in a cookie, MaterialShape "cookie9")
                         Rectangle {
+                            visible: false; // (no picture of you here, 16 Nov)
                             x: 0;
                             width: 40px;
                             height: 40px;
-                            accessible-role: text;
-                            accessible-label: user;
+                            accessible-role: none;
                             if !has-avatar: Path {
                                 width: 100%;
                                 height: 100%;
@@ -2877,7 +2880,7 @@ export component ControlCenter inherits Window {
                             }
                         }
                         if battery: Rectangle {
-                            x: 48px;
+                            x: 0;
                             width: mb.preferred-width + 28px;
                             height: 40px;
                             border-radius: 20px;
@@ -2973,8 +2976,10 @@ export component ControlCenter inherits Window {
             transform-scale: 0.96 + 0.04 * sub-shown;
             transform-origin: { x: self.width, y: 24px };
             border-radius: 36px + pad;
-            background: Theme.panel;
-            border-width: 0.5px;
+            // (the page's glass is the plugin's, lib.rs: a panel colour over
+            // it made the page look solid; without the plugin it stands in)
+            background: Theme.plugin ? transparent : Theme.panel;
+            border-width: Theme.plugin ? 0 : 0.5px;
             border-color: Theme.separator;
             TouchArea { }
             sub-page := PageView {
