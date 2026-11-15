@@ -800,6 +800,17 @@ impl Service for Sharing {
 
     fn message(&mut self, h: &mut Host, msg: Box<dyn Any + Send>) {
         let Ok(m) = msg.downcast::<M>() else { return };
+        if tessera_core::wayland::wakes_on() {
+            let k = match &*m {
+                M::Line(who, ..) => format!("sharing/line/{who}"),
+                M::Exit(who, ..) => format!("sharing/exit/{who}"),
+                M::Out(..) => "sharing/out".into(),
+                M::Due => format!("sharing/due/{}", self.sched.due_names()),
+                M::Monitors(_) => "sharing/monitors".into(),
+                M::DlEvent => "sharing/dl".into(),
+            };
+            tessera_core::wayland::WAKE_MSGS.with(|w| *w.borrow_mut().entry(k).or_default() += 1);
+        }
         match *m {
             M::Line(who, gen, line) => match who {
                 "localsend" => self.local_line(h, gen, &line),

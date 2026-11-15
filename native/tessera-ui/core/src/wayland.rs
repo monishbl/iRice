@@ -258,6 +258,10 @@ impl Surface {
         // `show` is drawn twice)
         if self.shown_frames.get() == 1 {
             self.needs_redraw.set(true);
+            if wakes_on() {
+                // (open timing: the first frame after a show, by the wall clock)
+                eprintln!("first-frame {} at {} drew {:.1} ms", self.namespace, crate::util::now_ms(), t.elapsed().as_secs_f64() * 1000.0);
+            }
         }
         // (no "redraw while animations run" here: Slint's animation clock is
         // global, so every window would redraw while any one animates; an

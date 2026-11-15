@@ -241,6 +241,9 @@ impl Panels {
     fn act(&mut self, h: &mut Host, func: &str, a: &Value) {
         let now = now_ms();
         let (f, first) = (focused(h), first_output(h));
+        if tessera_core::wayland::wakes_on() {
+            eprintln!("panels-act {func} {} at {now}", str_arg(a, 0));
+        }
         match func {
             "show" | "open" => {
                 let action = a.get(2).and_then(Value::as_str).filter(|_| str_arg(a, 0) == "session");

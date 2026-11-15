@@ -303,7 +303,9 @@ impl Sharing {
     // (each press is numbered: a follower still ending from the last one,
     // whose release went missing, mustn't end this one)
     pub fn shelf_pointer_down(&mut self, h: &mut Host) {
-        if !self.shelf_watching() {
+        // (nothing reaches the shelf from the lock screen, and the lock's
+        // surface swallows the release: a follower would run its full minute)
+        if !self.shelf_watching() || h.state("locked").as_bool().unwrap_or(false) {
             return;
         }
         let now = tessera_core::util::now_ms();
@@ -453,7 +455,10 @@ impl Sharing {
             "shelf_zone_idle" | "shelf_zone_end" => self.shelf.zone = false,
             "shelf_follow" => self.shelf_follow_due(h),
             "shelf_lock" => {
-                if self.shelf.follower.running {
+                if self.shelf.follower.running && h.state("locked").as_bool().unwrap_or(false) {
+                    self.shelf.follower.stop();
+                    self.shelf_pointer_up();
+                } else if self.shelf.follower.running {
                     if self.shelf.down && tessera_core::util::now_ms() - self.shelf.last_move > 4000 {
                         self.shelf_pointer_up();
                     }

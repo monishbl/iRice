@@ -42,8 +42,10 @@ use std::time::Duration;
 
 const NAME: &str = "clipboard";
 pub const NS: &str = "tessera:clipboard";
-/// how long it stays closed before its window goes (made again on opening)
-const RETIRE_SECS: u64 = 10;
+/// how long it stays closed before its window goes (made again on opening):
+/// five minutes, as the emoji picker's, so reopening within them is quick (a
+/// new window took ~40 ms to make and ~30 ms more to draw its first frame)
+const RETIRE_SECS: u64 = 300;
 const WIDTH: f32 = 560.0;
 const KINDS: [Filter; 3] = [Filter::All, Filter::Text, Filter::Images];
 
@@ -326,11 +328,11 @@ impl Clipboard {
     fn open(&mut self, st: &mut State, screen: Option<String>) {
         let output = screen.or_else(|| self.win.as_ref().map(|w| w.output.clone())).or_else(|| st.outputs_now().first().map(|o| o.1.clone()));
         let Some(output) = output else { return };
-        if !self.window(st, &output) {
+        if !crate::perf::time(|| "clip open window".into(), || self.window(st, &output)) {
             return;
         }
         st.shell.want("clipboard");
-        clip::refresh();
+        crate::perf::time(|| "clip open refresh".into(), clip::refresh);
         // (the shell's Clipboard stamps new entries with the time they came)
         crate::shell::ask("clipboard.refresh", serde_json::json!([]));
         if let Some(h) = st.shell.get::<History>() {
@@ -339,7 +341,7 @@ impl Clipboard {
         if let Some(p) = st.shell.get::<Previews>() {
             self.previews = p.clone();
         }
-        self.keep_images();
+        crate::perf::time(|| "clip open images".into(), || self.keep_images());
         self.open = true;
         self.kind = 0;
         self.query.clear();
@@ -350,8 +352,8 @@ impl Clipboard {
         w.ui.invoke_open();
         w.ui.set_list_y(0.0);
         w.surface.layer.set_keyboard_interactivity(KeyboardInteractivity::Exclusive);
-        w.surface.show(0, 0);
-        self.rebuild(st);
+        crate::perf::time(|| "clip open show".into(), || w.surface.show(0, 0));
+        crate::perf::time(|| "clip open rebuild".into(), || self.rebuild(st));
         self.waiting = true;
         self.opening = self.opening.wrapping_add(1);
         let (to, n) = (st.shell.sender(NAME), self.opening);

@@ -187,6 +187,11 @@ impl Sched {
     pub fn cancel(&mut self, name: &'static str) {
         self.due.retain(|(n, _)| *n != name);
     }
+    /// The names now due (for the wake log)
+    pub fn due_names(&self) -> String {
+        let now = Instant::now();
+        self.due.iter().filter(|(_, t)| *t <= now).map(|(n, _)| *n).collect::<Vec<_>>().join("+")
+    }
     pub fn has(&self, name: &'static str) -> bool {
         self.due.iter().any(|(n, _)| *n == name)
     }
