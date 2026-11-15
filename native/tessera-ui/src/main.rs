@@ -57,14 +57,34 @@ fn shell_line(state: &mut State, l: &str) {
     }
 }
 
-/// Watch config.json (the shell writes it whole, then renames or closes it)
+/// Watch config.json (the shell writes it whole, then renames or closes it).
+/// Its folder is made first (a first start has none, and a folder that isn't
+/// there can't be watched: no setting would ever apply live); a config.json
+/// that's a link (dotfiles) is watched where it points too
 fn watch_config(tx: calloop::channel::Sender<Msg>) {
     let path = theme::config_path();
     let Some(dir) = path.parent().map(|d| d.to_owned()) else { return };
+    let _ = std::fs::create_dir_all(&dir);
+    let target = tessera_core::util::link_target(&path);
+    let names: Vec<Vec<u8>> = [&path, &target].iter().filter_map(|p| p.file_name()).map(|n| n.as_encoded_bytes().to_vec()).collect();
+    let mut dirs = vec![dir];
+    if let Some(t) = target.parent().filter(|t| *t != dirs[0]) {
+        dirs.push(t.to_owned());
+    }
     std::thread::spawn(move || unsafe {
         let fd = libc::inotify_init1(libc::IN_CLOEXEC);
-        let c = std::ffi::CString::new(dir.as_os_str().as_encoded_bytes()).unwrap();
-        if fd < 0 || libc::inotify_add_watch(fd, c.as_ptr(), libc::IN_CLOSE_WRITE | libc::IN_MOVED_TO) < 0 {
+        if fd < 0 {
+            return;
+        }
+        let mut watching = 0;
+        for d in &dirs {
+            let Ok(c) = std::ffi::CString::new(d.as_os_str().as_encoded_bytes()) else { continue };
+            if libc::inotify_add_watch(fd, c.as_ptr(), libc::IN_CLOSE_WRITE | libc::IN_MOVED_TO) >= 0 {
+                watching += 1;
+            }
+        }
+        if watching == 0 {
+            eprintln!("tessera-ui: can't watch {}: settings changes apply at the next start", dirs[0].display());
             return;
         }
         let mut buf = [0u8; 4096];
@@ -78,7 +98,8 @@ fn watch_config(tx: calloop::channel::Sender<Msg>) {
             while off + std::mem::size_of::<libc::inotify_event>() <= n as usize {
                 let ev = &*(buf.as_ptr().add(off) as *const libc::inotify_event);
                 let name = std::slice::from_raw_parts(buf.as_ptr().add(off + std::mem::size_of::<libc::inotify_event>()), ev.len as usize);
-                hit |= name.starts_with(b"config.json\0") || name == b"config.json";
+                let name = name.split(|b| *b == 0).next().unwrap_or_default();
+                hit |= names.iter().any(|n| n.as_slice() == name);
                 off += std::mem::size_of::<libc::inotify_event>() + ev.len as usize;
             }
             if hit && tx.send(Msg::ConfigChanged).is_err() {
@@ -151,6 +172,15 @@ fn main() {
     if let Some(bad) = surfaces::unknown_arg(&args) {
         eprintln!("tessera-ui: unknown argument {bad} (tessera-ui [--surfaces a,b] [--demo] | --material-roles SEED dark|light [style] | --seed PICTURE | --version)");
         std::process::exit(2);
+    }
+    // The settings, when this is the whole shell (standalone: it owns them):
+    // none yet, a first file is made; a broken one is kept aside, the person
+    // told, a fresh one written (tessera_core::cfgfile)
+    if standalone {
+        let said = tessera_core::cfgfile::check_at_start();
+        if said != "fine" {
+            eprintln!("tessera-ui: settings: {said}");
+        }
     }
     let surfaces = surfaces::from_args(&args);
     if surfaces.on.is_empty() {

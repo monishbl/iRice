@@ -24,7 +24,9 @@ pub fn dir() -> Option<PathBuf> {
 pub fn request(cmd: &str) -> std::io::Result<String> {
     let path = dir().ok_or(std::io::ErrorKind::NotFound)?.join(".socket.sock");
     let mut s = UnixStream::connect(path)?;
+    // (a Hyprland that's busy or stuck costs a moment, never a thread for good)
     s.set_read_timeout(Some(Duration::from_secs(3)))?;
+    s.set_write_timeout(Some(Duration::from_secs(3)))?;
     let mut data = cmd.as_bytes().to_vec();
     // Hyprland reads 1023-byte chunks and waits for more when one is exactly full
     if data.len() % 1023 == 0 {

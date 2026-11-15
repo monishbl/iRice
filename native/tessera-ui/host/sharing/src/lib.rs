@@ -185,22 +185,7 @@ impl Sharing {
     }
     /// Write one setting into config.json (the shell's watcher reads it again)
     pub fn set_config(&mut self, path: &str, v: Value) {
-        let file = tessera_core::theme::config_path();
-        let mut cfg: Value = std::fs::read_to_string(&file).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_else(|| json!({}));
-        if !cfg.is_object() {
-            cfg = json!({});
-        }
-        let keys: Vec<&str> = path.split('.').collect();
-        let mut at = &mut cfg;
-        for k in &keys[..keys.len() - 1] {
-            if !at[*k].is_object() {
-                at[*k] = json!({});
-            }
-            at = &mut at[*k];
-        }
-        at[keys[keys.len() - 1]] = v;
-        let text = serde_json::to_string_pretty(&cfg).unwrap_or_default();
-        let _ = tessera_core::util::write_atomic(&file, text.as_bytes());
+        tessera_core::cfgfile::set_config(path, v);
     }
     pub fn next_gen(&mut self) -> u64 {
         proc::next_gen()

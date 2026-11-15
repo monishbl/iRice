@@ -94,13 +94,12 @@ impl ScreenTime {
         let p = Self::path();
         let all = self.all.clone();
         // (off the UI thread: a write waits on a busy disk, 119 ms seen live)
+        // (under state-merge.py's lock: the other keys, written meanwhile, stay)
         let save = move || {
-            let mut j = crate::util::read_json(&p);
-            if !j.is_object() {
-                j = json!({});
-            }
-            j["screenTime"] = Value::Object(all);
-            let _ = tessera_core::util::write_atomic(&p, serde_json::to_string(&j).unwrap_or_default().as_bytes());
+            let _ = tessera_core::cfgfile::edit_state_at(&p, |m| {
+                m.insert("screenTime".into(), Value::Object(all));
+                true
+            });
         };
         if self.quitting {
             save();

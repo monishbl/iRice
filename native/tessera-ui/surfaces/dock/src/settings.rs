@@ -41,11 +41,13 @@ impl Settings {
                 Some(a) => a.iter().filter_map(|v| v.as_str().map(String::from)).collect(),
                 None => DEFAULT_PINNED.iter().map(|s| s.to_string()).collect(),
             },
-            icon_size: f("iconSize", 48.0),
-            gap: f("gap", 0.18),
+            // (held to what a dock can draw: a hand-edited 0, -5 or 5000
+            // would leave no dock or one wider than any screen)
+            icon_size: f("iconSize", 48.0).clamp(16.0, 160.0),
+            gap: f("gap", 0.18).clamp(0.0, 1.0),
             apps_button: b("appsButton", true),
             magnification: b("magnification", false),
-            magnified_scale: f("magnifiedScale", 1.45),
+            magnified_scale: f("magnifiedScale", 1.45).clamp(1.0, 3.0),
             auto_hide: match d["autoHide"].as_str().unwrap_or("off") {
                 "always" => AutoHide::Always,
                 "windows" => AutoHide::Windows,
@@ -86,19 +88,43 @@ pub fn pinned_with(pinned: &[String], id: &str, keep: bool) -> Vec<String> {
 /// watches the file and reloads it, and so does this process; a rename
 /// would leave a watcher on the old file)
 pub fn write(key: &str, value: Value) {
-    let path = crate::theme::config_path();
     let key = key.to_string();
+    // (the file as it is now, under a lock, written whole; a broken one kept
+    // aside, never written over: tessera_core::cfgfile)
     std::thread::spawn(move || {
-        let mut cfg = std::fs::read_to_string(&path).ok().and_then(|s| serde_json::from_str::<Value>(&s).ok()).unwrap_or(Value::Null);
-        change(&mut cfg, &key, value);
-        let Ok(text) = serde_json::to_string_pretty(&cfg) else { return };
-        let _ = std::fs::write(&path, text + "\n");
+        let _ = tessera_core::cfgfile::edit_config(|m| {
+            let mut cfg = Value::Object(std::mem::take(m));
+            change(&mut cfg, &key, value);
+            if let Value::Object(back) = cfg {
+                *m = back;
+            }
+            true
+        });
     });
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn odd_settings_read_as_a_drawable_dock() {
+        use serde_json::json;
+        for v in [json!(null), json!("x"), json!(-5), json!(1e9), json!([]), json!({}), json!(true)] {
+            let s = Settings::read(&json!({"dock": {"iconSize": v.clone(), "gap": v.clone(), "magnifiedScale": v.clone(), "pinned": v.clone(), "autoHide": v.clone(), "enabled": v.clone()}}));
+            assert!((16.0..=160.0).contains(&s.icon_size) && (0.0..=1.0).contains(&s.gap) && (1.0..=3.0).contains(&s.magnified_scale), "{v}");
+            assert!(s.enabled, "{v}");
+            let _ = Settings::read(&json!({"dock": v.clone()}));
+            let _ = Settings::read(&v);
+        }
+        // (a list of names with odd ones in it: the names kept)
+        assert_eq!(Settings::read(&json!({"dock": {"pinned": ["firefox", 3, null, "foot"]}})).pinned, vec!["firefox", "foot"]);
+        // a change, whatever the file held
+        for mut cfg in [json!(null), json!([1]), json!("x"), json!({"dock": 5})] {
+            change(&mut cfg, "iconSize", json!(50));
+            assert_eq!(cfg["dock"]["iconSize"], json!(50));
+        }
+    }
     use serde_json::json;
 
     #[test]

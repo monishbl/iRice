@@ -54,9 +54,11 @@ pub fn config_in(base: &std::path::Path) -> PathBuf {
     }
 }
 
-/// The shell's settings, as JSON (Null when there are none yet)
+/// The shell's settings, as JSON: always an object or Null (none yet). While
+/// the file is broken (a hand edit half done, a typo) the last good copy
+/// this process read stands, not the defaults (cfgfile.rs)
 pub fn read_json() -> Value {
-    std::fs::read_to_string(config_path()).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or(Value::Null)
+    crate::cfgfile::config_value()
 }
 
 pub fn read() -> Look {
@@ -325,8 +327,12 @@ pub fn glass_material(v: &Value, material: bool, dark: bool, transparency: f32, 
     } else {
         chosen
     };
+    // (a material it doesn't know, from a newer or older shell or a typo, is
+    // drawn as Theme.qml's fallback, clear glass, and named so)
+    let name = if ["custom", "frosted", "solid", "veil", "liquid"].contains(&name) { name } else { "liquid" };
+    let unit = |k: &str, d: f64| num(k, d).clamp(0.0, 1.0);
     let [lens, frost, solid, tint_amount] = match name {
-        "custom" => [num("glassLens", 1.0), num("glassFrost", 0.75), num("glassSolid", 0.0), num("glassTint", 0.75)],
+        "custom" => [unit("glassLens", 1.0), unit("glassFrost", 0.75), unit("glassSolid", 0.0), unit("glassTint", 0.75)],
         "frosted" => [0.3, 1.0, 0.45, 0.5],
         "solid" => [0.0, 0.0, 1.0, 0.0],
         "veil" => [0.0, 1.0, panel_alpha, 0.5],
@@ -1287,5 +1293,63 @@ mod tests {
             }
         }
         assert!(compared > 500, "only {compared} roles compared");
+    }
+}
+
+/// Whatever a config holds (wrong types, odd values, names from another
+/// version), the look is made without a panic, from the defaults where it's
+/// not usable
+#[cfg(test)]
+mod hostile_config {
+    use super::*;
+    use serde_json::json;
+
+    /// Every odd value a hand-edited or old file may hold
+    fn odd_values() -> Vec<Value> {
+        vec![json!(null), json!("x"), json!(""), json!(-1), json!(-1e9), json!(1e12), json!(0), json!(true), json!([]), json!([1, "a"]), json!({}), json!({"a": 1}), json!(f64::MAX)]
+    }
+
+    #[test]
+    fn any_value_anywhere() {
+        let none = |_: &str| None;
+        let keys = ["look", "mode", "accent", "contrast", "materialSeed", "materialStyle", "materialTransparency", "glass", "glassLens", "glassFrost", "glassSolid", "glassTint", "glassIor", "glassRefraction", "glassDispersion", "glassDepth", "glassBlur", "reduceTransparency", "wallpaperTint", "motion", "reduceMotion", "increaseContrast"];
+        for top in odd_values() {
+            let _ = look_from(&top, None, none);
+            let _ = look_from(&json!({"appearance": top.clone(), "wallpaper": top.clone()}), None, none);
+        }
+        for k in keys {
+            for v in odd_values() {
+                for look in ["glass", "material"] {
+                    let cfg = json!({"appearance": {"look": look, "glass": "custom", k: v.clone()}});
+                    let l = look_from(&cfg, None, none);
+                    for x in [l.glass.lens, l.glass.frost, l.glass.solid, l.glass.tint_amount, l.glass.blur, l.glass.bend, l.glass.band, l.glass.dispersion, l.transparency] {
+                        assert!(x.is_finite(), "{k} = {v}: {x}");
+                    }
+                    assert!((0.0..=1.0).contains(&l.glass.lens) && (0.0..=1.0).contains(&l.glass.solid), "{k} = {v}");
+                    let _ = l.glass.preset(40.0);
+                    let _ = l.glass.preset(400.0);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn names_it_doesnt_know() {
+        let none = |_: &str| None;
+        let l = look_from(&json!({"appearance": {"glass": "crystal", "look": "aqua", "accent": "chartreuse", "materialStyle": "fancy"}}), None, none);
+        assert_eq!((l.material, l.glass.name.as_str(), l.accent.as_str()), (false, "liquid", "#0A84FF"));
+        // out-of-range custom amounts are held to 0..1
+        let l = look_from(&json!({"appearance": {"glass": "custom", "glassLens": 7, "glassSolid": -3, "glassTint": "0.5"}}), None, none);
+        assert_eq!((l.glass.lens, l.glass.solid, l.glass.tint_amount), (1.0, 0.0, 0.75));
+    }
+
+    #[test]
+    fn a_top_level_that_isnt_an_object_reads_as_none() {
+        let d = std::env::temp_dir().join(format!("tessera-theme-top-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        for text in ["[1, 2]", "42", "\"hi\"", "null", "{broken"] {
+            std::fs::write(d.join("config.json"), text).unwrap();
+            assert_eq!(crate::cfgfile::config_value_at(&d.join("config.json")), Value::Null, "{text}");
+        }
     }
 }

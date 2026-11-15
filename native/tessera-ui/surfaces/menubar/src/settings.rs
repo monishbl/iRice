@@ -132,7 +132,9 @@ pub fn bar(cfg: &Value) -> Bar {
         show_date: b(m, "showDate", true),
         auto_hide: b(m, "autoHide", false),
         workspaces: s(m, "workspaces", "icons"),
-        workspace_count: m["workspaceCount"].as_i64().unwrap_or(5).max(1) as i32,
+        // (Settings' slider: 1..10; a hand-edited huge count would make a
+        // dot for each, so it's held to what a bar can show)
+        workspace_count: m["workspaceCount"].as_i64().unwrap_or(5).clamp(1, 30) as i32,
         workspace_overflow: s(m, "workspaceOverflow", "arrows"),
         other_spaces: b(m, "otherSpaces", true),
         window_title: b(m, "windowTitle", false),
@@ -159,7 +161,7 @@ pub fn bar(cfg: &Value) -> Bar {
         activity_mode: s(i, "activityMode", "one"),
         live_pieces: list(i, "livePieces", LIVE_PIECES),
         screen_corners: b(a, "screenCorners", true),
-        corner_radius: a["screenCornerRadius"].as_i64().unwrap_or(12) as i32,
+        corner_radius: a["screenCornerRadius"].as_i64().unwrap_or(12).clamp(0, 64) as i32,
         reduce_motion: b(a, "reduceMotion", false),
     }
 }
@@ -176,6 +178,17 @@ impl Bar {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn odd_settings_read_as_a_drawable_bar() {
+        for v in [json!(null), json!("x"), json!(-5), json!(1e15), json!(i64::MAX), json!([]), json!({}), json!(true)] {
+            let b = bar(&json!({"menubar": {"workspaceCount": v.clone(), "workspaces": v.clone(), "batteryPercent": v.clone()}, "appearance": {"screenCornerRadius": v.clone()}}));
+            assert!((1..=30).contains(&b.workspace_count) && (0..=64).contains(&b.corner_radius), "{v}");
+            let _ = bar(&json!({"menubar": v.clone(), "appearance": v.clone(), "island": v.clone()}));
+            let _ = bar(&v);
+            let _ = (menu_icon(&v), clock_formats(&v));
+        }
+    }
 
     #[test]
     fn the_badge_by_default_and_for_old_names() {

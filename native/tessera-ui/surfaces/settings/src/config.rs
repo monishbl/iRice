@@ -147,14 +147,7 @@ pub fn number_for(path: &str, n: f64) -> Value {
 
 /// config.json written whole, as Qt writes it (4-space indent)
 pub fn to_text(cfg: &Value) -> String {
-    use serde::Serialize;
-    let mut out = Vec::new();
-    let fmt = serde_json::ser::PrettyFormatter::with_indent(b"    ");
-    let mut ser = serde_json::Serializer::with_formatter(&mut out, fmt);
-    if cfg.serialize(&mut ser).is_err() {
-        return String::new();
-    }
-    String::from_utf8(out).unwrap_or_default() + "\n"
+    tessera_core::cfgfile::config_text(cfg)
 }
 
 /// Settings' view of config.json: the file as last read with what this
@@ -209,12 +202,14 @@ impl Cfg {
             v => v.to_string(),
         }
     }
+    /// (a value that isn't a number, "big" or a list, reads as the default)
     pub fn f(&self, path: &str) -> f64 {
+        let default = || lookup(defaults(), path).as_f64().unwrap_or(0.0);
         match self.get(path) {
-            Value::Number(n) => n.as_f64().unwrap_or(0.0),
-            Value::String(s) => s.parse().unwrap_or(0.0),
+            Value::Number(n) => n.as_f64().filter(|x| x.is_finite()).unwrap_or_else(default),
+            Value::String(s) => s.trim().parse::<f64>().ok().filter(|x| x.is_finite()).unwrap_or_else(default),
             Value::Bool(b) => b as i32 as f64,
-            _ => 0.0,
+            _ => default(),
         }
     }
     pub fn i(&self, path: &str) -> i64 {
@@ -249,23 +244,18 @@ fn writer() -> mpsc::Sender<(String, Value)> {
                 while let Ok(next) = rx.recv_timeout(Duration::from_millis(250)) {
                     pending.push(next);
                 }
-                let path = crate::theme::config_path();
-                let mut cfg: Value = std::fs::read_to_string(&path).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or(Value::Null);
-                if !cfg.is_object() {
-                    cfg = defaults().clone();
-                }
-                let mut changed = false;
-                for (k, v) in pending {
-                    changed |= set_path(&mut cfg, &k, v);
-                }
-                if changed {
-                    let text = to_text(&cfg);
-                    if text.is_empty() {
-                        continue;
+                // (the file as it is now, under a lock, written whole; a
+                // broken one kept aside and the person told, never written
+                // over: tessera_core::cfgfile)
+                let r = tessera_core::cfgfile::edit_config(|m| {
+                    let mut changed = false;
+                    for (k, v) in pending {
+                        changed |= tessera_core::cfgfile::put_path(m, &k, v);
                     }
-                    if let Err(e) = crate::util::write_atomic(&path, text.as_bytes()) {
-                        eprintln!("tessera-ui: settings: couldn't save: {e}");
-                    }
+                    changed
+                });
+                if let Err(e) = r {
+                    eprintln!("tessera-ui: settings: couldn't save: {e}");
                 }
             }
         });
@@ -304,6 +294,25 @@ mod tests {
             assert!(d[k].is_object(), "no {k}");
         }
         assert!(d["dock"].get("google").is_none() && d.get("taskListId").is_none());
+    }
+
+    #[test]
+    fn odd_values_read_as_the_defaults() {
+        let c = Cfg::detached(json!({"dock": {"iconSize": "big", "gap": [1], "enabled": "yes", "pinned": "firefox"}, "menubar": null, "appearance": 7}));
+        assert_eq!(c.i("dock.iconSize"), 48);
+        assert_eq!(c.f("dock.gap"), 0.18);
+        assert!(!c.b("dock.enabled"));
+        assert!(c.list("dock.pinned").is_empty());
+        assert!(!c.b("menubar.autoHide"));
+        assert_eq!(c.s("appearance.look"), "glass");
+        let c = Cfg::detached(json!({"dock": {"iconSize": " 52 "}}));
+        assert_eq!(c.i("dock.iconSize"), 52);
+        // (whatever the file, a change lands without a panic)
+        for file in [json!(null), json!({"dock": "x"}), json!({"dock": [1]})] {
+            let mut c = Cfg::detached(file);
+            c.set("dock.iconSize", json!(50));
+            assert_eq!(c.i("dock.iconSize"), 50);
+        }
     }
 
     #[test]

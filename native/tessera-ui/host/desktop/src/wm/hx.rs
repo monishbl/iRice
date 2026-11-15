@@ -139,28 +139,16 @@ pub fn config_dir() -> std::path::PathBuf {
     tessera_core::theme::config_path().parent().map(|p| p.to_path_buf()).unwrap_or_default()
 }
 
-static FILE_LOCK: Mutex<()> = Mutex::new(());
-
-fn edit_json(path: &std::path::Path, f: impl FnOnce(&mut Value)) {
-    let _g = FILE_LOCK.lock();
-    let mut v = std::fs::read_to_string(path).ok().and_then(|s| serde_json::from_str::<Value>(&s).ok()).unwrap_or(Value::Null);
-    if !v.is_object() {
-        v = json!({});
-    }
-    f(&mut v);
-    if let Ok(t) = serde_json::to_string_pretty(&v) {
-        let _ = tessera_core::util::write_atomic(path, (t + "\n").as_bytes());
-    }
-}
-
 /// config.json: `section.key = value` (Config.options.section.key = …)
 pub fn set_cfg(section: &str, key: &str, value: Value) {
     let (s, k) = (section.to_string(), key.to_string());
-    edit_json(&tessera_core::theme::config_path(), move |v| {
-        if !v[&s].is_object() {
-            v[&s] = json!({});
+    let _ = tessera_core::cfgfile::edit_config(move |m| {
+        let sec = m.entry(s).or_insert_with(|| json!({}));
+        if !sec.is_object() {
+            *sec = json!({});
         }
-        v[&s][&k] = value;
+        sec[&k] = value;
+        true
     });
 }
 
@@ -169,12 +157,11 @@ pub fn state_path() -> std::path::PathBuf {
 }
 /// state.json (UiState.data): one key
 pub fn state_get(key: &str) -> Value {
-    std::fs::read_to_string(state_path()).ok().and_then(|s| serde_json::from_str::<Value>(&s).ok()).map(|v| v[key].clone()).unwrap_or(Value::Null)
+    tessera_core::cfgfile::state_get(key)
 }
-/// state.json: `data.key = value`
+/// state.json: `data.key = value` (under state-merge.py's lock)
 pub fn state_set(key: &str, value: Value) {
-    let k = key.to_string();
-    edit_json(&state_path(), move |v| v[&k] = value);
+    tessera_core::cfgfile::set_state(key, value);
 }
 
 /// A script of the shell's (shell/assets/scripts/…)

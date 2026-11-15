@@ -51,7 +51,9 @@ pub const NS: &str = "tessera:background";
 
 /// Its own messages (Msg::Part("background", …))
 enum M {
-    Decoded(Decoded),
+    /// a picture decoded; true when it's the bundled default standing in
+    /// for one that couldn't be read
+    Decoded(Decoded, bool),
     Poster(String, bool),
     Faded(String),
     Tick,
@@ -249,24 +251,35 @@ impl Background {
         if jobs.is_empty() {
             return;
         }
+        // (the picture a missing, deleted or unreadable one falls back to:
+        // the look's bundled default for the mode)
+        let material = st.shell.look.material;
+        let dark = st.shell.look.dark;
+        let fallback = self.bundled.get_or_insert_with(Bundled::find).file(material, if !material { "tahoe-dusk.jpg" } else if dark { "material-dark.jpg" } else { "material-light.jpg" });
         let pool = self.pool.get_or_insert_with(|| Pool::new(1, "tessera-wallpaper"));
         pool.replace(
             jobs.into_iter()
                 .map(|(path, (w, h))| {
                     let tx = st.tx.clone();
+                    let fallback = fallback.clone();
                     Box::new(move || {
-                        let pixels = picture::decode(&path, w, h);
+                        let mut pixels = picture::decode(&path, w, h);
+                        let mut stand_in = false;
                         if pixels.is_none() {
-                            eprintln!("tessera-ui: wallpaper {path} can't be read");
+                            eprintln!("tessera-ui: wallpaper {path} can't be read{}", if std::path::Path::new(&path).exists() { "" } else { " (it isn't there)" });
+                            if fallback != path {
+                                pixels = picture::decode(&fallback, w, h);
+                                stand_in = pixels.is_some();
+                            }
                         }
-                        let _ = tx.send(crate::Msg::Part(NAME, Box::new(M::Decoded(Decoded { path, size: (w, h), pixels }))));
+                        let _ = tx.send(crate::Msg::Part(NAME, Box::new(M::Decoded(Decoded { path, size: (w, h), pixels }, stand_in))));
                     }) as Box<dyn FnOnce() + Send>
                 })
                 .collect(),
         );
     }
 
-    fn decoded(&mut self, st: &mut State, d: Decoded) {
+    fn decoded(&mut self, st: &mut State, d: Decoded, stand_in: bool) {
         if crate::env::is_set("DEBUG") {
             eprintln!("debug: wallpaper {} for {:?}: {:?}", d.path, d.size, d.pixels.as_ref().map(|p| (p.width(), p.height())));
         }
@@ -282,6 +295,10 @@ impl Background {
                 continue;
             }
             match &image {
+                // (the default standing in for an unreadable picture: only
+                // where there's nothing yet, a first start or a new screen;
+                // elsewhere the picture before stays, as the QML's)
+                Some(_) if stand_in && self.screens[i].win.is_some() => {}
                 Some(img) => self.show(st, i, img.clone()),
                 // (unreadable: the picture before stays, as the QML's; with none
                 // before, black rather than the QML's window showing through)
@@ -541,7 +558,7 @@ impl Part for Background {
         };
         let Ok(m) = msg.downcast::<M>() else { return };
         match *m {
-            M::Decoded(d) => self.decoded(st, d),
+            M::Decoded(d, stand_in) => self.decoded(st, d, stand_in),
             M::Poster(video, ok) => {
                 if video == self.poster.0 {
                     self.poster.1 = ok.then(|| wallpaper::poster_path(&wallpaper::cache_dir(), &video).to_string_lossy().into_owned());

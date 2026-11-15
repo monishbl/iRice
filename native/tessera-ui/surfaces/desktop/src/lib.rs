@@ -279,20 +279,18 @@ fn ask(what: &str, args: Vec<Value>) {
 /// Write `desktop.<key>` (or another section's) into config.json, as one
 /// write in place (the shell and this process both watch the file)
 fn write_cfg(section: &str, key: &str, value: Value) {
-    let path = theme::config_path();
     let (section, key) = (section.to_string(), key.to_string());
+    // (the file as it is now, under a lock, written whole; a broken one kept
+    // aside, never written over: tessera_core::cfgfile)
     std::thread::spawn(move || {
-        let mut cfg = std::fs::read_to_string(&path).ok().and_then(|s| serde_json::from_str::<Value>(&s).ok()).unwrap_or(Value::Null);
-        if !cfg.is_object() {
-            cfg = json!({});
-        }
-        if !cfg[&section].is_object() {
-            cfg[&section] = json!({});
-        }
-        cfg[&section][&key] = value;
-        if let Ok(text) = serde_json::to_string_pretty(&cfg) {
-            let _ = std::fs::write(&path, text + "\n");
-        }
+        let _ = tessera_core::cfgfile::edit_config(|m| {
+            let sec = m.entry(section).or_insert_with(|| json!({}));
+            if !sec.is_object() {
+                *sec = json!({});
+            }
+            sec[&key] = value;
+            true
+        });
     });
 }
 

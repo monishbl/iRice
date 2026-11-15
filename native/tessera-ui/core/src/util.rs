@@ -20,13 +20,44 @@ pub fn state_dir() -> PathBuf {
 
 /// Write a file whole (a temporary file renamed over it), so a reader never
 /// sees half of it
+/// (written to the file a link points at, so a dotfiles link stays a link;
+/// the file's permissions kept; on disk before the rename, so a crash or a
+/// power cut leaves the old file or the new, never an empty one; a
+/// temporary name of its own per write, so two threads never share one)
 pub fn write_atomic(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let path = link_target(path);
     if let Some(d) = path.parent() {
         std::fs::create_dir_all(d)?;
     }
-    let tmp = path.with_extension(format!("tmp-{}", std::process::id()));
-    std::fs::write(&tmp, bytes)?;
-    std::fs::rename(&tmp, path)
+    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let tmp = path.with_file_name(format!(".{name}.tmp-{}-{n}", std::process::id()));
+    let done = (|| {
+        let mut f = std::fs::File::create(&tmp)?;
+        f.write_all(bytes)?;
+        if let Ok(m) = std::fs::metadata(&path) {
+            let _ = f.set_permissions(m.permissions());
+        }
+        f.sync_all()?;
+        std::fs::rename(&tmp, &path)
+    })();
+    if done.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    done
+}
+
+/// The file a path names: the one a symbolic link points at (followed to
+/// the end), else the path itself
+pub fn link_target(path: &std::path::Path) -> PathBuf {
+    if std::fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink()) {
+        if let Ok(t) = std::fs::canonicalize(path) {
+            return t;
+        }
+    }
+    path.to_path_buf()
 }
 
 /// A file of the repo's (shell/assets/…): from the source tree, else from

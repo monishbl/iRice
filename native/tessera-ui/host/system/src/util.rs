@@ -82,12 +82,8 @@ pub fn read_json(path: &std::path::Path) -> Value {
 
 /// Write a file by temp + rename (readers never see half a file)
 pub fn write_atomic(path: &std::path::Path, text: &str) -> std::io::Result<()> {
-    if let Some(d) = path.parent() {
-        std::fs::create_dir_all(d)?;
-    }
-    let tmp = path.with_extension("tmp");
-    std::fs::write(&tmp, text)?;
-    std::fs::rename(&tmp, path)
+    // (core's: a temporary name per write, so two threads never share one)
+    tessera_core::util::write_atomic(path, text.as_bytes())
 }
 
 pub fn s(v: &Value, k: &str) -> String {
@@ -117,21 +113,9 @@ mod tests {
 /// watcher then raises `config_changed`. (host-shell's Config may do this
 /// better; until then every module of this crate uses this one.)
 pub fn config_set(path: &str, v: Value) {
-    let file = tessera_core::theme::config_path();
-    let mut cfg = read_json(&file);
-    if !cfg.is_object() {
-        cfg = serde_json::json!({});
-    }
-    let keys: Vec<&str> = path.split('.').collect();
-    let mut at = &mut cfg;
-    for k in &keys[..keys.len() - 1] {
-        if !at[*k].is_object() {
-            at[*k] = serde_json::json!({});
-        }
-        at = &mut at[*k];
-    }
-    at[keys[keys.len() - 1]] = v;
-    let _ = write_atomic(&file, &serde_json::to_string_pretty(&cfg).unwrap_or_default());
+    // (the file as it is now, under a lock; a broken one kept aside, never
+    // written over: tessera_core::cfgfile)
+    tessera_core::cfgfile::set_config(path, v);
 }
 
 /// One value of config.json by dotted path (Null if unset)

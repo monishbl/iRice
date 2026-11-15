@@ -88,15 +88,18 @@ pub fn row_span(list: &[crate::services::ai::chats::ListRow], id: &str, material
 /// the rest of the file as it is. In place, as the shell writes it: the
 /// shell watches the file and takes the change.
 pub fn write(path: &[&str], value: Value) {
-    let file = crate::theme::config_path();
-    let mut cfg: Value = std::fs::read_to_string(&file).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or(Value::Object(Default::default()));
-    if !set(&mut cfg, path, value) {
-        return;
-    }
-    if let Ok(text) = serde_json::to_string_pretty(&cfg) {
-        if let Err(e) = std::fs::write(&file, text + "\n") {
-            eprintln!("tessera-ui: couldn't save a setting: {e}");
+    // (the file as it is now, under a lock, written whole; a broken one kept
+    // aside, never written over: tessera_core::cfgfile)
+    let r = tessera_core::cfgfile::edit_config(|m| {
+        let mut cfg = Value::Object(std::mem::take(m));
+        let changed = set(&mut cfg, path, value);
+        if let Value::Object(back) = cfg {
+            *m = back;
         }
+        changed
+    });
+    if let Err(e) = r {
+        eprintln!("tessera-ui: couldn't save a setting: {e}");
     }
 }
 

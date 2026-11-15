@@ -18,11 +18,7 @@ pub fn state_path() -> PathBuf {
 
 /// The whole state file as an object ({} when there is none)
 pub fn state_read() -> Value {
-    std::fs::read_to_string(state_path())
-        .ok()
-        .and_then(|s| serde_json::from_str::<Value>(&s).ok())
-        .filter(Value::is_object)
-        .unwrap_or_else(|| json!({}))
+    Value::Object(tessera_core::cfgfile::read_object(&state_path()))
 }
 
 /// One key of it (Null when absent)
@@ -33,13 +29,8 @@ pub fn state_get(key: &str) -> Value {
 /// Set one key and write the file whole (UiState.data.<key> = value). The
 /// file is read again first, so a key another part wrote meanwhile stays.
 pub fn state_set(key: &str, v: Value) {
-    let mut all = state_read();
-    all[key] = v;
-    let text = serde_json::to_string_pretty(&all).unwrap_or_default();
-    let path = state_path();
-    if let Err(e) = util::write_atomic(&path, text.as_bytes()) {
-        eprintln!("tessera-ui: host: can't write {}: {e}", path.display());
-    }
+    // (under state-merge.py's lock: a key another writer set meanwhile stays)
+    tessera_core::cfgfile::set_state(key, v);
 }
 
 // ── Settings (Config.options) ───────────────────────────────────────────
@@ -52,23 +43,7 @@ pub fn cfg_get(path: &str) -> Value {
 
 /// Config.options.<path> = value, written to config.json whole
 pub fn cfg_set(path: &str, value: Value) {
-    let mut v = tessera_core::theme::read_json();
-    if !v.is_object() {
-        v = json!({});
-    }
-    let keys: Vec<&str> = path.split('.').collect();
-    let mut at = &mut v;
-    for k in &keys[..keys.len() - 1] {
-        if !at.get(*k).is_some_and(Value::is_object) {
-            at[*k] = json!({});
-        }
-        at = &mut at[*k];
-    }
-    at[keys[keys.len() - 1]] = value;
-    let p = tessera_core::theme::config_path();
-    if let Err(e) = util::write_atomic(&p, serde_json::to_string_pretty(&v).unwrap_or_default().as_bytes()) {
-        eprintln!("tessera-ui: host: can't write {}: {e}", p.display());
-    }
+    tessera_core::cfgfile::set_config(path, value);
 }
 
 // ── Time ────────────────────────────────────────────────────────────────

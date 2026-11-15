@@ -117,7 +117,9 @@ pub fn parse(entry: &str) -> W {
     let mut f = entry.split(':');
     let kind = f.next().unwrap_or("").to_string();
     let size = f.next().unwrap_or("");
-    let num = |s: Option<&str>| s.and_then(|s| s.trim().parse::<f64>().ok()).filter(|v| v.is_finite()).map_or(0, |v| v as i32);
+    // (a hand-edited cell far off, -3 or 1e12, is held to a grid's reach:
+    // the sums over cells can't overflow, and placing finds it a free one)
+    let num = |s: Option<&str>| s.and_then(|s| s.trim().parse::<f64>().ok()).filter(|v| v.is_finite()).map_or(0, |v| (v as i32).clamp(0, 999));
     let col = num(f.next());
     let row = num(f.next());
     let id = f.next().unwrap_or("").to_string();
@@ -456,6 +458,20 @@ pub fn move_icon(key: &str, x: f32, y: f32, placed: &HashMap<String, (i32, i32)>
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn odd_entries_place_without_trouble() {
+        let g = Grid::new(1920.0, 1080.0);
+        let list: Vec<W> = ["clock:m:2147483647:-2147483648", "clock:x:1e12:-1e12", "weather::nan:inf", "::", "", "clock:l:a:b:c:d:e"].iter().map(|e| parse(e)).collect();
+        for w in &list {
+            assert!((0..=999).contains(&w.col) && (0..=999).contains(&w.row), "{w:?}");
+        }
+        let placed = g.placed(&list);
+        assert_eq!(placed.len(), list.len());
+        let _ = g.nearest_free(&list, 999, 999, "l", None);
+        // (no room at all: a tiny screen)
+        let _ = Grid::new(0.0, -50.0).placed(&list);
+    }
+
     use super::*;
 
     fn ws(e: &[&str]) -> Vec<W> {

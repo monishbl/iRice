@@ -58,6 +58,7 @@ pub fn cfg_get<'a>(cfg: &'a Value, path: &str) -> &'a Value {
     path.split('.').fold(cfg, |v, k| &v[k])
 }
 
+#[cfg(test)]
 fn set_path(root: &mut Value, path: &str, v: Value) {
     let keys: Vec<&str> = path.split('.').collect();
     let mut at = root;
@@ -73,12 +74,7 @@ fn set_path(root: &mut Value, path: &str, v: Value) {
 /// `Config.options.<path> = v`: config.json read, changed and written whole
 /// (the settings watcher then tells every part)
 pub fn cfg_set(path: &str, v: Value) {
-    let file = tessera_core::theme::config_path();
-    let mut cur: Value = std::fs::read_to_string(&file).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_else(|| json!({}));
-    set_path(&mut cur, path, v);
-    if let Ok(t) = serde_json::to_string_pretty(&cur) {
-        let _ = tessera_core::util::write_atomic(&file, t.as_bytes());
-    }
+    tessera_core::cfgfile::set_config(path, v);
 }
 
 /// state.json (UiState's file): one top-level key read and written
@@ -87,20 +83,12 @@ pub fn state_file() -> PathBuf {
 }
 
 pub fn state_get(key: &str) -> Value {
-    let v: Value = std::fs::read_to_string(state_file()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
-    v[key].clone()
+    tessera_core::cfgfile::state_get(key)
 }
 
+/// (under state-merge.py's lock: neither loses the other's keys)
 pub fn state_set(key: &str, val: Value) {
-    let file = state_file();
-    let mut cur: Value = std::fs::read_to_string(&file).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_else(|| json!({}));
-    if !cur.is_object() {
-        cur = json!({});
-    }
-    cur[key] = val;
-    if let Ok(t) = serde_json::to_string(&cur) {
-        let _ = tessera_core::util::write_atomic(&file, t.as_bytes());
-    }
+    tessera_core::cfgfile::set_state(key, val);
 }
 
 /// Island.post({…}, ms): host-shell's island service takes it (it keeps the buttons'

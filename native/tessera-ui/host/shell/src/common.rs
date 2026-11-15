@@ -94,17 +94,9 @@ pub fn put(v: &mut Value, path: &str, x: Value) {
 /// and this process both watch the file, so the change comes back as
 /// config_changed). Returns whether it was written.
 pub fn set_config(path: &str, x: Value) -> bool {
-    let file = tessera_core::theme::config_path();
-    let mut cfg = std::fs::read_to_string(&file).ok().and_then(|s| serde_json::from_str::<Value>(&s).ok()).unwrap_or_else(|| json!({}));
-    if !cfg.is_object() {
-        cfg = json!({});
-    }
-    if at(&cfg, path) == &x {
-        return true;
-    }
-    put(&mut cfg, path, x);
-    let text = serde_json::to_string_pretty(&cfg).unwrap_or_default();
-    tessera_core::util::write_atomic(&file, text.as_bytes()).is_ok()
+    // (cfgfile: the file as it is now, under a lock; a broken one kept
+    // aside, never written over)
+    tessera_core::cfgfile::set_config(path, x)
 }
 
 /// Config.qml's welcome / defaultsVersion upgrades that standalone needs when
@@ -114,7 +106,24 @@ pub fn upgrade_config() {
     if !cfg.is_object() {
         return;
     }
-    let version = cfg["defaultsVersion"].as_i64().unwrap_or(0);
+    // Config.qml's onLoaded, on every load: names from before (iRice's, the
+    // badge's own "circle"), and the display switch cue from before it had
+    // styles (Empty: from dimOthers)
+    if ["irice", "circle"].contains(&cfg_str(&cfg, "appearance.menuIcon", "")) {
+        set_config("appearance.menuIcon", json!("tessera"));
+    }
+    if cfg_str(&cfg, "screenshot.editor", "") == "irice" {
+        set_config("screenshot.editor", json!("tessera"));
+    }
+    if cfg["workspaces"]["switchCue"].as_str() == Some("") {
+        set_config("workspaces.switchCue", json!(if cfg["workspaces"]["dimOthers"].as_bool().unwrap_or(false) { "glow" } else { "off" }));
+    }
+    // (a version that isn't a number, "3" or 3.0, reads as what it says)
+    let version = match &cfg["defaultsVersion"] {
+        Value::Number(n) => n.as_f64().unwrap_or(0.0) as i64,
+        Value::String(s) => s.trim().parse::<f64>().map_or(0, |v| v as i64),
+        _ => 0,
+    };
     if version >= 3 {
         return;
     }
@@ -270,7 +279,7 @@ pub fn settings_alias(page: &str) -> Option<(&'static str, &'static str)> {
 
 /// One key of state.json (Null when there is none)
 pub fn ui_get(key: &str) -> Value {
-    std::fs::read_to_string(state_dir().join("state.json")).ok().and_then(|s| serde_json::from_str::<Value>(&s).ok()).map(|v| v[key].clone()).unwrap_or(Value::Null)
+    tessera_core::cfgfile::state_get(key)
 }
 
 /// `UiState.data.<key> = value`: a journal first (a crash can't lose it), then

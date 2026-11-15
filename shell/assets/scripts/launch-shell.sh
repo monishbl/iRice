@@ -129,8 +129,16 @@ standalone_ui() {
     if [[ "${TESSERA_STANDALONE:-}" != 1 ]]; then
         local c="${XDG_CONFIG_HOME:-$HOME/.config}/tessera/config.json"
         [[ -f "$c" ]] || c="${XDG_CONFIG_HOME:-$HOME/.config}/irice/config.json"
-        # (no settings file, or no rust.standalone in it: on)
-        [[ -f "$c" ]] && ! python3 -I -c 'import json, sys; sys.exit(1 if json.load(open(sys.argv[1])).get("rust", {}).get("standalone") is False else 0)' "$c" 2>/dev/null && return 1
+        # (no settings file, or no rust.standalone in it: on; a file that
+        # can't be read, too: tessera-ui keeps it aside and says so, where
+        # the QML shell would only quietly use its defaults)
+        [[ -f "$c" ]] && ! python3 -I -c '
+import json, sys
+try:
+    off = json.load(open(sys.argv[1]))["rust"]["standalone"] is False
+except Exception:
+    off = False
+sys.exit(1 if off else 0)' "$c" 2>/dev/null && return 1
         (( $(cat "$STARTS" 2>/dev/null || echo 0) >= 3 )) && { echo "launch-shell: tessera-ui didn't stay up 3 times: the QML shell this time ($STARTS)" >&2; return 1; }
     fi
     local b

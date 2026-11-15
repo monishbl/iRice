@@ -12,6 +12,7 @@
 
 pub mod a11y;
 pub mod appicon;
+pub mod cfgfile; // (config.json and state.json read and changed safely)
 pub mod damage;
 pub mod dnd;
 #[cfg(feature = "skia")]
