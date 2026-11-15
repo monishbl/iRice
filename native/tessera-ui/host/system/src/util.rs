@@ -9,8 +9,23 @@ use std::time::{Duration, Instant};
 
 /// Run a command to the end (blocking: call on a thread). Stdout as text;
 /// None if it could not start. `timeout` kills a hung child (our own child only).
+/// The output is read, so it comes in one language (LC_ALL=C.UTF-8: nmcli's
+/// "running", "." decimals); a window the user sees uses `capture_shown`.
 pub fn capture(cmd: &[&str], timeout: Duration) -> Option<(i32, String)> {
-    let mut c = Command::new(cmd.first()?).args(&cmd[1..]).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn().ok()?;
+    capture_in(cmd, timeout, true)
+}
+
+/// `capture` in the user's own language (a file dialog: zenity, kdialog)
+pub fn capture_shown(cmd: &[&str], timeout: Duration) -> Option<(i32, String)> {
+    capture_in(cmd, timeout, false)
+}
+
+fn capture_in(cmd: &[&str], timeout: Duration, plain: bool) -> Option<(i32, String)> {
+    let mut c = Command::new(cmd.first()?);
+    if plain {
+        tessera_core::util::plain_locale(&mut c);
+    }
+    let mut c = c.args(&cmd[1..]).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn().ok()?;
     let mut out = c.stdout.take()?;
     let t = std::thread::spawn(move || {
         let mut s = String::new();
@@ -67,13 +82,13 @@ pub fn script(name: &str) -> String {
 
 /// $XDG_RUNTIME_DIR, else /run/user/<uid>
 pub fn runtime_dir() -> std::path::PathBuf {
-    std::env::var_os("XDG_RUNTIME_DIR").map(Into::into).unwrap_or_else(|| format!("/run/user/{}", unsafe { libc::getuid() }).into())
+    std::env::var_os("XDG_RUNTIME_DIR").filter(|v| !v.is_empty()).map(Into::into).unwrap_or_else(|| format!("/run/user/{}", unsafe { libc::getuid() }).into())
 }
 
 /// ~/.config/tessera-or-irice style state dir for files the QML keeps under
 /// ~/.local/state/<name> (callers pass the same leaf the QML used)
 pub fn state_dir() -> std::path::PathBuf {
-    std::env::var_os("XDG_STATE_HOME").map(Into::into).unwrap_or_else(|| home().join(".local/state"))
+    tessera_core::util::xdg("XDG_STATE_HOME", ".local/state")
 }
 
 pub fn read_json(path: &std::path::Path) -> Value {

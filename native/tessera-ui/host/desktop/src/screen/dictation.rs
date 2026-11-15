@@ -189,7 +189,7 @@ impl DictationSvc {
             self.pressed_at = 0;
             return;
         }
-        if mic_muted() {
+        if mic_muted(h) {
             util::island_post(h, json!({"kind": "custom", "icon": "microphone-slash", "title": "Your microphone is muted", "subtitle": "Unmute it to dictate", "color": "secondary", "action": "Unmute", "onAction": {"call": "audio.toggleMic", "args": []}}), 5000);
             self.pressed_at = 0;
             return;
@@ -396,8 +396,12 @@ impl Default for DictationSvc {
     }
 }
 
-/// Is the default microphone muted? (Audio.micMuted)
-fn mic_muted() -> bool {
+/// Is the default microphone muted? (Audio.micMuted): core's sound reading
+/// (any PulseAudio-speaking server), wpctl only before it has one
+fn mic_muted(h: &Host) -> bool {
+    if let Some(s) = h.st.shell.get::<tessera_core::services::audio::Sound>().filter(|s| s.up) {
+        return s.mic_muted();
+    }
     Command::new("wpctl").args(["get-volume", "@DEFAULT_AUDIO_SOURCE@"]).stdin(Stdio::null()).stderr(Stdio::null()).output().map(|o| String::from_utf8_lossy(&o.stdout).contains("[MUTED]")).unwrap_or(false)
 }
 

@@ -91,6 +91,24 @@ fn ppd_read(conn: &zbus::blocking::Connection, dest: &'static str, path: &'stati
     Ok((active, perf))
 }
 
+/// Set the energy mode over D-Bus, as powerprofilesctl does (TuneD's
+/// tuned-ppd and older daemons answer the same names, without always
+/// shipping powerprofilesctl); powerprofilesctl only when neither answers.
+/// On a thread
+fn set_profile(mode: String) {
+    std::thread::spawn(move || {
+        let names = [("net.hadess.PowerProfiles", "/net/hadess/PowerProfiles"), ("org.freedesktop.UPower.PowerProfiles", "/org/freedesktop/UPower/PowerProfiles")];
+        let set = zbus::blocking::Connection::system().ok().is_some_and(|conn| {
+            names.iter().any(|(dest, path)| {
+                conn.call_method(Some(*dest), *path, Some("org.freedesktop.DBus.Properties"), "Set", &(*dest, "ActiveProfile", zbus::zvariant::Value::from(mode.as_str()))).is_ok()
+            })
+        });
+        if !set && tessera_core::util::on_path("powerprofilesctl") {
+            let _ = std::process::Command::new("powerprofilesctl").args(["set", &mode]).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status();
+        }
+    });
+}
+
 fn spawn_ppd(send: impl Fn(Box<dyn Any + Send>) + Send + 'static) {
     std::thread::spawn(move || loop {
         let run = || -> zbus::Result<()> {
@@ -278,7 +296,7 @@ impl Power {
         }
         self.applied = mode.clone();
         if self.profile != mode {
-            crate::util::run_async(&["powerprofilesctl", "set", &mode]);
+            set_profile(mode);
         }
     }
 
@@ -293,7 +311,7 @@ impl Power {
             }
             island_post(h, ev, 15000);
         } else {
-            crate::util::run_async(&["notify-send", "-u", "critical", "-a", "Tessera", title, text]);
+            tessera_core::util::notify("Tessera", "", "critical", title, text);
         }
     }
 
@@ -310,7 +328,7 @@ impl Power {
         let mut lines: Vec<String> = policy::idle_listeners(&self.cfg).into_iter().map(|(s, a, t)| format!("{s} {a} {t}")).collect();
         lines.push(format!("grace {}", self.cfg["passwordAfterSleep"].as_f64().unwrap_or(0.0).max(0.0)));
         let idle_file = tessera_core::theme::config_path().parent().map(|p| p.join("idle-listeners")).unwrap_or_default();
-        let user_hypridle = std::env::var_os("XDG_CONFIG_HOME").map(std::path::PathBuf::from).unwrap_or_else(|| crate::util::home().join(".config")).join("hypr/hypridle.conf");
+        let user_hypridle = tessera_core::util::xdg("XDG_CONFIG_HOME", ".config").join("hypr/hypridle.conf");
         let own = crate::util::script("own-hypridle.sh");
         let script = "printf '%s\\n' \"$2\" > \"$1.tmp\" && mv \"$1.tmp\" \"$1\"; for n in tessera irice; do d=\"${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/$n-idle-$HYPRLAND_INSTANCE_SIGNATURE\"; p=$(cat \"$d/hypridle.pid\" 2>/dev/null); [ -n \"$p\" ] && [ \"$(cat /proc/$p/comm 2>/dev/null)\" = hypridle ] && kill \"$p\"; done; \"$4\" \"$3\" && echo own || echo ok";
         let send = h.sender(NAME);
@@ -431,7 +449,7 @@ impl Power {
         // reading, which posted it at every start while full
         if self.has_battery() {
             if self.battery.state == 4 && self.prev_state != 4 && self.prev_state != NO_STATE {
-                crate::util::run_async(&["notify-send", "-a", "Battery", "-i", "battery-full-charged", "Fully charged", "You can unplug your computer."]);
+                tessera_core::util::notify("Battery", "battery-full-charged", "", "Fully charged", "You can unplug your computer.");
             }
             self.prev_state = self.battery.state;
         }
@@ -469,7 +487,7 @@ impl Power {
             "hasBattery": self.has_battery(), "percent": self.percent(), "onBattery": self.on_battery(), "mode": mode, "modeName": mode_name(&mode), "why": why,
             "winner": w.owner, "requests": reqs, "ppd": self.ppd, "hasPerformance": self.has_perf, "profile": self.profile, "stage": self.warned,
             "guardActive": self.guard_active, "guardError": self.guard_error, "ownHypridle": self.own_hypridle,
-            "userHypridle": std::env::var_os("XDG_CONFIG_HOME").map(std::path::PathBuf::from).unwrap_or_else(|| crate::util::home().join(".config")).join("hypr/hypridle.conf").to_string_lossy(),
+            "userHypridle": tessera_core::util::xdg("XDG_CONFIG_HOME", ".config").join("hypr/hypridle.conf").to_string_lossy(),
             "energyApps": self.energy_apps, "energyMinutes": self.energy_minutes, "lidMine": !self.lid.is_empty(), "sandboxed": tessera_core::env::sandboxed(),
             "names": {"power-saver": "Low Power", "balanced": "Balanced", "performance": "Performance"},
         });

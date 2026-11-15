@@ -73,10 +73,15 @@ SYSTEM = os.environ.get("TESSERA_SYSTEM_ROOT", "/")  # where /usr is looked for 
 _local = threading.local() # per check: whether something it asked hung
 
 
+# (commands whose output is read: untranslated words, "." decimals, UTF-8 names)
+PLAIN_ENV = {**{k: v for k, v in os.environ.items() if k != "LANGUAGE"}, "LC_ALL": "C.UTF-8"}
+
+
 def run(cmd, timeout=EACH):
     """(exit code, stdout) of a command; (None, why) if it couldn't run."""
     try:
-        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        # (read, so in one language: nmcli's "running", pactl's "Server Name")
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=PLAIN_ENV)
         return p.returncode, (p.stdout or "") + ("" if p.stdout else p.stderr or "")
     except FileNotFoundError:
         return None, "not installed"

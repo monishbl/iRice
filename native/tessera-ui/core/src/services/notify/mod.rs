@@ -104,9 +104,7 @@ struct Ids {
 /// Tessera's state folder ($XDG_STATE_HOME/tessera, or irice while the
 /// settings haven't moved: Paths.qml's `state`)
 pub fn state_dir() -> PathBuf {
-    let base = std::env::var_os("XDG_STATE_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".local/state"));
+    let base = crate::util::xdg("XDG_STATE_HOME", ".local/state");
     let name = crate::theme::config_path().parent().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "tessera".into());
     base.join(name)
 }

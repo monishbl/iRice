@@ -10,8 +10,8 @@ use std::sync::Mutex;
 
 fn data_dirs() -> Vec<PathBuf> {
     let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
-    let user = std::env::var_os("XDG_DATA_HOME").map(PathBuf::from).unwrap_or_else(|| home.join(".local/share"));
-    let sys = std::env::var("XDG_DATA_DIRS").unwrap_or_else(|_| "/usr/local/share:/usr/share".into());
+    let user = crate::util::xdg("XDG_DATA_HOME", ".local/share");
+    let sys = std::env::var("XDG_DATA_DIRS").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| "/usr/local/share:/usr/share".into());
     let mut v = vec![home.join(".icons"), user.join("icons")];
     v.extend(sys.split(':').filter(|s| !s.is_empty()).map(|d| PathBuf::from(d).join("icons")));
     v
@@ -19,8 +19,7 @@ fn data_dirs() -> Vec<PathBuf> {
 
 /// The GTK icon theme the user chose (gtk-3.0/settings.ini), if any
 fn user_theme() -> Option<String> {
-    let home = std::env::var_os("HOME").map(PathBuf::from)?;
-    let cfg = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).unwrap_or_else(|| home.join(".config"));
+    let cfg = crate::util::xdg("XDG_CONFIG_HOME", ".config");
     let text = std::fs::read_to_string(cfg.join("gtk-3.0/settings.ini")).ok()?;
     text.lines().find_map(|l| l.trim().strip_prefix("gtk-icon-theme-name").map(|v| v.trim_start_matches([' ', '=']).trim().trim_matches('"').to_string()))
 }

@@ -405,10 +405,7 @@ impl Service for CloudAccounts {
                     self.error_from = done.as_ref().map(|d| self.provider_of(&d.request)).unwrap_or_default();
                     let cmd = done.as_ref().map(|d| js(&d.request, "cmd")).unwrap_or_default();
                     if !self.last_error.is_empty() && (cmd.starts_with("event") || cmd.starts_with("task")) {
-                        let c = strs(&["notify-send", "-a", "Tessera", "Change not saved", &self.last_error]);
-                        std::thread::spawn(move || {
-                            let _ = run_full(&c, None);
-                        });
+                        tessera_core::util::notify("Tessera", "", "", "Change not saved", &self.last_error);
                     }
                     self.state = s;
                 } else {

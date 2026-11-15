@@ -50,7 +50,8 @@ pub fn copy_text(text: &str) {
 
 /// notify-send, detached (the notification server shows it)
 pub fn notify(app: &str, title: &str, body: &str) {
-    detached(&["notify-send", "-a", app, title, body]);
+    // (without notify-send too: tessera_core::util::notify)
+    tessera_core::util::notify(app, "", "", title, body);
 }
 
 /// A setting (config.json, dotted path), from a config as last read

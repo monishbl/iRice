@@ -28,7 +28,13 @@ use zbus::zvariant::{OwnedValue, Value};
 
 pub const OBJECT: &str = "/org/tessera/PolicyKit1/AuthenticationAgent";
 pub const SOCKET: &str = "/run/polkit/agent-helper.socket";
-pub const HELPER: &str = "/usr/lib/polkit-1/polkit-agent-helper-1";
+/// polkit's setuid helper: /usr/lib/polkit-1 (Arch, Debian, Fedora), or
+/// /usr/libexec (openSUSE, some builds); the first that exists
+pub const HELPERS: [&str; 4] = ["/usr/lib/polkit-1/polkit-agent-helper-1", "/usr/libexec/polkit-1/polkit-agent-helper-1", "/usr/libexec/polkit-agent-helper-1", "/usr/lib64/polkit-1/polkit-agent-helper-1"];
+
+pub fn helper_path() -> &'static str {
+    HELPERS.iter().copied().find(|p| std::path::Path::new(p).exists()).unwrap_or(HELPERS[0])
+}
 
 type To = Arc<Mutex<Box<dyn Fn(Box<dyn Any + Send>) + Send>>>;
 
@@ -307,9 +313,9 @@ pub fn converse(id: u64, user: &str, cookie: &str, helper: Option<&str>, to: imp
                 stream = Some(s);
                 (Box::new(r), Box::new(w))
             }
-            Err(_) => spawn_helper(HELPER, user, cookie, &mut child)?,
+            Err(_) => spawn_helper(helper_path(), user, cookie, &mut child)?,
         },
-        None => spawn_helper(HELPER, user, cookie, &mut child)?,
+        None => spawn_helper(helper_path(), user, cookie, &mut child)?,
         Some(fake) => spawn_helper(fake, user, cookie, &mut child)?,
     };
     std::thread::spawn(move || {

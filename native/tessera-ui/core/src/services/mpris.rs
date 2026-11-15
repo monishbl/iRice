@@ -107,21 +107,6 @@ pub fn track_from(meta: &HashMap<String, OwnedValue>) -> Track {
     }
 }
 
-/// Seek `bus`'s player to `target` µs into `track`: SetPosition (absolute)
-/// when the track has an id, else Seek by the difference from `now` µs.
-/// (After `--`: a negative offset was read by busctl as an option, so
-/// pulling the playhead back did nothing)
-pub fn seek_command(bus: &str, track: &Track, target: i64, now: i64) -> Vec<String> {
-    let target = target.clamp(0, track.length.max(0));
-    let mut c: Vec<String> = ["busctl", "--user", "call", "--", bus, "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2.Player"].iter().map(|s| s.to_string()).collect();
-    if !track.id.is_empty() && track.id.starts_with('/') && !track.id.ends_with("/NoTrack") {
-        c.extend(["SetPosition".into(), "ox".into(), track.id.clone(), target.to_string()]);
-    } else {
-        c.extend(["Seek".into(), "x".into(), (target - now).to_string()]);
-    }
-    c
-}
-
 fn proxy<'a>(conn: &Connection, dest: &'a str, iface: &'a str) -> zbus::Result<Proxy<'a>> {
     Builder::new(conn).destination(dest)?.path(PATH)?.interface(iface)?.cache_properties(CacheProperties::No).build()
 }
@@ -214,8 +199,96 @@ pub fn spawn(tx: Sender<Msg>) {
 pub fn control(bus: &str, method: &'static str) {
     let bus = bus.to_string();
     std::thread::spawn(move || {
-        let Ok(conn) = Connection::session() else { return };
+        let Some(conn) = session() else { return };
         let _ = conn.call_method(Some(bus.as_str()), PATH, Some(IFACE), method, &());
+    });
+}
+
+/// One session bus connection for the calls below (made once, made again
+/// after it fails). Over D-Bus itself, not busctl: busctl is systemd's
+/// (not on every system), and prints its numbers in your language ("0,5")
+fn session() -> Option<Connection> {
+    use std::sync::Mutex;
+    static CONN: Mutex<Option<Connection>> = Mutex::new(None);
+    let mut c = CONN.lock().unwrap_or_else(|e| e.into_inner());
+    if c.is_none() {
+        *c = Connection::session().ok();
+    }
+    c.clone()
+}
+
+/// A number property of the player (Position in µs, Volume 0..1);
+/// blocking: call on a thread
+pub fn number(bus: &str, prop: &str) -> Option<f64> {
+    let conn = session()?;
+    let v: OwnedValue = proxy(&conn, bus, IFACE).ok()?.get_property(prop).ok()?;
+    number_of(&v)
+}
+
+/// An i64 / u64 / f64 / i32 property value as a number
+pub fn number_of(v: &Value) -> Option<f64> {
+    match v {
+        Value::I64(n) => Some(*n as f64),
+        Value::U64(n) => Some(*n as f64),
+        Value::I32(n) => Some(*n as f64),
+        Value::U32(n) => Some(*n as f64),
+        Value::F64(n) => Some(*n),
+        Value::Value(inner) => number_of(inner),
+        _ => None,
+    }
+}
+
+/// The player's own volume, 0..1 (a thread of its own)
+pub fn set_volume(bus: &str, v: f64) {
+    let bus = bus.to_string();
+    std::thread::spawn(move || {
+        let Some(conn) = session() else { return };
+        let _ = conn.call_method(Some(bus.as_str()), PATH, Some("org.freedesktop.DBus.Properties"), "Set", &(IFACE, "Volume", Value::F64(v.clamp(0.0, 1.0))));
+    });
+}
+
+/// Bring the player's window forward (org.mpris.MediaPlayer2.Raise)
+pub fn raise(bus: &str) {
+    let bus = bus.to_string();
+    std::thread::spawn(move || {
+        let Some(conn) = session() else { return };
+        let _ = conn.call_method(Some(bus.as_str()), PATH, Some("org.mpris.MediaPlayer2"), "Raise", &());
+    });
+}
+
+/// How to move the playhead: SetPosition (absolute) when the track has an
+/// id, else Seek by the difference from where it is
+#[derive(Debug, PartialEq)]
+pub enum SeekTo {
+    /// SetPosition(track id, µs)
+    At(String, i64),
+    /// Seek(offset µs)
+    By(i64),
+}
+
+pub fn seek_plan(track: &Track, target: i64, now: i64) -> SeekTo {
+    let target = target.clamp(0, track.length.max(0));
+    if !track.id.is_empty() && track.id.starts_with('/') && !track.id.ends_with("/NoTrack") {
+        SeekTo::At(track.id.clone(), target)
+    } else {
+        SeekTo::By(target - now)
+    }
+}
+
+/// Seek `bus`'s player to `target` µs into `track` (a thread of its own);
+/// `now`: where it is, µs. A missing `now` (< 0) is read first
+pub fn seek(bus: &str, track: &Track, target: i64, now: i64) {
+    let (bus, track) = (bus.to_string(), track.clone());
+    std::thread::spawn(move || {
+        let Some(conn) = session() else { return };
+        let now = if now >= 0 { now } else { number(&bus, "Position").unwrap_or(0.0) as i64 };
+        let _ = match seek_plan(&track, target, now) {
+            SeekTo::At(id, t) => match zbus::zvariant::ObjectPath::try_from(id.as_str()) {
+                Ok(p) => conn.call_method(Some(bus.as_str()), PATH, Some(IFACE), "SetPosition", &(p, t)).map(|_| ()),
+                Err(_) => Ok(()),
+            },
+            SeekTo::By(d) => conn.call_method(Some(bus.as_str()), PATH, Some(IFACE), "Seek", &(d,)).map(|_| ()),
+        };
     });
 }
 
@@ -246,7 +319,7 @@ fn named_by_kind(p: std::path::PathBuf) -> std::path::PathBuf {
 }
 
 fn art_dir() -> std::path::PathBuf {
-    let base = std::env::var_os("XDG_CACHE_HOME").map(std::path::PathBuf::from).unwrap_or_else(|| std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".cache"));
+    let base = crate::util::xdg("XDG_CACHE_HOME", ".cache");
     base.join("tessera/art")
 }
 
@@ -300,12 +373,23 @@ mod tests {
     #[test]
     fn seeking_is_absolute_when_the_track_has_an_id() {
         let t = super::Track { length: 200_000_000, id: "/org/mpd/Tracks/7".into(), ..Default::default() };
-        let c = super::seek_command("org.mpris.MediaPlayer2.x", &t, 30_000_000, 90_000_000);
-        assert_eq!(c[3], "--");
-        assert_eq!(&c[7..], ["SetPosition", "ox", "/org/mpd/Tracks/7", "30000000"]);
-        // (no id, or NoTrack: a relative Seek, backwards fine after `--`)
+        assert_eq!(super::seek_plan(&t, 30_000_000, 90_000_000), super::SeekTo::At("/org/mpd/Tracks/7".into(), 30_000_000));
+        // (past the end: the end)
+        assert_eq!(super::seek_plan(&t, 900_000_000, 0), super::SeekTo::At("/org/mpd/Tracks/7".into(), 200_000_000));
+        // (no id, or NoTrack: a relative Seek, backwards too)
         let n = super::Track { length: 200_000_000, id: "/org/mpris/MediaPlayer2/TrackList/NoTrack".into(), ..Default::default() };
-        assert_eq!(&super::seek_command("b", &n, 30_000_000, 90_000_000)[7..], ["Seek", "x", "-60000000"]);
+        assert_eq!(super::seek_plan(&n, 30_000_000, 90_000_000), super::SeekTo::By(-60_000_000));
+        let none = super::Track { length: 200_000_000, ..Default::default() };
+        assert_eq!(super::seek_plan(&none, 50_000_000, 10_000_000), super::SeekTo::By(40_000_000));
+    }
+
+    #[test]
+    fn property_numbers_whatever_their_type() {
+        use zbus::zvariant::Value;
+        assert_eq!(super::number_of(&Value::I64(12_500_000)), Some(12_500_000.0));
+        assert_eq!(super::number_of(&Value::F64(0.5)), Some(0.5));
+        assert_eq!(super::number_of(&Value::Value(Box::new(Value::F64(0.25)))), Some(0.25));
+        assert_eq!(super::number_of(&Value::from("0,5")), None);
     }
 
     use super::*;

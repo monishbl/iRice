@@ -437,9 +437,7 @@ pub fn now_ms() -> i64 {
 /// Tessera's state folder ($XDG_STATE_HOME/tessera), or iRice's while only
 /// that one has settings (shell/common/Paths.qml)
 pub fn state_dir() -> PathBuf {
-    let base = std::env::var_os("XDG_STATE_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".local/state"));
+    let base = crate::util::xdg("XDG_STATE_HOME", ".local/state");
     let old = crate::theme::config_path().parent().is_some_and(|p| p.ends_with("irice"));
     base.join(if old { "irice" } else { "tessera" })
 }

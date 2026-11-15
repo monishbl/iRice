@@ -285,7 +285,7 @@ impl Toolbar {
         ui.set_codec(CODECS.iter().position(|x| *x == c.codec).unwrap_or(0) as i32);
         ui.set_quality(QUALITIES.iter().position(|x| *x == c.quality).unwrap_or(0) as i32);
         ui.set_codec_note(geometry::codec_note(&c.codec).into());
-        let folder = if b.folder.is_empty() { format!("{}/Videos/Screen Recordings", b.home) } else { b.folder.clone() };
+        let folder = if b.folder.is_empty() { tessera_core::util::user_dir("VIDEOS", "Videos").join("Screen Recordings").to_string_lossy().into_owned() } else { b.folder.clone() };
         ui.set_folder(geometry::tilde(&folder, &b.home).into());
         ui.set_custom_folder(!c.folder.is_empty());
     }
@@ -402,7 +402,7 @@ impl Toolbar {
     }
 
     /// Open it, choose another (the toolbar closes for the file chooser), or
-    /// back to ~/Videos/Screen Recordings
+    /// back to Screen Recordings in your Videos folder
     pub fn folder(&mut self, st: &mut State, what: &str) {
         if what == "reset" {
             self.set(st, "folder", json!(""));

@@ -694,7 +694,7 @@ impl Bridges {
             "fps" => {
                 let n = a[0].as_i64().unwrap_or(-1);
                 if [0, 30, 60, 90, 120].contains(&n) {
-                    run_owned(vec!["sh".into(), "-c".into(), "for f in \"$HOME/.config/MangoHud/MangoHud.conf\"; do mkdir -p \"$(dirname \"$f\")\"; touch \"$f\"; if grep -q '^fps_limit=' \"$f\"; then sed -i \"s/^fps_limit=.*/fps_limit=$1/\" \"$f\"; else echo \"fps_limit=$1\" >> \"$f\"; fi; done; pkill -SIGUSR2 -x mangohud 2>/dev/null; true".into(), "sh".into(), n.to_string()]);
+                    run_owned(vec!["sh".into(), "-c".into(), "for f in \"${XDG_CONFIG_HOME:-$HOME/.config}/MangoHud/MangoHud.conf\"; do mkdir -p \"$(dirname \"$f\")\"; touch \"$f\"; if grep -q '^fps_limit=' \"$f\"; then sed -i \"s/^fps_limit=.*/fps_limit=$1/\" \"$f\"; else echo \"fps_limit=$1\" >> \"$f\"; fi; done; pkill -SIGUSR2 -x mangohud 2>/dev/null; true".into(), "sh".into(), n.to_string()]);
                 }
             }
             "stamp" => self.image_stamp += 1,

@@ -43,7 +43,8 @@ impl Sharing {
         if !q.is_empty() {
             return q;
         }
-        std::env::var("XDG_DOWNLOAD_DIR").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| format!("{}/Downloads", std::env::var("HOME").unwrap_or_default()))
+        // (your Downloads folder, in your language: user-dirs.dirs)
+        tessera_core::util::user_dir("DOWNLOAD", "Downloads").to_string_lossy().into_owned()
     }
     pub fn link_send(&mut self, h: &mut Host, paths: &[String]) {
         self.link.names = paths.iter().map(|p| base(p)).collect();

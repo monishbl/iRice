@@ -4,8 +4,25 @@
 # busctl calls); systemd is asked over D-Bus, which also works from the dev
 # sandbox's container, where systemctl can't reach it.
 
-acquired=$(busctl --system list --acquired --no-legend --no-pager 2>/dev/null | awk '{ print $1 }')
-activatable=$(busctl --system list --activatable --no-legend --no-pager 2>/dev/null | awk '{ print $1 }')
+export LC_ALL=C.UTF-8
+# The system bus's names: busctl (systemd), else dbus-send or gdbus (a
+# computer without systemd: Artix, Void, Gentoo with OpenRC…)
+bus_names() { # ListNames | ListActivatableNames
+    if command -v dbus-send >/dev/null 2>&1; then
+        dbus-send --system --print-reply --dest=org.freedesktop.DBus /org/freedesktop/DBus "org.freedesktop.DBus.$1" 2>/dev/null |
+            sed -n 's/^ *string "\(.*\)"$/\1/p'
+    elif command -v gdbus >/dev/null 2>&1; then
+        gdbus call --system --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus --method "org.freedesktop.DBus.$1" 2>/dev/null |
+            grep -o "'[^']*'" | tr -d "'"
+    fi
+}
+if command -v busctl >/dev/null 2>&1; then
+    acquired=$(busctl --system list --acquired --no-legend --no-pager 2>/dev/null | awk '{ print $1 }')
+    activatable=$(busctl --system list --activatable --no-legend --no-pager 2>/dev/null | awk '{ print $1 }')
+else
+    acquired=$(bus_names ListNames | grep -v '^:')
+    activatable=$(bus_names ListActivatableNames)
+fi
 owned() { grep -qxF "$1" <<<"$acquired"; }
 startable() { grep -qxF "$1" <<<"$activatable"; }
 
@@ -80,9 +97,11 @@ installed power-profiles-daemon.service && echo "ppd_installed=1"
 
 # ── Bluetooth ───────────────────────────────────────────────────────────
 owned org.bluez && echo "bt_running=1"
-if installed bluetooth.service || command -v bluetoothd >/dev/null 2>&1 || [[ -x /usr/lib/bluetooth/bluetoothd ]]; then
+if installed bluetooth.service || command -v bluetoothd >/dev/null 2>&1 || [[ -x /usr/lib/bluetooth/bluetoothd || -x /usr/libexec/bluetooth/bluetoothd ]]; then
     echo "bt_installed=1"
 fi
+# (the Rust shell switches and pairs with bluetoothctl: bluez-utils on Arch)
+command -v bluetoothctl >/dev/null 2>&1 && echo "bt_ctl=1" || echo "bt_ctl=0"
 ls /sys/class/bluetooth 2>/dev/null | grep -q '^hci' && echo "bt_hardware=1"
 for r in /sys/class/rfkill/rfkill*; do
     [[ "$(cat "$r/type" 2>/dev/null)" == bluetooth ]] || continue

@@ -33,6 +33,17 @@ pub fn integer_clip(r: (f64, f64, f64, f64), w: f64, h: f64) -> (f64, f64, f64, 
 }
 
 /// ScreenTools.geometry: "x,y wxh" in global coordinates for grim / the recorder
+/// Tesseract's data for a language (its code: eng, chi_sim) as this
+/// system's package calls it: tesseract-data-eng (Arch), tesseract-ocr-eng
+/// (Debian), tesseract-langpack-eng (Fedora, openSUSE)
+pub fn tess_data_pkg(family: &str, code: &str) -> String {
+    match family {
+        "debian" => format!("tesseract-ocr-{}", code.replace('_', "-")),
+        "fedora" | "suse" => format!("tesseract-langpack-{code}"),
+        _ => format!("tesseract-data-{code}"),
+    }
+}
+
 pub fn geometry(s: &Screen, r: (f64, f64, f64, f64)) -> String {
     let r = integer_clip(r, s.w, s.h);
     format!("{},{} {}x{}", (s.x + r.0).round() as i64, (s.y + r.1).round() as i64, r.2.round() as i64, r.3.round() as i64)
@@ -40,7 +51,8 @@ pub fn geometry(s: &Screen, r: (f64, f64, f64, f64)) -> String {
 
 impl ScreenSvc {
     pub(super) fn shots_dir() -> String {
-        format!("{}/Pictures/Screenshots", util::home())
+        // (Pictures in your language: user-dirs.dirs, ~/Bilder…)
+        tessera_core::util::user_dir("PICTURES", "Pictures").join("Screenshots").to_string_lossy().into_owned()
     }
 
     // ── Selecting ───────────────────────────────────────────────────────
@@ -245,8 +257,8 @@ impl ScreenSvc {
             self.set_translation(json!({"busy": false, "error": "Could not read text from the screen."}));
         }
         match kind {
-            "shot" | "shotMarkup" | "ask" | "circle" => util::notify("Screenshot", "Couldn't take the screenshot", "Make sure grim is installed."),
-            "ocr" | "translate" => util::notify("Text Capture", "Couldn't read the screen", &format!("Install tesseract and tesseract-data-eng, then try again.{}", self.missing_hint())),
+            "shot" | "shotMarkup" | "ask" | "circle" => util::notify("Screenshot", "Couldn't take the screenshot", &format!("Make sure grim is installed ({}).", tessera_core::util::install_hint("grim", "", ""))),
+            "ocr" | "translate" => util::notify("Text Capture", "Couldn't read the screen", &format!("Install Tesseract ({}), then try again.{}", tessera_core::util::install_hint(&format!("tesseract {}", tess_data_pkg("arch", "eng")), &format!("tesseract-ocr {}", tess_data_pkg("debian", "eng")), "tesseract"), self.missing_hint())),
             "translated" => self.set_translation(json!({"busy": false, "error": "Couldn't translate. Check your connection and that translate-shell is installed."})),
             _ => {}
         }
@@ -254,7 +266,8 @@ impl ScreenSvc {
 
     /// "For text in your language, install tesseract-data-deu."
     fn missing_hint(&self) -> String {
-        let m: Vec<String> = self.ocr_missing.iter().filter(|c| !c.is_empty() && c.chars().all(|x| x.is_ascii_lowercase() || x == '_')).map(|c| format!("tesseract-data-{c}")).collect();
+        let fam = tessera_core::util::distro_family();
+        let m: Vec<String> = self.ocr_missing.iter().filter(|c| !c.is_empty() && c.chars().all(|x| x.is_ascii_lowercase() || x == '_')).map(|c| tess_data_pkg(fam, c)).collect();
         if m.is_empty() { String::new() } else { format!(" For text in your language, install {}.", m.join(" and ")) }
     }
 
@@ -377,6 +390,14 @@ impl ScreenSvc {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tesseract_language_packages_per_distro() {
+        assert_eq!(tess_data_pkg("arch", "chi_sim"), "tesseract-data-chi_sim");
+        assert_eq!(tess_data_pkg("debian", "chi_sim"), "tesseract-ocr-chi-sim");
+        assert_eq!(tess_data_pkg("fedora", "deu"), "tesseract-langpack-deu");
+        assert_eq!(tess_data_pkg("", "eng"), "tesseract-data-eng");
+    }
 
     #[test]
     fn regions_stay_on_the_screen() {

@@ -214,9 +214,7 @@ pub fn shell_dir() -> PathBuf {
 /// $XDG_CACHE_HOME/tessera (iRice's folder while the settings still live there,
 /// as Paths.qml)
 pub fn cache_dir() -> PathBuf {
-    let base = std::env::var_os("XDG_CACHE_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".cache"));
+    let base = crate::util::xdg("XDG_CACHE_HOME", ".cache");
     let name = crate::theme::config_path().parent().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "tessera".into());
     base.join(name)
 }

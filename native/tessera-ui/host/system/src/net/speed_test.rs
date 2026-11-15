@@ -429,7 +429,7 @@ impl SpeedTest {
                 let (code, msg) = rest.split_once(' ').unwrap_or((rest, ""));
                 self.error = match code {
                     "offline" => "You're offline: connect to Wi-Fi or a network, then test again.".into(),
-                    "curl" => "The speed test needs curl. Install it with “sudo pacman -S curl”.".into(),
+                    "curl" => format!("The speed test needs curl. Install it with “{}”.", tessera_core::util::install_hint("curl", "", "")),
                     "timeout" => format!("{msg}. Your connection may be very slow or blocked; try again, or switch the server in Settings → Network."),
                     "ookla" => {
                         if msg.contains("installed") {

@@ -85,7 +85,7 @@ pub fn backends(found: &BTreeMap<String, String>, ready: bool) -> Value {
     } else if nm_installed {
         "Tessera's Wi-Fi menus need NetworkManager, which is installed but not running.".into()
     } else {
-        "Tessera's Wi-Fi menus need NetworkManager. Install networkmanager, or set up another network service.".into()
+        format!("Tessera's Wi-Fi menus need NetworkManager. Install it ({}), or set up another network service.", tessera_core::util::install_hint("networkmanager", "network-manager", "NetworkManager"))
     };
     let wifi_short = if !wifi_unmanaged { String::new() } else if !manager.is_empty() && net != "networkmanager" { format!("Managed by {manager}") } else { "Needs NetworkManager".into() };
     // energy modes
@@ -108,7 +108,7 @@ pub fn backends(found: &BTreeMap<String, String>, ready: bool) -> Value {
     } else {
         "Energy modes need power-profiles-daemon. Install power-profiles-daemon to use Low Power and Performance.".into()
     };
-    // Bluetooth: ok | no-adapter | not-installed | stopped | blocked | hard-blocked
+    // Bluetooth: ok | no-adapter | not-installed | stopped | no-tool | blocked | hard-blocked
     let bt = if !ready {
         ""
     } else if g("bt_hard") == "1" {
@@ -121,20 +121,29 @@ pub fn backends(found: &BTreeMap<String, String>, ready: bool) -> Value {
         "not-installed"
     } else if g("bt_running") != "1" {
         "stopped"
+    } else if g("bt_ctl") == "0" {
+        // (BlueZ runs, but Tessera switches and pairs with bluetoothctl:
+        // Arch's bluez leaves it to bluez-utils)
+        "no-tool"
     } else {
         "ok"
     };
     let (bt_title, bt_short) = match bt {
         "no-adapter" => ("No Bluetooth adapter", "No adapter"),
         "not-installed" => ("Bluetooth isn't installed", "Not installed"),
+        "no-tool" => ("Bluetooth needs bluetoothctl", "Needs bluetoothctl"),
         "stopped" => ("Bluetooth is turned off", "Service off"),
         "blocked" => ("Bluetooth is blocked", "Blocked"),
         "hard-blocked" => ("Bluetooth is switched off", "Switched off"),
         _ => ("", ""),
     };
+    // (this system's package names: bluez-utils is Arch's alone)
+    let bt_install = format!("Install BlueZ ({}), then start Bluetooth (sudo systemctl enable --now bluetooth).", tessera_core::util::install_hint("bluez bluez-utils", "bluez", "bluez"));
+    let bt_tool = format!("Tessera turns Bluetooth on and off and pairs devices with bluetoothctl. Install it ({}), then look again.", tessera_core::util::install_hint("bluez-utils", "bluez", "bluez"));
     let bt_reason = match bt {
         "no-adapter" => "No Bluetooth adapter found. If this computer has one, check that it's turned on in its firmware settings.",
-        "not-installed" => "Install bluez and bluez-utils, then start Bluetooth (sudo systemctl enable --now bluetooth).",
+        "not-installed" => bt_install.as_str(),
+        "no-tool" => bt_tool.as_str(),
         "stopped" => "The Bluetooth service isn't running. Start it to use Bluetooth devices.",
         "blocked" => "Bluetooth is blocked by rfkill, as in flight mode. Unblock it to use Bluetooth devices.",
         "hard-blocked" => "Bluetooth is switched off with a key or switch on this computer, or in its firmware settings. Turn it on there.",
@@ -170,7 +179,8 @@ fn needs_script() -> String {
         "command -v secret-tool >/dev/null && echo secretTool",
         "{ busctl --user list 2>/dev/null; busctl --user call org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus ListActivatableNames 2>/dev/null; } | grep -q org.freedesktop.secrets && echo keyring",
         "{ test -x /usr/lib/goa-daemon || test -x /usr/libexec/goa-daemon; } && echo goa",
-        "v=$(pacman -Q gnome-online-accounts 2>/dev/null | awk '{print $2}'); [ -n \"$v\" ] && [ \"$(vercmp \"$v\" 3.50)\" -ge 0 ] && echo goaMicrosoft",
+        // (its version from pacman, dpkg or rpm; at least 3.50, compared by sort -V)
+        "v=$(pacman -Q gnome-online-accounts 2>/dev/null | awk '{print $2}'); [ -n \"$v\" ] || v=$(dpkg-query -W -f '${Version}' gnome-online-accounts 2>/dev/null); [ -n \"$v\" ] || v=$(rpm -q --qf '%{VERSION}' gnome-online-accounts 2>/dev/null | grep -E '^[0-9]'); v=${v#*:}; [ -n \"$v\" ] && [ \"$(printf '3.50\\n%s\\n' \"$v\" | sort -V | head -n1)\" = 3.50 ] && echo goaMicrosoft",
         "test -x \"$1/native/build/goa-signin\" || command -v tessera-goa-signin >/dev/null && echo goaSignin",
         ":",
     ]
@@ -909,6 +919,30 @@ mod tests {
         assert_eq!(backends(&parse_stack("ppd=0\n"), true)["powerShort"], "Needs power-profiles-daemon");
         assert_eq!(backends(&parse_stack("bt_hard=1\n"), true)["btState"], "hard-blocked");
         assert_eq!(backends(&parse_stack("bt_hardware=1\nbt_installed=1\nbt_running=1\n"), true)["btState"], "ok");
+        // (BlueZ up, but no bluetoothctl to switch or pair with)
+        let t = backends(&parse_stack("bt_hardware=1\nbt_installed=1\nbt_running=1\nbt_ctl=0\n"), true);
+        assert_eq!(t["btState"], "no-tool");
+        assert_eq!(t["btShort"], "Needs bluetoothctl");
+        assert!(t["btReason"].as_str().unwrap().contains("bluetoothctl"));
+        assert_eq!(backends(&parse_stack("bt_hardware=1\nbt_installed=1\nbt_running=1\nbt_ctl=1\n"), true)["btState"], "ok");
+    }
+
+    #[test]
+    fn wifi_under_other_managers_says_who() {
+        let iwd = backends(&parse_stack("net=iwd\nwifi_iface=wlan0\nwifi_app=iwgtk\n"), true);
+        assert_eq!(iwd["wifiUnmanaged"], true);
+        assert_eq!(iwd["wifiTitle"], "Wi-Fi is managed by iwd");
+        assert_eq!(iwd["wifiShort"], "Managed by iwd");
+        assert_eq!(iwd["canStartNm"], false);
+        let cm = backends(&parse_stack("net=connman\nwifi_app=connmanctl\nwifi_app_terminal=1\n"), true);
+        assert_eq!(cm["wifiTitle"], "Wi-Fi is managed by ConnMan");
+        assert!(cm["wifiReason"].as_str().unwrap().contains("connmanctl"));
+        let none = backends(&parse_stack("net=none\nnm_installed=1\n"), true);
+        assert_eq!(none["canStartNm"], true);
+        let bare = backends(&parse_stack("net=none\n"), true);
+        assert!(bare["wifiReason"].as_str().unwrap().starts_with("Tessera's Wi-Fi menus need NetworkManager. Install it ("));
+        // (tuned-ppd answers power-profiles-daemon's name: modes work)
+        assert_eq!(backends(&parse_stack("ppd=1\npowerd=tuned\n"), true)["powerShort"], "");
     }
 
     #[test]

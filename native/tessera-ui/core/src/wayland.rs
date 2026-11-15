@@ -1096,7 +1096,7 @@ enum KeyKind {
 }
 
 /// xkb keysym -> Slint's key text (special keys are private-use characters)
-fn key_text(e: &KeyEvent, release: bool) -> Option<slint::SharedString> {
+fn key_text(e: &KeyEvent, release: bool, mods: [bool; 4]) -> Option<slint::SharedString> {
     let k = match e.keysym {
         Keysym::Up => Key::UpArrow,
         Keysym::Down => Key::DownArrow,
@@ -1133,12 +1133,42 @@ fn key_text(e: &KeyEvent, release: bool) -> Option<slint::SharedString> {
         // (Print Screen: Slint's SysReq is it; Settings' shortcut recorder names it "Print")
         Keysym::Print | Keysym::Sys_Req => Key::SysReq,
         _ => {
+            // (a shortcut: Ctrl or Super held; mods [shift, ctrl, alt, super])
+            if mods[1] || mods[3] {
+                if let Some(t) = shortcut_text(e.keysym.key_char(), e.raw_code, mods[0]) {
+                    return Some(t.into());
+                }
+            }
             let t = if release { None } else { e.utf8.clone() };
             let t = t.or_else(|| e.keysym.key_char().map(String::from))?;
             return (!t.is_empty() && !t.chars().all(char::is_control)).then(|| t.into());
         }
     };
     Some(k.into())
+}
+
+/// A shortcut's key on any layout: the keysym's own character (not the
+/// control character xkb makes of Ctrl+F), and on a non-Latin layout
+/// (Russian, Greek, Hebrew, Arabic…) the Latin letter on the same key, as
+/// GTK and Qt do, so Ctrl+F finds and Ctrl+V pastes on ЙЦУКЕН too. None:
+/// no character (the usual text then)
+pub fn shortcut_text(sym: Option<char>, evdev: u32, shift: bool) -> Option<String> {
+    let c = sym?;
+    if c.is_control() {
+        return None;
+    }
+    if c.is_ascii() || !c.is_alphabetic() {
+        return Some(c.to_string());
+    }
+    // KEY_Q.. (16..25), KEY_A.. (30..38), KEY_Z.. (44..50): the keys' places, whatever the layout
+    const ROWS: [(u32, &str); 3] = [(16, "qwertyuiop"), (30, "asdfghjkl"), (44, "zxcvbnm")];
+    let latin = ROWS.iter().find_map(|(first, row)| evdev.checked_sub(*first).and_then(|i| row.chars().nth(i as usize)));
+    Some(match latin {
+        Some(l) if shift => l.to_ascii_uppercase().to_string(),
+        Some(l) => l.to_string(),
+        // (a Latin layout's own letter, é or ß: as it is)
+        None => c.to_string(),
+    })
 }
 
 impl State {
@@ -1151,7 +1181,7 @@ impl State {
     }
     fn key_now(&mut self, e: KeyEvent, kind: KeyKind) {
         let Some(s) = self.keyboard_on.clone() else { return };
-        let Some(text) = key_text(&e, matches!(kind, KeyKind::Release)) else { return };
+        let Some(text) = key_text(&e, matches!(kind, KeyKind::Release), self.mods_sent) else { return };
         if let Some(i) = MODS.iter().position(|m| text == slint::SharedString::from(*m)) {
             self.mods_sent[i] = !matches!(kind, KeyKind::Release);
         }
@@ -1567,4 +1597,29 @@ pub fn wakes_on() -> bool {
         f.set((on, Some(std::time::Instant::now())));
         on
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::shortcut_text;
+
+    #[test]
+    fn shortcuts_by_key_on_any_layout() {
+        // (US: the letter itself, not Ctrl+F's control character)
+        assert_eq!(shortcut_text(Some('f'), 33, false).as_deref(), Some("f"));
+        // (Russian ЙЦУКЕН: the Latin letter of the same key; Shift capitalises it)
+        assert_eq!(shortcut_text(Some('а'), 33, false).as_deref(), Some("f"));
+        assert_eq!(shortcut_text(Some('м'), 47, false).as_deref(), Some("v"));
+        assert_eq!(shortcut_text(Some('Я'), 44, true).as_deref(), Some("Z"));
+        // (Greek, Hebrew)
+        assert_eq!(shortcut_text(Some('ψ'), 46, false).as_deref(), Some("c"));
+        assert_eq!(shortcut_text(Some('ב'), 46, false).as_deref(), Some("c"));
+        // (AZERTY: its own letters; a Latin layout's é off the letter rows stays é)
+        assert_eq!(shortcut_text(Some('a'), 16, false).as_deref(), Some("a"));
+        assert_eq!(shortcut_text(Some('é'), 3, false).as_deref(), Some("é"));
+        assert_eq!(shortcut_text(Some('1'), 2, false).as_deref(), Some("1"));
+        // (no character, or a control one: the usual text)
+        assert_eq!(shortcut_text(None, 33, false), None);
+        assert_eq!(shortcut_text(Some('\u{6}'), 33, false), None);
+    }
 }

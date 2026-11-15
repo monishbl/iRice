@@ -632,12 +632,7 @@ impl StatusMenus {
         let to = st.shell.sender(NAME);
         let bus = bus.to_string();
         std::thread::spawn(move || {
-            let out = std::process::Command::new("busctl")
-                .args(["--user", "get-property", &bus, "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2.Player", "Position"])
-                .stdin(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .output();
-            if let Some(us) = out.ok().and_then(|o| String::from_utf8_lossy(&o.stdout).split_whitespace().nth(1).and_then(|n| n.parse::<f64>().ok())) {
+            if let Some(us) = tessera_core::services::mpris::number(&bus, "Position") {
                 to(Box::new(M::Position(bus, us / 1e6)));
             }
         });
@@ -708,8 +703,7 @@ impl StatusMenus {
             return;
         }
         let target = (frac.clamp(0.0, 1.0) as f64 * p.track.length as f64) as i64;
-        let cmd = tessera_core::services::mpris::seek_command(&p.bus, &p.track, target, (self.position_now(&p) * 1e6) as i64);
-        tessera_core::services::bridge::run(&cmd.iter().map(String::as_str).collect::<Vec<_>>());
+        tessera_core::services::mpris::seek(&p.bus, &p.track, target, (self.position_now(&p) * 1e6) as i64);
         self.position = (p.bus.clone(), target as f64 / 1e6, Some(Instant::now()));
         self.push_np(st);
     }

@@ -36,7 +36,34 @@ pub fn gsr_region(region: &str) -> String {
     parse().unwrap_or_else(|| region.to_string())
 }
 
-const CPU_NOTE: &str = "Hardware video encoding isn't available (install intel-media-driver for Intel or libva-nvidia-driver for NVIDIA); recorded with the CPU instead";
+/// Mute (Some(true)) or unmute a microphone by its sound-server name (""
+/// or "default": the default one): core's sound connection when it has
+/// that input, else pactl (PulseAudio or pipewire-pulse), else wpctl for
+/// the default one. (wpctl takes PipeWire ids, not these names, so a chosen
+/// microphone never muted before)
+fn source_mute(h: &Host, mic: &str, muted: Option<bool>) {
+    use tessera_core::services::audio::{self, Cmd, Sound};
+    let default = mic.is_empty() || mic == "default";
+    if let Some(s) = h.st.shell.get::<Sound>() {
+        let d = if default { s.source() } else { s.sources.iter().find(|d| d.name == mic) };
+        if let Some(d) = d {
+            audio::send(Cmd::SourceMute { index: d.index, muted: muted.unwrap_or(!d.muted) });
+            return;
+        }
+    }
+    let how = match muted {
+        Some(true) => "1",
+        Some(false) => "0",
+        None => "toggle",
+    };
+    if util::has("pactl") {
+        util::detached(&["pactl", "set-source-mute", if default { "@DEFAULT_SOURCE@" } else { mic }, how]);
+    } else if default && util::has("wpctl") {
+        util::detached(&["wpctl", "set-mute", "@DEFAULT_AUDIO_SOURCE@", how]);
+    }
+}
+
+const CPU_NOTE: &str ="Hardware video encoding isn't available (install intel-media-driver for Intel or libva-nvidia-driver for NVIDIA); recorded with the CPU instead";
 
 impl ScreenSvc {
     fn rec_cfg_str(h: &Host, k: &str, d: &str) -> String {
@@ -96,6 +123,12 @@ impl ScreenSvc {
     // ── Microphones ─────────────────────────────────────────────────────
     pub(super) fn refresh_mics(&mut self, h: &mut Host) {
         let send = h.sender("ScreenTools");
+        // (core's sound reading first: no pactl needed, plain PulseAudio or PipeWire)
+        if let Some(s) = h.st.shell.get::<tessera_core::services::audio::Sound>().filter(|s| s.up && !s.sources.is_empty()) {
+            let list: Vec<Value> = s.sources.iter().map(|d| json!({"name": d.name, "description": if d.description.is_empty() { d.name.clone() } else { d.description.clone() }})).collect();
+            send(Box::new(Mics(list)));
+            return;
+        }
         std::thread::spawn(move || {
             let out = Command::new("pactl").args(["-f", "json", "list", "sources"]).stdin(Stdio::null()).stderr(Stdio::null()).output();
             let list: Vec<Value> = out
@@ -123,8 +156,7 @@ impl ScreenSvc {
             return;
         }
         let mic = Self::rec_cfg_str(h, "mic", "");
-        let target = if mic == "default" { "@DEFAULT_AUDIO_SOURCE@".to_string() } else { mic };
-        util::detached(&["wpctl", "set-mute", &target, "toggle"]);
+        source_mute(h, &mic, if self.mic_muted { Some(false) } else { Some(true) });
         self.mic_muted = !self.mic_muted;
     }
 
@@ -132,8 +164,7 @@ impl ScreenSvc {
         // (what it was before we touched it: unmuted if we muted it)
         if self.mic_muted {
             let mic = Self::rec_cfg_str(h, "mic", "");
-            let target = if mic == "default" || mic.is_empty() { "@DEFAULT_AUDIO_SOURCE@".to_string() } else { mic };
-            util::detached(&["wpctl", "set-mute", &target, "0"]);
+            source_mute(h, &mic, Some(false));
         }
         self.mic_muted = false;
     }
@@ -234,7 +265,9 @@ impl ScreenSvc {
             if !mic.is_empty() {
                 cmd.push(format!("--audio={}", if mic == "default" { "default" } else { mic.as_str() }));
             } else if cfg["systemAudio"].as_bool().unwrap_or(true) {
-                let sink = Command::new("pactl").arg("get-default-sink").stdin(Stdio::null()).stderr(Stdio::null()).output().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default();
+                // (core's reading first: pactl isn't always installed)
+                let known = h.st.shell.get::<tessera_core::services::audio::Sound>().map(|s| s.default_sink.clone()).unwrap_or_default();
+                let sink = if !known.is_empty() { known } else { Command::new("pactl").arg("get-default-sink").stdin(Stdio::null()).stderr(Stdio::null()).output().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default() };
                 cmd.push(format!("--audio={}", if sink.is_empty() { "default".to_string() } else { format!("{sink}.monitor") }));
             }
         }
@@ -424,7 +457,7 @@ impl ScreenSvc {
         if self.island_says(h) {
             util::island_post(h, json!({"kind": "recording", "icon": "warning-circle", "title": "Recording didn't work", "subtitle": why, "color": "danger"}), 6000);
         } else {
-            util::detached(&["notify-send", "-a", "Screen Recording", "-u", "critical", "Recording didn't work", why]);
+            tessera_core::util::notify("Screen Recording", "", "critical", "Recording didn't work", why);
         }
     }
 

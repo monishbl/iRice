@@ -151,7 +151,8 @@ pub fn refresh() {
 /// curl: (body, HTTP status; 0 when nothing answered)
 fn fetch(url: &str) -> (String, u32) {
     let out = std::process::Command::new("curl").args(["-sL", "--max-time", "20", "-w", "\n%{http_code}", url]).stdin(std::process::Stdio::null()).stderr(std::process::Stdio::null()).output();
-    let Ok(out) = out else { return (String::new(), 0) };
+    // (1: curl itself is missing, not the network)
+    let Ok(out) = out else { return (String::new(), 1) };
     let text = String::from_utf8_lossy(&out.stdout).into_owned();
     let (body, code) = text.rsplit_once('\n').unwrap_or(("", &text));
     // (a file: has no HTTP status, but read is read)
@@ -171,7 +172,11 @@ pub fn spawn(tx: Sender<Msg>) {
             let (body, code) = fetch(&url);
             let t = crate::services::calendar::local(crate::util::now_ms());
             if code != 200 {
-                last.error = if code == 0 { "Offline".into() } else { "Weather unavailable".into() };
+                last.error = match code {
+                    0 => "Offline".into(),
+                    1 => "Weather needs curl".into(),
+                    _ => "Weather unavailable".into(),
+                };
             } else {
                 match parse(&body, t.h as u32, t.mi as u32, metric, &place, (last.sunrise, last.sunset)) {
                     Some(w) => last = w,

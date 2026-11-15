@@ -196,7 +196,7 @@ impl AppTheme {
         hx::spawn(vec![
             "sh".into(),
             "-c".into(),
-            "found() { for d in /usr/share/icons \"$HOME/.local/share/icons\" \"$HOME/.icons\"; do [ -d \"$d/$1\" ] && return 0; done; return 1; }; t=$1; found \"$t\" || t=macOS; h=$t; [ \"$t\" = macOS ] && found macOS-hypr && h=macOS-hypr; hyprctl setcursor \"$h\" 24 >/dev/null; gsettings set org.gnome.desktop.interface cursor-theme \"$t\" 2>/dev/null".into(),
+            "found() { for d in /usr/share/icons /usr/local/share/icons \"${XDG_DATA_HOME:-$HOME/.local/share}/icons\" \"$HOME/.icons\"; do [ -d \"$d/$1\" ] && return 0; done; return 1; }; t=$1; found \"$t\" || t=macOS; h=$t; [ \"$t\" = macOS ] && found macOS-hypr && h=macOS-hypr; hyprctl setcursor \"$h\" 24 >/dev/null; gsettings set org.gnome.desktop.interface cursor-theme \"$t\" 2>/dev/null".into(),
             "sh".into(),
             self.cursor.clone(),
         ]);

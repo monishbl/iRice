@@ -68,7 +68,8 @@ pub fn label(item: &Value) -> String {
 
 impl Sharing {
     fn downloads_dir() -> String {
-        std::env::var("XDG_DOWNLOAD_DIR").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| format!("{}/Downloads", std::env::var("HOME").unwrap_or_default()))
+        // (your Downloads folder, in your language: user-dirs.dirs)
+        tessera_core::util::user_dir("DOWNLOAD", "Downloads").to_string_lossy().into_owned()
     }
     /// Island.enabled && Island.wants("transfers")
     fn transfers_on(&self) -> bool {

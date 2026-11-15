@@ -108,7 +108,7 @@ impl Sharing {
     }
     pub fn quick_configure(&mut self) {
         let folder = self.quick_folder();
-        let m = json!({"cmd": "config", "visible": self.quick_visible(), "name": self.my_name(), "folder": if folder.is_empty() { "~/Downloads".to_string() } else { folder }, "pause_wifi": self.cfg_bool("sharing.quickShareHotspot", true) && !tessera_core::env::sandboxed()});
+        let m = json!({"cmd": "config", "visible": self.quick_visible(), "name": self.my_name(), "folder": if folder.is_empty() { tessera_core::util::user_dir("DOWNLOAD", "Downloads").to_string_lossy().into_owned() } else { folder }, "pause_wifi": self.cfg_bool("sharing.quickShareHotspot", true) && !tessera_core::env::sandboxed()});
         self.quick_tell(m);
     }
 
@@ -398,7 +398,7 @@ impl Sharing {
         let paths: Vec<String> = if files_shown { vec![] } else { ev["paths"].as_array().map(|a| a.iter().map(js).collect()).unwrap_or_default() };
         if let Some(first) = paths.first().cloned() {
             let folder = self.quick_folder();
-            let wher = if folder.is_empty() { "Downloads".to_string() } else { base(&folder) };
+            let wher = if folder.is_empty() { base(&tessera_core::util::user_dir("DOWNLOAD", "Downloads").to_string_lossy()) } else { base(&folder) };
             let one = paths.len() == 1;
             self.island(
                 h,

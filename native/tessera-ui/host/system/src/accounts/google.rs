@@ -561,10 +561,7 @@ impl Service for Google {
                     self.offline = m["offline"].as_bool().unwrap_or(false);
                     // (offline: the change is kept and shown; no alarm for that)
                     if !self.offline && !["sync", "status", "flush"].contains(&self.operation.as_str()) {
-                        let cmd = strs(&["notify-send", "-a", "Tessera", "Google", err]);
-                        std::thread::spawn(move || {
-                            let _ = run_full(&cmd, None);
-                        });
+                        tessera_core::util::notify("Tessera", "", "", "Google", err);
                     }
                 }
             }

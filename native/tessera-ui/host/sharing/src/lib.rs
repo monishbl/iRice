@@ -321,7 +321,7 @@ impl Sharing {
             "files": r["files"].as_array().map(|a| a.iter().map(|f| json!({"name": localsend::js(&f["name"]), "mime": localsend::js(&f["mime"])})).collect::<Vec<_>>()).unwrap_or_default(),
             "total": total, "totalText": if total > 0.0 { transfers::size_text(total) } else { String::new() }, "pin": localsend::js(&r["pin"]), "state": localsend::js(&r["state"]),
             "message": localsend::js(&r["message"]), "paths": r["paths"].clone(),
-            "folder": if folder.is_empty() { "Downloads".to_string() } else { base(&folder) },
+            "folder": if folder.is_empty() { base(&tessera_core::util::user_dir("DOWNLOAD", "Downloads").to_string_lossy()) } else { base(&folder) },
             "item": it.map(|it| json!({"done": it["done"].as_f64().unwrap_or(0.0), "total": it["total"].as_f64().unwrap_or(0.0), "waiting": it["waiting"].as_bool().unwrap_or(false),
                 "transport": localsend::js(&it["transport"]), "doneText": transfers::size_text(it["done"].as_f64().unwrap_or(0.0)), "totalText": transfers::size_text(it["total"].as_f64().unwrap_or(0.0))}))})
     }

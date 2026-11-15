@@ -63,7 +63,7 @@ pub fn desktop(cx: &mut Ctx, p: &mut Page) {
         .footer("Drag a widget to move it; it snaps to the grid. Right-click a widget to change its size, set what it shows (Widget Options) or remove it, or right-click the desktop.")
         .row(Row::new("Edit Widgets").detail(format!("{} on the desktop", count(widgets, "widget", "widgets"))).button("Edit…", edit).primary())
         .row(Row::new("Files app")
-            .detail(if none_installed { "No file manager installed (e.g. sudo pacman -S nautilus)" } else { "Opens folders, Downloads and the Trash" })
+            .detail(if none_installed { format!("No file manager installed (e.g. {})", tessera_core::util::install_hint("nautilus", "", "")) } else { "Opens folders, Downloads and the Trash".to_string() })
             .choice(&opts, index, fp)
             .width(220.0));
 

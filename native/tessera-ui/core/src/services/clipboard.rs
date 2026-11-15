@@ -52,7 +52,8 @@ pub struct Previews(pub HashMap<PathBuf, SharedPixelBuffer<Rgba8Pixel>>);
 
 /// cliphist's database: CLIPHIST_DB_PATH, else its default
 pub fn db_path() -> String {
-    std::env::var("CLIPHIST_DB_PATH").unwrap_or_else(|_| format!("{}/.cache/cliphist/db", std::env::var("HOME").unwrap_or_default()))
+    // (cliphist keeps it under $XDG_CACHE_HOME: Go's os.UserCacheDir)
+    std::env::var("CLIPHIST_DB_PATH").ok().filter(|p| !p.is_empty()).unwrap_or_else(|| crate::util::xdg("XDG_CACHE_HOME", ".cache").join("cliphist/db").to_string_lossy().into_owned())
 }
 
 pub fn preview_dir() -> PathBuf {

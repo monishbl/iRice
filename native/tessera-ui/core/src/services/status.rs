@@ -39,10 +39,15 @@ fn watch<T: Send + Clone + PartialEq + 'static>(
     // (a computer without the service, UPower or NetworkManager not
     // installed: asked again less and less often, up to once a minute)
     let mut wait = 5;
+    let mut first = true;
     std::thread::spawn(move || loop {
         let mut up = false;
         let mut run = || -> zbus::Result<()> {
             let conn = Connection::system()?;
+            // (a computer without it, NetworkManager under iwd or ConnMan, a
+            // desktop without UPower: sleep until it appears, not a new bus
+            // connection every few seconds, forever)
+            wait_for_owner(&conn, sender, first)?;
             let rule = MatchRule::builder()
                 .msg_type(zbus::message::Type::Signal)
                 .sender(sender)?
@@ -67,9 +72,45 @@ fn watch<T: Send + Clone + PartialEq + 'static>(
         if let Err(zbus::Error::Failure(_)) = run() {
             return;
         }
+        first = false;
         wait = if up { 5 } else { (wait * 2).min(60) };
         std::thread::sleep(Duration::from_secs(wait));
     });
+}
+
+/// Return once `name` has an owner on the bus: at once when it has, else
+/// when NameOwnerChanged says it got one (the system bus never activates
+/// NetworkManager or UPower for a property read here)
+fn wait_for_owner(conn: &Connection, name: &'static str, activate: bool) -> zbus::Result<()> {
+    let rule = MatchRule::builder()
+        .msg_type(zbus::message::Type::Signal)
+        .sender("org.freedesktop.DBus")?
+        .interface("org.freedesktop.DBus")?
+        .member("NameOwnerChanged")?
+        .arg(0, name)?
+        .build();
+    // (the rule first, so an owner that appears between the two isn't missed)
+    let mut changes = MessageIterator::for_match_rule(rule, conn, Some(8))?;
+    let dbus = zbus::blocking::fdo::DBusProxy::new(conn)?;
+    let has = |n: &str| zbus::names::BusName::try_from(n).ok().map(|b| dbus.name_has_owner(b).unwrap_or(false)).unwrap_or(false);
+    if has(name) {
+        return Ok(());
+    }
+    // (activatable over D-Bus: the first read starts it, as before; a
+    // masked one that never starts is then waited for like a missing one)
+    if activate && dbus.list_activatable_names().is_ok_and(|l| l.iter().any(|n| n.as_str() == name)) {
+        return Ok(());
+    }
+    while let Some(m) = changes.next() {
+        let m = m?;
+        let body = m.body();
+        if let Ok((_, _, new)) = body.deserialize::<(String, String, String)>() {
+            if !new.is_empty() {
+                return Ok(());
+            }
+        }
+    }
+    Ok(())
 }
 
 // Plain property reads: no cache (each reading is fresh, and a cached proxy

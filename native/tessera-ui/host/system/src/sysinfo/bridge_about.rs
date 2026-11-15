@@ -317,7 +317,7 @@ impl About {
         let (tx, key) = (self.tx().clone(), key.to_string());
         std::thread::spawn(move || {
             let c: Vec<&str> = cmd.iter().map(String::as_str).collect();
-            let (code, out) = util::capture(&c, Duration::from_secs(3600)).unwrap_or((-1, String::new()));
+            let (code, out) = util::capture_shown(&c, Duration::from_secs(3600)).unwrap_or((-1, String::new()));
             tx(Box::new(Picked { key, save, secs, code, out }));
         });
     }

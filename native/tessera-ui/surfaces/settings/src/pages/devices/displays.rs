@@ -298,7 +298,7 @@ pub fn displays(cx: &mut Ctx, p: &mut Page) {
         let n = name.clone();
         let slide = cx.on(move |cx, a| ask(cx, "ddcSet", json!([n, a.f])));
         rows.push(Row::new("Brightness").visible(has_ddc && on).detail(format!("{}%, set on the display itself (DDC/CI)", (value * 100.0).round())).slider(value, 0.0, 1.0, 0.0, slide).width(220.0));
-        rows.push(Row::new("Brightness").visible(!built_in && on && !installed).detail("To change this display's brightness from Tessera, install ddcutil (sudo pacman -S ddcutil), then log out and back in."));
+        rows.push(Row::new("Brightness").visible(!built_in && on && !installed).detail(format!("To change this display's brightness from Tessera, install ddcutil ({}), then log out and back in.", tessera_core::util::install_hint("ddcutil", "", ""))));
         let problem = s(&ddc["problem"]);
         let scanning = ddc["scanning"].as_bool().unwrap_or(false);
         let again = cx.on(|cx, _| ask(cx, "ddcRescan", Value::Null));

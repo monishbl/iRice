@@ -92,6 +92,8 @@ impl Watch {
         let cmd: Vec<String> = cmd.iter().map(|s| s.to_string()).collect();
         std::thread::spawn(move || {
             let mut c = Command::new(&cmd[0]);
+            // (its lines are read: one language, "." decimals)
+            tessera_core::util::plain_locale(&mut c);
             c.args(&cmd[1..]).stdin(if stdin.is_some() { Stdio::piped() } else { Stdio::null() }).stdout(Stdio::piped()).stderr(Stdio::null());
             // (the child ends with this thread, whatever happens to the shell)
             unsafe {
@@ -132,6 +134,8 @@ impl Watch {
 pub fn capture_then(cmd: Vec<String>, stdin: Option<String>, then: impl FnOnce(i32, String) + Send + 'static) {
     std::thread::spawn(move || {
         let mut c = Command::new(&cmd[0]);
+        // (its output is read: one language, "." decimals; tessera_core::util::plain_locale)
+        tessera_core::util::plain_locale(&mut c);
         c.args(&cmd[1..]).stdin(if stdin.is_some() { Stdio::piped() } else { Stdio::null() }).stdout(Stdio::piped()).stderr(Stdio::null());
         let Ok(mut child) = c.spawn() else { return then(-1, String::new()) };
         if let (Some(t), Some(mut si)) = (stdin, child.stdin.take()) {

@@ -377,6 +377,8 @@ pub fn weather_note(ready: bool, error: &str) -> String {
         String::new()
     } else if error.is_empty() {
         "Getting the weather…".into()
+    } else if error == "Weather needs curl" {
+        "The weather needs curl. Install curl to see it.".into()
     } else {
         format!("{error}. It's tried again in a few minutes.")
     }
@@ -488,6 +490,8 @@ mod tests {
         assert_eq!(weather_note(true, ""), "");
         assert_eq!(weather_note(false, ""), "Getting the weather…");
         assert!(weather_note(false, "Offline").starts_with("Offline."));
+        // (curl missing: say so, not "offline")
+        assert_eq!(weather_note(false, "Weather needs curl"), "The weather needs curl. Install curl to see it.");
         assert_eq!((mmss(187.9), mmss(-3.0)), ("3:07".to_string(), "0:00".to_string()));
         assert_eq!(byline("A", ""), "A");
         assert_eq!(byline("A", "B"), "A — B");

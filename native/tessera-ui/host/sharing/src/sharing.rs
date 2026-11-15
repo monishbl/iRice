@@ -159,7 +159,7 @@ impl Sharing {
         if self.cfg_bool("island.enabled", true) {
             self.island(h, json!({"kind": "custom", "icon": "share-network", "title": title, "subtitle": subtitle}), 4000);
         } else {
-            crate::proc::detach(&["notify-send", "-a", "Tessera", title, subtitle]);
+            tessera_core::util::notify("Tessera", "", "", title, subtitle);
         }
     }
 

@@ -570,7 +570,7 @@ impl Service for System {
                 if crate::bus::field("updates", "count").as_i64().unwrap_or(0) > 0 {
                     h.ask("updates.install", json!([]));
                 } else {
-                    tessera_core::services::bridge::run(&["notify-send", "-a", "Software Update", "Your system is up to date"]);
+                    tessera_core::util::notify("Software Update", "", "", "Your system is up to date", "");
                 }
             }
             "bootRefresh" => h.ask("bootsplash.refresh", json!([])),

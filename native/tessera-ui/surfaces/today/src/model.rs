@@ -176,6 +176,8 @@ pub fn name_words(account: &str) -> (String, String) {
 pub fn weather_problem(error: &str) -> &'static str {
     if error == "Offline" {
         "Offline. The weather shows once you're connected."
+    } else if error == "Weather needs curl" {
+        "The weather needs curl. Install curl, then it shows here."
     } else {
         "The weather isn't available right now."
     }

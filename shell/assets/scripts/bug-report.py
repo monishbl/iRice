@@ -36,11 +36,13 @@ MAX_BYTES = 2 * 1024 * 1024
 MAX_SIDE = 1600
 LOG_LINES = 500
 TIMEOUT = 30
+# (commands whose output is read: untranslated words, "." decimals, UTF-8 names)
+PLAIN_ENV = {**{k: v for k, v in os.environ.items() if k != "LANGUAGE"}, "LC_ALL": "C.UTF-8"}
 
 
 def run(cmd, timeout=5):
     try:
-        out = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        out = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=PLAIN_ENV)
         return out.stdout if out.returncode == 0 else ""
     except (OSError, subprocess.SubprocessError):
         return ""

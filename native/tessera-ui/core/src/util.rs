@@ -8,12 +8,141 @@ pub fn now_ms() -> i64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64)
 }
 
+/// An XDG base folder: `$var` when it's set to an absolute path (the spec:
+/// an empty or relative value is ignored), else `~/<home_rel>`
+/// (xdg("XDG_STATE_HOME", ".local/state"))
+pub fn xdg(var: &str, home_rel: &str) -> PathBuf {
+    xdg_from(std::env::var_os(var), std::env::var_os("HOME"), home_rel)
+}
+
+fn xdg_from(val: Option<std::ffi::OsString>, home: Option<std::ffi::OsString>, home_rel: &str) -> PathBuf {
+    val.map(PathBuf::from).filter(|p| p.is_absolute()).unwrap_or_else(|| PathBuf::from(home.unwrap_or_default()).join(home_rel))
+}
+
+/// One of your folders (DESKTOP, DOWNLOAD, DOCUMENTS, PICTURES, VIDEOS,
+/// MUSIC…): $XDG_<KIND>_DIR, else its line in $XDG_CONFIG_HOME/user-dirs.dirs
+/// (what xdg-user-dirs wrote, in your language: ~/Téléchargements,
+/// ~/Bilder…), else ~/<fallback>
+pub fn user_dir(kind: &str, fallback: &str) -> PathBuf {
+    let home = std::env::var("HOME").unwrap_or_default();
+    if let Some(v) = std::env::var(format!("XDG_{kind}_DIR")).ok().filter(|v| v.starts_with('/')) {
+        return PathBuf::from(v);
+    }
+    let dirs = std::fs::read_to_string(xdg("XDG_CONFIG_HOME", ".config").join("user-dirs.dirs")).unwrap_or_default();
+    user_dir_in(&dirs, kind, &home).unwrap_or_else(|| PathBuf::from(&home).join(fallback))
+}
+
+/// `XDG_<KIND>_DIR="$HOME/…"` of a user-dirs.dirs text (None when it's
+/// missing, or set to $HOME itself: "no such folder" to xdg-user-dirs)
+pub fn user_dir_in(text: &str, kind: &str, home: &str) -> Option<PathBuf> {
+    let key = format!("XDG_{kind}_DIR=");
+    let line = text.lines().map(str::trim).filter(|l| !l.starts_with('#')).find_map(|l| l.strip_prefix(&key))?;
+    let v = line.trim().trim_matches('"');
+    let path = if let Some(rest) = v.strip_prefix("$HOME") {
+        format!("{home}{rest}")
+    } else if v.starts_with('/') {
+        v.to_string()
+    } else {
+        return None;
+    };
+    let path = path.trim_end_matches('/').to_string();
+    (!path.is_empty() && path != home.trim_end_matches('/')).then(|| PathBuf::from(path))
+}
+
+/// Which package manager this system has (/etc/os-release ID and ID_LIKE):
+/// "arch", "debian", "fedora", "suse", or "" when it's none of those
+pub fn distro_family() -> &'static str {
+    static F: std::sync::OnceLock<&'static str> = std::sync::OnceLock::new();
+    F.get_or_init(|| {
+        let t = std::fs::read_to_string("/etc/os-release").or_else(|_| std::fs::read_to_string("/usr/lib/os-release")).unwrap_or_default();
+        family_of(&t)
+    })
+}
+
+pub fn family_of(os_release: &str) -> &'static str {
+    let field = |k: &str| {
+        os_release.lines().find_map(|l| l.strip_prefix(k).and_then(|v| v.strip_prefix('='))).map(|v| v.trim().trim_matches('"').to_lowercase()).unwrap_or_default()
+    };
+    let ids = format!("{} {}", field("ID"), field("ID_LIKE"));
+    let has = |n: &str| ids.split_whitespace().any(|w| w == n);
+    if has("arch") || has("archlinux") {
+        "arch"
+    } else if has("debian") || has("ubuntu") {
+        "debian"
+    } else if has("fedora") || has("rhel") || has("centos") {
+        "fedora"
+    } else if has("suse") || has("opensuse") {
+        "suse"
+    } else {
+        ""
+    }
+}
+
+/// The command that installs a package here: `arch` names it on Arch
+/// (pacman), `debian` on Debian and Ubuntu (apt), `fedora` on Fedora (dnf)
+/// and openSUSE (zypper). An empty name: Arch's. Elsewhere "install <arch>"
+pub fn install_hint(arch: &str, debian: &str, fedora: &str) -> String {
+    install_hint_for(distro_family(), arch, debian, fedora)
+}
+
+pub fn install_hint_for(family: &str, arch: &str, debian: &str, fedora: &str) -> String {
+    let pick = |n: &str| if n.is_empty() { arch.to_string() } else { n.to_string() };
+    match family {
+        "arch" => format!("sudo pacman -S {arch}"),
+        "debian" => format!("sudo apt install {}", pick(debian)),
+        "fedora" => format!("sudo dnf install {}", pick(fedora)),
+        "suse" => format!("sudo zypper install {}", pick(fedora)),
+        _ => format!("install {arch}"),
+    }
+}
+
+/// Make a command's output the same in every language, for reading it:
+/// untranslated words, "." decimals, still UTF-8 (file and Wi-Fi names).
+/// Not for what the user sees run (apps, terminals)
+pub fn plain_locale(c: &mut std::process::Command) -> &mut std::process::Command {
+    c.env("LC_ALL", "C.UTF-8").env_remove("LANGUAGE")
+}
+
+/// A notification from the shell itself: notify-send when it's installed,
+/// else straight to the notification server over D-Bus (notify-send is
+/// libnotify-bin on Debian, not always there). On a thread
+pub fn notify(app: &str, icon: &str, urgency: &str, title: &str, body: &str) {
+    let (app, icon, urgency, title, body) = (app.to_string(), icon.to_string(), urgency.to_string(), title.to_string(), body.to_string());
+    std::thread::spawn(move || {
+        if on_path("notify-send") {
+            let mut c = std::process::Command::new("notify-send");
+            c.args(["-a", &app]);
+            if !icon.is_empty() {
+                c.args(["-i", &icon]);
+            }
+            if !urgency.is_empty() {
+                c.args(["-u", &urgency]);
+            }
+            let _ = c.arg("--").arg(&title).arg(&body).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status();
+            return;
+        }
+        let Ok(conn) = zbus::blocking::Connection::session() else { return };
+        let level: u8 = match urgency.as_str() {
+            "low" => 0,
+            "critical" => 2,
+            _ => 1,
+        };
+        let mut hints: std::collections::HashMap<&str, zbus::zvariant::Value> = std::collections::HashMap::new();
+        hints.insert("urgency", zbus::zvariant::Value::U8(level));
+        let _ = conn.call_method(
+            Some("org.freedesktop.Notifications"),
+            "/org/freedesktop/Notifications",
+            Some("org.freedesktop.Notifications"),
+            "Notify",
+            &(app.as_str(), 0u32, icon.as_str(), title.as_str(), body.as_str(), Vec::<&str>::new(), hints, -1i32),
+        );
+    });
+}
+
 /// $XDG_STATE_HOME/tessera, as shell/common/Paths.qml's `state` (iRice's
 /// folder while only that one has settings: the shell hasn't moved them yet)
 pub fn state_dir() -> PathBuf {
-    let base = std::env::var_os("XDG_STATE_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".local/state"));
+    let base = xdg("XDG_STATE_HOME", ".local/state");
     let old = crate::theme::config_path().parent().and_then(|p| p.file_name()).is_some_and(|n| n == "irice");
     base.join(if old { "irice" } else { "tessera" })
 }
@@ -192,8 +321,8 @@ fn find_entry(class: &str) -> Option<std::path::PathBuf> {
     if class.is_empty() {
         return None;
     }
-    let home = std::env::var("XDG_DATA_HOME").unwrap_or_else(|_| format!("{}/.local/share", std::env::var("HOME").unwrap_or_default()));
-    let dirs = std::env::var("XDG_DATA_DIRS").unwrap_or_else(|_| "/usr/local/share:/usr/share".into());
+    let home = xdg("XDG_DATA_HOME", ".local/share").to_string_lossy().into_owned();
+    let dirs = std::env::var("XDG_DATA_DIRS").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| "/usr/local/share:/usr/share".into());
     let lc = class.to_lowercase();
     let mut by_wmclass = None;
     for d in std::iter::once(home.as_str()).chain(dirs.split(':')) {
@@ -237,6 +366,53 @@ pub fn encode(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn xdg_folders_ignore_empty_and_relative_values() {
+        let h = Some(std::ffi::OsString::from("/home/zoë m"));
+        assert_eq!(xdg_from(Some("/x/state".into()), h.clone(), ".local/state"), PathBuf::from("/x/state"));
+        assert_eq!(xdg_from(Some("".into()), h.clone(), ".local/state"), PathBuf::from("/home/zoë m/.local/state"));
+        assert_eq!(xdg_from(Some("rel/dir".into()), h.clone(), ".cache"), PathBuf::from("/home/zoë m/.cache"));
+        assert_eq!(xdg_from(None, h, ".config"), PathBuf::from("/home/zoë m/.config"));
+    }
+
+    #[test]
+    fn user_dirs_in_your_language() {
+        let t = "# written by xdg-user-dirs-update\nXDG_DESKTOP_DIR=\"$HOME/Bureau\"\nXDG_DOWNLOAD_DIR=\"$HOME/Téléchargements\"\nXDG_MUSIC_DIR=\"$HOME/\"\nXDG_PICTURES_DIR=\"/data/Fotos/\"\n";
+        assert_eq!(user_dir_in(t, "DOWNLOAD", "/home/zoë m"), Some(PathBuf::from("/home/zoë m/Téléchargements")));
+        assert_eq!(user_dir_in(t, "DESKTOP", "/home/a"), Some(PathBuf::from("/home/a/Bureau")));
+        assert_eq!(user_dir_in(t, "PICTURES", "/home/a"), Some(PathBuf::from("/data/Fotos")));
+        // ($HOME itself: no such folder; missing: the fallback)
+        assert_eq!(user_dir_in(t, "MUSIC", "/home/a"), None);
+        assert_eq!(user_dir_in(t, "VIDEOS", "/home/a"), None);
+        assert_eq!(user_dir_in("", "DOWNLOAD", "/home/a"), None);
+    }
+
+    #[test]
+    fn install_hints_per_distro() {
+        assert_eq!(family_of("NAME=\"CachyOS Linux\"\nID=cachyos\nID_LIKE=arch\n"), "arch");
+        assert_eq!(family_of("ID=endeavouros\nID_LIKE=arch\n"), "arch");
+        assert_eq!(family_of("ID=manjaro\nID_LIKE=arch\n"), "arch");
+        assert_eq!(family_of("ID=arch\n"), "arch");
+        assert_eq!(family_of("ID=ubuntu\nID_LIKE=debian\n"), "debian");
+        assert_eq!(family_of("ID=linuxmint\nID_LIKE=\"ubuntu debian\"\n"), "debian");
+        assert_eq!(family_of("ID=fedora\n"), "fedora");
+        assert_eq!(family_of("ID=\"opensuse-tumbleweed\"\nID_LIKE=\"opensuse suse\"\n"), "suse");
+        assert_eq!(family_of("ID=void\n"), "");
+        assert_eq!(install_hint_for("arch", "bluez bluez-utils", "bluez", ""), "sudo pacman -S bluez bluez-utils");
+        assert_eq!(install_hint_for("debian", "bluez bluez-utils", "bluez", ""), "sudo apt install bluez");
+        assert_eq!(install_hint_for("fedora", "curl", "", ""), "sudo dnf install curl");
+        assert_eq!(install_hint_for("", "ddcutil", "", ""), "install ddcutil");
+    }
+
+    #[test]
+    fn plain_locale_for_parsed_output() {
+        let mut c = std::process::Command::new("true");
+        plain_locale(&mut c);
+        let envs: Vec<_> = c.get_envs().map(|(k, v)| (k.to_string_lossy().into_owned(), v.map(|v| v.to_string_lossy().into_owned()))).collect();
+        assert!(envs.contains(&("LC_ALL".into(), Some("C.UTF-8".into()))));
+        assert!(envs.contains(&("LANGUAGE".into(), None)));
+    }
 
     #[test]
     fn fields_of_the_main_group_only() {

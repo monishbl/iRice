@@ -128,10 +128,31 @@ pub fn island_wants(h: &Host, kind: &str) -> bool {
     events.contains(&kind) || (NEW_KINDS.contains(&kind) && !known.contains(&kind))
 }
 
+/// notify-send's arguments (-a app, -i icon, -u urgency, title, body),
+/// shown through tessera_core::util::notify: without notify-send installed
+/// too (it goes to the notification server over D-Bus)
 pub fn notify_send(args: &[&str]) {
-    let mut v = vec!["notify-send"];
-    v.extend_from_slice(args);
-    tessera_core::services::bridge::run(&v);
+    let n = notify_args(args);
+    tessera_core::util::notify(n[0], n[1], n[2], n[3], n[4]);
+}
+
+/// [app, icon, urgency, title, body] of notify-send's arguments
+pub fn notify_args<'a>(args: &[&'a str]) -> [&'a str; 5] {
+    let mut out = [""; 5];
+    let mut rest: Vec<&str> = Vec::new();
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        match *a {
+            "-a" => out[0] = it.next().copied().unwrap_or(""),
+            "-i" => out[1] = it.next().copied().unwrap_or(""),
+            "-u" => out[2] = it.next().copied().unwrap_or(""),
+            "--" => rest.extend(it.by_ref().copied()),
+            x => rest.push(x),
+        }
+    }
+    out[3] = rest.first().copied().unwrap_or("");
+    out[4] = rest.get(1).copied().unwrap_or("");
+    out
 }
 
 /// QML `sandboxed` / TESSERA_SANDBOX (or the old IRICE_ name)
@@ -196,6 +217,13 @@ pub fn home_tilde(p: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn notify_send_arguments() {
+        assert_eq!(notify_args(&["-a", "Tessera", "-i", "dialog-error", "Update failed", "Try again"]), ["Tessera", "dialog-error", "", "Update failed", "Try again"]);
+        assert_eq!(notify_args(&["-a", "Tessera sandbox", "Skipped x"]), ["Tessera sandbox", "", "", "Skipped x", ""]);
+        // (after --, a title may start with a dash)
+        assert_eq!(notify_args(&["-u", "critical", "--", "-5 °C", "Cold"]), ["", "", "critical", "-5 °C", "Cold"]);
+    }
     #[test]
     fn versions() {
         assert_eq!(parts("1:0.56.2-4.1"), vec![0, 56, 2]);

@@ -25,7 +25,7 @@ pub fn cache_dir() -> PathBuf {
 
 /// $XDG_DATA_HOME/tessera
 pub fn data_dir() -> PathBuf {
-    let base = std::env::var_os("XDG_DATA_HOME").map(PathBuf::from).unwrap_or_else(|| home().join(".local/share"));
+    let base = tessera_core::util::xdg("XDG_DATA_HOME", ".local/share");
     let old = config_dir().file_name().is_some_and(|n| n == "irice");
     base.join(if old { "irice" } else { "tessera" })
 }
@@ -36,7 +36,7 @@ pub fn home() -> PathBuf {
 
 /// $XDG_RUNTIME_DIR, else /tmp
 pub fn runtime_dir() -> PathBuf {
-    std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/tmp"))
+    std::env::var_os("XDG_RUNTIME_DIR").filter(|v| !v.is_empty()).map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/tmp"))
 }
 
 /// The shell's folder (shell/), where assets/scripts/ are

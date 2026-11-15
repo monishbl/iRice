@@ -106,16 +106,9 @@ pub fn detached(cmd: &[&str]) {
 }
 
 /// notify-send -a <app> [-i icon] [-u urgency] -- title body
+/// (without notify-send installed too: tessera_core::util::notify)
 pub fn notify_send(app: &str, icon: Option<&str>, urgency: Option<&str>, title: &str, body: &str) {
-    let mut c: Vec<&str> = vec!["notify-send", "-a", app];
-    if let Some(i) = icon {
-        c.extend(["-i", i]);
-    }
-    if let Some(u) = urgency {
-        c.extend(["-u", u]);
-    }
-    c.extend(["--", title, body]);
-    detached(&c);
+    tessera_core::util::notify(app, icon.unwrap_or(""), urgency.unwrap_or(""), title, body);
 }
 
 // ── The island (services/Island.qml's side of the seam) ─────────────────

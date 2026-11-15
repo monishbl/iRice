@@ -132,6 +132,30 @@ pub fn build_speed(st: &Value) -> Value {
     })
 }
 
+/// The Wi-Fi menu's notice when NetworkManager doesn't answer, as WifiList.qml:
+/// Backends' title and reason (who manages Wi-Fi instead: iwd, ConnMan…),
+/// and its button (start NetworkManager, or open that manager's own app).
+/// Before Backends has looked: NetworkManager's own words
+pub fn notice(unmanaged: bool, backends: &Value) -> Value {
+    if !unmanaged {
+        return json!({"title": "", "text": "", "action": "", "busy": false});
+    }
+    let s = |k: &str| backends[k].as_str().unwrap_or("").to_string();
+    let (title, text) = if backends["ready"] == true && !s("wifiTitle").is_empty() {
+        (s("wifiTitle"), s("wifiReason"))
+    } else {
+        ("No network service is running".to_string(), "Tessera's Wi-Fi menus need NetworkManager. Start NetworkManager, or set up another network service.".to_string())
+    };
+    let action = if backends["canStartNm"] == true {
+        "Start NetworkManager".to_string()
+    } else if !s("wifiApp").is_empty() {
+        format!("Open {}", s("wifiAppName"))
+    } else {
+        String::new()
+    };
+    json!({"title": title, "text": text, "action": action, "busy": false})
+}
+
 enum M {
     Tick,
     Listed(String, String),
@@ -183,7 +207,8 @@ impl NetworkFeed {
     }
 
     fn list(&mut self, h: &mut Host) {
-        if self.listing || !has_tool("nmcli") {
+        // (without NetworkManager: no nmcli every 4 s, only to fail)
+        if self.listing || !Self::nm_running() {
             return;
         }
         self.listing = true;
@@ -230,12 +255,7 @@ impl NetworkFeed {
         }).collect();
         json!({
             "adapter": st.present, "enabled": st.enabled, "unmanaged": unmanaged,
-            "notice": {
-                "title": if unmanaged { if has_tool("nmcli") { "No network service is running" } else { "No network service is running" } } else { "" },
-                "text": if !unmanaged { "" } else if std::path::Path::new("/usr/bin/NetworkManager").exists() { "Tessera's Wi-Fi menus need NetworkManager, which is installed but not running." } else { "Tessera's Wi-Fi menus need NetworkManager. Install networkmanager, or set up another network service." },
-                "action": if unmanaged && std::path::Path::new("/usr/bin/NetworkManager").exists() { "Start NetworkManager" } else { "" },
-                "busy": false,
-            },
+            "notice": notice(unmanaged, &h.state("backends")),
             "networks": nets,
         })
     }
@@ -348,7 +368,15 @@ impl Service for NetworkFeed {
                 }
             }
             "settings" => h.ask("panels.openSettings", json!(["network"])),
-            "fix" => h.ask("backends.fix", json!(["networkmanager"])),
+            // (the notice's button: start NetworkManager, or open iwd's,
+            // ConnMan's… own Wi-Fi app, as WifiList.qml)
+            "fix" => {
+                if h.state("backends")["canStartNm"] == true {
+                    h.ask("backends.fix", json!(["networkmanager"]));
+                } else {
+                    h.ask("backends.openWifiApp", Value::Null);
+                }
+            }
             _ => {}
         }
         self.send(h, false);
@@ -432,6 +460,27 @@ impl Service for NetworkFeed {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_notice_names_who_manages_wifi() {
+        assert_eq!(notice(false, &Value::Null)["title"], "");
+        // (Backends not ready yet: NetworkManager's own words, no button)
+        assert_eq!(notice(true, &Value::Null)["title"], "No network service is running");
+        assert_eq!(notice(true, &Value::Null)["action"], "");
+        let iwd = json!({"ready": true, "wifiTitle": "Wi-Fi is managed by iwd", "wifiReason": "Tessera's Wi-Fi menus need NetworkManager. Use iwgtk to choose a network.", "canStartNm": false, "wifiApp": "iwgtk", "wifiAppName": "iwgtk"});
+        let n = notice(true, &iwd);
+        assert_eq!(n["title"], "Wi-Fi is managed by iwd");
+        assert_eq!(n["action"], "Open iwgtk");
+        let stopped = json!({"ready": true, "wifiTitle": "No network service is running", "wifiReason": "…installed but not running.", "canStartNm": true, "wifiApp": ""});
+        assert_eq!(notice(true, &stopped)["action"], "Start NetworkManager");
+        // (systemd-networkd with no Wi-Fi app: no button)
+        let b = json!({"ready": true, "wifiTitle": "Wi-Fi is managed by systemd-networkd", "wifiReason": "x", "canStartNm": false, "wifiApp": ""});
+        assert_eq!(notice(true, &b)["action"], "");
+        // (a non-Latin Wi-Fi name in a list: kept whole)
+        let aps = parse_list("*:Кафе 🙂:70:WPA2\n:東京\\:5G:40:\n");
+        assert_eq!(aps[0].name, "Кафе 🙂");
+        assert_eq!(aps[1].name, "東京:5G");
+    }
 
     #[test]
     fn lists_networks_and_keeps_the_strongest() {

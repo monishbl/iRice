@@ -36,9 +36,7 @@ pub struct Look {
 }
 
 pub fn config_path() -> PathBuf {
-    let base = std::env::var_os("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".config"));
+    let base = crate::util::xdg("XDG_CONFIG_HOME", ".config");
     config_in(&base)
 }
 

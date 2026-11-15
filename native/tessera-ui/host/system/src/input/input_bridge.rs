@@ -429,7 +429,7 @@ impl Input {
                 let secs: &[&str] = if gestures { &["gestures"] } else { &["keybinds", "shortcuts", "gestures"] };
                 let with_binds = secs.contains(&"keybinds") || secs.contains(&"shortcuts");
                 let with_g = secs.contains(&"gestures");
-                let hh = format!("{}/.config/hypr", self.home);
+                let hh = format!("{}/hypr", tessera_core::util::xdg("XDG_CONFIG_HOME", ".config").to_string_lossy());
                 let mut cmd: Vec<String> = vec!["python3".into(), "-I".into(), crate::util::script("import-end4.py")];
                 if with_binds {
                     cmd.push(format!("{hh}/hyprland/keybinds.lua"));
@@ -516,7 +516,7 @@ impl Input {
         let send = h.sender("Input");
         std::thread::spawn(move || {
             let c: Vec<&str> = cmd.iter().map(String::as_str).collect();
-            let (code, out) = crate::util::capture(&c, Duration::from_secs(3600)).unwrap_or((127, String::new()));
+            let (code, out) = crate::util::capture_shown(&c, Duration::from_secs(3600)).unwrap_or((127, String::new()));
             send(Box::new(M::Dialog { gestures, save, secs, code, out }));
         });
     }
@@ -625,7 +625,7 @@ impl Service for Input {
                 }
                 "previewEnd4" => {
                     let a = &list.first().cloned().unwrap_or(Value::Null);
-                    let hh = format!("{}/.config/hypr", self.home);
+                    let hh = format!("{}/hypr", tessera_core::util::xdg("XDG_CONFIG_HOME", ".config").to_string_lossy());
                     let mut cmd: Vec<String> = vec!["python3".into(), "-I".into(), crate::util::script("import-end4.py")];
                     if a["shortcuts"] == true {
                         cmd.push(format!("{hh}/hyprland/keybinds.lua"));

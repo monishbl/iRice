@@ -161,7 +161,8 @@ fn rgb(c: slint::Color) -> [u8; 3] {
 
 /// The Downloads folder (Transfers.qml's downloadsDir)
 fn downloads_dir() -> PathBuf {
-    std::env::var("XDG_DOWNLOAD_DIR").ok().filter(|s| !s.is_empty()).map(PathBuf::from).unwrap_or_else(|| PathBuf::from(std::env::var("HOME").unwrap_or_default()).join("Downloads"))
+    // (your Downloads folder, in your language: user-dirs.dirs)
+    tessera_core::util::user_dir("DOWNLOAD", "Downloads")
 }
 
 fn trash_dir() -> PathBuf {

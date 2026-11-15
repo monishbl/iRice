@@ -95,13 +95,36 @@ fn bluetoothctl_then(args: Vec<String>, addr: String, send: impl Fn(Box<dyn Any 
 }
 
 /// What core's BlueZ list doesn't carry: the adapter's name (Alias) and the
-/// trusted devices, from BlueZ's object tree (`busctl --json`), on a thread
+/// trusted devices, from BlueZ's object tree, on a thread. Over D-Bus
+/// itself (busctl is systemd's, not on every system), in busctl --json's
+/// shape for parse_bluez_objects
 fn bt_read(send: impl Fn(Box<dyn Any + Send>) + Send + 'static) {
     std::thread::spawn(move || {
-        let out = crate::util::capture(&["busctl", "--system", "--json=short", "call", "org.bluez", "/", "org.freedesktop.DBus.ObjectManager", "GetManagedObjects"], Duration::from_secs(5));
-        let Some((0, text)) = out else { return };
-        let Ok(v) = serde_json::from_str::<Value>(&text) else { return };
-        let (name, trusted) = parse_bluez_objects(&v);
+        use std::collections::HashMap;
+        use zbus::zvariant::{OwnedObjectPath, OwnedValue, Value as V};
+        type Objects = HashMap<OwnedObjectPath, HashMap<String, HashMap<String, OwnedValue>>>;
+        let Ok(conn) = zbus::blocking::Connection::system() else { return };
+        let Ok(m) = conn.call_method(Some("org.bluez"), "/", Some("org.freedesktop.DBus.ObjectManager"), "GetManagedObjects", &()) else { return };
+        let body = m.body();
+        let Ok(objs) = body.deserialize::<Objects>() else { return };
+        let mut tree = serde_json::Map::new();
+        for (path, ifaces) in objs {
+            let mut im = serde_json::Map::new();
+            for (iface, props) in ifaces {
+                let mut pm = serde_json::Map::new();
+                for (k, v) in props {
+                    let data = match &*v {
+                        V::Str(s) => json!(s.as_str()),
+                        V::Bool(b) => json!(b),
+                        _ => continue,
+                    };
+                    pm.insert(k, json!({"data": data}));
+                }
+                im.insert(iface, Value::Object(pm));
+            }
+            tree.insert(path.to_string(), Value::Object(im));
+        }
+        let (name, trusted) = parse_bluez_objects(&json!({"data": [tree]}));
         send(Box::new(M::BtInfo(name, trusted)));
     });
 }

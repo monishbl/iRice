@@ -1547,8 +1547,8 @@ impl ControlCenter {
                 self.last_pos = now_ms();
                 let (tx, bus) = (self.tx(), p.bus.clone());
                 std::thread::spawn(move || {
-                    let (_, out, _) = run_full(&strs(&["busctl", "--user", "get-property", &bus, "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2.Player", "Position"]), None);
-                    if let Some(us) = out.split_whitespace().nth(1).and_then(|n| n.parse::<f64>().ok()) {
+                    // (over D-Bus: busctl isn't on every system)
+                    if let Some(us) = tessera_core::services::mpris::number(&bus, "Position") {
                         tx.send(M::Position(us / 1e6));
                     }
                 });
@@ -1658,15 +1658,12 @@ impl Service for ControlCenter {
                         x if x.starts_with("seek:") && p.track.length > 0 => {
                             let frac = x[5..].parse::<f64>().unwrap_or(0.0).clamp(0.0, 1.0);
                             let target = (frac * p.track.length as f64) as i64;
-                            let bus = p.bus.clone();
                             self.position = target as f64 / 1e6;
                             // (an absolute place, as QSMedia sets it: the offset
-                            // from the position read now, not one up to a second old)
-                            std::thread::spawn(move || {
-                                let (_, out, _) = run_full(&strs(&["busctl", "--user", "get-property", &bus, "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2.Player", "Position"]), None);
-                                let now = out.split_whitespace().nth(1).and_then(|n| n.parse::<i64>().ok()).unwrap_or(0);
-                                let _ = run_full(&strs(&["busctl", "--user", "call", &bus, "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2.Player", "Seek", "x", &(target - now).to_string()]), None);
-                            });
+                            // from the position read now (-1), not one up to a
+                            // second old; Seek, as before, so no track id)
+                            let track = tessera_core::services::mpris::Track { id: String::new(), ..p.track.clone() };
+                            tessera_core::services::mpris::seek(&p.bus, &track, target, -1);
                         }
                         _ => {}
                     }

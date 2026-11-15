@@ -1382,17 +1382,16 @@ impl Menubar {
         if !Self::cfg(st).scroll_gestures {
             return;
         }
-        let up = dy > 0.0;
+        let step = if dy > 0.0 { 0.05 } else { -0.05 };
         if left {
             // (the backlight the brightness service chose, as the keys and the
-            // slider: brightnessctl's own pick could be another of several,
-            // acpi_video0 or nvidia_0, and the sandbox's stays in memory)
+            // slider; logind's SetBrightness, brightnessctl only as its fallback)
             if let Some(b) = st.shell.get::<tessera_core::services::brightness::Backlight>().filter(|b| b.present) {
-                tessera_core::services::brightness::set((b.value + if up { 0.05 } else { -0.05 }).clamp(0.01, 1.0));
+                tessera_core::services::brightness::set((b.value + step).clamp(0.01, 1.0));
             }
         } else {
-            // (the QML shell's sound service sees the change: its OSD or the island's level)
-            bridge::run(&["wpctl", "set-volume", "-l", "1.0", "@DEFAULT_AUDIO_SINK@", if up { "5%+" } else { "5%-" }]);
+            let now = st.shell.get::<tessera_core::services::audio::Sound>().and_then(|s| s.sink().map(|d| d.volume)).unwrap_or(0.0);
+            set_level(st, false, (now + step).clamp(0.0, 1.0), false);
         }
     }
 
@@ -1453,15 +1452,7 @@ impl Menubar {
         let Some(p) = st.shell.get::<Players>().and_then(|p| p.chosen().cloned()) else { return };
         let tx = st.tx.clone();
         std::thread::spawn(move || {
-            let get = |prop: &str| -> Option<f64> {
-                let out = std::process::Command::new("busctl")
-                    .args(["--user", "get-property", &p.bus, "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2.Player", prop])
-                    .stdin(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::null())
-                    .output()
-                    .ok()?;
-                String::from_utf8_lossy(&out.stdout).split_whitespace().nth(1)?.parse::<f64>().ok()
-            };
+            let get = |prop: &str| mpris::number(&p.bus, prop);
             let pos = get("Position").map(|us| us / 1e6);
             let vol = get("Volume");
             let _ = tx.send(crate::Msg::Part(NAME, Box::new(M::Position(p.bus.clone(), pos, vol))));
@@ -1487,8 +1478,7 @@ impl Menubar {
             return;
         }
         let target = (frac.clamp(0.0, 1.0) as f64 * p.track.length as f64) as i64;
-        let cmd = tessera_core::services::mpris::seek_command(&p.bus, &p.track, target, (self.position_now(&p) * 1e6) as i64);
-        tessera_core::services::bridge::run(&cmd.iter().map(String::as_str).collect::<Vec<_>>());
+        tessera_core::services::mpris::seek(&p.bus, &p.track, target, (self.position_now(&p) * 1e6) as i64);
         self.position = (p.bus.clone(), target as f64 / 1e6, Some(std::time::Instant::now()));
         for b in &mut self.bars {
             b.live_key.clear();
@@ -1500,15 +1490,10 @@ impl Menubar {
         let v = v.clamp(0.0, 1.0) as f64;
         match (self.player_volume, st.shell.get::<Players>().and_then(|p| p.chosen().cloned())) {
             (Some(_), Some(p)) => {
-                bridge::run(&["busctl", "--user", "set-property", &p.bus, "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2.Player", "Volume", "d", &format!("{v:.3}")]);
+                mpris::set_volume(&p.bus, v);
                 self.player_volume = Some(v);
             }
-            _ => {
-                bridge::run(&["wpctl", "set-volume", "-l", "1.0", "@DEFAULT_AUDIO_SINK@", &format!("{v:.2}")]);
-                if v > 0.0 && self.muted_now(st) {
-                    bridge::run(&["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "0"]);
-                }
-            }
+            _ => set_level(st, false, v, true),
         }
         for b in &mut self.bars {
             b.live_key.clear();
@@ -1526,14 +1511,14 @@ impl Menubar {
                 let back = if self.saved_volume > 0.01 { self.saved_volume } else { 0.6 };
                 self.set_volume(st, back as f32);
             }
-            None => bridge::run(&["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"]),
+            None => toggle_muted(st, false),
         }
     }
 
     /// Bring the player's window forward (MPRIS Raise, and its window by class), then close panels
     fn open_player(&mut self, st: &mut State) {
         let Some(p) = st.shell.get::<Players>().and_then(|p| p.chosen().cloned()) else { return };
-        bridge::run(&["busctl", "--user", "call", &p.bus, "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2", "Raise"]);
+        mpris::raise(&p.bus);
         let want = p.bus.trim_start_matches("org.mpris.MediaPlayer2.").split('.').next().unwrap_or("").to_lowercase();
         if let Some(c) = st.shell.get::<Snapshot>().and_then(|s| s.clients.iter().find(|c| !want.is_empty() && c.class.to_lowercase().contains(&want)).cloned()) {
             hypr::dispatch(format!("hl.dsp.focus({{ window = \"address:{}\" }})", c.address));
@@ -1740,8 +1725,8 @@ impl Menubar {
             // the HUD's symbol: mute (not brightness)
             M::IslandAct(_, which) if which == "mute" => match self.hud_kind().as_deref() {
                 Some("brightness") => {}
-                Some("mic") => bridge::run(&["wpctl", "set-mute", "@DEFAULT_AUDIO_SOURCE@", "toggle"]),
-                _ => bridge::run(&["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"]),
+                Some("mic") => toggle_muted(st, true),
+                _ => toggle_muted(st, false),
             },
             // the HUD's button: the outputs or inputs (the shell's Sound menu
             // under it), the displays (the Control Center's brightness)
@@ -1775,9 +1760,9 @@ impl Menubar {
             M::IslandLevel(v) => {
                 let v = v.clamp(0.0, 1.0);
                 match self.hud_kind().as_deref() {
-                    Some("brightness") => bridge::run(&["brightnessctl", "-q", "set", &format!("{}%", (v * 100.0).round().max(1.0))]),
-                    Some("mic") => bridge::run(&["wpctl", "set-volume", "@DEFAULT_AUDIO_SOURCE@", &format!("{v:.2}")]),
-                    _ => bridge::run(&["wpctl", "set-volume", "-l", "1.0", "@DEFAULT_AUDIO_SINK@", &format!("{v:.2}")]),
+                    Some("brightness") => tessera_core::services::brightness::set(v as f64),
+                    Some("mic") => set_level(st, true, v as f64, false),
+                    _ => set_level(st, false, v as f64, false),
                 }
             }
             M::IslandPin => bridge::call(&["rustui", "act", "islandPin", ""]),
@@ -1897,6 +1882,43 @@ fn background_art(img: &slint::Image, material: bool) -> Option<slint::Image> {
     Some(slint::Image::from_rgba8(out))
 }
 
+/// The default output's (or input's) volume, through the sound server's own
+/// protocol (core's audio: PulseAudio, or PipeWire's pipewire-pulse), as the
+/// OSD and Control Center set it. wpctl (WirePlumber's) only before the
+/// server has answered: plain PulseAudio, or PipeWire without WirePlumber,
+/// has no wpctl. `unmute`: a level above 0 also unmutes it
+fn set_level(st: &State, mic: bool, v: f64, unmute: bool) {
+    use tessera_core::services::audio::{self, Cmd, Sound};
+    let dev = st.shell.get::<Sound>().and_then(|s| if mic { s.source() } else { s.sink() }).cloned();
+    match dev {
+        Some(d) => {
+            let v = v.clamp(0.0, 1.0);
+            audio::send(if mic { Cmd::SourceVolume { index: d.index, channels: d.channels, volume: v } } else { Cmd::SinkVolume { index: d.index, channels: d.channels, volume: v } });
+            if unmute && v > 0.0 && d.muted {
+                audio::send(if mic { Cmd::SourceMute { index: d.index, muted: false } } else { Cmd::SinkMute { index: d.index, muted: false } });
+            }
+        }
+        None if tessera_core::util::on_path("wpctl") => {
+            let target = if mic { "@DEFAULT_AUDIO_SOURCE@" } else { "@DEFAULT_AUDIO_SINK@" };
+            bridge::run(&["wpctl", "set-volume", "-l", "1.0", target, &format!("{v:.2}")]);
+            if unmute && v > 0.0 {
+                bridge::run(&["wpctl", "set-mute", target, "0"]);
+            }
+        }
+        None => {}
+    }
+}
+
+/// Mute or unmute the default output (or input): as set_level
+fn toggle_muted(st: &State, mic: bool) {
+    use tessera_core::services::audio::{self, Cmd, Sound};
+    match st.shell.get::<Sound>().and_then(|s| if mic { s.source() } else { s.sink() }).cloned() {
+        Some(d) => audio::send(if mic { Cmd::SourceMute { index: d.index, muted: !d.muted } } else { Cmd::SinkMute { index: d.index, muted: !d.muted } }),
+        None if tessera_core::util::on_path("wpctl") => bridge::run(&["wpctl", "set-mute", if mic { "@DEFAULT_AUDIO_SOURCE@" } else { "@DEFAULT_AUDIO_SINK@" }, "toggle"]),
+        None => {}
+    }
+}
+
 /// The distro's logo icon name (os-release LOGO), "" without one
 fn os_logo() -> String {
     let text = std::fs::read_to_string("/etc/os-release").or_else(|_| std::fs::read_to_string("/usr/lib/os-release")).unwrap_or_default();
@@ -1969,7 +1991,8 @@ impl Part for Menubar {
     }
 
     fn start(&mut self, st: &mut State) {
-        for s in ["hypr", "status", "bluez", "mpris", "tray"] {
+        // (audio, brightness: the volume and brightness the bar sets, set_level)
+        for s in ["hypr", "status", "bluez", "mpris", "tray", "audio", "brightness"] {
             st.shell.want(s);
         }
         self.follow_wallpaper(st);

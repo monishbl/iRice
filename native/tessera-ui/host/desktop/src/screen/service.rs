@@ -126,7 +126,8 @@ impl ScreenSvc {
     pub(super) fn folder(&self, h: &Host) -> String {
         let f = h.cfg()["recorder"]["folder"].as_str().unwrap_or("").trim().to_string();
         if f.is_empty() {
-            format!("{}/Videos/Screen Recordings", util::home())
+            // (Videos in your language: user-dirs.dirs, ~/Vidéos…)
+            tessera_core::util::user_dir("VIDEOS", "Videos").join("Screen Recordings").to_string_lossy().into_owned()
         } else if f == "~" || f.starts_with("~/") {
             format!("{}{}", util::home(), &f[1..])
         } else {

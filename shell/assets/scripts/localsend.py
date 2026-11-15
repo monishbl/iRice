@@ -43,7 +43,30 @@ GROUP, DISCOVERY = "224.0.0.167", 53317
 PORT = int(os.environ.get("TESSERA_LOCALSEND_PORT", DISCOVERY))  # (another port only for testing two on one machine)
 API = "/api/localsend/v2"
 FINGERPRINT = hashlib.sha256(secrets.token_bytes(32)).hexdigest()
-DOWNLOADS = os.environ.get("XDG_DOWNLOAD_DIR") or os.path.join(os.path.expanduser("~"), "Downloads")
+def _downloads_dir():
+    """Your Downloads folder: $XDG_DOWNLOAD_DIR, else user-dirs.dirs (in your
+    language: ~/Téléchargements), else ~/Downloads"""
+    home = os.path.expanduser("~")
+    if os.environ.get("XDG_DOWNLOAD_DIR", "").startswith("/"):
+        return os.environ["XDG_DOWNLOAD_DIR"]
+    cfg = os.environ.get("XDG_CONFIG_HOME", "")
+    cfg = cfg if cfg.startswith("/") else os.path.join(home, ".config")
+    try:
+        with open(os.path.join(cfg, "user-dirs.dirs"), encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("XDG_DOWNLOAD_DIR="):
+                    v = line.split("=", 1)[1].strip().strip('"')
+                    v = home + v[5:] if v.startswith("$HOME") else v
+                    v = v.rstrip("/")
+                    if v.startswith("/") and v != home.rstrip("/"):
+                        return v
+    except OSError:
+        pass
+    return os.path.join(home, "Downloads")
+
+
+DOWNLOADS = _downloads_dir()
 
 lock = threading.Lock()
 state = {"mode": "off", "alias": socket.gethostname(), "server": False}
