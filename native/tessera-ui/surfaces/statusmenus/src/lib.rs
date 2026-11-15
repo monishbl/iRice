@@ -708,8 +708,8 @@ impl StatusMenus {
             return;
         }
         let target = (frac.clamp(0.0, 1.0) as f64 * p.track.length as f64) as i64;
-        let offset = target - (self.position_now(&p) * 1e6) as i64;
-        tessera_core::services::bridge::run(&["busctl", "--user", "call", &p.bus, "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2.Player", "Seek", "x", &offset.to_string()]);
+        let cmd = tessera_core::services::mpris::seek_command(&p.bus, &p.track, target, (self.position_now(&p) * 1e6) as i64);
+        tessera_core::services::bridge::run(&cmd.iter().map(String::as_str).collect::<Vec<_>>());
         self.position = (p.bus.clone(), target as f64 / 1e6, Some(Instant::now()));
         self.push_np(st);
     }

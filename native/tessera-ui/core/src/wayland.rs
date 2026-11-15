@@ -325,6 +325,9 @@ impl Surface {
             return;
         }
         self.hidden.set(false);
+        if wakes_on() {
+            eprintln!("show {} at {}", self.namespace, crate::util::now_ms());
+        }
         match &self.layer {
             Role::Layer(l) => {
                 l.set_size(w, h);
@@ -977,6 +980,9 @@ impl LayerShellHandler for State {
         if crate::env::is_set("DEBUG") {
             eprintln!("debug: configure {} {:?} scale {}", s.namespace, c.new_size, s.scale.get());
         }
+        if wakes_on() {
+            eprintln!("configure {} at {}", s.namespace, crate::util::now_ms());
+        }
         let (w, h) = s.logical.get();
         let size = (if c.new_size.0 > 0 { c.new_size.0 } else { w }, if c.new_size.1 > 0 { c.new_size.1 } else { h });
         s.logical.set(size);
@@ -1257,6 +1263,9 @@ impl State {
                         }
                         s.window.dispatch_event(WindowEvent::PointerPressed { position, button });
                     } else {
+                        if wakes_on() {
+                            eprintln!("release on {} at {}", s.namespace, crate::util::now_ms());
+                        }
                         s.window.dispatch_event(WindowEvent::PointerReleased { position, button });
                     }
                 }
@@ -1478,6 +1487,7 @@ thread_local! {
     static PRESS: RefCell<Option<(Instant, String, Vec<String>)>> = const { RefCell::new(None) };
 }
 fn pressed_now(ns: &str) {
+    eprintln!("press on {ns} at {}", crate::util::now_ms());
     PRESS.with(|p| *p.borrow_mut() = Some((Instant::now(), ns.to_string(), Vec::new())));
 }
 /// A surface drew: the first time since the last press, how long after it
@@ -1491,7 +1501,7 @@ fn drew_after_press(ns: &str, render_ms: f64) {
             return;
         }
         seen.push(ns.to_string());
-        eprintln!("click {on} -> {ns} drew {ms:.0} ms after, render {render_ms:.1} ms");
+        eprintln!("click {on} -> {ns} drew {ms:.0} ms after, render {render_ms:.1} ms, at {}", crate::util::now_ms());
     });
 }
 

@@ -2228,6 +2228,12 @@ export component ControlCenter inherits Window {
     in property <bool> menu-open;
     in property <length> menu-x;
     in property <length> menu-y;
+    // where the menu is drawn, for its glass (lib.rs)
+    out property <length> menu-gx;
+    out property <length> menu-gy;
+    out property <length> menu-gw;
+    out property <length> menu-gh;
+    out property <float> menu-go;
     in property <int> menu-kbd: -1; // the menu's row the keyboard is on
     in property <bool> bounce: true; // Material's press bounce (Reduce motion: off)
     in property <int> page-kbd: -1; // the page's row the keyboard is on
@@ -3014,7 +3020,18 @@ export component ControlCenter inherits Window {
             // (ContextMenu: fades and grows from 0.94 on a spring; flips up
             // when there's no room under the pointer)
             property <float> p: 0;
-            init => { self.p = 1; }
+            init => {
+                self.p = 1;
+                root.menu-gx = self.x;
+                root.menu-gy = self.y;
+                root.menu-gw = self.width;
+                root.menu-gh = self.height;
+            }
+            changed x => { root.menu-gx = self.x; }
+            changed y => { root.menu-gy = self.y; }
+            changed width => { root.menu-gw = self.width; }
+            changed height => { root.menu-gh = self.height; }
+            changed p => { root.menu-go = min(1, self.p); }
             animate p { duration: 300ms; easing: spring(0.36); }
             opacity: min(1, p);
             transform-scale: 0.94 + 0.06 * p;
@@ -3024,10 +3041,12 @@ export component ControlCenter inherits Window {
             width: 240px;
             height: mcol.preferred-height;
             border-radius: Theme.menu-radius;
-            background: Theme.material ? Theme.m3-surface-container : Theme.glass-solid;
-            border-width: Theme.material ? 0 : 0.5px;
+            // (Glass: the plugin's glass under it, lib.rs, like every other
+            // menu; without the plugin a solid stands in)
+            background: Theme.material ? Theme.m3-surface-container : Theme.plugin ? transparent : Theme.glass-solid;
+            border-width: Theme.material || Theme.plugin ? 0 : 0.5px;
             border-color: Theme.separator;
-            drop-shadow-blur: 16px;
+            drop-shadow-blur: Theme.plugin && !Theme.material ? 0 : 16px;
             drop-shadow-color: #00000040;
             drop-shadow-offset-y: 4px;
             mcol := VerticalLayout {

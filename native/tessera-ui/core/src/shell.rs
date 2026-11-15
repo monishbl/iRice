@@ -198,6 +198,9 @@ pub fn closed(surface: &str) {
 
 /// Ask the shell to do something it owns (RustUi.qml's list of calls)
 pub fn ask(call: &str, args: serde_json::Value) {
+    if crate::wayland::wakes_on() {
+        eprintln!("ask {call} at {}", crate::util::now_ms());
+    }
     // (standalone: the host answers, crate::host)
     if crate::host::route_ask(call, &args) {
         return;

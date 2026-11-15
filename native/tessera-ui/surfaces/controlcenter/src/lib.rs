@@ -1706,6 +1706,11 @@ impl Part for ControlCenter {
                 shapes.push(theme::glass_shape(look, x, y, sw * k, sh * k, (36.0 + PAD) * k, o * s.min(1.0), 1.0));
             }
         }
+        // a control's menu (the Sharing tile's, a device's…): glass too
+        if o > 0.002 && ui.get_menu_open() && ui.get_menu_go() > 0.01 && ui.get_menu_gw() > 0.0 {
+            let r = ui.global::<ui::Theme>().get_menu_radius();
+            shapes.push(theme::shadow_margin(theme::glass_shape(look, ui.get_menu_gx(), ui.get_menu_gy(), ui.get_menu_gw(), ui.get_menu_gh(), r, o * ui.get_menu_go(), 0.35), 16.0));
+        }
         let key = tessera_core::theme::glass_key(&shapes);
         if key != w.glass_sent {
             st.shell.glass.set(&w.output, NS, &shapes);

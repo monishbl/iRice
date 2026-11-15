@@ -30,6 +30,8 @@ pub struct Track {
     pub url: String,
     /// microseconds, 0 unknown
     pub length: i64,
+    /// mpris:trackid (an object path): SetPosition needs it
+    pub id: String,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -97,7 +99,27 @@ pub fn track_from(meta: &HashMap<String, OwnedValue>) -> Track {
         art_url: text(meta.get("mpris:artUrl")),
         url: text(meta.get("xesam:url")),
         length,
+        id: match meta.get("mpris:trackid").map(|v| &**v) {
+            Some(Value::ObjectPath(p)) => p.to_string(),
+            Some(v) => text_of(v),
+            None => String::new(),
+        },
     }
+}
+
+/// Seek `bus`'s player to `target` µs into `track`: SetPosition (absolute)
+/// when the track has an id, else Seek by the difference from `now` µs.
+/// (After `--`: a negative offset was read by busctl as an option, so
+/// pulling the playhead back did nothing)
+pub fn seek_command(bus: &str, track: &Track, target: i64, now: i64) -> Vec<String> {
+    let target = target.clamp(0, track.length.max(0));
+    let mut c: Vec<String> = ["busctl", "--user", "call", "--", bus, "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2.Player"].iter().map(|s| s.to_string()).collect();
+    if !track.id.is_empty() && track.id.starts_with('/') && !track.id.ends_with("/NoTrack") {
+        c.extend(["SetPosition".into(), "ox".into(), track.id.clone(), target.to_string()]);
+    } else {
+        c.extend(["Seek".into(), "x".into(), (target - now).to_string()]);
+    }
+    c
 }
 
 fn proxy<'a>(conn: &Connection, dest: &'a str, iface: &'a str) -> zbus::Result<Proxy<'a>> {
@@ -200,6 +222,35 @@ pub fn control(bus: &str, method: &'static str) {
 /// A local picture for an art address: file:// as is; http(s) fetched once
 /// into the cache (curl, as the shell's own scripts), then that file
 pub fn art_file(url: &str) -> Option<std::path::PathBuf> {
+    art_path(url).map(named_by_kind)
+}
+
+/// Pictures load by their extension (Slint's image::open): the cache's files
+/// had none, nor have browsers' art files (/tmp/.org.chromium…, firefox's),
+/// so no art showed. One without a picture's extension gets a copy in the
+/// cache named for what it is (read from its first bytes)
+fn named_by_kind(p: std::path::PathBuf) -> std::path::PathBuf {
+    let known = p.extension().and_then(|e| e.to_str()).is_some_and(|e| ["png", "jpg", "jpeg", "webp", "gif", "bmp", "svg", "tif", "tiff", "ico"].contains(&e.to_ascii_lowercase().as_str()));
+    if known {
+        return p;
+    }
+    let Ok(bytes) = std::fs::read(&p) else { return p };
+    let Ok(kind) = image::guess_format(&bytes) else { return p };
+    let Some(ext) = kind.extensions_str().first() else { return p };
+    let stamp = std::fs::metadata(&p).and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos());
+    let out = art_dir().join(format!("{:016x}.{ext}", fnv(&format!("{}\n{}\n{stamp}", p.display(), bytes.len()))));
+    if out.exists() || (std::fs::create_dir_all(art_dir()).is_ok() && std::fs::write(&out, &bytes).is_ok()) {
+        return out;
+    }
+    p
+}
+
+fn art_dir() -> std::path::PathBuf {
+    let base = std::env::var_os("XDG_CACHE_HOME").map(std::path::PathBuf::from).unwrap_or_else(|| std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".cache"));
+    base.join("tessera/art")
+}
+
+fn art_path(url: &str) -> Option<std::path::PathBuf> {
     if let Some(p) = url.strip_prefix("file://") {
         let p = percent_decode(p.split('?').next().unwrap_or(p));
         return Some(std::path::PathBuf::from(p));
@@ -207,8 +258,7 @@ pub fn art_file(url: &str) -> Option<std::path::PathBuf> {
     if !(url.starts_with("http://") || url.starts_with("https://")) {
         return None;
     }
-    let base = std::env::var_os("XDG_CACHE_HOME").map(std::path::PathBuf::from).unwrap_or_else(|| std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".cache"));
-    let dir = base.join("tessera/art");
+    let dir = art_dir();
     let file = dir.join(format!("{:016x}", fnv(url)));
     if !file.exists() {
         let _ = std::fs::create_dir_all(&dir);
@@ -247,6 +297,17 @@ pub fn percent_decode(s: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn seeking_is_absolute_when_the_track_has_an_id() {
+        let t = super::Track { length: 200_000_000, id: "/org/mpd/Tracks/7".into(), ..Default::default() };
+        let c = super::seek_command("org.mpris.MediaPlayer2.x", &t, 30_000_000, 90_000_000);
+        assert_eq!(c[3], "--");
+        assert_eq!(&c[7..], ["SetPosition", "ox", "/org/mpd/Tracks/7", "30000000"]);
+        // (no id, or NoTrack: a relative Seek, backwards fine after `--`)
+        let n = super::Track { length: 200_000_000, id: "/org/mpris/MediaPlayer2/TrackList/NoTrack".into(), ..Default::default() };
+        assert_eq!(&super::seek_command("b", &n, 30_000_000, 90_000_000)[7..], ["Seek", "x", "-60000000"]);
+    }
+
     use super::*;
 
     fn ov(v: Value<'static>) -> OwnedValue {
