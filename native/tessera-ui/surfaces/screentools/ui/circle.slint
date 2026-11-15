@@ -204,6 +204,46 @@ component TrailPath inherits Path {
     stroke-line-join: round;
 }
 
+// A grip on the circled area's corner or edge: drag it to resize the area.
+// `sides`: 1 left, 2 right, 4 top, 8 bottom (a corner has two)
+component Grip inherits TouchArea {
+    in property <int> sides;
+    in property <color> ink;
+    callback begin(length, length);
+    callback drag(length, length);
+    callback end();
+    property <bool> corner: (sides == 5 || sides == 6 || sides == 9 || sides == 10);
+    property <bool> across: sides == 1 || sides == 2; // a left or right edge
+    width: 44px;
+    height: 44px;
+    mouse-cursor: sides == 5 || sides == 10 ? nwse-resize : sides == 6 || sides == 9 ? nesw-resize : across ? ew-resize : ns-resize;
+    pointer-event(e) => {
+        if e.button == PointerEventButton.left && e.kind == PointerEventKind.down {
+            root.begin(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+        } else if e.button == PointerEventButton.left && e.kind == PointerEventKind.up {
+            root.end();
+        }
+    }
+    moved => {
+        if self.pressed {
+            root.drag(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+        }
+    }
+    // a dot at a corner, a short bar on an edge (bigger while held or hovered)
+    Rectangle {
+        property <length> grow: root.pressed ? 4px : root.has-hover ? 2px : 0;
+        width: (root.corner ? 12px : root.across ? 6px : 28px) + self.grow;
+        height: (root.corner ? 12px : root.across ? 28px : 6px) + self.grow;
+        border-radius: min(self.width, self.height) / 2;
+        background: ink;
+        border-width: 1px;
+        border-color: #00000033;
+        drop-shadow-blur: 6px;
+        drop-shadow-color: #00000059;
+        animate width, height { duration: 100ms; easing: ease-out; }
+    }
+}
+
 export component CircleSearch inherits Window {
     // the window
     in property <bool> open; // entering/open; false: leaving
@@ -230,10 +270,10 @@ export component CircleSearch inherits Window {
     in property <length> stroke-box-w;
     in property <length> stroke-box-h;
     in property <bool> chosen;
-    in property <length> sel-x;
-    in property <length> sel-y;
-    in property <length> sel-w;
-    in property <length> sel-h;
+    in-out property <length> sel-x;
+    in-out property <length> sel-y;
+    in-out property <length> sel-w;
+    in-out property <length> sel-h;
     // the input bar
     in property <image> thumb;
     in-out property <string> question;
@@ -257,6 +297,7 @@ export component CircleSearch inherits Window {
     callback down(length, length, bool);
     callback moved-to(length, length);
     callback up(length, length);
+    callback resized(length, length, length, length); // the circled area, resized by a grip
     callback key(string) -> bool;
     callback dismiss();
     callback chip(int);
@@ -303,6 +344,23 @@ export component CircleSearch inherits Window {
             }
         }
     ]
+    // the trigger's ripple or rising band: 1.5× the reveal's pace, so it's
+    // over quickly
+    property <float> entry: 0;
+    states [
+        entered when open: {
+            entry: 1;
+            in {
+                animate entry { duration: 320ms; easing: cubic-bezier(0.2, 0, 0, 1); }
+            }
+        }
+    ]
+    // once something is circled the light draws in to a quarter (spread and
+    // strength) and the dim does the rest; the edge light's thread reads it
+    out property <float> calm: chosen && open ? 1 : 0;
+    animate calm { duration: 300ms; easing: ease-out; }
+    // the light's strength: three quarters, a quarter of that when calm
+    property <float> glow-k: 0.75 * (1 - 0.75 * calm);
     // the bar and the card: in after the circle, out with everything
     property <float> bar-shown: chosen && open ? 1 : 0;
     animate bar-shown { duration: open ? 220ms : 140ms; easing: open ? ease-out : ease-in; }
@@ -329,10 +387,10 @@ export component CircleSearch inherits Window {
     property <[color]> ring: [hue(0), hue(1), hue(2), hue(3), hue(4)];
     // how far in, and how bright: grows in with the reveal, breathes, swells while working
     property <float> grown: 1 - pow(1 - reveal, 3);
-    property <length> depth: (Theme.material ? 96px : 110px) * grown * (0.86 + 0.14 * breathe + 0.35 * work);
-    property <float> strength: (Theme.material ? 0.55 : 0.62) * grown * (0.85 + 0.15 * breathe + 0.3 * work)
+    property <length> depth: (Theme.material ? 96px : 110px) * 0.5 * (1 - 0.75 * calm) * grown * (0.86 + 0.14 * breathe + 0.35 * work);
+    property <float> strength: glow-k * ((Theme.material ? 0.55 : 0.62) * grown * (0.85 + 0.15 * breathe + 0.3 * work)
         // (a brief swell as it arrives)
-        + (open && !reduce-motion ? 0.5 * sin(reveal * 180deg) : 0);
+        + (open && !reduce-motion ? 0.5 * sin(entry * 180deg) : 0));
     // the circled area lifting out
     property <float> lift: chosen && !dragging && open ? 1 : 0;
     animate lift { duration: open ? 280ms : 140ms; easing: open ? cubic-bezier(0.2, 0, 0, 1) : ease-in; }
@@ -392,7 +450,7 @@ export component CircleSearch inherits Window {
         source: fx-soft;
         image-fit: fill;
         image-rendering: smooth;
-        opacity: reveal;
+        opacity: reveal * glow-k;
     }
     if edge-style == 1: Image {
         width: root.width;
@@ -400,25 +458,25 @@ export component CircleSearch inherits Window {
         source: fx-dots;
         image-fit: fill;
         image-rendering: smooth;
-        opacity: reveal;
+        opacity: reveal * glow-k;
     }
-    if edge-style == 0 && pointer-origin && open && reveal < 1 && !reduce-motion: Rectangle {
-        property <length> d: 2 * far * grown + 2px;
+    if edge-style == 0 && pointer-origin && open && entry < 1 && !reduce-motion: Rectangle {
+        property <length> d: 2 * far * (1 - pow(1 - entry, 3)) + 2px;
         x: ox - self.d / 2;
         y: oy - self.d / 2;
         width: self.d;
         height: self.d;
-        property <float> k: 0.55 * (1 - reveal);
+        property <float> k: 0.55 * 0.75 * (1 - entry);
         background: @radial-gradient(circle, transparent 0%, transparent 72%, pal[0].with-alpha(k * 0.6) 84%, pal[1].with-alpha(k) 92%, pal[2].with-alpha(k * 0.5) 97%, transparent 100%);
     }
     // entry, from a key: a soft band of light rising from the bottom edge
-    if edge-style == 0 && !pointer-origin && open && reveal < 1 && !reduce-motion: Rectangle {
-        property <length> band: 260px;
+    if edge-style == 0 && !pointer-origin && open && entry < 1 && !reduce-motion: Rectangle {
+        property <length> band: 130px;
         x: 0;
         width: root.width;
         height: self.band;
-        y: root.height - (root.height + self.band) * grown;
-        property <float> k: 0.32 * (1 - reveal);
+        y: root.height - (root.height + self.band) * (1 - pow(1 - entry, 3));
+        property <float> k: 0.32 * 0.75 * (1 - entry);
         background: @linear-gradient(180deg, transparent 0%, hue(0.5).with-alpha(k) 55%, hue(2.5).with-alpha(k * 1.3) 80%, transparent 100%);
     }
 
@@ -520,6 +578,68 @@ export component CircleSearch inherits Window {
             border-width: 2px;
             border-color: Theme.material ? Theme.m3-primary : #ffffffd9;
             opacity: lift;
+        }
+    }
+
+    // resizing the circled area from its corners and edges: the grips sit on
+    // the lifted area's outline (it's 3% larger, about its centre)
+    property <length> gx: sel-x - sel-w * 0.015 * lift;
+    property <length> gy: sel-y - sel-h * 0.015 * lift;
+    property <length> gw: sel-w * (1 + 0.03 * lift);
+    property <length> gh: sel-h * (1 + 0.03 * lift);
+    // where a grip's drag started: the pointer, and the area then
+    property <length> rs-px; property <length> rs-py;
+    property <length> rs-x; property <length> rs-y; property <length> rs-w; property <length> rs-h;
+    property <bool> resizing;
+    property <length> min-side: 24px;
+    function grip-begin(px: length, py: length) {
+        rs-px = px; rs-py = py;
+        rs-x = sel-x; rs-y = sel-y; rs-w = sel-w; rs-h = sel-h;
+        resizing = true;
+    }
+    function grip-drag(sides: int, px: length, py: length) {
+        if !resizing { return; }
+        let dx = px - rs-px;
+        let dy = py - rs-py;
+        if mod(sides, 2) == 1 { // left
+            let x = clamp(rs-x + dx, 0px, rs-x + rs-w - min-side);
+            sel-x = x; sel-w = rs-x + rs-w - x;
+        }
+        if mod(floor(sides / 2), 2) == 1 { // right
+            sel-w = clamp(rs-w + dx, min-side, root.width - rs-x);
+        }
+        if mod(floor(sides / 4), 2) == 1 { // top
+            let y = clamp(rs-y + dy, 0px, rs-y + rs-h - min-side);
+            sel-y = y; sel-h = rs-y + rs-h - y;
+        }
+        if mod(floor(sides / 8), 2) == 1 { // bottom
+            sel-h = clamp(rs-h + dy, min-side, root.height - rs-y);
+        }
+    }
+    function grip-end() {
+        if !resizing { return; }
+        resizing = false;
+        if sel-x != rs-x || sel-y != rs-y || sel-w != rs-w || sel-h != rs-h {
+            root.resized(sel-x, sel-y, sel-w, sel-h);
+        }
+    }
+    property <color> grip-ink: Theme.material ? Theme.m3-primary : #ffffff;
+    if lift > 0.5 && !busy: Rectangle {
+        opacity: lift;
+        for g in [
+            { sides: 5, fx: 0.0, fy: 0.0 }, { sides: 6, fx: 1.0, fy: 0.0 }, { sides: 9, fx: 0.0, fy: 1.0 }, { sides: 10, fx: 1.0, fy: 1.0 },
+            { sides: 4, fx: 0.5, fy: 0.0 }, { sides: 8, fx: 0.5, fy: 1.0 }, { sides: 1, fx: 0.0, fy: 0.5 }, { sides: 2, fx: 1.0, fy: 0.5 },
+        ]: Grip {
+            // (edges' grips only where the side is long enough to hold one
+            // clear of the corners)
+            visible: g.sides == 5 || g.sides == 6 || g.sides == 9 || g.sides == 10 || ((g.sides == 4 || g.sides == 8) ? gw >= 96px : gh >= 96px);
+            x: gx + gw * g.fx - self.width / 2;
+            y: gy + gh * g.fy - self.height / 2;
+            sides: g.sides;
+            ink: grip-ink;
+            begin(px, py) => { root.grip-begin(px, py); }
+            drag(px, py) => { root.grip-drag(g.sides, px, py); }
+            end => { root.grip-end(); }
         }
     }
 

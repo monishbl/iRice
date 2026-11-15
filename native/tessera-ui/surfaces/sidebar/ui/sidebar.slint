@@ -466,11 +466,16 @@ component CodeBlock inherits Rectangle {
 component Markdown inherits VerticalLayout {
     in property <[MdBlock]> blocks;
     in property <color> ink: Theme.label;
+    // the width it's drawn at: wrapped text is measured at it (a StyledText
+    // left to the layout reported one line's height to the chat's scroll,
+    // so the last replies sat below its end)
+    in property <length> avail;
     callback copy(string);
     callback link(string);
     for b in blocks: VerticalLayout {
         padding-top: b.above;
         if b.kind == 0 || b.kind == 1: StyledText {
+            width: avail;
             text: b.text;
             default-color: ink;
             default-font-size: b.kind == 1 ? b.size : M.body;
@@ -491,6 +496,7 @@ component Markdown inherits VerticalLayout {
                     accessible-role: none;
                 }
                 StyledText {
+                    width: max(0px, avail - 8px - it.depth * 22px - 28px - 6px);
                     text: it.text;
                     default-color: ink;
                     default-font-size: M.body;
@@ -503,6 +509,7 @@ component Markdown inherits VerticalLayout {
         if b.kind == 3: HorizontalLayout {
             padding-left: 12px;
             StyledText {
+                width: max(0px, avail - 12px);
                 text: b.text;
                 default-color: Theme.secondary;
                 default-font-size: M.body;
@@ -643,6 +650,7 @@ component Message inherits VerticalLayout {
 
     // A note
     if msg.role == "note": Text {
+        width: list-width;
         text: msg.text;
         wrap: word-wrap;
         horizontal-alignment: center;
@@ -697,6 +705,7 @@ component Message inherits VerticalLayout {
                 background: Theme.separator;
             }
             StyledText {
+                width: max(0px, list-width - 10px);
                 text: msg.thinking;
                 default-color: Theme.secondary;
                 default-font-size: Theme.small;
@@ -724,6 +733,7 @@ component Message inherits VerticalLayout {
                 padding-top: Theme.material ? 12px : 0px;
                 padding-bottom: self.padding-top;
                 blocks: msg.blocks;
+                avail: list-width - 2 * self.padding-left;
                 copy(t) => { root.copy(t); }
                 link(u) => { root.link(u); }
             }
@@ -2221,7 +2231,10 @@ export component Sidebar inherits Window {
                         visible: !history-open;
                         y: header.height + 12px;
                         height: (blind ? blindbox.y : pics.visible ? pics.y : composer-box.y) - 10px - self.y;
-                        content-height: msgs.preferred-height;
+                        // (the larger of the two: wrapped replies' lines counted
+                        // in the minimum but not the preferred height, so the
+                        // last replies sat below the end of the scroll)
+                        content-height: max(msgs.preferred-height, msgs.min-height);
                         changed content-height => {
                             if stick || busy { self.content-y = min(0px, self.height - self.content-height); }
                         }

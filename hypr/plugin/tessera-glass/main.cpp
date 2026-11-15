@@ -117,6 +117,24 @@ static float windowCoverage(PHLMONITOR mon, const CBox& shape) {
 // key: monitor + "\n" + namespace
 static std::map<std::string, std::vector<SShape>> g_shapes;
 
+// The same for the desktop's own glass (its widgets, on a layer below every
+// other shell surface): a panel over a widget showed the widget's text
+// sharp through its own, as windows' did before window-frost. `under`: the
+// desktop's shapes on this monitor (its layer covers the monitor from 0,0)
+static float desktopCoverage(PHLMONITOR mon, const std::vector<SShape>* under, const CBox& shape) {
+    if (!under || g_windowFrost <= 0.f || shape.w <= 0 || shape.h <= 0)
+        return 0.f;
+    double covered = 0;
+    for (auto& u : *under) {
+        const double bx = mon->m_position.x + u.v[0], by = mon->m_position.y + u.v[1];
+        const double x0 = std::max(bx, shape.x), y0 = std::max(by, shape.y);
+        const double x1 = std::min(bx + u.v[2], shape.x + shape.w), y1 = std::min(by + u.v[3], shape.y + shape.h);
+        if (x1 > x0 && y1 > y0)
+            covered += (x1 - x0) * (y1 - y0);
+    }
+    return (float)std::min(1.0, covered / (shape.w * shape.h));
+}
+
 // ── GL resources ────────────────────────────────────────────────────────────
 static GLuint g_prog = 0, g_vao = 0, g_copyFB = 0, g_copyTex = 0;
 // One copy target per framebuffer size, so monitors of different resolution
@@ -207,7 +225,13 @@ void main() {
         vec3 blurC = hasBlur > 0.5 ? texture(blurred, clamp(sp, vec2(0.5), fbSize - 0.5) / fbSize).rgb : sharpC;
         // Frost is even across the surface, like iOS: the lens bends the
         // frosted image at the edge rather than leaving a clear rim
-        col = mix(sharpC, blurC, mode > 0.5 ? 1.0 : frost);
+        // The band shows the frosted picture where it bends most: a sharp,
+        // squeezed copy of what lies just outside (a window's edge, the menu
+        // bar, a neighbouring tile, text) read as a second rounded outline
+        // inside the shape. It eases back to the glass's own frost inwards,
+        // so the band has no inner edge of its own.
+        float bandFrost = smoothstep(0.0, 0.45, rimBend);
+        col = mix(sharpC, blurC, mode > 0.5 ? 1.0 : max(frost, bandFrost));
         float l = dot(col, vec3(0.2126, 0.7152, 0.0722));
         col = mix(vec3(l), col, saturation);
         col = mix(col, tint.rgb, tint.a);
@@ -435,7 +459,8 @@ struct SGLState {
 
 static bool          g_lastBlur = false;
 static unsigned long g_blits = 0, g_blitPx = 0;
-static void drawGlass(const std::vector<SShape>& shapes, const CBox& box, const CHyprOpenGLImpl::STextureRenderData& data, PHLMONITOR mon, float fade) {
+static void drawGlass(const std::vector<SShape>& shapes, const CBox& box, const CHyprOpenGLImpl::STextureRenderData& data, PHLMONITOR mon, float fade,
+                      const std::vector<SShape>* under) {
     auto& rd = g_pHyprRenderer->m_renderData;
     if (!rd.currentFB || !ensureProgram())
         return;
@@ -566,7 +591,7 @@ static void drawGlass(const std::vector<SShape>& shapes, const CBox& box, const 
         float frost = v[9];
         if (g_windowFrost > 0.f) {
             const CBox global{mon->m_position.x + x / scale, mon->m_position.y + yGL / scale, w / scale, h / scale};
-            frost += g_windowFrost * windowCoverage(mon, global) * (1.f - frost);
+            frost += g_windowFrost * std::min(1.f, windowCoverage(mon, global) + desktopCoverage(mon, under, global)) * (1.f - frost);
         }
         if (ps.shape->drawnFrost >= 0.f && std::abs(frost - ps.shape->drawnFrost) > 0.01f)
             g_pHyprRenderer->damageBox(CBox{mon->m_position.x + x / scale - 1, mon->m_position.y + yGL / scale - 1, w / scale + 2, h / scale + 2});
@@ -628,7 +653,12 @@ static void hkRenderTextureWithBlur(void* thisptr, SP<ITexture> tex, const CBox&
         // leaves an empty glass shape over the fullscreen app
         const float fade = std::clamp(data.a, 0.f, 1.f);
         if (it != g_shapes.end() && !it->second.empty() && fade > 0.004f) {
-            drawGlass(it->second, box, data, mon, fade);
+            // (the desktop's glass under it, unless this is the desktop)
+            const std::vector<SShape>* under = nullptr;
+            if (ls->m_namespace != "tessera:desktop")
+                if (auto d = g_shapes.find(mon->m_name + "\ntessera:desktop"); d != g_shapes.end() && !d->second.empty())
+                    under = &d->second;
+            drawGlass(it->second, box, data, mon, fade, under);
             g_drawn++;
             // Hyprland's own blur fill would cover the glass: draw it fully transparent
             auto d2  = data;

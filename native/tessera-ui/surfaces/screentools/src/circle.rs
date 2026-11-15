@@ -43,7 +43,7 @@ use smithay_client_toolkit::shell::wlr_layer::{Anchor, KeyboardInteractivity, La
 use std::cell::RefCell;
 use std::process::{Command, Stdio};
 use std::rc::Rc;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -186,6 +186,9 @@ struct FxRun {
     busy: AtomicBool,
     shown: AtomicBool,
     started: AtomicBool,
+    /// the window's `calm` (0..1, f32 bits): 1 once something is circled,
+    /// when the light draws in to a quarter of its spread
+    calm: AtomicU32,
 }
 
 /// What was asked last (Try again asks it again)
@@ -445,6 +448,15 @@ impl Circle {
                 ui.set_sel_h(r.h);
                 ui.set_chosen(true);
                 to(Cm::Chosen(r));
+            });
+        }
+        {
+            // a grip moved the circled area: circled again, as if drawn so
+            let to = to.clone();
+            ui.on_resized(move |x, y, w, h| {
+                if w >= 8.0 && h >= 8.0 {
+                    to(Cm::Chosen(Rect { x, y, w, h }));
+                }
             });
         }
         {
@@ -1082,13 +1094,33 @@ impl Circle {
         std::thread::spawn(move || {
             fx.setup(style, ww, hh, ox, oy);
             let (mut t, mut last) = (if still { 2.5f32 } else { 0.0 }, std::time::Instant::now());
+            let mut drawn_calm = -1.0f32;
             while !run.stop.load(Ordering::Relaxed) {
                 if !run.shown.swap(false, Ordering::AcqRel) && run.started.load(Ordering::Relaxed) {
                     std::thread::sleep(Duration::from_millis(4));
                     continue;
                 }
+                let calm = f32::from_bits(run.calm.load(Ordering::Relaxed)).clamp(0.0, 1.0);
+                if still && run.started.load(Ordering::Relaxed) {
+                    // (Reduce motion: one still frame, drawn again only when
+                    // circling something draws the light in; the window's
+                    // calm is read on its own thread)
+                    let (w2, r2) = (weak.clone(), run.clone());
+                    let _ = slint::invoke_from_event_loop(move || {
+                        if let Some(ui) = w2.upgrade() {
+                            r2.calm.store(ui.get_calm().to_bits(), Ordering::Relaxed);
+                        }
+                        r2.shown.store(true, Ordering::Release);
+                    });
+                    if (calm - drawn_calm).abs() < 0.01 {
+                        std::thread::sleep(Duration::from_millis(100));
+                        continue;
+                    }
+                }
                 run.started.store(true, Ordering::Relaxed);
-                let (soft, dots) = fx.frame(t);
+                drawn_calm = calm;
+                let sp = super::edgefx::SPREAD * (1.0 + (super::edgefx::SPREAD_CHOSEN - 1.0) * calm);
+                let (soft, dots) = fx.frame(t, sp);
                 let (w2, r2) = (weak.clone(), run.clone());
                 let _ = slint::invoke_from_event_loop(move || {
                     if r2.stop.load(Ordering::Relaxed) {
@@ -1096,6 +1128,7 @@ impl Circle {
                     }
                     if let Some(ui) = w2.upgrade() {
                         r2.busy.store(ui.get_busy(), Ordering::Relaxed);
+                        r2.calm.store(ui.get_calm().to_bits(), Ordering::Relaxed);
                         ui.set_fx_soft(slint::Image::from_rgba8_premultiplied(soft));
                         if let Some(d) = dots {
                             ui.set_fx_dots(slint::Image::from_rgba8_premultiplied(d));
@@ -1104,7 +1137,7 @@ impl Circle {
                     r2.shown.store(true, Ordering::Release);
                 });
                 if still {
-                    return;
+                    continue;
                 }
                 let gap = if t > 2.0 { 50 } else { 16 };
                 let spent = last.elapsed();

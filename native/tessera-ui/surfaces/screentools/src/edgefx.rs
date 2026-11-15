@@ -68,6 +68,13 @@ const SOFT_DIV: f32 = 4.0;
 const DOTS_DIV: f32 = 2.0;
 /// the dot grid's spacing, in units
 const G9: f32 = 14.0;
+/// The ripple from where it opened runs this much faster than the previews'
+/// (subtle: over quickly)
+const RIPPLE_SPEED: f32 = 1.5;
+/// How far the light reaches in, of the previews' (a quieter edge); once
+/// something is circled, a quarter of that
+pub const SPREAD: f32 = 0.5;
+pub const SPREAD_CHOSEN: f32 = 0.25;
 
 type Rgb = [f32; 3];
 pub type Buf = SharedPixelBuffer<Rgba8Pixel>;
@@ -226,26 +233,28 @@ impl Fx {
         self.dots_h = (h / DOTS_DIV).ceil().max(1.0) as usize;
     }
 
-    /// The pictures at `t` s since it opened: (soft, dots), premultiplied
-    pub fn frame(&self, t: f32) -> (Buf, Option<Buf>) {
+    /// The pictures at `t` s since it opened, the light reaching `sp` of its
+    /// full spread in from the edges: (soft, dots), premultiplied
+    pub fn frame(&self, t: f32, sp: f32) -> (Buf, Option<Buf>) {
+        let sp = sp.clamp(0.05, 1.0);
         let mut soft = SharedPixelBuffer::<Rgba8Pixel>::new(self.f.w as u32, self.f.h as u32);
         let mut dots = None;
         match self.style {
             Style::Bands => {}
-            Style::Siri => self.siri(t, soft.make_mut_slice()),
-            Style::Gemini => self.gemini(t, soft.make_mut_slice()),
-            Style::Ripple => self.ripple(t, soft.make_mut_slice()),
-            Style::Vignette => self.vignette(t, soft.make_mut_slice()),
+            Style::Siri => self.siri(t, sp, soft.make_mut_slice()),
+            Style::Gemini => self.gemini(t, sp, soft.make_mut_slice()),
+            Style::Ripple => self.ripple(t, sp, soft.make_mut_slice()),
+            Style::Vignette => self.vignette(t, sp, soft.make_mut_slice()),
             Style::Dots => {
                 let mut d = SharedPixelBuffer::<Rgba8Pixel>::new(self.dots_w as u32, self.dots_h as u32);
-                self.dot_grid(t, soft.make_mut_slice(), d.make_mut_slice());
+                self.dot_grid(t, sp, soft.make_mut_slice(), d.make_mut_slice());
                 dots = Some(d);
             }
         }
         (soft, dots)
     }
 
-    fn siri(&self, t: f32, out: &mut [Rgba8Pixel]) {
+    fn siri(&self, t: f32, sp: f32, out: &mut [Rgba8Pixel]) {
         let g = spring(t / 0.8);
         let op = smoothstep(0.0, 0.25, t);
         let flash = 1.0 + 0.5 * (-((t - 0.35) / 0.25).powi(2)).exp();
@@ -257,7 +266,7 @@ impl Fx {
                 continue;
             }
             let w = tab.at(f.s[k]);
-            let depth = (30.0 * (1.0 + 0.75 * w) * g).max(0.5);
+            let depth = (30.0 * sp * (1.0 + 0.75 * w) * g).max(0.5);
             // (past 3.2 depths the light is under 1/255)
             if ds > 3.2 * depth && ds > 15.0 {
                 continue;
@@ -271,7 +280,7 @@ impl Fx {
         }
     }
 
-    fn gemini(&self, t: f32, out: &mut [Rgba8Pixel]) {
+    fn gemini(&self, t: f32, sp: f32, out: &mut [Rgba8Pixel]) {
         let rise = ease_out(t / 1.0);
         let op = smoothstep(0.0, 0.2, t);
         let breathe = 0.88 + 0.12 * (TAU * 2.0 * t / T + 0.4).sin();
@@ -284,7 +293,7 @@ impl Fx {
             .map(|i| {
                 let x = f.x[i];
                 let hw = wave(x / wu, t, &GEM);
-                let h = (80.0 * (1.0 + 0.7 * hw) * breathe * rise).max(0.5);
+                let h = (80.0 * sp * (1.0 + 0.7 * hw) * breathe * rise).max(0.5);
                 let (mut num, mut den) = ([0.0f32; 3], 1e-4f32);
                 for (j, (c, n, ph, cx0, amp)) in blobs.iter().enumerate() {
                     let c = if material { self.pal[[0, 1, 2, 3, 0][j]] } else { hex(*c) };
@@ -296,8 +305,8 @@ impl Fx {
                 (h, num.map(|v| v / den))
             })
             .collect();
-        let side_fall = 240.0 * rise + 1.0;
-        let haze_fall = 260.0 * rise + 1.0;
+        let side_fall = 240.0 * sp * rise + 1.0;
+        let haze_fall = 260.0 * sp * rise + 1.0;
         for k in 0..out.len() {
             let i = k % f.w;
             let (h, col) = cols[i];
@@ -305,7 +314,7 @@ impl Fx {
             let yb = hu - f.y[k];
             let pool = if yb < 6.0 * h { (-(yb / h).powf(1.5)).exp() } else { 0.0 };
             let side = if x < 80.0 || wu - x < 80.0 {
-                ((-(x / 16.0).powf(1.3)).exp() + (-((wu - x).max(0.0) / 16.0).powf(1.3)).exp()) * (-yb / side_fall).exp() * 0.55
+                ((-(x / (16.0 * sp)).powf(1.3)).exp() + (-((wu - x).max(0.0) / (16.0 * sp)).powf(1.3)).exp()) * (-yb / side_fall).exp() * 0.55
             } else {
                 0.0
             };
@@ -318,16 +327,18 @@ impl Fx {
         }
     }
 
-    fn dot_grid(&self, t: f32, soft: &mut [Rgba8Pixel], dots: &mut [Rgba8Pixel]) {
-        let r = t * 620.0;
-        let fade = (-t / 1.6).exp() * smoothstep(0.0, 0.08, t);
+    fn dot_grid(&self, t: f32, sp: f32, soft: &mut [Rgba8Pixel], dots: &mut [Rgba8Pixel]) {
+        let tr = t * RIPPLE_SPEED;
+        let r = tr * 620.0;
+        let fade = (-tr / 1.6).exp() * smoothstep(0.0, 0.08, tr);
+        let (rw, rw2) = (45.0 * sp, 40.0 * sp);
         let base = 0.11 * (-t / 1.8).exp() + 0.035;
         let tab = Table::new(t, &RIM9);
         let ring_at = |rp: f32| {
             let rd = rp - r;
-            ((-(rd / 45.0).powi(2)).exp() + 0.45 * (-((rd + 110.0) / 40.0).powi(2)).exp()) * fade
+            ((-(rd / rw).powi(2)).exp() + 0.45 * (-((rd + 110.0 * sp) / rw2).powi(2)).exp()) * fade
         };
-        let rim_at = |ds: f32, s: f32, rp: f32| 1.5 * (-ds / 34.0).exp() * smoothstep(-60.0, 60.0, r - rp) * (0.7 + 0.3 * tab.at(s));
+        let rim_at = |ds: f32, s: f32, rp: f32| 1.5 * (-ds / (34.0 * sp)).exp() * smoothstep(-60.0, 60.0, r - rp) * (0.7 + 0.3 * tab.at(s));
         // the soft glow under the dots
         let f = &self.f;
         let ring_on = fade > 0.002;
@@ -360,7 +371,7 @@ impl Fx {
                 let rd = rp - r;
                 let ring = if ring_on && rd > -260.0 && rd < 140.0 { ring_at(rp) } else { 0.0 };
                 let rim = if ds < 160.0 && r - rp > -60.0 { rim_at(ds, s, rp) } else { 0.0 };
-                let disp = 9.0 * (-(rd / 45.0).powi(2)).exp() * (-rd / 45.0) * fade;
+                let disp = 9.0 * (-(rd / rw).powi(2)).exp() * (-rd / rw) * fade;
                 let (ux, uy) = ((x - self.px) / (rp + 1e-3), (y - self.py) / (rp + 1e-3));
                 // (the preview samples the grid at X - u·disp: the dot shows at + u·disp)
                 let (cx, cy) = (x + ux * disp, y + uy * disp);
@@ -396,9 +407,10 @@ impl Fx {
         }
     }
 
-    fn ripple(&self, t: f32, out: &mut [Rgba8Pixel]) {
-        let r = t * 700.0;
-        let tf = smoothstep(0.0, 0.08, t) * (1.0 - smoothstep(1.2, 2.0, t));
+    fn ripple(&self, t: f32, sp: f32, out: &mut [Rgba8Pixel]) {
+        let tr = t * RIPPLE_SPEED;
+        let r = tr * 700.0;
+        let tf = smoothstep(0.0, 0.08, tr) * (1.0 - smoothstep(1.2, 2.0, tr));
         let tab = Table::new(t, &RIM13);
         let f = &self.f;
         for k in 0..out.len() {
@@ -408,8 +420,8 @@ impl Fx {
             if tf > 0.001 && rd > -200.0 && rd < 40.0 {
                 let mut amp = 1.0;
                 for j in 0..3 {
-                    let q = rd + j as f32 * 70.0;
-                    rings += (-(q / 16.0).powi(2)).exp() * amp;
+                    let q = rd + j as f32 * 70.0 * sp;
+                    rings += (-(q / (16.0 * sp)).powi(2)).exp() * amp;
                     amp *= 0.6;
                 }
                 rings *= (-rp / 700.0).exp() * tf;
@@ -419,7 +431,7 @@ impl Fx {
             if ds < 140.0 {
                 let rimon = smoothstep(-40.0, 60.0, r - rp);
                 let flash = (-((r - rp) / 90.0).powi(2)).exp();
-                let depth = 24.0 * (1.0 + 0.4 * tab.at(f.s[k]));
+                let depth = 24.0 * sp * (1.0 + 0.4 * tab.at(f.s[k]));
                 rim = (-(ds / depth).powf(1.5)).exp() * (rimon * (0.8 + 0.2 * (TAU * (2.0 * t / T + 2.0 * f.s[k])).sin()) + 0.9 * flash);
             }
             if rings + rim < 0.003 {
@@ -432,12 +444,12 @@ impl Fx {
         }
     }
 
-    fn vignette(&self, t: f32, out: &mut [Rgba8Pixel]) {
+    fn vignette(&self, t: f32, sp: f32, out: &mut [Rgba8Pixel]) {
         let g = ease_out(t / 1.0);
         let on = smoothstep(0.0, 0.2, t);
         let corners: [(f32, f32); 4] = [(1.0, 0.0), (-1.0, 1.5), (2.0, 3.0), (-1.0, 4.4)];
         let cj: [Rgb; 4] = std::array::from_fn(|j| self.pal(j as f32 / 4.0 + t / T));
-        let rj: [f32; 4] = std::array::from_fn(|j| 170.0 * (1.0 + 0.18 * (TAU * corners[j].0 * t / T + corners[j].1).sin()) * g + 1.0);
+        let rj: [f32; 4] = std::array::from_fn(|j| 170.0 * sp * (1.0 + 0.18 * (TAU * corners[j].0 * t / T + corners[j].1).sin()) * g + 1.0);
         let tab = Table::new(t, &EDGE14);
         let f = &self.f;
         for k in 0..out.len() {
@@ -452,7 +464,7 @@ impl Fx {
             }
             let ds = f.ds[k];
             if ds < 300.0 {
-                let depth = (60.0 * (1.0 + 0.35 * tab.at(f.s[k])) * g).max(0.5);
+                let depth = (60.0 * sp * (1.0 + 0.35 * tab.at(f.s[k])) * g).max(0.5);
                 let edge = (-(ds / depth).powf(1.3)).exp() * on;
                 add(&mut c, ecol, edge * 0.42);
             }
@@ -534,9 +546,9 @@ mod tests {
             let mut fx = Fx::default();
             fx.palette(None);
             fx.setup(st, 1920.0, 1080.0, 700.0, 370.0);
-            let _ = fx.frame(0.5);
+            let _ = fx.frame(0.5, SPREAD);
             let t0 = std::time::Instant::now();
-            let (soft, dots) = fx.frame(1.0);
+            let (soft, dots) = fx.frame(1.0, SPREAD);
             let ms = t0.elapsed().as_secs_f64() * 1000.0;
             let lit = |b: &Buf| b.as_slice().iter().filter(|p| p.a > 8).count();
             let n = lit(&soft) + dots.as_ref().map_or(0, lit);
