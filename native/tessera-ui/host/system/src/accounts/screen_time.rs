@@ -27,6 +27,8 @@ pub struct ScreenTime {
     counting: String,
     app: String,
     was_idle: bool,
+    /// the shell is quitting: save before it goes, not on a thread
+    quitting: bool,
     ticks: u32,
     dirty: bool,
     last_write: i64,
@@ -90,12 +92,21 @@ impl ScreenTime {
         self.dirty = false;
         self.last_write = now_ms();
         let p = Self::path();
-        let mut j = crate::util::read_json(&p);
-        if !j.is_object() {
-            j = json!({});
+        let all = self.all.clone();
+        // (off the UI thread: a write waits on a busy disk, 119 ms seen live)
+        let save = move || {
+            let mut j = crate::util::read_json(&p);
+            if !j.is_object() {
+                j = json!({});
+            }
+            j["screenTime"] = Value::Object(all);
+            let _ = tessera_core::util::write_atomic(&p, serde_json::to_string(&j).unwrap_or_default().as_bytes());
+        };
+        if self.quitting {
+            save();
+        } else {
+            std::thread::spawn(save);
         }
-        j["screenTime"] = Value::Object(self.all.clone());
-        let _ = tessera_core::util::write_atomic(&p, serde_json::to_string(&j).unwrap_or_default().as_bytes());
     }
     /// Apps.activeEntry?.id (Tessera's own windows don't count)
     fn front(h: &Host) -> String {
@@ -150,6 +161,7 @@ impl Service for ScreenTime {
         self.publish(now);
     }
     fn quit(&mut self, _h: &mut Host) {
+        self.quitting = true;
         self.flush();
         self.save();
     }

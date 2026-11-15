@@ -78,6 +78,8 @@ const NOTCH_PX: f64 = 120.0;
 /// Its own messages (Msg::Part("menubar", …))
 enum M {
     Tick,
+    /// a play/pause's shown state ran out: show what the player says
+    PlaySettle,
     Sweep,
     MusicLinger,
     TrayCollapse,
@@ -212,6 +214,10 @@ pub struct Menubar {
     /// music paused: it stays in the island until then (Island.musicLingers)
     linger_until: f64,
     was_playing: bool,
+    /// play/pause pressed: (player, the state shown, since) until the player
+    /// says so too or 1.5 s pass (a browser takes a few hundred ms to; the
+    /// button waited on it)
+    play_shown: Option<(String, bool, std::time::Instant)>,
     /// the QML shell's activities (without music)
     live: Vec<Activity>,
     /// the wallpaper last sampled for the text colour
@@ -357,11 +363,19 @@ impl Menubar {
     }
 
     /// Music, as an activity: playing, or paused for less than a minute
+    /// Playing, as shown: a play/pause just pressed counts before the player says so
+    fn shown_playing(&self, p: &mpris::Player) -> bool {
+        match &self.play_shown {
+            Some((bus, want, t)) if *bus == p.bus && t.elapsed() < std::time::Duration::from_millis(1500) => *want,
+            _ => p.playing,
+        }
+    }
+
     fn music(&mut self, st: &State) -> Option<Activity> {
         let players = st.shell.get::<Players>()?;
         let p = players.chosen()?;
         let now = ms_now();
-        if p.playing || (!p.track.title.is_empty() && now < self.linger_until) {
+        if self.shown_playing(p) || (!p.track.title.is_empty() && now < self.linger_until) {
             Some(Activity { kind: "music".into(), icon: "music-notes".into(), title: if p.track.title.is_empty() { "Playing".into() } else { p.track.title.clone() }, ..Default::default() })
         } else {
             None
@@ -442,7 +456,7 @@ impl Menubar {
                 controls.push(ctl("skip-back", p.can_prev));
             }
             if all || cfg.shows("music", "play") {
-                controls.push(ctl(if p.playing { "pause" } else { "play" }, true));
+                controls.push(ctl(if self.shown_playing(&p) { "pause" } else { "play" }, true));
             }
             if all || cfg.shows("music", "next") {
                 controls.push(ctl("skip-forward", p.can_next));
@@ -461,7 +475,7 @@ impl Menubar {
                 time_shape: SharedString::new(),
                 has_art: art.is_some(),
                 art: art.unwrap_or_default(),
-                playing: p.playing,
+                playing: self.shown_playing(&p),
                 show_lead: cfg.shows("music", "art"),
                 show_title: cfg.shows("music", "title"),
                 show_time: false,
@@ -676,7 +690,7 @@ impl Menubar {
         // the open island's last line (IslandStatus): icons and figures
         let stats = island_stats(&bat, &shell);
         let battery_tip = if shell.str("battery.summary").is_empty() { items::battery_tip(&bat) } else { shell.str("battery.summary").to_string() };
-        let playing = players.chosen().is_some_and(|p| p.playing);
+        let playing = players.chosen().is_some_and(|p| self.shown_playing(p));
         let mut bars = std::mem::take(&mut self.bars);
         let mut any_expanded = false;
         for b in &mut bars {
@@ -1539,6 +1553,16 @@ impl Menubar {
             }
             if let Some(cmd) = cmds.get(i as usize) {
                 mpris::control(&p.bus, cmd);
+                if *cmd == "PlayPause" {
+                    // (shown at once; the player's own word follows)
+                    self.play_shown = Some((p.bus.clone(), !self.shown_playing(&p), std::time::Instant::now()));
+                    let tx = st.tx.clone();
+                    slint::Timer::single_shot(std::time::Duration::from_millis(1500), move || {
+                        let _ = tx.send(crate::Msg::Part(NAME, Box::new(M::PlaySettle)));
+                    });
+                    self.update_activities(st);
+                    self.refresh(st);
+                }
             }
         } else if all {
             // (all at once, the others are rows, without "reset": the index counts without it)
@@ -1556,6 +1580,13 @@ impl Menubar {
     fn handle(&mut self, st: &mut State, m: M) {
         match m {
             M::Tick => self.tick(st),
+            M::PlaySettle => {
+                if self.play_shown.as_ref().is_some_and(|(_, _, t)| t.elapsed() >= std::time::Duration::from_millis(1400)) {
+                    self.play_shown = None;
+                    self.update_activities(st);
+                    self.refresh(st);
+                }
+            }
             M::Sweep => {
                 let on = st.pointer_surface();
                 for b in &self.bars {
@@ -2162,6 +2193,12 @@ impl Part for Menubar {
             return;
         }
         if what == TypeId::of::<Players>() {
+            // (the player agrees with what's shown: its word from now on)
+            if let (Some((bus, want, _)), Some(p)) = (&self.play_shown, st.shell.get::<Players>().and_then(|p| p.chosen())) {
+                if *bus != p.bus || p.playing == *want {
+                    self.play_shown = None;
+                }
+            }
             let playing = st.shell.get::<Players>().and_then(|p| p.chosen()).is_some_and(|p| p.playing);
             if self.was_playing && !playing {
                 // paused: music stays a minute (Island.musicLingers)

@@ -117,6 +117,9 @@ export component EmojiPicker inherits Window {
     in property <bool> tone-open;
     in property <length> tone-x;
     in property <length> tone-y;
+    // the skin-tone popup on screen, for its glass (lib.rs)
+    out property <length> tone-gx;
+    out property <length> tone-gy;
     in property <[string]> tone-forms;
     in-out property <int> tone-choice;
     // GIFs
@@ -643,11 +646,15 @@ export component EmojiPicker inherits Window {
             if tone-open: Rectangle {
                 x: tone-x;
                 y: tone-y;
+                init => { root.tone-gx = self.absolute-position.x; root.tone-gy = self.absolute-position.y; }
+                changed x => { root.tone-gx = self.absolute-position.x; }
+                changed y => { root.tone-gy = self.absolute-position.y; }
                 width: 6 * 40px + 8px;
                 height: 48px;
                 border-radius: Theme.material ? self.height / 2 : Theme.menu-radius;
-                background: Theme.material ? Theme.m3-surface-container-highest : Theme.glass-solid;
-                border-width: Theme.material ? 0 : 1px;
+                // (Glass: the plugin's glass under it, lib.rs)
+                background: Theme.material ? Theme.m3-surface-container-highest : Theme.plugin ? transparent : Theme.glass-solid;
+                border-width: Theme.material || Theme.plugin ? 0 : 1px;
                 border-color: Theme.separator;
                 accessible-role: AccessibleRole.list;
                 accessible-label: "Skin tone";

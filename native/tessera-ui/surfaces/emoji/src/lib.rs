@@ -51,6 +51,8 @@ pub const NS: &str = "tessera:emoji";
 /// five minutes, as EmojiSlots.qml's linger, so reopening within them is
 /// instant (a new window draws every emoji glyph again)
 const RETIRE_SECS: u64 = 300;
+/// The window stays made once made (see retire)
+const KEEP_WINDOW: bool = true;
 const PANEL_W: f32 = 420.0;
 const PANEL_H: f32 = 428.0;
 const LIST_TOP: f32 = 36.0 + 8.0 + 32.0 + 4.0; // in the content, under the tabs
@@ -590,7 +592,10 @@ impl Emoji {
 
     /// Still closed since then: the window goes
     fn retire(&mut self, st: &mut State, n: u64) {
-        if self.open || n != self.opening {
+        // (kept: its first frame draws every emoji anew, 1.3-1.9 s with the
+        // UI thread held (live, 16 Nov), so an open after a retire froze the
+        // whole shell; the hidden layer costs nothing while closed)
+        if KEEP_WINDOW || self.open || n != self.opening {
             return;
         }
         if let Some(w) = self.win.take() {
@@ -1343,10 +1348,15 @@ impl Part for Emoji {
         let x = ui.get_panel_x() + pw * (1.0 - s) / 2.0;
         let y = ui.get_body_y() + ph * (1.0 - s) / 2.0;
         let o = ui.get_body_opacity();
-        let shape = theme::glass_shape(&st.shell.look, x, y, pw * s, ph * s, 22.0 * s, o, 1.0);
-        let key = tessera_core::theme::glass_key(&shape);
+        let mut shapes = vec![theme::glass_shape(&st.shell.look, x, y, pw * s, ph * s, 22.0 * s, o, 1.0)];
+        // the skin-tone popup: glass of its own, over the panel's
+        if ui.get_tone_open() {
+            let r = ui.global::<ui::Theme>().get_menu_radius();
+            shapes.push(theme::shadow_margin(theme::glass_shape(&st.shell.look, ui.get_tone_gx(), ui.get_tone_gy(), 6.0 * 40.0 + 8.0, 48.0, r, o, 0.35), 16.0));
+        }
+        let key = tessera_core::theme::glass_key(&shapes);
         if key != w.glass_sent {
-            st.shell.glass.set(&w.output, NS, if o > 0.002 { std::slice::from_ref(&shape) } else { &[] });
+            st.shell.glass.set(&w.output, NS, if o > 0.002 { &shapes } else { &[] });
             w.glass_sent = key;
         }
     }
