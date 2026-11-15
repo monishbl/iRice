@@ -43,7 +43,7 @@ use smithay_client_toolkit::shell::wlr_layer::{Anchor, KeyboardInteractivity, La
 use std::cell::RefCell;
 use std::process::{Command, Stdio};
 use std::rc::Rc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -178,6 +178,16 @@ struct Win {
     glass_sent: String,
 }
 
+/// The edge light's thread: told to stop, whether the AI works, and whether
+/// its last frame reached the window (it draws the next only then)
+#[derive(Default)]
+struct FxRun {
+    stop: AtomicBool,
+    busy: AtomicBool,
+    shown: AtomicBool,
+    started: AtomicBool,
+}
+
 /// What was asked last (Try again asks it again)
 #[derive(Clone, Default)]
 struct Asked {
@@ -216,6 +226,8 @@ pub struct Circle {
     model: Model,
     hide: slint::Timer,
     later: slint::Timer,
+    /// the edge light's thread (edgefx.rs), while it shows
+    fx_run: Option<Arc<FxRun>>,
 }
 
 /// The chosen model (`ai.model`), else the first (the sidebar's and Spotlight's)
@@ -507,6 +519,7 @@ impl Circle {
         self.hide.stop();
         self.later.stop();
         self.stop_ai();
+        self.stop_fx();
         self.open = true;
         self.gen += 1;
         self.screen = output.clone();
@@ -532,6 +545,10 @@ impl Circle {
         ui.set_ox(w / 2.0);
         ui.set_oy(h);
         ui.set_reduce_motion(reduce);
+        let style = super::edgefx::Style::from_cfg(st.shell.cfg["circle"]["glow"].as_str().unwrap_or(""));
+        ui.set_edge_style(style.index());
+        ui.set_fx_soft(slint::Image::default());
+        ui.set_fx_dots(slint::Image::default());
         ui.set_busy(false);
         ui.set_hint(super::geometry::hint("circle").into());
         ui.set_dragging(false);
@@ -818,6 +835,7 @@ impl Circle {
                 }
                 self.shot = img;
                 w.ui.set_open(true);
+                self.start_fx(st);
             }
             Cm::Restart => {
                 self.gen += 1;
@@ -1027,8 +1045,83 @@ impl Circle {
                     w.ui.set_stroke_head("".into());
                     w.ui.set_thumb(slint::Image::default());
                     w.ui.set_frozen(slint::Image::default());
+                    w.ui.set_fx_soft(slint::Image::default());
+                    w.ui.set_fx_dots(slint::Image::default());
                 }
+                self.stop_fx();
             }
+        }
+    }
+
+    /// The edge light (unless it's the bands, which circle.slint draws),
+    /// drawn on a thread of its own: a frame each 16 ms for its first two
+    /// seconds, then each 50 ms while it breathes (twice as fast while the AI
+    /// works); one still frame with Reduce motion. A frame waits until the
+    /// last is on screen, and it stops when the window hides.
+    fn start_fx(&mut self, st: &State) {
+        self.stop_fx();
+        let Some(w) = &self.win else { return };
+        let style = super::edgefx::Style::from_cfg(st.shell.cfg["circle"]["glow"].as_str().unwrap_or(""));
+        if style == super::edgefx::Style::Bands {
+            return;
+        }
+        let ui = &w.ui;
+        let mut fx = super::edgefx::Fx::default();
+        let th = ui.global::<ui::Theme>();
+        fx.palette(th.get_material().then(|| [th.get_m3_primary(), th.get_m3_tertiary(), th.get_m3_secondary(), th.get_m3_primary().mix(&th.get_m3_tertiary(), 0.5)]));
+        let (ww, hh) = {
+            let d = self.drag.borrow();
+            (d.w, d.h)
+        };
+        let (ox, oy) = (ui.get_ox(), ui.get_oy());
+        let still = st.shell.look.reduce_motion;
+        let run = Arc::new(FxRun::default());
+        run.busy.store(ui.get_busy(), Ordering::Relaxed);
+        self.fx_run = Some(run.clone());
+        let weak = ui.as_weak();
+        std::thread::spawn(move || {
+            fx.setup(style, ww, hh, ox, oy);
+            let (mut t, mut last) = (if still { 2.5f32 } else { 0.0 }, std::time::Instant::now());
+            while !run.stop.load(Ordering::Relaxed) {
+                if !run.shown.swap(false, Ordering::AcqRel) && run.started.load(Ordering::Relaxed) {
+                    std::thread::sleep(Duration::from_millis(4));
+                    continue;
+                }
+                run.started.store(true, Ordering::Relaxed);
+                let (soft, dots) = fx.frame(t);
+                let (w2, r2) = (weak.clone(), run.clone());
+                let _ = slint::invoke_from_event_loop(move || {
+                    if r2.stop.load(Ordering::Relaxed) {
+                        return;
+                    }
+                    if let Some(ui) = w2.upgrade() {
+                        r2.busy.store(ui.get_busy(), Ordering::Relaxed);
+                        ui.set_fx_soft(slint::Image::from_rgba8_premultiplied(soft));
+                        if let Some(d) = dots {
+                            ui.set_fx_dots(slint::Image::from_rgba8_premultiplied(d));
+                        }
+                    }
+                    r2.shown.store(true, Ordering::Release);
+                });
+                if still {
+                    return;
+                }
+                let gap = if t > 2.0 { 50 } else { 16 };
+                let spent = last.elapsed();
+                if let Some(rest) = Duration::from_millis(gap).checked_sub(spent) {
+                    std::thread::sleep(rest);
+                }
+                let now = std::time::Instant::now();
+                let dt = now.duration_since(last).as_secs_f32().min(0.1);
+                last = now;
+                t += dt * if run.busy.load(Ordering::Relaxed) { 2.0 } else { 1.0 };
+            }
+        });
+    }
+
+    fn stop_fx(&mut self) {
+        if let Some(r) = self.fx_run.take() {
+            r.stop.store(true, Ordering::Relaxed);
         }
     }
 

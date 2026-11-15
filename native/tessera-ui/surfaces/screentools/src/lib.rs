@@ -45,6 +45,7 @@ use tessera_core::*;
 
 pub mod circle;
 pub mod draw;
+pub mod edgefx;
 pub mod geometry;
 pub mod livetext;
 pub mod ltui;

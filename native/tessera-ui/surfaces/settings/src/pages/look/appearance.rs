@@ -261,6 +261,26 @@ pub fn appearance(cx: &mut Ctx, p: &mut Page) {
             cx.set("appearance.increaseContrast", false); // (the old switch)
         }
     });
+    // Circle to Search's edge light (screentools/src/edgefx.rs: the same values)
+    const GLOWS: [(&str, &str, &str); 6] = [
+        ("dots", "Dot ripple", "A ripple from the pointer lights a faint dot grid, then a dotted rim breathes"),
+        ("siri", "Glow", "A thick soft glow whose inner edge waves"),
+        ("gemini", "Pool", "Light pooled along the bottom, its top edge breathing"),
+        ("ripple", "Ripple to rim", "Rings spread from the pointer; the edge lights where they land"),
+        ("vignette", "Colour vignette", "Soft colour in the corners, a wavy glow between them"),
+        ("bands", "Bands", "Colour bands flowing round the edges"),
+    ];
+    let glow = cx.s("circle.glow");
+    let gi = GLOWS.iter().position(|g| g.0 == glow).unwrap_or(0);
+    let gp = cx.on(|cx, a| {
+        if let Some(g) = GLOWS.get(a.i.max(0) as usize) {
+            cx.set("circle.glow", g.0);
+        }
+    });
+    let glow_names: Vec<String> = GLOWS.iter().map(|g| g.1.to_string()).collect();
+    p.group("Circle to Search")
+        .row(Row::new("Edge light").detail(GLOWS[gi].2).choice(&glow_names, gi as i32, gp).width(220.0));
+
     p.group("Accessibility")
         .row(Row::new("Reduce transparency").visible(!cx.material).detail("Solid surfaces instead of glass, whatever the material above").switch(reduce, rt))
         .row(Row::new("Reduce motion").detail("Fades instead of movement: island alerts, connecting a display (windows move without gliding) and the morning screen").switch(motion, rm))
