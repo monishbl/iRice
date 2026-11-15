@@ -301,6 +301,11 @@ static GLASS_VERSION: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI6
 /// Whether the plugin draws shapes' drop shadows (its ping says "shadow"):
 /// shapes then go out with their two shadow numbers, else without
 static GLASS_SHADOW: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// Whether the plugin blurs on its own (its ping says "blur", 16 Nov): a
+/// shape's frost is then its blur in px; an older build reads it as a 0..1
+/// crossfade to Hyprland's blur, so it gets 1 (all blurred) until Hyprland
+/// loads the new build
+static GLASS_BLUR: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 pub fn plugin_version() -> i64 {
     GLASS_VERSION.load(std::sync::atomic::Ordering::Relaxed)
 }
@@ -363,8 +368,10 @@ impl Glass {
                     let answer = request(&format!("{} ping", glass_cmd())).ok();
                     let v = answer.as_deref().map(version_of).unwrap_or(1);
                     GLASS_VERSION.store(v, std::sync::atomic::Ordering::Relaxed);
-                    let sh = answer.is_some_and(|a| a.split_whitespace().any(|w| w == "shadow"));
+                    let sh = answer.as_deref().is_some_and(|a| a.split_whitespace().any(|w| w == "shadow"));
                     GLASS_SHADOW.store(sh, std::sync::atomic::Ordering::Relaxed);
+                    let bl = answer.as_deref().is_some_and(|a| a.split_whitespace().any(|w| w == "blur"));
+                    GLASS_BLUR.store(bl, std::sync::atomic::Ordering::Relaxed);
                 } else {
                     GLASS_VERSION.store(0, std::sync::atomic::Ordering::Relaxed);
                 }
@@ -443,8 +450,10 @@ impl Glass {
             }
         }
         let mut cmd = format!("{} set {monitor} {ns} {}", glass_cmd(), shapes.len());
+        let own_blur = GLASS_BLUR.load(std::sync::atomic::Ordering::Relaxed);
         for s in &shapes {
-            for v in &s[..per] {
+            for (i, v) in s[..per].iter().enumerate() {
+                let v = if i == 9 && !own_blur { v.min(1.0) } else { *v };
                 cmd.push_str(&format!(" {}", (v * 1000.0).round() / 1000.0));
             }
         }

@@ -391,7 +391,7 @@ pub fn appearance(cx: &mut Ctx, p: &mut Page) {
 /// The custom material's and the optics' sliders: (key, label, hint, from, to)
 const ADVANCED: [(&str, &str, &str, f32, f32); 7] = [
     ("glassLens", "Glass", "How much it bends what's behind", 0.0, 1.0),
-    ("glassFrost", "Frost", "How much it blurs", 0.0, 1.0),
+    ("glassBlur", "Frost", "How much it blurs what's behind, in pixels", 4.0, 12.0),
     ("glassSolid", "Solid", "How opaque it is", 0.0, 1.0),
     ("glassTint", "Tint", "", 0.0, 2.0),
     ("glassIor", "Index of refraction", "How strongly the edge bends what's behind; glass is about 1.5", 1.0, 2.0),
@@ -403,6 +403,8 @@ const ADVANCED: [(&str, &str, &str, f32, f32); 7] = [
 pub fn advanced_value(key: &str, v: f32) -> String {
     if key == "glassIor" {
         format!("{v:.2}")
+    } else if key == "glassBlur" {
+        format!("{} px", v.round())
     } else if key == "glassDispersion" && v < 0.005 {
         "None".into()
     } else {
@@ -452,6 +454,7 @@ pub fn glass(cx: &mut Ctx, p: &mut Page) {
                     let a = amounts(cx);
                     cx.set_num("appearance.glassLens", a[0] as f64);
                     cx.set_num("appearance.glassFrost", a[1] as f64);
+                    cx.set_num("appearance.glassBlur", cx.f("appearance.glassBlur").clamp(4.0, 12.0) as f64);
                     cx.set_num("appearance.glassSolid", a[2] as f64);
                     cx.set_num("appearance.glassTint", a[3] as f64);
                 }
@@ -504,7 +507,7 @@ pub fn glass(cx: &mut Ctx, p: &mut Page) {
                 .enumerate()
                 .map(|(i, (key, label, hint, _, _))| {
                     // (each slider's range: settings-look.slint's by `style`, ADVANCED's)
-                    let v = cx.f(&format!("appearance.{key}"));
+                    let v = if *key == "glassBlur" { cx.f("appearance.glassBlur").clamp(4.0, 12.0) } else { cx.f(&format!("appearance.{key}")) };
                     let hint = if *key == "glassTint" { if dark { "How much it darkens what's behind" } else { "How milky it is" } } else { hint };
                     Opt::new(*label).detail(hint).num(v).style(i as i32).id(advanced_value(key, v))
                 })
@@ -518,14 +521,18 @@ pub fn glass(cx: &mut Ctx, p: &mut Page) {
                     cx.set_num("appearance.glassDispersion", 0.35);
                     cx.set_num("appearance.glassLens", 1.0);
                     cx.set_num("appearance.glassFrost", 0.75);
+                    cx.set_num("appearance.glassBlur", 6.0);
                     cx.set_num("appearance.glassSolid", 0.0);
                     cx.set_num("appearance.glassTint", 0.75);
                     return;
                 }
                 let Some((key, ..)) = ADVANCED.get(a.i.max(0) as usize) else { return };
-                cx.set_num(&format!("appearance.{key}"), (a.f as f64 * 100.0).round() / 100.0);
-                // (the amounts make it Custom; the optics apply to any material)
-                if a.i < 4 {
+                // (the frost in whole pixels)
+                let v = if *key == "glassBlur" { (a.f as f64).round().clamp(4.0, 12.0) } else { (a.f as f64 * 100.0).round() / 100.0 };
+                cx.set_num(&format!("appearance.{key}"), v);
+                // (the amounts make it Custom; the frost and the optics apply
+                // to any material)
+                if a.i < 4 && *key != "glassBlur" {
                     cx.set("appearance.glass", "custom");
                 }
             });
@@ -601,12 +608,7 @@ pub fn glass(cx: &mut Ctx, p: &mut Page) {
         p.group("Glass")
             .row(Row::new("Lens").visible(lens > 0.4 && solid < 0.9).segmented(&["Thin", "Depth", "Auto"], idx(&dv, &depth), dp).width(260.0))
             .row(glass_row)
-            .row(Row::new("Tint glass with wallpaper colour").switch(tint, tt))
-            .row(Row::new("Frost over windows")
-                .visible(plugin && tier != "solid")
-                .detail("Glass covering a window blurs it more, so its text doesn't compete with what's on the glass")
-                .segmented(&["Off", "Subtle", "Medium", "Strong"], nearest(&frost_values, wf), fp)
-                .width(300.0));
+            .row(Row::new("Tint glass with wallpaper colour").switch(tint, tt));
     }
     p.end_more();
 }
@@ -627,7 +629,8 @@ mod tests {
     fn advanced_readings() {
         assert_eq!(advanced_value("glassIor", 1.5), "1.50");
         assert_eq!(advanced_value("glassDispersion", 0.0), "None");
-        assert_eq!(advanced_value("glassFrost", 0.75), "75%");
+        assert_eq!(advanced_value("glassTint", 0.75), "75%");
+        assert_eq!(advanced_value("glassBlur", 6.2), "6 px");
         assert_eq!(nearest(&[0.0, 0.5, 0.75, 0.95], 0.8), 2);
         assert_eq!(nearest(&[0.0, 0.5, 0.75, 0.95], 0.0), 0);
     }

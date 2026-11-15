@@ -5,29 +5,30 @@
 // layer namespace) with `hyprctl tessera-glass ...`. When Hyprland draws one of
 // those layers with blur, this plugin first paints the glass: it copies what's
 // already on screen behind the shape and runs a refraction shader over it
-// (lensing rim, optional thick "depth" lens, frost from Hyprland's blur,
+// (lensing rim, optional thick "depth" lens, frost: its own blur of that copy,
 // dispersion, tint, specular rim), then lets Hyprland draw the layer's own
 // content on top. Nothing is drawn unless Hyprland redraws that area, so
 // static glass costs nothing and glass over video updates live.
 //
 // hyprctl tessera-glass set <monitor> <namespace> <n> [<16 floats per shape>...]
 // hyprctl tessera-glass clear [<monitor> <namespace>]
-// hyprctl tessera-glass ping            -> "tessera-glass 5 shadow" (2: gloss; 3: pointer boundaries;
+// hyprctl tessera-glass ping            -> "tessera-glass 6 shadow blur" (2: gloss; 3: pointer boundaries;
 //                                       4: pointer-follow, input-age; 5: glass fades
-//                                       with its layer; "shadow": a shape may carry
-//                                       a drop shadow, two more numbers)
+//                                       with its layer; 6: its own blur; "shadow": a shape
+//                                       may carry a drop shadow, two more numbers; "blur":
+//                                       frost is a blur in px, not a 0..1 crossfade)
 // hyprctl tessera-glass pointer-follow <0|1> (hover focus: windows brought forward take the pointer)
 // hyprctl tessera-glass input-age       -> ms since the last key or button press
 // hyprctl tessera-glass pointer-policy <0..2> <corner px>
 // hyprctl tessera-glass pointer-confine <monitor|-> (1.5-second lease)
 // hyprctl tessera-glass controls on|off [dark|light]   (see controls.cpp)
-// hyprctl tessera-glass window-frost <0..1>  extra frost where glass covers windows
+// hyprctl tessera-glass window-frost <0..1>  (accepted, unused: frost is one blur everywhere)
 // (and, on its own, trackpad long presses: hold.cpp)
 // `hyprctl irice-glass ...` does the same: the name from before Tessera was
 // called iRice, for a shell, script or native helper of that time.
 //
 // Shape floats (layer-local logical px): x y w h radius mode refraction depth
-// bevel frost chroma rim tintR tintG tintB tintA saturation opacity
+// bevel frost(blur px) chroma rim tintR tintG tintB tintA saturation opacity
 // [gloss] (mode 0 liquid, 1 frosted, 2 solid; tint straight alpha; gloss 0..1
 // scales the 3D lighting: 1 glass, ~0 frost (an even thin border), optional
 // so shells that send 18 numbers still work) [shadow margin] (optional, both
@@ -84,63 +85,24 @@ constexpr int kFloats = 21; // the 19th (gloss) is optional, and the last two (s
 constexpr int kBase   = 19; // (a shape without a shadow)
 struct SShape {
     float         v[kFloats];
-    mutable float drawnFrost = -1; // frost it was last drawn with (over windows: see windowFrost)
 };
 
-// Glass over a window frosts a little more, so the window's text behind it
-// doesn't compete with the glass's own content: by how much of the shape
-// covers windows, times this (0..1, from the shell: `window-frost <amount>`)
+// `window-frost` (older shells send it): accepted, no longer used; frost is
+// one blur everywhere
 static float g_windowFrost = 0.f;
 
-// How much of a shape (global logical box) covers the windows showing on
-// its monitor, 0..1 (overlapping windows count once at most, roughly)
-static float windowCoverage(PHLMONITOR mon, const CBox& shape) {
-    if (g_windowFrost <= 0.f || shape.w <= 0 || shape.h <= 0)
-        return 0.f;
-    double covered = 0;
-    for (auto& w : Desktop::windowState()->windows()) {
-        if (!w || !w->m_isMapped || w->isHidden() || !w->m_workspace)
-            continue;
-        if (w->m_workspace != mon->m_activeWorkspace && w->m_workspace != mon->m_activeSpecialWorkspace)
-            continue;
-        CBox b = w->getWindowMainSurfaceBox();
-        b.translate(w->m_floatingOffset);
-        if (!w->m_pinned)
-            b.translate(w->m_workspace->m_renderOffset->value());
-        const double x0 = std::max(b.x, shape.x), y0 = std::max(b.y, shape.y);
-        const double x1 = std::min(b.x + b.w, shape.x + shape.w), y1 = std::min(b.y + b.h, shape.y + shape.h);
-        if (x1 > x0 && y1 > y0)
-            covered += (x1 - x0) * (y1 - y0);
-    }
-    return (float)std::min(1.0, covered / (shape.w * shape.h));
-}
 // key: monitor + "\n" + namespace
 static std::map<std::string, std::vector<SShape>> g_shapes;
 
-// The same for the desktop's own glass (its widgets, on a layer below every
-// other shell surface): a panel over a widget showed the widget's text
-// sharp through its own, as windows' did before window-frost. `under`: the
-// desktop's shapes on this monitor (its layer covers the monitor from 0,0)
-static float desktopCoverage(PHLMONITOR mon, const std::vector<SShape>* under, const CBox& shape) {
-    if (!under || g_windowFrost <= 0.f || shape.w <= 0 || shape.h <= 0)
-        return 0.f;
-    double covered = 0;
-    for (auto& u : *under) {
-        const double bx = mon->m_position.x + u.v[0], by = mon->m_position.y + u.v[1];
-        const double x0 = std::max(bx, shape.x), y0 = std::max(by, shape.y);
-        const double x1 = std::min(bx + u.v[2], shape.x + shape.w), y1 = std::min(by + u.v[3], shape.y + shape.h);
-        if (x1 > x0 && y1 > y0)
-            covered += (x1 - x0) * (y1 - y0);
-    }
-    return (float)std::min(1.0, covered / (shape.w * shape.h));
-}
-
 // ── GL resources ────────────────────────────────────────────────────────────
 static GLuint g_prog = 0, g_vao = 0, g_copyFB = 0, g_copyTex = 0;
+static GLuint g_blurFB[2] = {0, 0}, g_blurTex[2] = {0, 0};
 // One copy target per framebuffer size, so monitors of different resolution
 // don't reallocate it every frame (at most a few kept)
 struct SCopyTarget {
     GLuint fb = 0, tex = 0;
+    // the frost's two half-size passes
+    GLuint blurFB[2] = {0, 0}, blurTex[2] = {0, 0};
 };
 static std::map<std::pair<int, int>, SCopyTarget> g_copyTargets;
 static GLuint g_shadowProg = 0;
@@ -159,7 +121,7 @@ void main() { gl_Position = vec4(pos[gl_VertexID], 0.0, 1.0); }
 static const char* kFrag = R"(#version 300 es
 precision highp float;
 uniform sampler2D sharp;     // copy of the screen behind (full FB size)
-uniform sampler2D blurred;   // Hyprland's blurred background (full FB size)
+uniform sampler2D blurred;   // the plugin's blur of `sharp` (half size, same frame)
 uniform vec2  fbSize;
 uniform vec4  rect;          // glass rect: x, y, w, h (FB pixels, top-down rows)
 uniform vec4  copyRect;      // area of `sharp` that holds valid pixels
@@ -188,6 +150,14 @@ vec3 sampleSharp(vec2 px) {
     px = clamp(px, copyRect.xy + 0.5, copyRect.xy + copyRect.zw - 0.5);
     return texture(sharp, px / fbSize).rgb;
 }
+// the picture behind: blurred (a half-size texture over the same frame) when
+// the glass frosts, else sharp
+vec3 samplePic(vec2 px) {
+    if (hasBlur < 0.5)
+        return sampleSharp(px);
+    px = clamp(px, copyRect.xy + 1.0, copyRect.xy + copyRect.zw - 1.0);
+    return texture(blurred, px / fbSize).rgb;
+}
 
 void main() {
     vec2 px = gl_FragCoord.xy;
@@ -215,23 +185,16 @@ void main() {
         // depth adds a thick-lens magnification towards the centre
         vec2 sp = px + n * refraction * rimBend;
         sp += (c - px) * depth * 0.14 * (1.0 - rimBend * 0.6);
-        vec3 sharpC;
+        // One picture: what's behind, blurred `frost` px (the plugin's own
+        // blur of its copy), bent by the lens; no blurred and sharp copies
+        // crossfaded (that showed text behind as a ghost, and the band a
+        // squeezed sharp copy of what lies just outside)
         if (chroma > 0.0) {
             vec2 off = n * refraction * rimBend * chroma * 0.4;
-            sharpC = vec3(sampleSharp(sp + off).r, sampleSharp(sp).g, sampleSharp(sp - off).b);
+            col = vec3(samplePic(sp + off).r, samplePic(sp).g, samplePic(sp - off).b);
         } else {
-            sharpC = sampleSharp(sp);
+            col = samplePic(sp);
         }
-        vec3 blurC = hasBlur > 0.5 ? texture(blurred, clamp(sp, vec2(0.5), fbSize - 0.5) / fbSize).rgb : sharpC;
-        // Frost is even across the surface, like iOS: the lens bends the
-        // frosted image at the edge rather than leaving a clear rim
-        // The band shows the frosted picture where it bends most: a sharp,
-        // squeezed copy of what lies just outside (a window's edge, the menu
-        // bar, a neighbouring tile, text) read as a second rounded outline
-        // inside the shape. It eases back to the glass's own frost inwards,
-        // so the band has no inner edge of its own.
-        float bandFrost = smoothstep(0.0, 0.45, rimBend);
-        col = mix(sharpC, blurC, mode > 0.5 ? 1.0 : max(frost, bandFrost));
         float l = dot(col, vec3(0.2126, 0.7152, 0.0722));
         col = mix(vec3(l), col, saturation);
         col = mix(col, tint.rgb, tint.a);
@@ -304,6 +267,35 @@ void main() {
     fragColor = vec4(0.0, 0.0, 0.0, a);
 }
 )";
+
+// The frost: a separable gaussian of the copy, into half-size textures.
+// Pass 1 (horizontal) reads the full-size copy, pass 2 (vertical) the first
+// pass. `sigma` and the taps are in the source's pixels; reads stay inside
+// `area` (the copy's valid pixels, source pixels).
+static const char* kBlurFrag = R"(#version 300 es
+precision highp float;
+uniform sampler2D src;
+uniform vec2  srcSize, dstSize, dir;
+uniform vec4  area;
+uniform float sigma;
+out vec4 fragColor;
+void main() {
+    vec2 p = gl_FragCoord.xy / dstSize * srcSize; // this texel's centre, in source pixels
+    float st = sigma * 3.0 / 12.0;
+    vec3 acc = vec3(0.0);
+    float ws = 0.0;
+    for (int i = -12; i <= 12; i++) {
+        float x = float(i) * st;
+        float w = exp(-0.5 * x * x / (sigma * sigma));
+        vec2 q = clamp(p + dir * x, area.xy + 0.5, area.xy + area.zw - 0.5);
+        acc += texture(src, q / srcSize).rgb * w;
+        ws += w;
+    }
+    fragColor = vec4(acc / ws, 1.0);
+}
+)";
+static GLuint g_blurProg = 0;
+static GLint  ub_src, ub_srcSize, ub_dstSize, ub_dir, ub_area, ub_sigma;
 
 static GLuint compile(GLenum type, const char* src) {
     GLuint s = glCreateShader(type);
@@ -384,6 +376,30 @@ static bool ensureProgram() {
         glDeleteShader(vs2);
     if (fs2)
         glDeleteShader(fs2);
+    // (the frost's blur; without it the glass is clear)
+    GLuint vs3 = compile(GL_VERTEX_SHADER, kVert), fs3 = compile(GL_FRAGMENT_SHADER, kBlurFrag);
+    if (vs3 && fs3) {
+        g_blurProg = glCreateProgram();
+        glAttachShader(g_blurProg, vs3);
+        glAttachShader(g_blurProg, fs3);
+        glLinkProgram(g_blurProg);
+        glGetProgramiv(g_blurProg, GL_LINK_STATUS, &ok);
+        if (!ok) {
+            glDeleteProgram(g_blurProg);
+            g_blurProg = 0;
+        } else {
+            ub_src     = glGetUniformLocation(g_blurProg, "src");
+            ub_srcSize = glGetUniformLocation(g_blurProg, "srcSize");
+            ub_dstSize = glGetUniformLocation(g_blurProg, "dstSize");
+            ub_dir     = glGetUniformLocation(g_blurProg, "dir");
+            ub_area    = glGetUniformLocation(g_blurProg, "area");
+            ub_sigma   = glGetUniformLocation(g_blurProg, "sigma");
+        }
+    }
+    if (vs3)
+        glDeleteShader(vs3);
+    if (fs3)
+        glDeleteShader(fs3);
     return true;
 }
 
@@ -394,6 +410,8 @@ static void ensureCopyTarget(int w, int h) {
             auto old = g_copyTargets.begin();
             glDeleteFramebuffers(1, &old->second.fb);
             glDeleteTextures(1, &old->second.tex);
+            glDeleteFramebuffers(2, old->second.blurFB);
+            glDeleteTextures(2, old->second.blurTex);
             g_copyTargets.erase(old);
         }
         SCopyTarget t;
@@ -407,10 +425,26 @@ static void ensureCopyTarget(int w, int h) {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         glBindFramebuffer(GL_FRAMEBUFFER, t.fb);
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, t.tex, 0);
+        glGenTextures(2, t.blurTex);
+        glGenFramebuffers(2, t.blurFB);
+        for (int i = 0; i < 2; i++) {
+            glBindTexture(GL_TEXTURE_2D, t.blurTex[i]);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, (w + 1) / 2, (h + 1) / 2, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            glBindFramebuffer(GL_FRAMEBUFFER, t.blurFB[i]);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, t.blurTex[i], 0);
+        }
         it = g_copyTargets.emplace(std::make_pair(w, h), t).first;
     }
-    g_copyFB  = it->second.fb;
-    g_copyTex = it->second.tex;
+    g_copyFB     = it->second.fb;
+    g_copyTex    = it->second.tex;
+    g_blurFB[0]  = it->second.blurFB[0];
+    g_blurFB[1]  = it->second.blurFB[1];
+    g_blurTex[0] = it->second.blurTex[0];
+    g_blurTex[1] = it->second.blurTex[1];
 }
 
 // Saves and restores the GL state we touch, so Hyprland's own state caches
@@ -459,8 +493,7 @@ struct SGLState {
 
 static bool          g_lastBlur = false;
 static unsigned long g_blits = 0, g_blitPx = 0;
-static void drawGlass(const std::vector<SShape>& shapes, const CBox& box, const CHyprOpenGLImpl::STextureRenderData& data, PHLMONITOR mon, float fade,
-                      const std::vector<SShape>* under) {
+static void drawGlass(const std::vector<SShape>& shapes, const CBox& box, const CHyprOpenGLImpl::STextureRenderData& data, PHLMONITOR mon, float fade) {
     auto& rd = g_pHyprRenderer->m_renderData;
     if (!rd.currentFB || !ensureProgram())
         return;
@@ -476,8 +509,17 @@ static void drawGlass(const std::vector<SShape>& shapes, const CBox& box, const 
     st.save();
     ensureCopyTarget(fbW, fbH);
 
-    GLuint blurTex = data.blurredBG ? data.blurredBG->m_texID : 0;
-    g_lastBlur      = blurTex != 0;
+    // the frost: the blur of the first shape that has one (a layer's shapes
+    // share their material), in FB pixels
+    float sigma = 0.f;
+    for (const auto& s : shapes)
+        if (s.v[17] > 0.001f && s.v[5] < 1.5f && s.v[9] > 0.f) {
+            sigma = s.v[9] * scale;
+            break;
+        }
+    if (sigma < 0.5f || !g_blurProg)
+        sigma = 0.f;
+    g_lastBlur = sigma > 0.f;
 
     // Which shapes this frame's damage touches, and one copy of the screen
     // behind all of them (plus room for the refraction to reach in from
@@ -503,7 +545,7 @@ static void drawGlass(const std::vector<SShape>& shapes, const CBox& box, const 
             region.intersect(*data.damage);
         if (region.empty())
             continue;
-        const int  margin = (int)std::ceil(v[6] * scale + 4 + v[7] * std::max(w, h) * 0.08f);
+        const int  margin = (int)std::ceil(v[6] * scale + 4 + v[7] * std::max(w, h) * 0.08f + sigma * 3.f);
         const auto ext    = region.getExtents(); // the part drawn, grown by how far it samples
         cx0 = std::min(cx0, std::max(0, (int)std::floor(ext.x) - margin));
         cy0 = std::min(cy0, std::max(0, (int)std::floor(ext.y) - margin));
@@ -563,6 +605,41 @@ static void drawGlass(const std::vector<SShape>& shapes, const CBox& box, const 
     g_blits++;
     g_blitPx += (unsigned long)(cx1 - cx0) * (cy1 - cy0);
 
+    // The frost: the copy blurred into the half-size textures, only over the
+    // copied part (across from the copy, then down)
+    GLuint blurTex = 0;
+    if (sigma > 0.f) {
+        const int hw = (fbW + 1) / 2, hh = (fbH + 1) / 2;
+        const int bx0 = cx0 / 2, by0 = cy0 / 2, bx1 = (cx1 + 1) / 2, by1 = (cy1 + 1) / 2;
+        glUseProgram(g_blurProg);
+        glBindVertexArray(g_vao);
+        glDisable(GL_BLEND);
+        glDisable(GL_STENCIL_TEST);
+        glEnable(GL_SCISSOR_TEST);
+        glViewport(0, 0, hw, hh);
+        glScissor(bx0, by0, bx1 - bx0, by1 - by0);
+        glUniform1i(ub_src, 0);
+        glUniform2f(ub_dstSize, hw, hh);
+        glActiveTexture(GL_TEXTURE0);
+        // pass 1: the full-size copy, across
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, g_blurFB[0]);
+        glBindTexture(GL_TEXTURE_2D, g_copyTex);
+        glUniform2f(ub_srcSize, fbW, fbH);
+        glUniform2f(ub_dir, 1.f, 0.f);
+        glUniform1f(ub_sigma, sigma);
+        glUniform4f(ub_area, cx0, cy0, cx1 - cx0, cy1 - cy0);
+        glDrawArrays(GL_TRIANGLES, 0, 3);
+        // pass 2: the first pass, down (half-size pixels: half the sigma)
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, g_blurFB[1]);
+        glBindTexture(GL_TEXTURE_2D, g_blurTex[0]);
+        glUniform2f(ub_srcSize, hw, hh);
+        glUniform2f(ub_dir, 0.f, 1.f);
+        glUniform1f(ub_sigma, sigma * 0.5f);
+        glUniform4f(ub_area, bx0, by0, bx1 - bx0, by1 - by0);
+        glDrawArrays(GL_TRIANGLES, 0, 3);
+        blurTex = g_blurTex[1];
+    }
+
     for (auto& ps : placed) {
         const float* v = ps.v;
         const float  x = ps.x, yGL = ps.y, w = ps.w, h = ps.h;
@@ -585,18 +662,8 @@ static void drawGlass(const std::vector<SShape>& shapes, const CBox& box, const 
         glUniform1f(u_refraction, v[6] * scale);
         glUniform1f(u_depth, v[7]);
         glUniform1f(u_bevel, v[8] * scale);
-        // Frost, plus more where it covers windows. A change (a window moved
-        // under it) repaints the whole shape next frame, not just the damaged
-        // part, so it never shows two frosts at once
-        float frost = v[9];
-        if (g_windowFrost > 0.f) {
-            const CBox global{mon->m_position.x + x / scale, mon->m_position.y + yGL / scale, w / scale, h / scale};
-            frost += g_windowFrost * std::min(1.f, windowCoverage(mon, global) + desktopCoverage(mon, under, global)) * (1.f - frost);
-        }
-        if (ps.shape->drawnFrost >= 0.f && std::abs(frost - ps.shape->drawnFrost) > 0.01f)
-            g_pHyprRenderer->damageBox(CBox{mon->m_position.x + x / scale - 1, mon->m_position.y + yGL / scale - 1, w / scale + 2, h / scale + 2});
-        ps.shape->drawnFrost = frost;
-        glUniform1f(u_frost, frost);
+        // (frost is the blur above: the same over everything behind)
+        glUniform1f(u_frost, 0.f);
         glUniform1f(u_chroma, v[10]);
         glUniform1f(u_rim, v[11]);
         glUniform4f(u_tint, v[12], v[13], v[14], v[15]);
@@ -653,12 +720,7 @@ static void hkRenderTextureWithBlur(void* thisptr, SP<ITexture> tex, const CBox&
         // leaves an empty glass shape over the fullscreen app
         const float fade = std::clamp(data.a, 0.f, 1.f);
         if (it != g_shapes.end() && !it->second.empty() && fade > 0.004f) {
-            // (the desktop's glass under it, unless this is the desktop)
-            const std::vector<SShape>* under = nullptr;
-            if (ls->m_namespace != "tessera:desktop")
-                if (auto d = g_shapes.find(mon->m_name + "\ntessera:desktop"); d != g_shapes.end() && !d->second.empty())
-                    under = &d->second;
-            drawGlass(it->second, box, data, mon, fade, under);
+            drawGlass(it->second, box, data, mon, fade);
             g_drawn++;
             // Hyprland's own blur fill would cover the glass: draw it fully transparent
             auto d2  = data;
@@ -748,7 +810,7 @@ static std::string onCommand(eHyprCtlOutputFormat, std::string request) {
     if (verb == "pointer-policy" || verb == "pointer-confine" || verb == "pointer-refocus" || verb == "pointer-follow" || verb == "input-age")
         return pointerCommand(verb, in);
     if (verb == "ping")
-        return pointerReady() ? "tessera-glass 5 shadow" : "tessera-glass 2 shadow";
+        return pointerReady() ? "tessera-glass 6 shadow blur" : "tessera-glass 2 shadow blur";
     if (verb == "frametimes") {
         std::string arg;
         in >> arg;

@@ -135,6 +135,7 @@ Singleton {
                 property real glassRefraction: 1 // how far in from the edge the bending reaches (0.4 .. 2)
                 property real glassDispersion: 0.35 // colour fringes at the rim (0 none .. 1)
                 property real glassWindowFrost: 0.75 // extra frost where glass covers a window (0 off .. 1), drawn by the plugin
+                property real glassBlur: 6 // frost: how much the glass blurs what's behind, px (4 .. 12); the plugin blurs, then bends
                 property string glassDepth: "auto" // thin | depth | auto (thick lens on small controls)
                 property bool wallpaperTint: true
                 property bool screenCorners: true

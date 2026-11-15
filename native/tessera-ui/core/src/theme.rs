@@ -182,6 +182,9 @@ pub struct GlassMaterial {
     pub name: String,
     pub lens: f32,
     pub frost: f32,
+    /// the frost's blur, logical px (appearance.glassBlur, 4..12): one blur
+    /// for every material, the plugin's own, bent by the lens
+    pub blur: f32,
     pub solid: f32,
     pub tint_amount: f32,
     /// thin | depth | auto (thick on small controls)
@@ -204,6 +207,7 @@ pub struct GlassPreset {
     pub refraction: f32,
     pub depth: f32,
     pub bevel: f32,
+    /// the blur, logical px (the plugin's sigma; 0 none)
     pub frost: f32,
     pub chroma: f32,
     pub rim: f32,
@@ -250,29 +254,31 @@ impl GlassMaterial {
     }
     /// Theme.glass.preset(minSide)
     pub fn preset(&self, min_side: f32) -> GlassPreset {
-        let (l, f, s) = (self.lens, self.frost, self.solid);
+        let (l, s) = (self.lens, self.solid);
         let thick = self.depth == "depth" || (self.depth == "auto" && min_side <= 140.0);
         if s >= 0.99 {
             return GlassPreset { mode: 2.0, refraction: 0.0, depth: 0.0, bevel: 8.0, frost: 0.0, chroma: 0.0, rim: 0.0, gloss: 0.0, tint: self.solid_color, saturation: 1.0 };
         }
-        let ta = self.tint_amount;
-        let k = 0.3 + 1.4 * ta;
-        let alpha = |c: [f32; 4], a: f32| [c[0], c[1], c[2], a];
-        let clear = alpha(self.tint, (if self.dark { 0.16 } else { 0.18 } * k).min(0.9));
-        let frost = alpha(self.frost_color, (if self.dark { 0.38 } else { 0.45 } * (0.6 + 0.8 * ta)).min(0.9));
-        let body = mixc(clear, frost, f);
-        let t = mixc(body, alpha(self.solid_color, 1.0), ((s - body[3]) / (1.0 - body[3]).max(0.01)).max(0.0));
+        // The tint: the glass's own colour over the blurred picture, two
+        // thirds of the Tint amount (the default 0.75: half), with the
+        // picture lifted 5% under it (folded into the colour: mix(c + l, t,
+        // a) = mix(c, t + l·(1 − a)/a, a)); then toward solid
+        let a = (self.tint_amount * 2.0 / 3.0).clamp(0.05, 0.9);
+        let lift = 0.05 * (1.0 - a) / a;
+        let body = [(self.tint[0] + lift).min(1.0), (self.tint[1] + lift).min(1.0), (self.tint[2] + lift).min(1.0), a];
+        let solid = [self.solid_color[0], self.solid_color[1], self.solid_color[2], 1.0];
+        let t = mixc(body, solid, ((s - body[3]) / (1.0 - body[3]).max(0.01)).max(0.0));
         GlassPreset {
             mode: 0.0,
-            refraction: if thick { 30.0 } else { 22.0 } * l * self.bend,
+            refraction: if thick { 55.0 } else { 40.0 } * l * self.bend,
             depth: if thick { 0.55 } else { 0.0 } * l * self.bend.min(1.5),
-            bevel: if thick { 26.0 } else { 18.0 } * (0.5 + 0.5 * l) * self.band,
-            frost: f,
+            bevel: if thick { 34.0 } else { 24.0 } * (0.5 + 0.5 * l) * self.band,
+            frost: self.blur,
             chroma: if thick { 0.28 } else { 0.18 } * l * self.dispersion,
             rim: if self.material_look { 0.0 } else { (0.12 + 0.16 * l) * (1.0 - s) },
             gloss: self.gloss(),
             tint: t,
-            saturation: 1.35 + 0.15 * f - 0.5 * s,
+            saturation: 1.15 - 0.5 * s,
         }
     }
 }
@@ -344,6 +350,7 @@ pub fn glass_material(v: &Value, material: bool, dark: bool, transparency: f32, 
         name: name.to_string(),
         lens,
         frost,
+        blur: glass_blur(a),
         solid,
         tint_amount,
         depth: a["glassDepth"].as_str().unwrap_or("auto").to_string(),
@@ -356,6 +363,11 @@ pub fn glass_material(v: &Value, material: bool, dark: bool, transparency: f32, 
         band: num("glassRefraction", 1.0).clamp(0.4, 2.0),
         dispersion: num("glassDispersion", 0.35).clamp(0.0, 1.0) / 0.35,
     }
+}
+
+/// The frost's blur (appearance.glassBlur), logical px: 4..12, 6 by default
+pub fn glass_blur(appearance: &Value) -> f32 {
+    appearance["glassBlur"].as_f64().map_or(6.0, |v| v as f32).clamp(4.0, 12.0)
 }
 
 /// Theme.qml's accents, by name (blue when unknown)
@@ -1171,9 +1183,16 @@ mod tests {
                 }
                 continue;
             }
+            // (since 15 Nov the frost is the plugin's own blur in px, the
+            // lens is stronger and the tint plain: refraction, bevel, frost,
+            // tint and saturation are Rust's own, glass_settings_give_…)
             for (i, (g, w)) in got.iter().zip(&want).enumerate() {
+                if [6, 8, 9, 12, 13, 14, 15, 16].contains(&i) {
+                    continue;
+                }
                 assert!((g - w).abs() <= 2e-4 * w.abs().max(1.0), "value {i}: {g} against the shell's {w} in {c}");
             }
+            assert!((4.0..=12.0).contains(&got[9]), "{c}");
         }
         // (every material and tier came up)
         for m in ["liquid/liquid", "frosted/frosted", "solid/solid", "veil/frosted"] {
@@ -1182,19 +1201,25 @@ mod tests {
         assert!(seen.iter().any(|m| m.starts_with("custom/")), "{seen:?}");
     }
 
-    /// Fixed numbers from Theme.qml's formulas (glass_golden.js's output, kept
-    /// here so the check runs without node): the default Frosted bar, Custom
-    /// with water's IOR and the wallpaper's tint, and Liquid's thin depth with
-    /// a narrow refraction band at a menu's lens
+    /// The glass's numbers (15 Nov: one blur, then the lens): the default
+    /// Frosted bar, Custom as the user tuned it (IOR 2, refraction 2, tint
+    /// 0.75: bend 60 px, band 48 px under a 60 px radius, a 6 px blur, half
+    /// tint, colour ×1.15), and Liquid's thin depth at a menu's lens
     #[test]
     fn glass_settings_give_the_shells_numbers() {
+        let mine = glass_shape(
+            &look_with(&json!({"appearance": {"look": "glass", "mode": "dark", "glass": "custom", "glassLens": 1, "glassFrost": 0.25, "glassSolid": 0, "glassTint": 0.75, "glassIor": 2, "glassRefraction": 2, "glassDepth": "thin"}}), None, none, &shell_glass_from(&json!({"cooldown": "keep"}))),
+            0.0, 0.0, 400.0, 300.0, 60.0, 1.0, 1.0,
+        );
+        assert!((mine[6] - 60.0).abs() < 1e-3 && (mine[8] - 48.0).abs() < 1e-3, "{mine:?}");
+        assert!((mine[9] - 6.0).abs() < 1e-6 && (mine[15] - 0.5).abs() < 1e-6 && (mine[16] - 1.15).abs() < 1e-6, "{mine:?}");
         let cases = [
             (json!({}), "#3366cc", (12.0, 30.0, 640.0, 40.0, 0.0, 0.8, 1.0),
-             [12.0, 30.0, 640.0, 40.0, 0.0, 0.0, 9.0, 0.165, 0.0, 1.0, 0.084, 0.0924, 0.11441215, 0.11441215, 0.13392844, 0.45000381, 1.275, 0.8, 0.02475]),
-            (json!({"glass": "custom", "glassLens": 1, "glassFrost": 0.25, "glassSolid": 0, "glassTint": 1, "glassIor": 1.33}), "#8a5a3c", (12.0, 30.0, 640.0, 40.0, 0.0, 0.8, 1.0),
-             [12.0, 30.0, 640.0, 40.0, 0.0, 0.0, 22.330827, 0.4093985, 0.0, 0.25, 0.28, 0.28, 0.12210269, 0.10797284, 0.11766232, 0.33701076, 1.3875, 0.8, 0.7875]),
-            (json!({"glass": "liquid", "glassLens": 0.3, "glassFrost": 0, "glassSolid": 1, "glassTint": 0.45, "glassIor": 1.2, "glassRefraction": 0.4, "glassDispersion": 0.35, "glassDepth": "thin", "wallpaperTint": false}), "#808080", (8.701146, 50.0, 141.0, 400.0, 28.0, 1.0, 0.35),
-             [8.701146, 50.0, 141.0, 400.0, 28.0, 0.0, 3.85, 0.0, 7.2, 0.75, 0.063, 0.28, 0.10251011, 0.10251011, 0.12251469, 0.39600214, 1.4625, 1.0, 0.3625]),
+             [12.0, 30.0, 640.0, 40.0, 0.0, 0.0, 16.5, 0.165, 0.0, 6.0, 0.084, 0.0924]),
+            (json!({"glass": "custom", "glassLens": 1, "glassFrost": 0.25, "glassSolid": 0, "glassTint": 1, "glassIor": 1.33, "glassBlur": 9}), "#8a5a3c", (12.0, 30.0, 640.0, 40.0, 0.0, 0.8, 1.0),
+             [12.0, 30.0, 640.0, 40.0, 0.0, 0.0, 40.93985, 0.4093985, 0.0, 9.0, 0.28, 0.28]),
+            (json!({"glass": "liquid", "glassLens": 0.3, "glassFrost": 0, "glassSolid": 1, "glassTint": 0.45, "glassIor": 1.2, "glassRefraction": 0.4, "glassDispersion": 0.35, "glassDepth": "thin", "wallpaperTint": false, "glassBlur": 40}), "#808080", (8.701146, 50.0, 141.0, 400.0, 28.0, 1.0, 0.35),
+             [8.701146, 50.0, 141.0, 400.0, 28.0, 0.0, 7.0, 0.0, 9.6, 12.0, 0.063, 0.28]),
         ];
         for (appearance, tone, (x, y, w, h, r, o, lens), want) in cases {
             let mut v = json!({"appearance": appearance});
@@ -1203,7 +1228,7 @@ mod tests {
             let shell = shell_glass_from(&json!({"tone": tone, "cooldown": "keep"}));
             let got = glass_shape(&look_with(&v, None, none, &shell), x, y, w, h, r, o, lens);
             for (i, (g, w)) in got.iter().zip(want.iter()).enumerate() {
-                assert!((g - w).abs() <= 2e-4 * w.abs().max(1.0), "value {i}: {g} against Theme.qml's {w} for {v}");
+                assert!((g - w).abs() <= 2e-4 * w.abs().max(1.0), "value {i}: {g} against {w} for {v}");
             }
         }
         // Reduce transparency and Cool-down's solid glass both make it solid

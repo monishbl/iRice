@@ -136,7 +136,9 @@ impl Appearance {
     /// GlassPlugin.qml's window frost and what is known of the plugin: its
     /// version (2+: gloss, 3 and 4: see mouse.rs) in the state `glass`
     fn glass_plugin(&mut self, h: &mut Host) {
-        let frost = cfg_num(h.cfg(), "appearance.glassWindowFrost", 0.75).clamp(0.0, 1.0) as f32;
+        // (frost is one blur everywhere now: the plugin is told none extra
+        // over windows, so an older plugin build matches too)
+        let frost = 0.0f32;
         let ok = h.st.shell.plugin;
         if ok && self.frost_sent != Some(frost) {
             h.st.shell.glass.window_frost(frost);

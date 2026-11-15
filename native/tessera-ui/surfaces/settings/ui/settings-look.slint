@@ -854,8 +854,8 @@ component AdvancedSlider inherits VerticalLayout {
     in property <SOpt> o;
     in property <string> aid;
     // (ranges: pages/look/appearance.rs ADVANCED, by index)
-    property <float> from: o.style == 4 ? 1 : o.style == 5 ? 0.4 : 0;
-    property <float> to: o.style == 3 || o.style == 4 || o.style == 5 ? 2 : 1;
+    property <float> from: o.style == 1 ? 4 : o.style == 4 ? 1 : o.style == 5 ? 0.4 : 0;
+    property <float> to: o.style == 1 ? 12 : o.style == 3 || o.style == 4 || o.style == 5 ? 2 : 1;
     width: 268px;
     spacing: 4px;
     HorizontalLayout {
