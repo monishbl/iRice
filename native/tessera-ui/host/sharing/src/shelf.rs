@@ -431,8 +431,8 @@ impl Sharing {
                 .map(|a| {
                     a.iter()
                         .map(|m| {
-                            let scale = m["scale"].as_f64().filter(|s| *s > 0.0).unwrap_or(1.0);
-                            Mon { name: js(&m["name"]), x: m["x"].as_f64().unwrap_or(0.0), y: m["y"].as_f64().unwrap_or(0.0), w: m["width"].as_f64().unwrap_or(0.0) / scale, h: m["height"].as_f64().unwrap_or(0.0) / scale }
+                            let (w, h) = tessera_core::services::clients::logical_of(m);
+                            Mon { name: js(&m["name"]), x: m["x"].as_f64().unwrap_or(0.0), y: m["y"].as_f64().unwrap_or(0.0), w, h }
                         })
                         .collect()
                 })

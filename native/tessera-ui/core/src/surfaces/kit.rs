@@ -17,6 +17,35 @@ pub fn screen_size(st: &State, output: &WlOutput) -> (f32, f32) {
     ((w / s).max(1) as f32, (h / s).max(1) as f32)
 }
 
+/// A screen's size in logical px by its name, the focused one for "" (where
+/// Hyprland opens a new window); None before any output is known
+pub fn screen_named(st: &State, name: &str) -> Option<(f32, f32)> {
+    let focused = || st.shell.get::<crate::services::hypr::Snapshot>().map(|s| s.focused.clone()).unwrap_or_default();
+    let name = if name.is_empty() { focused() } else { name.to_string() };
+    let o = st.output_named(&name).or_else(|| st.outputs_now().into_iter().next().map(|(o, _)| o))?;
+    Some(screen_size(st, &o))
+}
+
+/// A regular window's size on a screen of `screen` logical px: as asked,
+/// made smaller to stay whole on a small or portrait screen (below the menu
+/// bar, clear of the edges), never under 480×360
+pub fn fit_window(size: (u32, u32), screen: (f32, f32)) -> (u32, u32) {
+    let w = (size.0 as f32).min(screen.0 - 48.0).max(480.0);
+    let h = (size.1 as f32).min(screen.1 - 96.0).max(360.0);
+    (w.round() as u32, h.round() as u32)
+}
+
+/// An output's size in its own pixels, as the screen shows them (the mode,
+/// turned for a rotated output): what a full-screen picture is decoded at
+pub fn pixel_size(st: &State, output: &WlOutput) -> Option<(u32, u32)> {
+    use smithay_client_toolkit::reexports::client::protocol::wl_output::Transform;
+    let info = st.outputs.info(output)?;
+    let (w, h) = info.modes.iter().find(|m| m.current)?.dimensions;
+    let turned = matches!(info.transform, Transform::_90 | Transform::_270 | Transform::Flipped90 | Transform::Flipped270);
+    let (w, h) = if turned { (h, w) } else { (w, h) };
+    Some((w.max(1) as u32, h.max(1) as u32))
+}
+
 /// A Phosphor icon by the shell's name, and the Material Symbol the Material
 /// look draws in its place (Icon.qml): (phosphor, symbol). A surface turns
 /// it into its own Slint `Gl` (@tessera/small-icons.slint) with `gl_fn!`

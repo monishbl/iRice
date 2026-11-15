@@ -274,8 +274,7 @@ impl LookCover {
     /// A backdrop for this output, decoded off the UI thread at its size
     fn backdrop(&self, st: &State, output: &WlOutput, name: &str) {
         let Some(path) = self.look.backdrops.get(name).cloned() else { return };
-        let size = st.outputs.info(output).and_then(|i| i.modes.iter().find(|m| m.current).map(|m| m.dimensions)).unwrap_or((3840, 2160));
-        let (w, h) = (size.0.max(1) as u32, size.1.max(1) as u32);
+        let (w, h) = tessera_core::surfaces::kit::pixel_size(st, output).unwrap_or((3840, 2160));
         let tx = st.tx.clone();
         let name = name.to_string();
         std::thread::spawn(move || {

@@ -290,8 +290,14 @@ impl Settings {
 
     // ── The window ──────────────────────────────────────────────────────
 
+    /// The window's size on the screen it opens on (the focused one when none is named)
+    fn fitted(st: &State, name: &str) -> (u32, u32) {
+        let screen = tessera_core::surfaces::kit::screen_named(st, name).unwrap_or((1920.0, 1080.0));
+        tessera_core::surfaces::kit::fit_window(window_size(st.shell.look.material), screen)
+    }
+
     fn make_window(&mut self, st: &mut State, name: &str) {
-        let size = window_size(st.shell.look.material);
+        let size = Self::fitted(st, name);
         // (a regular window, an xdg toplevel: the compositor places, stacks
         // and resizes it, as the QML's FloatingWindow)
         let surface = st.prepare_window(WindowSpec {
@@ -509,13 +515,9 @@ impl Settings {
         }
     }
 
-    fn screen_size(st: &State, output: &str) -> (f32, f32) {
-        st.output_named(output).and_then(|o| st.outputs.info(&o)).and_then(|i| i.logical_size).map_or((1920.0, 1080.0), |s| (s.0 as f32, s.1 as f32))
-    }
-
     fn open(&mut self, st: &mut State, screen: Option<&str>, page: &str, target: &str) {
         let name = screen.filter(|s| !s.is_empty()).map(String::from).or_else(|| self.win.as_ref().map(|w| w.output.clone())).unwrap_or_default();
-        let size = window_size(st.shell.look.material);
+        let size = Self::fitted(st, &name);
         if self.win.as_ref().is_some_and(|w| w.output != name || w.size != size) {
             self.drop_window(st);
         }
@@ -1118,7 +1120,7 @@ impl Part for Settings {
             if let Some(w) = &self.win {
                 st.shell.apply_theme(&w.ui.global::<ui::Theme>());
             }
-            if self.win.as_ref().is_some_and(|w| w.size != window_size(st.shell.look.material)) {
+            if self.win.as_ref().is_some_and(|w| w.size != Self::fitted(st, out.as_deref().unwrap_or(""))) {
                 self.open = false;
                 self.drop_window(st);
                 if was {
@@ -1237,6 +1239,11 @@ mod tests {
     fn the_window_sits_centred_and_stays_on_screen() {
         assert_eq!(window_size(false), (860, 620));
         assert_eq!(window_size(true), (1040, 700));
+        // (a 1280×720 laptop at 1.5, a portrait 1080×1920 at 1.5: smaller, on screen)
+        use tessera_core::surfaces::kit::fit_window;
+        assert_eq!(fit_window((1040, 700), (1280.0, 720.0)), (1040, 624));
+        assert_eq!(fit_window((860, 620), (720.0, 1280.0)), (672, 620));
+        assert_eq!(fit_window((860, 620), (1920.0, 1080.0)), (860, 620));
         assert_eq!(place(1920.0, 1080.0, 860.0, 620.0, None), (530.0, 230.0));
         assert_eq!(place(1920.0, 1080.0, 860.0, 620.0, Some((-50.0, 2000.0))), (0.0, 460.0));
     }

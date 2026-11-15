@@ -205,7 +205,11 @@ impl Surface {
     }
     fn physical(&self) -> PhysicalSize {
         let (w, h) = self.logical.get();
-        LogicalSize::new(w as f32, h as f32).to_physical(self.scale.get())
+        // (rounded, as wp_fractional_scale asks: Slint's to_physical cuts, and
+        // a buffer a pixel short of the viewport is stretched into it, blurring
+        // the whole surface at 1.25 or 1.75)
+        let s = self.scale.get();
+        PhysicalSize::new((w as f32 * s).round() as u32, (h as f32 * s).round() as u32)
     }
     /// The compositor's size and scale reached us: tell Slint
     fn apply_geometry(&self) {

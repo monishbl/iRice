@@ -212,12 +212,15 @@ impl AppStore {
         // (logos the feed couldn't find: the icon theme by name)
         st.shell.want("icons");
         let m = Self::material(st);
+        // (smaller on a small or portrait screen, its minimum too, so it fits whole)
+        let screen = tessera_core::surfaces::kit::screen_named(st, "").unwrap_or((1920.0, 1080.0));
+        let fit = |s: (u32, u32)| tessera_core::surfaces::kit::fit_window(s, screen);
         let surface = st.prepare_window(WindowSpec {
             title: "Software",
             app_id: "tessera-appstore",
             namespace: NS,
-            size: if m { (1040, 720) } else { (980, 660) },
-            min_size: if m { (820, 640) } else { (760, 500) },
+            size: fit(if m { (1040, 720) } else { (980, 660) }),
+            min_size: fit(if m { (820, 640) } else { (760, 500) }),
         });
         let ui = ui::AppStoreWindow::new().expect("AppStoreWindow");
         st.shell.apply_theme(&ui.global::<ui::Theme>());

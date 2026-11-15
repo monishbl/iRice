@@ -52,6 +52,9 @@ pub struct Monitor {
     /// left, top, right, bottom
     #[serde(default)]
     pub reserved: [i32; 4],
+    /// wl_output's: odd ones are turned a quarter (a portrait screen)
+    #[serde(default)]
+    pub transform: i32,
 }
 
 fn one() -> f64 {
@@ -72,8 +75,9 @@ pub fn area(m: &Monitor, gap_out: f64) -> Rect {
     let r = m.reserved;
     let (x, y) = ((m.x + r[0]) as f64, (m.y + r[1]) as f64);
     let s = if m.scale > 0.0 { m.scale } else { 1.0 };
-    let w = m.width as f64 / s - (r[0] + r[2]) as f64;
-    let h = m.height as f64 / s - (r[1] + r[3]) as f64;
+    let (mw, mh) = if m.transform % 2 == 1 { (m.height, m.width) } else { (m.width, m.height) };
+    let w = mw as f64 / s - (r[0] + r[2]) as f64;
+    let h = mh as f64 / s - (r[1] + r[3]) as f64;
     Rect { x: x + gap_out, y: y + gap_out, w: w - 2.0 * gap_out, h: h - 2.0 * gap_out }
 }
 
@@ -114,7 +118,7 @@ mod tests {
     use serde_json::json;
 
     fn mon() -> Monitor {
-        Monitor { name: "DP-1".into(), x: 1920, y: 0, width: 3840, height: 2160, scale: 2.0, reserved: [0, 40, 0, 0] }
+        Monitor { name: "DP-1".into(), x: 1920, y: 0, width: 3840, height: 2160, scale: 2.0, reserved: [0, 40, 0, 0], transform: 0 }
     }
 
     #[test]

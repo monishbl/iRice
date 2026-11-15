@@ -94,6 +94,18 @@ fn one() -> f32 {
     1.0
 }
 
+/// A raw `j/monitors` entry's size in layout (logical) pixels: its mode over
+/// its scale, turned for a rotated output (the mode is the panel's own way up)
+pub fn logical_of(m: &serde_json::Value) -> (f64, f64) {
+    let s = m["scale"].as_f64().filter(|s| *s > 0.0).unwrap_or(1.0);
+    let (w, h) = (m["width"].as_f64().unwrap_or(0.0) / s, m["height"].as_f64().unwrap_or(0.0) / s);
+    if m["transform"].as_i64().unwrap_or(0) % 2 == 1 {
+        (h, w)
+    } else {
+        (w, h)
+    }
+}
+
 impl Monitor {
     /// Its size in layout (logical) pixels
     pub fn logical(&self) -> (f32, f32) {

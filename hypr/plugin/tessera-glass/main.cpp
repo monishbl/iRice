@@ -12,11 +12,12 @@
 //
 // hyprctl tessera-glass set <monitor> <namespace> <n> [<16 floats per shape>...]
 // hyprctl tessera-glass clear [<monitor> <namespace>]
-// hyprctl tessera-glass ping            -> "tessera-glass 6 shadow blur" (2: gloss; 3: pointer boundaries;
+// hyprctl tessera-glass ping            -> "tessera-glass 6 shadow blur turned" (2: gloss; 3: pointer boundaries;
 //                                       4: pointer-follow, input-age; 5: glass fades
 //                                       with its layer; 6: its own blur; "shadow": a shape
 //                                       may carry a drop shadow, two more numbers; "blur":
-//                                       frost is a blur in px, not a 0..1 crossfade)
+//                                       frost is a blur in px, not a 0..1 crossfade;
+//                                       "turned": draws on rotated/flipped outputs too)
 // hyprctl tessera-glass pointer-follow <0|1> (hover focus: windows brought forward take the pointer)
 // hyprctl tessera-glass input-age       -> ms since the last key or button press
 // hyprctl tessera-glass pointer-policy <0..2> <corner px>
@@ -106,9 +107,9 @@ struct SCopyTarget {
 };
 static std::map<std::pair<int, int>, SCopyTarget> g_copyTargets;
 static GLuint g_shadowProg = 0;
-static GLint  us_rect, us_radius, us_margin, us_strength;
+static GLint  us_rect, us_radius, us_margin, us_strength, us_view;
 static GLint  u_sharp, u_blurred, u_fbSize, u_rect, u_copyRect, u_radius, u_mode, u_refraction, u_depth, u_bevel, u_frost, u_chroma, u_rim, u_tint, u_saturation,
-    u_opacity, u_solid, u_hasBlur, u_gloss;
+    u_opacity, u_solid, u_hasBlur, u_gloss, u_view;
 
 static const char* kVert = R"(#version 300 es
 precision highp float;
@@ -127,6 +128,7 @@ uniform vec4  rect;          // glass rect: x, y, w, h (FB pixels, top-down rows
 uniform vec4  copyRect;      // area of `sharp` that holds valid pixels
 uniform float radius, mode, refraction, depth, bevel, frost, chroma, rim, saturation, opacity, hasBlur, gloss;
 uniform vec4  tint, solidColor;
+uniform mat2  view;          // FB offsets to the screen as seen (a rotated or flipped output)
 out vec4 fragColor;
 
 float sdRoundBox(vec2 p, vec2 b, float r) {
@@ -161,10 +163,12 @@ vec3 samplePic(vec2 px) {
 
 void main() {
     vec2 px = gl_FragCoord.xy;
-    vec2 hb = rect.zw * 0.5;
-    vec2 c = rect.xy + hb;
+    vec2 c = rect.xy + rect.zw * 0.5;
+    // the shape and its light as seen on the screen: on a rotated output the
+    // FB is turned under it (`view` is the identity on a normal one)
+    vec2 hb = abs(view * (rect.zw * 0.5));
     float r = min(radius, min(hb.x, hb.y));
-    vec2 p = px - c;
+    vec2 p = view * (px - c);
     float d = sdRoundBox(p, hb, r);
     float cov = clamp(0.5 - d, 0.0, 1.0); // antialiased edge
     if (cov <= 0.0)
@@ -174,6 +178,7 @@ void main() {
     vec2 e = vec2(0.75, 0.0);
     vec2 n = vec2(sdRoundBox(p + e.xy, hb, r) - sdRoundBox(p - e.xy, hb, r), sdRoundBox(p + e.yx, hb, r) - sdRoundBox(p - e.yx, hb, r));
     n = length(n) > 1e-4 ? normalize(n) : vec2(0.0);
+    vec2 nf = transpose(view) * n; // the normal in FB pixels, for sampling
     float inside = -d;
 
     vec3 col;
@@ -183,14 +188,14 @@ void main() {
     if (mode < 1.5) {
         // Lens: the rim samples from just outside the shape (light folds in);
         // depth adds a thick-lens magnification towards the centre
-        vec2 sp = px + n * refraction * rimBend;
+        vec2 sp = px + nf * refraction * rimBend;
         sp += (c - px) * depth * 0.14 * (1.0 - rimBend * 0.6);
         // One picture: what's behind, blurred `frost` px (the plugin's own
         // blur of its copy), bent by the lens; no blurred and sharp copies
         // crossfaded (that showed text behind as a ghost, and the band a
         // squeezed sharp copy of what lies just outside)
         if (chroma > 0.0) {
-            vec2 off = n * refraction * rimBend * chroma * 0.4;
+            vec2 off = nf * refraction * rimBend * chroma * 0.4;
             col = vec3(samplePic(sp + off).r, samplePic(sp).g, samplePic(sp - off).b);
         } else {
             col = samplePic(sp);
@@ -217,7 +222,7 @@ void main() {
     col += rim * gloss * band * (key * 0.55 + back);
     col += rim * gloss * 0.08 * (1.0 - t) * max(facing, 0.0);
     // Sheen across the top, as if the surface catches the sky
-    float yIn = clamp((px.y - (c.y - hb.y)) / max(rect.w, 1.0), 0.0, 1.0);
+    float yIn = clamp((p.y + hb.y) / max(hb.y * 2.0, 1.0), 0.0, 1.0);
     col += rim * gloss * 0.04 * pow(1.0 - yIn, 4.0);
     // Inner shadow along the bottom edge gives it thickness
     col *= 1.0 - rim * gloss * 0.12 * band * max(n.y, 0.0) * (1.0 - key);
@@ -240,6 +245,7 @@ static const char* kShadowFrag = R"(#version 300 es
 precision highp float;
 uniform vec4  rect;
 uniform float radius, margin, strength;
+uniform mat2  view;
 out vec4 fragColor;
 
 float sdRoundBox(vec2 p, vec2 b, float r) {
@@ -255,8 +261,8 @@ float sdRoundBox(vec2 p, vec2 b, float r) {
 
 void main() {
     vec2 px = gl_FragCoord.xy;
-    vec2 hb = rect.zw * 0.5;
-    vec2 p = px - (rect.xy + hb);
+    vec2 hb = abs(view * (rect.zw * 0.5));
+    vec2 p = view * (px - (rect.xy + rect.zw * 0.5));
     float r = min(radius, min(hb.x, hb.y));
     float cov = clamp(0.5 - sdRoundBox(p, hb, r), 0.0, 1.0);
     float sd = sdRoundBox(p - vec2(0.0, margin * 0.2), hb, r);
@@ -350,6 +356,7 @@ static bool ensureProgram() {
     U(saturation);
     U(opacity);
     u_solid = glGetUniformLocation(g_prog, "solidColor");
+    u_view  = glGetUniformLocation(g_prog, "view");
     U(hasBlur);
     U(gloss);
 #undef U
@@ -370,6 +377,7 @@ static bool ensureProgram() {
             us_radius   = glGetUniformLocation(g_shadowProg, "radius");
             us_margin   = glGetUniformLocation(g_shadowProg, "margin");
             us_strength = glGetUniformLocation(g_shadowProg, "strength");
+            us_view     = glGetUniformLocation(g_shadowProg, "view");
         }
     }
     if (vs2)
@@ -491,6 +499,48 @@ struct SGLState {
     }
 };
 
+// A rotated or flipped output: Hyprland draws its layers into a framebuffer
+// turned under the screen. The shapes (and the damage) come in the screen's
+// own pixels, as seen; the FB needs them turned, as Hyprland's scissor does.
+struct SOrient {
+    bool       turned = false;
+    eTransform tr     = HYPRUTILS_TRANSFORM_NORMAL;
+    double     tw = 0, th = 0;
+    // FB offsets to screen offsets, column-major (the shaders' `view`)
+    float view[4] = {1.f, 0.f, 0.f, 1.f};
+    CBox  fb(CBox b) const {
+        if (turned)
+            b.transform(tr, tw, th);
+        return b;
+    }
+    void fb(CRegion& r) const {
+        if (turned)
+            r.transform(tr, tw, th);
+    }
+};
+static SOrient orientOf(PHLMONITOR mon) {
+    SOrient o;
+    if (mon->m_transform == WL_OUTPUT_TRANSFORM_NORMAL || !g_pHyprRenderer->monitorTransformEnabled())
+        return o;
+    o.turned = true;
+    o.tr     = Math::wlTransformToHyprutils(Math::invertTransform(mon->m_transform));
+    o.tw     = mon->m_transformedSize.x;
+    o.th     = mon->m_transformedSize.y;
+    // where the screen's x and y axes go in the FB; its inverse (an exact
+    // turn or flip) is the transpose
+    auto pt = [&](double x, double y) {
+        CBox b{x, y, 0, 0};
+        b.transform(o.tr, o.tw, o.th);
+        return Vector2D{b.x, b.y};
+    };
+    const auto p0 = pt(0, 0), ex = pt(1, 0) - p0, ey = pt(0, 1) - p0;
+    o.view[0] = ex.x;
+    o.view[1] = ey.x;
+    o.view[2] = ex.y;
+    o.view[3] = ey.y;
+    return o;
+}
+
 static bool          g_lastBlur = false;
 static unsigned long g_blits = 0, g_blitPx = 0;
 static void drawGlass(const std::vector<SShape>& shapes, const CBox& box, const CHyprOpenGLImpl::STextureRenderData& data, PHLMONITOR mon, float fade) {
@@ -504,6 +554,7 @@ static void drawGlass(const std::vector<SShape>& shapes, const CBox& box, const 
     const float scale = mon->m_scale;
     if (fbW <= 0 || fbH <= 0)
         return;
+    const SOrient orient = orientOf(mon);
 
     SGLState st;
     st.save();
@@ -539,12 +590,15 @@ static void drawGlass(const std::vector<SShape>& shapes, const CBox& box, const 
             continue;
         // Shape in FB pixels. Hyprland's framebuffers are stored top-down, so
         // FB rows (and gl_FragCoord.y) already count from the top.
-        const float x = box.x + v[0] * scale, y = box.y + v[1] * scale, w = v[2] * scale, h = v[3] * scale;
-        CRegion     region(x - 1, y - 1, w + 2, h + 2);
+        const CBox seen{box.x + v[0] * scale, box.y + v[1] * scale, v[2] * scale, v[3] * scale};
+        CRegion    region(seen.x - 1, seen.y - 1, seen.w + 2, seen.h + 2);
         if (data.damage)
             region.intersect(*data.damage);
         if (region.empty())
             continue;
+        orient.fb(region);
+        const CBox  inFB = orient.fb(seen);
+        const float x = inFB.x, y = inFB.y, w = inFB.w, h = inFB.h;
         const int  margin = (int)std::ceil(v[6] * scale + 4 + v[7] * std::max(w, h) * 0.08f + sigma * 3.f);
         const auto ext    = region.getExtents(); // the part drawn, grown by how far it samples
         cx0 = std::min(cx0, std::max(0, (int)std::floor(ext.x) - margin));
@@ -565,13 +619,17 @@ static void drawGlass(const std::vector<SShape>& shapes, const CBox& box, const 
             const float* v = s.v;
             if (v[19] <= 0.001f || v[20] < 1.f || v[17] <= 0.001f || v[2] < 1 || v[3] < 1)
                 continue;
-            const float x = box.x + v[0] * scale, y = box.y + v[1] * scale, w = v[2] * scale, h = v[3] * scale, m = v[20] * scale;
-            CRegion     region(x - m, y - m, w + 2 * m, h + 2 * m + m * 0.2f);
+            const CBox  seen{box.x + v[0] * scale, box.y + v[1] * scale, v[2] * scale, v[3] * scale};
+            const float m = v[20] * scale;
+            CRegion     region(seen.x - m, seen.y - m, seen.w + 2 * m, seen.h + 2 * m + m * 0.2f);
             region.intersect(CRegion(box.x, box.y, box.w, box.h));
             if (data.damage)
                 region.intersect(*data.damage);
             if (region.empty())
                 continue;
+            orient.fb(region);
+            const CBox  inFB = orient.fb(seen);
+            const float x = inFB.x, y = inFB.y, w = inFB.w, h = inFB.h;
             if (!bound) {
                 glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fb->getFBID());
                 glViewport(0, 0, fbW, fbH);
@@ -581,6 +639,7 @@ static void drawGlass(const std::vector<SShape>& shapes, const CBox& box, const 
                 glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
                 glDisable(GL_STENCIL_TEST);
                 glEnable(GL_SCISSOR_TEST);
+                glUniformMatrix2fv(us_view, 1, GL_FALSE, orient.view);
                 bound = true;
             }
             glUniform4f(us_rect, x, y, w, h);
@@ -672,6 +731,7 @@ static void drawGlass(const std::vector<SShape>& shapes, const CBox& box, const 
         glUniform4f(u_solid, v[12], v[13], v[14], 1.0f);
         glUniform1f(u_hasBlur, blurTex ? 1.f : 0.f);
         glUniform1f(u_gloss, v[18]);
+        glUniformMatrix2fv(u_view, 1, GL_FALSE, orient.view);
         glEnable(GL_BLEND);
         glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
         glDisable(GL_STENCIL_TEST);
@@ -713,7 +773,7 @@ static void hkRenderTextureWithBlur(void* thisptr, SP<ITexture> tex, const CBox&
         g_lastBox = std::to_string((int)box.x) + "," + std::to_string((int)box.y) + " " + std::to_string((int)box.w) + "x" + std::to_string((int)box.h);
     }
     auto mon = g_pHyprRenderer->m_renderData.pMonitor.lock();
-    if (ls && mon && mon->m_transform == WL_OUTPUT_TRANSFORM_NORMAL) {
+    if (ls && mon) {
         auto it = g_shapes.find(mon->m_name + "\n" + ls->m_namespace);
         // The layer's own fade (Hyprland draws a Top layer under a fullscreen
         // window at alpha 0): the glass fades with it, so a hidden layer never
@@ -810,7 +870,7 @@ static std::string onCommand(eHyprCtlOutputFormat, std::string request) {
     if (verb == "pointer-policy" || verb == "pointer-confine" || verb == "pointer-refocus" || verb == "pointer-follow" || verb == "input-age")
         return pointerCommand(verb, in);
     if (verb == "ping")
-        return pointerReady() ? "tessera-glass 6 shadow blur" : "tessera-glass 2 shadow blur";
+        return pointerReady() ? "tessera-glass 6 shadow blur turned" : "tessera-glass 2 shadow blur turned";
     if (verb == "frametimes") {
         std::string arg;
         in >> arg;

@@ -317,8 +317,7 @@ impl WindowRules {
                     continue;
                 }
                 let mine: Vec<&Value> = clients.iter().filter(|c| c["workspace"]["id"].as_i64() == Some(ws) && c["mapped"] != false && c["fullscreen"].as_i64().unwrap_or(0) == 0 && c["pinned"] != true).collect();
-                let scale = m["scale"].as_f64().filter(|s| *s != 0.0).unwrap_or(1.0);
-                let (mw, mh) = (m["width"].as_f64().unwrap_or(0.0) / scale, m["height"].as_f64().unwrap_or(0.0) / scale);
+                let (mw, mh) = tessera_core::services::clients::logical_of(m);
                 if floating {
                     // Float the tiled ones, cascading from the centre at about two thirds of the screen
                     let (w, hh) = ((mw * 0.62).round(), (mh * 0.68).round());

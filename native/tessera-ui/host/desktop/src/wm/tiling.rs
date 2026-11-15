@@ -63,11 +63,11 @@ pub fn area(mon: Option<&Value>, gap_out: f64) -> Area {
     let m = mon.cloned().unwrap_or(Value::Null);
     let r: Vec<f64> = m["reserved"].as_array().map(|a| a.iter().map(|x| x.as_f64().unwrap_or(0.0)).collect()).unwrap_or_default();
     let r = |i: usize| r.get(i).copied().unwrap_or(0.0);
-    let scale = m["scale"].as_f64().filter(|s| *s > 0.0).unwrap_or(1.0);
     let x = m["x"].as_f64().unwrap_or(0.0) + r(0);
     let y = m["y"].as_f64().unwrap_or(0.0) + r(1);
-    let w = m["width"].as_f64().unwrap_or(1920.0) / scale - r(0) - r(2);
-    let h = m["height"].as_f64().unwrap_or(1080.0) / scale - r(1) - r(3);
+    let (mw, mh) = if m.is_null() { (1920.0, 1080.0) } else { tessera_core::services::clients::logical_of(&m) };
+    let w = mw - r(0) - r(2);
+    let h = mh - r(1) - r(3);
     Area { x: x + gap_out, y: y + gap_out, w: w - 2.0 * gap_out, h: h - 2.0 * gap_out }
 }
 
