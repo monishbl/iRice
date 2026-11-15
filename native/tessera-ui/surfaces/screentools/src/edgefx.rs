@@ -37,6 +37,21 @@ impl Style {
             _ => Style::Dots,
         }
     }
+    /// The style chosen, as this computer can draw it: a field of light is
+    /// worked out a pixel at a time on the CPU and uploaded 20 times a
+    /// second, too much where the GPU is the CPU too (llvmpipe): the plain
+    /// bands there (circle.slint's own, no pictures)
+    pub fn for_renderer(self, software: bool) -> Style {
+        if software {
+            Style::Bands
+        } else {
+            self
+        }
+    }
+    /// The setting's style on this computer (tessera_core::egl::software)
+    pub fn chosen(cfg: &str) -> Style {
+        Style::from_cfg(cfg).for_renderer(tessera_core::egl::software())
+    }
     /// The index circle.slint's `edge-style` takes (0: its own bands)
     pub fn index(self) -> i32 {
         match self {
@@ -529,6 +544,14 @@ fn perimeter(x: f32, y: f32, w: f32, h: f32, per: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_cpu_renderer_gets_the_plain_bands() {
+        assert_eq!(Style::from_cfg("siri").for_renderer(true), Style::Bands);
+        assert_eq!(Style::from_cfg("").for_renderer(true), Style::Bands);
+        assert_eq!(Style::from_cfg("siri").for_renderer(false), Style::Siri);
+        assert_eq!(Style::from_cfg("bands").for_renderer(false), Style::Bands);
+    }
 
     #[test]
     fn styles_from_config() {

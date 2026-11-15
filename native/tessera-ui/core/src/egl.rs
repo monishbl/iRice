@@ -36,12 +36,56 @@ type SwapWithDamage = unsafe extern "system" fn(egl::EGLDisplay, egl::EGLSurface
 /// EGL_BUFFER_AGE_EXT
 const BUFFER_AGE: egl::Int = 0x313D;
 
+/// GL_RENDERER, as the driver names itself, once a context was current
+static RENDERER: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+/// glGetString on the current context ("" when it can't say)
+fn gl_string(api: &egl::DynamicInstance<egl::EGL1_4>, what: u32) -> String {
+    type GetString = unsafe extern "system" fn(u32) -> *const std::ffi::c_char;
+    let Some(f) = api.get_proc_address("glGetString") else { return String::new() };
+    let f = unsafe { std::mem::transmute::<extern "system" fn(), GetString>(f) };
+    let p = unsafe { f(what) };
+    if p.is_null() {
+        return String::new();
+    }
+    unsafe { CStr::from_ptr(p) }.to_string_lossy().into_owned()
+}
+
+/// The GL renderer's name ("" until known: at start where the driver can
+/// make a context current without a surface, else once the first surface drew)
+pub fn renderer() -> &'static str {
+    RENDERER.get().map_or("", |s| s.as_str())
+}
+
+/// A renderer that draws on the CPU: Mesa's llvmpipe / softpipe (a VM, no
+/// GPU driver, LIBGL_ALWAYS_SOFTWARE), SwiftShader
+pub fn is_software_renderer(name: &str) -> bool {
+    let n = name.to_ascii_lowercase();
+    ["llvmpipe", "softpipe", "swrast", "swiftshader", "software rasterizer", "lavapipe"].iter().any(|k| n.contains(k))
+}
+
+/// Drawing on the CPU (or TESSERA_SOFTWARE_GL=1, to try it on a GPU): the
+/// heavy effects step down (Circle to Search's edge light draws its plain
+/// bands, glass a cheaper material), so the shell stays usable
+pub fn software() -> bool {
+    match crate::env::var("SOFTWARE_GL").as_deref() {
+        Some("1") => true,
+        Some("0") => false,
+        _ => is_software_renderer(renderer()),
+    }
+}
+
 impl Egl {
     pub fn new(wl_display: *mut c_void) -> Result<Rc<Self>, Box<dyn Error>> {
-        let api = unsafe { egl::DynamicInstance::<egl::EGL1_4>::load_required()? };
-        let display = unsafe { api.get_display(wl_display as egl::NativeDisplayType) }.ok_or("no EGL display")?;
-        api.initialize(display)?;
-        api.bind_api(egl::OPENGL_ES_API)?;
+        // (TESSERA_EGL_FAIL=1: as on a computer where EGL doesn't start, to
+        // test what happens then in the sandbox)
+        if crate::env::var("EGL_FAIL").as_deref() == Some("1") {
+            return Err("TESSERA_EGL_FAIL=1".into());
+        }
+        let api = unsafe { egl::DynamicInstance::<egl::EGL1_4>::load_required() }.map_err(|e| format!("libEGL not found ({e}): install Mesa (or the GPU driver's EGL)"))?;
+        let display = unsafe { api.get_display(wl_display as egl::NativeDisplayType) }.ok_or("no EGL display for Wayland")?;
+        api.initialize(display).map_err(|e| format!("eglInitialize: {e}"))?;
+        api.bind_api(egl::OPENGL_ES_API).map_err(|e| format!("no OpenGL ES: {e}"))?;
         #[rustfmt::skip]
         let attrs = [
             egl::SURFACE_TYPE, egl::WINDOW_BIT,
@@ -53,7 +97,8 @@ impl Egl {
         let config = api.choose_first_config(display, &attrs)?.ok_or("no RGBA8 EGL config")?;
         let context = api
             .create_context(display, config, None, &[egl::CONTEXT_CLIENT_VERSION, 3, egl::NONE])
-            .or_else(|_| api.create_context(display, config, None, &[egl::CONTEXT_CLIENT_VERSION, 2, egl::NONE]))?;
+            .or_else(|_| api.create_context(display, config, None, &[egl::CONTEXT_CLIENT_VERSION, 2, egl::NONE]))
+            .map_err(|e| format!("no OpenGL ES 2 or 3 context: {e}"))?;
         let extensions = api.query_string(Some(display), egl::EXTENSIONS).map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
         let has = |e: &str| extensions.split_ascii_whitespace().any(|x| x == e);
         let swap_with_damage = [("EGL_KHR_swap_buffers_with_damage", "eglSwapBuffersWithDamageKHR"), ("EGL_EXT_swap_buffers_with_damage", "eglSwapBuffersWithDamageEXT")]
@@ -62,6 +107,18 @@ impl Egl {
             .find_map(|(_, f)| api.get_proc_address(f))
             .map(|f| unsafe { std::mem::transmute::<extern "system" fn(), SwapWithDamage>(f) });
         let buffer_age = has("EGL_EXT_buffer_age") && swap_with_damage.is_some() && !crate::env::is_set("UI_FULL_REDRAW");
+        // (the renderer's name now, before the theme is worked out: a
+        // context current with no surface, where the driver allows it)
+        if has("EGL_KHR_surfaceless_context") && RENDERER.get().is_none() && api.make_current(display, None, None, Some(context)).is_ok() {
+            let name = gl_string(&api, 0x1F01);
+            let _ = api.make_current(display, None, None, None);
+            if !name.is_empty() {
+                if is_software_renderer(&name) {
+                    eprintln!("tessera-ui: drawing on the CPU ({name}): lighter effects");
+                }
+                let _ = RENDERER.set(name);
+            }
+        }
         if crate::env::is_set("DEBUG") {
             eprintln!("debug: egl: damage {} buffer age {}", swap_with_damage.is_some(), buffer_age);
         }
@@ -97,6 +154,10 @@ impl GlSurface {
             egl.api.create_window_surface(egl.display, egl.config, window.ptr() as egl::NativeWindowType, None)?
         };
         Ok(Self { egl, window, surface, interval_set: Cell::new(false), damage: Default::default(), frame: Default::default(), history: Default::default() })
+    }
+
+    fn gl_string(&self, what: u32) -> String {
+        gl_string(&self.egl.api, what)
     }
 
     /// The frame about to be drawn redraws only what changed in it and in the
@@ -156,7 +217,20 @@ unsafe impl slint::platform::femtovg_renderer::OpenGLInterface for GlSurface {
         e.api.make_current(e.display, Some(self.surface), Some(self.surface), Some(e.context))?;
         if !self.interval_set.replace(true) {
             // Never block in eglSwapBuffers: frames are paced by wl_surface.frame
-            e.api.swap_interval(e.display, 0)?;
+            // (a driver that can't, some NVIDIA ones on a layer surface: it
+            // paces itself, still drawing)
+            if let Err(err) = e.api.swap_interval(e.display, 0) {
+                if crate::env::is_set("DEBUG") {
+                    eprintln!("debug: egl: swap interval 0: {err}");
+                }
+            }
+            if RENDERER.get().is_none() {
+                let name = self.gl_string(0x1F01); // GL_RENDERER
+                if is_software_renderer(&name) {
+                    eprintln!("tessera-ui: drawing on the CPU ({name}): lighter effects");
+                }
+                let _ = RENDERER.set(name);
+            }
         }
         // (once per frame, as it begins: other calls make the context current too)
         if self.frame.replace(false) {
@@ -214,5 +288,16 @@ mod tests {
         // a frame that was all new in between: all
         assert_eq!(clip_for(Some([5, 5, 5, 5]), &h, 4), None);
         assert_eq!(clip_for(None, &h, 1), None);
+    }
+
+    #[test]
+    fn software_renderers_are_told_apart() {
+        assert!(is_software_renderer("llvmpipe (LLVM 19.1.7, 256 bits)"));
+        assert!(is_software_renderer("softpipe"));
+        assert!(is_software_renderer("Google SwiftShader"));
+        assert!(!is_software_renderer("Mesa Intel(R) Graphics (RPL-P)"));
+        assert!(!is_software_renderer("AMD Radeon 780M (radeonsi, gfx1103, LLVM 19.1.7, DRM 3.61)"));
+        assert!(!is_software_renderer("NVIDIA GeForce RTX 4060 Laptop GPU/PCIe/SSE2"));
+        assert!(!is_software_renderer(""));
     }
 }

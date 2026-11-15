@@ -36,8 +36,12 @@ fn watch<T: Send + Clone + PartialEq + 'static>(
     read: fn(&Connection) -> zbus::Result<T>,
     wrap: fn(T) -> Msg,
 ) {
+    // (a computer without the service, UPower or NetworkManager not
+    // installed: asked again less and less often, up to once a minute)
+    let mut wait = 5;
     std::thread::spawn(move || loop {
-        let run = || -> zbus::Result<()> {
+        let mut up = false;
+        let mut run = || -> zbus::Result<()> {
             let conn = Connection::system()?;
             let rule = MatchRule::builder()
                 .msg_type(zbus::message::Type::Signal)
@@ -49,6 +53,7 @@ fn watch<T: Send + Clone + PartialEq + 'static>(
             // (only what changed: NetworkManager and UPower signal often,
             // for properties these readings don't hold)
             let mut last = read(&conn)?;
+            up = true;
             tx.send(wrap(last.clone())).map_err(|_| zbus::Error::Failure("ui gone".into()))?;
             while signals.next().is_some() {
                 let now = read(&conn)?;
@@ -62,7 +67,8 @@ fn watch<T: Send + Clone + PartialEq + 'static>(
         if let Err(zbus::Error::Failure(_)) = run() {
             return;
         }
-        std::thread::sleep(Duration::from_secs(5));
+        wait = if up { 5 } else { (wait * 2).min(60) };
+        std::thread::sleep(Duration::from_secs(wait));
     });
 }
 
@@ -88,25 +94,50 @@ fn battery(conn: &Connection) -> zbus::Result<Battery> {
 
 const NM: &str = "org.freedesktop.NetworkManager";
 
+/// One Wi-Fi device's reading
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Radio {
+    pub connected: bool,
+    pub strength: u8,
+    pub ssid: String,
+}
+
+/// Several Wi-Fi devices (a built-in card and a USB stick): the connected
+/// one, the strongest of those; else the first. None: no Wi-Fi device.
+pub fn pick_radio(radios: &[Radio]) -> Option<&Radio> {
+    radios.iter().filter(|r| r.connected).max_by_key(|r| r.strength).or(radios.first())
+}
+
+fn radio(conn: &Connection, d: &OwnedObjectPath) -> zbus::Result<Option<Radio>> {
+    let dev = proxy(conn, d.as_str(), "org.freedesktop.NetworkManager.Device", NM)?;
+    if dev.get_property::<u32>("DeviceType")? != 2 {
+        return Ok(None); // not Wi-Fi
+    }
+    let w = proxy(conn, d.as_str(), "org.freedesktop.NetworkManager.Device.Wireless", NM)?;
+    let ap: OwnedObjectPath = w.get_property("ActiveAccessPoint")?;
+    let mut r = Radio::default();
+    if ap.as_str() != "/" {
+        // (the access point can go between two reads: still a device)
+        if let Ok(ap) = proxy(conn, ap.as_str(), "org.freedesktop.NetworkManager.AccessPoint", NM) {
+            if let (Ok(strength), Ok(ssid)) = (ap.get_property::<u8>("Strength"), ap.get_property::<Vec<u8>>("Ssid")) {
+                r = Radio { connected: true, strength, ssid: String::from_utf8_lossy(&ssid).into_owned() };
+            }
+        }
+    }
+    Ok(Some(r))
+}
+
 fn wifi(conn: &Connection) -> zbus::Result<Wifi> {
     let nm = proxy(conn, "/org/freedesktop/NetworkManager", "org.freedesktop.NetworkManager", NM)?;
     let mut out = Wifi { enabled: nm.get_property("WirelessEnabled")?, ..Default::default() };
     let devices: Vec<OwnedObjectPath> = nm.call("GetDevices", &())?;
-    for d in devices {
-        let dev = proxy(conn, d.as_str(), "org.freedesktop.NetworkManager.Device", NM)?;
-        if dev.get_property::<u32>("DeviceType")? != 2 {
-            continue; // not Wi-Fi
-        }
+    // (a device that goes while it's read, a USB stick pulled out, is
+    // skipped: the others still count, and its removal brings a new reading)
+    let radios: Vec<Radio> = devices.iter().filter_map(|d| radio(conn, d).ok().flatten()).collect();
+    if let Some(r) = pick_radio(&radios) {
         out.present = true;
-        let w = proxy(conn, d.as_str(), "org.freedesktop.NetworkManager.Device.Wireless", NM)?;
-        let ap: OwnedObjectPath = w.get_property("ActiveAccessPoint")?;
-        if ap.as_str() != "/" {
-            let ap = proxy(conn, ap.as_str(), "org.freedesktop.NetworkManager.AccessPoint", NM)?;
-            out.strength = ap.get_property("Strength")?;
-            let ssid: Vec<u8> = ap.get_property("Ssid")?;
-            out.ssid = String::from_utf8_lossy(&ssid).into_owned();
-        }
-        break;
+        out.strength = r.strength;
+        out.ssid = r.ssid.clone();
     }
     Ok(out)
 }
@@ -114,4 +145,25 @@ fn wifi(conn: &Connection) -> zbus::Result<Wifi> {
 pub fn spawn(tx: Sender<Msg>) {
     watch(tx.clone(), "org.freedesktop.UPower", battery, |b| Msg::Data(Box::new(b)));
     watch(tx, "org.freedesktop.NetworkManager", wifi, |w| Msg::Data(Box::new(w)));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn r(connected: bool, strength: u8, ssid: &str) -> Radio {
+        Radio { connected, strength, ssid: ssid.into() }
+    }
+
+    #[test]
+    fn the_connected_wifi_device_is_the_one_shown() {
+        // Ethernet only: no Wi-Fi device
+        assert_eq!(pick_radio(&[]), None);
+        // one card, not connected
+        assert_eq!(pick_radio(&[r(false, 0, "")]), Some(&r(false, 0, "")));
+        // a built-in card idle and a USB stick connected: the stick
+        assert_eq!(pick_radio(&[r(false, 0, ""), r(true, 40, "Cafe")]).unwrap().ssid, "Cafe");
+        // both connected: the stronger
+        assert_eq!(pick_radio(&[r(true, 30, "A"), r(true, 70, "B")]).unwrap().ssid, "B");
+    }
 }

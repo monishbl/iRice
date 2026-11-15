@@ -8,7 +8,6 @@
 //! "batteryhealth": {capacity (0..1, -1 unknown), cycles (-1 unknown),
 //! watts (-1 unknown), condition}. `summary` is the hover line.
 
-use super::common::*;
 use serde_json::{json, Value};
 use std::any::Any;
 use std::collections::BTreeMap;
@@ -17,27 +16,56 @@ use tessera_core::services::status::Battery;
 
 const NAME: &str = "BatteryHealth";
 
-const READER: &str = "for b in /sys/class/power_supply/BAT*; do [ -d \"$b\" ] || continue; for f in energy_full energy_full_design charge_full charge_full_design cycle_count power_now current_now voltage_now; do [ -r \"$b/$f\" ] && echo \"$f=$(cat \"$b/$f\")\"; done; break; done";
+const FIELDS: [&str; 8] = ["energy_full", "energy_full_design", "charge_full", "charge_full_design", "cycle_count", "power_now", "current_now", "voltage_now"];
 
-/// (capacity, cycles, watts) from the reader's `name=number` lines
-pub fn parse(text: &str) -> (f64, i64, f64) {
+/// The computer's own batteries' readings under `root` (the power supply
+/// class, or a test's): `name=number` lines, a "--" line between batteries.
+/// Any name (BAT0, BAT1, CMB0…), never a mouse's or headset's battery.
+pub fn reader_text(root: &std::path::Path) -> String {
+    let mut out = String::new();
+    for b in tessera_core::power_supply::read(root).iter().filter(|s| s.system_battery()) {
+        if !out.is_empty() {
+            out.push_str("--\n");
+        }
+        for f in FIELDS {
+            if let Ok(v) = std::fs::read_to_string(b.path.join(f)) {
+                out.push_str(&format!("{f}={}\n", v.trim()));
+            }
+        }
+    }
+    out
+}
+
+/// One battery's (full, design, cycles, watts) from its lines
+fn one(text: &str) -> (Option<f64>, Option<f64>, i64, f64) {
     let v: BTreeMap<&str, f64> = text.lines().filter_map(|l| {
         let (k, n) = l.split_once('=')?;
         Some((k, n.parse().ok()?))
     }).collect();
-    let full = v.get("energy_full").or(v.get("charge_full")).copied();
-    let design = v.get("energy_full_design").or(v.get("charge_full_design")).copied();
-    let capacity = match (full, design) {
-        (Some(f), Some(d)) if f > 0.0 && d > 0.0 => (f / d).min(1.0),
-        _ => -1.0,
-    };
+    let energy = v.contains_key("energy_full") && v.contains_key("energy_full_design");
+    let full = if energy { v.get("energy_full") } else { v.get("charge_full") }.copied().filter(|f| *f > 0.0);
+    let design = if energy { v.get("energy_full_design") } else { v.get("charge_full_design") }.copied().filter(|d| *d > 0.0);
     let cycles = v.get("cycle_count").filter(|c| **c > 0.0).map_or(-1, |c| *c as i64);
-    // power_now in µW, or current (µA) × voltage (µV)
+    // power_now in µW, or current (µA) × voltage (µV); signed on some
+    // drivers (negative: discharging)
     let watts = match (v.get("power_now"), v.get("current_now"), v.get("voltage_now")) {
-        (Some(p), _, _) => p / 1e6,
-        (None, Some(c), Some(vo)) => c * vo / 1e12,
+        (Some(p), _, _) => p.abs() / 1e6,
+        (None, Some(c), Some(vo)) => (c * vo).abs() / 1e12,
         _ => -1.0,
     };
+    (full, design, cycles, watts)
+}
+
+/// (capacity, cycles, watts) from the reader's lines: over all batteries
+/// (two in a ThinkPad), capacity as what they hold together against their
+/// design, the most cycles, the watts summed
+pub fn parse(text: &str) -> (f64, i64, f64) {
+    let bats: Vec<_> = text.split("--\n").filter(|b| !b.trim().is_empty()).map(one).collect();
+    let both: Vec<(f64, f64)> = bats.iter().filter_map(|(f, d, _, _)| Some(((*f)?, (*d)?))).collect();
+    let capacity = if both.is_empty() { -1.0 } else { (both.iter().map(|b| b.0).sum::<f64>() / both.iter().map(|b| b.1).sum::<f64>()).min(1.0) };
+    let cycles = bats.iter().map(|b| b.2).max().unwrap_or(-1);
+    let known: Vec<f64> = bats.iter().map(|b| b.3).filter(|w| *w >= 0.0).collect();
+    let watts = if known.is_empty() { -1.0 } else { known.iter().sum() };
     (capacity, cycles, watts)
 }
 
@@ -86,7 +114,7 @@ impl Service for BatteryHealth {
         if call.ends_with(".refresh") && !self.busy {
             self.busy = true;
             let send = h.sender(NAME);
-            capture_then(sh_cmd(READER, &[]), None, move |_, t| send(Box::new(M::Read(t))));
+            std::thread::spawn(move || send(Box::new(M::Read(reader_text(std::path::Path::new(tessera_core::power_supply::CLASS))))));
         }
     }
     fn message(&mut self, _h: &mut Host, msg: Box<dyn Any + Send>) {
@@ -113,6 +141,31 @@ mod tests {
         assert_eq!(condition(c), "Service recommended");
         assert_eq!(parse(""), (-1.0, -1, -1.0));
         assert_eq!(hm(12000), "3:20");
+    }
+
+    #[test]
+    fn every_own_battery_counts_and_nothing_else() {
+        let root = std::env::temp_dir().join(format!("tessera-bh-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let put = |n: &str, files: &[(&str, &str)]| {
+            std::fs::create_dir_all(root.join(n)).unwrap();
+            for (f, v) in files {
+                std::fs::write(root.join(n).join(f), format!("{v}\n")).unwrap();
+            }
+        };
+        // a desktop: nothing
+        std::fs::create_dir_all(&root).unwrap();
+        assert_eq!(reader_text(&root), "");
+        assert_eq!(parse(&reader_text(&root)), (-1.0, -1, -1.0));
+        // a ThinkPad's two (not named BAT* only), an adapter, a mouse's battery
+        put("AC", &[("type", "Mains"), ("online", "0")]);
+        put("BAT0", &[("type", "Battery"), ("energy_full", "18000000"), ("energy_full_design", "24000000"), ("cycle_count", "300"), ("power_now", "4000000")]);
+        put("CMB1", &[("type", "Battery"), ("energy_full", "22000000"), ("energy_full_design", "24000000"), ("cycle_count", "120"), ("power_now", "-2000000")]);
+        put("hidpp_battery_0", &[("type", "Battery"), ("scope", "Device"), ("energy_full", "1"), ("energy_full_design", "100"), ("cycle_count", "9999")]);
+        let (c, y, w) = parse(&reader_text(&root));
+        assert!((c - 40.0 / 48.0).abs() < 1e-9);
+        assert_eq!((y, w), (300, 6.0));
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

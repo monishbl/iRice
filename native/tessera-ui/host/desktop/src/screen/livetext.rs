@@ -156,19 +156,10 @@ pub fn may_index(on_battery: bool, percent: i32, saver: bool) -> bool {
 
 /// The battery and power mode, read now (Power.onBattery / percent / mode)
 fn power_now() -> (bool, i32, bool) {
-    let mut on_battery = false;
-    let mut percent = -1;
-    if let Ok(rd) = std::fs::read_dir("/sys/class/power_supply") {
-        for e in rd.flatten() {
-            let p = e.path();
-            if std::fs::read_to_string(p.join("type")).map(|t| t.trim() == "Battery").unwrap_or(false) {
-                let status = std::fs::read_to_string(p.join("status")).unwrap_or_default();
-                on_battery = status.trim() == "Discharging";
-                percent = std::fs::read_to_string(p.join("capacity")).ok().and_then(|c| c.trim().parse().ok()).unwrap_or(-1);
-                break;
-            }
-        }
-    }
+    // (the computer's own batteries, all of them: not a mouse's, whichever
+    // the folder lists first)
+    let ps = tessera_core::power_supply::summary(&tessera_core::power_supply::read(std::path::Path::new(tessera_core::power_supply::CLASS)));
+    let (on_battery, percent) = (ps.on_battery, ps.percent);
     let saver = Command::new("powerprofilesctl").arg("get").stdin(Stdio::null()).stderr(Stdio::null()).output().map(|o| String::from_utf8_lossy(&o.stdout).trim() == "power-saver").unwrap_or(false);
     (on_battery, percent, saver)
 }

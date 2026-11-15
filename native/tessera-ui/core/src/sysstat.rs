@@ -93,13 +93,22 @@ fn read(p: &str) -> String {
 /// coretemp / k10temp / zenpower's package reading, else the hottest
 /// CPU-ish zone (Resources' findTemp)
 fn find_temp() -> Option<String> {
-    let zones: Vec<_> = std::fs::read_dir("/sys/class/thermal").map(|d| d.flatten().map(|e| e.path()).filter(|p| p.file_name().is_some_and(|n| n.to_string_lossy().starts_with("thermal_zone"))).collect()).unwrap_or_default();
+    find_temp_in(std::path::Path::new("/sys"))
+}
+
+/// find_temp under a sysfs root (a test's folder): None without thermal
+/// zones or hwmon sensors (a VM, some desktops), or none it knows
+pub fn find_temp_in(sys: &std::path::Path) -> Option<String> {
+    let mut zones: Vec<_> = std::fs::read_dir(sys.join("class/thermal")).map(|d| d.flatten().map(|e| e.path()).filter(|p| p.file_name().is_some_and(|n| n.to_string_lossy().starts_with("thermal_zone"))).collect()).unwrap_or_default();
+    zones.sort();
     let ty = |p: &std::path::Path| read(&p.join("type").to_string_lossy()).trim().to_string();
     if let Some(z) = zones.iter().find(|z| ty(z) == "x86_pkg_temp") {
         return Some(z.join("temp").to_string_lossy().into_owned());
     }
-    if let Ok(d) = std::fs::read_dir("/sys/class/hwmon") {
-        for h in d.flatten().map(|e| e.path()) {
+    if let Ok(d) = std::fs::read_dir(sys.join("class/hwmon")) {
+        let mut hw: Vec<_> = d.flatten().map(|e| e.path()).collect();
+        hw.sort();
+        for h in hw {
             if matches!(read(&h.join("name").to_string_lossy()).trim(), "coretemp" | "k10temp" | "zenpower") && h.join("temp1_input").exists() {
                 return Some(h.join("temp1_input").to_string_lossy().into_owned());
             }
@@ -269,5 +278,34 @@ mod tests {
         let st = s.stats();
         assert_eq!(st[0].key, "cpu");
         assert!(st.iter().any(|x| x.key == "netUp"));
+    }
+
+    #[test]
+    fn cpu_temperature_on_odd_or_missing_sensors() {
+        let root = std::env::temp_dir().join(format!("tessera-sys-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let put = |p: &str, v: &str| {
+            let f = root.join(p);
+            std::fs::create_dir_all(f.parent().unwrap()).unwrap();
+            std::fs::write(f, format!("{v}\n")).unwrap();
+        };
+        // a VM: no thermal zones or hwmon at all
+        assert_eq!(find_temp_in(&root), None);
+        // only sensors it doesn't know (a disk, the Wi-Fi card, a zone that can't be read)
+        put("class/hwmon/hwmon0/name", "nvme");
+        put("class/hwmon/hwmon0/temp1_input", "38000");
+        put("class/hwmon/hwmon1/name", "iwlwifi_1");
+        put("class/thermal/thermal_zone0/type", "acpitz");
+        assert_eq!(find_temp_in(&root), None);
+        // the hottest CPU-ish zone
+        put("class/thermal/thermal_zone0/temp", "41000");
+        put("class/thermal/thermal_zone1/type", "cpu-thermal");
+        put("class/thermal/thermal_zone1/temp", "52000");
+        assert!(find_temp_in(&root).unwrap().ends_with("thermal_zone1/temp"));
+        // an AMD package sensor wins over zones
+        put("class/hwmon/hwmon2/name", "k10temp");
+        put("class/hwmon/hwmon2/temp1_input", "60000");
+        assert!(find_temp_in(&root).unwrap().ends_with("hwmon2/temp1_input"));
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

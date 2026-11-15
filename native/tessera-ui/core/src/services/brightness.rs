@@ -45,15 +45,29 @@ fn find() -> Option<PathBuf> {
     if let Some(d) = crate::env::var("BACKLIGHT").filter(|d| !d.is_empty()) {
         return Some(PathBuf::from(d));
     }
-    let base = Path::new("/sys/class/backlight");
-    let devices: Vec<(String, u64)> = std::fs::read_dir(base)
+    find_in(Path::new("/sys/class/backlight"))
+}
+
+/// The backlight to use among a backlight class folder's devices (none:
+/// a desktop, external monitors only)
+pub fn find_in(base: &Path) -> Option<PathBuf> {
+    let mut devices: Vec<(String, u64, bool)> = std::fs::read_dir(base)
         .ok()?
         .flatten()
         .filter_map(|e| {
             let n = e.file_name().to_string_lossy().into_owned();
-            Some((n.clone(), read_num(&base.join(&n).join("max_brightness"))?))
+            // (a raw backlight hangs off its panel's connector: one whose
+            // connector is disabled lights nothing, as intel_backlight on a
+            // laptop whose NVIDIA card drives the panel)
+            let off = std::fs::read_to_string(base.join(&n).join("device/enabled")).is_ok_and(|s| s.trim() == "disabled");
+            Some((n.clone(), read_num(&base.join(&n).join("max_brightness"))?, off))
         })
         .collect();
+    devices.sort();
+    if devices.iter().any(|d| !d.2 && d.1 > 0) {
+        devices.retain(|d| !d.2);
+    }
+    let devices: Vec<(String, u64)> = devices.into_iter().map(|(n, m, _)| (n, m)).collect();
     pick(&devices).map(|n| base.join(n))
 }
 
@@ -76,6 +90,18 @@ struct Shared {
 
 static SHARED: Mutex<Option<Shared>> = Mutex::new(None);
 
+/// The backlight went: said once (no slider, no OSD); false when the
+/// interface is gone
+fn gone(dir: &Path) -> bool {
+    let mut shared = SHARED.lock().unwrap();
+    let Some(s) = shared.as_mut() else { return false };
+    if s.now.present {
+        s.now = Backlight { present: false, device: dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(), value: 0.0 };
+        return s.tx.send(Msg::Data(Box::new(s.now.clone()))).is_ok();
+    }
+    true
+}
+
 pub fn spawn(tx: Sender<Msg>) {
     let Some(dir) = find() else {
         let _ = tx.send(Msg::Data(Box::new(Backlight::default())));
@@ -94,6 +120,12 @@ pub fn spawn(tx: Sender<Msg>) {
         loop {
             let f = std::fs::File::open(&watch);
             let Ok(mut f) = f else {
+                // (the device went, a GPU driver unloaded or a panel switched
+                // off with its output: no backlight until it's back, and no
+                // busy loop on a file that's gone)
+                if !dir.join("max_brightness").exists() && !gone(&dir) {
+                    return;
+                }
                 std::thread::sleep(Duration::from_secs(5));
                 continue;
             };
@@ -104,17 +136,22 @@ pub fn spawn(tx: Sender<Msg>) {
                 if sysfs {
                     let mut p = libc::pollfd { fd: std::os::fd::AsRawFd::as_raw_fd(&f), events: libc::POLLPRI | libc::POLLERR, revents: 0 };
                     if unsafe { libc::poll(&mut p, 1, -1) } < 0 {
+                        std::thread::sleep(Duration::from_millis(500));
                         break;
                     }
                     // (a key held down: one reading per burst)
                     std::thread::sleep(Duration::from_millis(30));
+                    // (its file removed: poll() would wake at once, forever)
+                    if !watch.exists() {
+                        break;
+                    }
                 } else {
                     std::thread::sleep(Duration::from_millis(500));
                 }
                 let now = reading(&dir);
                 let mut shared = SHARED.lock().unwrap();
                 let Some(s) = shared.as_mut() else { return };
-                if (now.value - s.now.value).abs() > 1e-6 {
+                if (now.value - s.now.value).abs() > 1e-6 || now.present != s.now.present {
                     s.now = now.clone();
                     if s.tx.send(Msg::Data(Box::new(now))).is_err() {
                         return;
@@ -225,5 +262,45 @@ mod tests {
         std::fs::write(d.join("max_brightness"), "0\n").unwrap();
         assert!(!reading(&d).present);
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// A fake /sys/class/backlight: (name, max, its connector disabled)
+    fn class(tag: &str, devs: &[(&str, &str, bool)]) -> PathBuf {
+        let base = std::env::temp_dir().join(format!("tessera-ui-blc-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        for (n, max, off) in devs {
+            let d = base.join(n);
+            std::fs::create_dir_all(d.join("device")).unwrap();
+            std::fs::write(d.join("max_brightness"), format!("{max}\n")).unwrap();
+            std::fs::write(d.join("brightness"), "1\n").unwrap();
+            if *off {
+                std::fs::write(d.join("device/enabled"), "disabled\n").unwrap();
+            }
+        }
+        base
+    }
+
+    #[test]
+    fn several_none_or_odd_backlights() {
+        // a desktop: the class folder is empty (or missing)
+        let b = class("none", &[]);
+        assert_eq!(find_in(&b), None);
+        assert_eq!(find_in(&b.join("missing")), None);
+        // intel + ACPI + NVIDIA's: the finest steps
+        let b = class("three", &[("acpi_video0", "15", false), ("intel_backlight", "96000", false), ("nvidia_0", "100", false)]);
+        assert_eq!(find_in(&b).unwrap().file_name().unwrap(), "intel_backlight");
+        // the NVIDIA card drives the panel: intel's connector is disabled
+        let b = class("mux", &[("intel_backlight", "96000", true), ("nvidia_0", "100", false)]);
+        assert_eq!(find_in(&b).unwrap().file_name().unwrap(), "nvidia_0");
+        // every one says disabled (a lid closed): still one
+        let b = class("alloff", &[("intel_backlight", "96000", true)]);
+        assert_eq!(find_in(&b).unwrap().file_name().unwrap(), "intel_backlight");
+        // a broken driver's max of 0 or garbage: none
+        let b = class("broken", &[("amdgpu_bl0", "0", false), ("x", "garbage", false)]);
+        assert_eq!(find_in(&b), None);
+        for t in ["none", "three", "mux", "alloff", "broken"] {
+            let _ = std::fs::remove_dir_all(std::env::temp_dir().join(format!("tessera-ui-blc-{t}-{}", std::process::id())));
+        }
     }
 }

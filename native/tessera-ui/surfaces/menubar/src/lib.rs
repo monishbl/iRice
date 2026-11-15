@@ -1384,9 +1384,11 @@ impl Menubar {
         }
         let up = dy > 0.0;
         if left {
-            let has_backlight = std::fs::read_dir("/sys/class/backlight").map(|mut d| d.next().is_some()).unwrap_or(false);
-            if has_backlight {
-                bridge::run(&["brightnessctl", "-q", "set", if up { "5%+" } else { "5%-" }]);
+            // (the backlight the brightness service chose, as the keys and the
+            // slider: brightnessctl's own pick could be another of several,
+            // acpi_video0 or nvidia_0, and the sandbox's stays in memory)
+            if let Some(b) = st.shell.get::<tessera_core::services::brightness::Backlight>().filter(|b| b.present) {
+                tessera_core::services::brightness::set((b.value + if up { 0.05 } else { -0.05 }).clamp(0.01, 1.0));
             }
         } else {
             // (the QML shell's sound service sees the change: its OSD or the island's level)

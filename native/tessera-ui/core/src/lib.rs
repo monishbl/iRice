@@ -24,6 +24,7 @@ pub mod icon_theme;
 pub mod idle; // (ext-idle-notify-v1 readings, wayland.rs State::idle_set)
 pub mod icons;
 pub mod picture;
+pub mod power_supply; // (/sys/class/power_supply: own batteries, adapters of any name)
 pub mod rank;
 pub mod perf; // (debug: loop stalls and list/window reloads, TESSERA_DEBUG: perf.rs)
 pub mod rows; // (lists changed in place, not handed a new model: rows.rs)

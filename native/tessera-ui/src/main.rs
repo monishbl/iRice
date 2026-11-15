@@ -222,7 +222,10 @@ fn main() {
             .unwrap();
     }
 
-    let egl = egl::Egl::new(conn.backend().display_ptr() as *mut _).expect("EGL");
+    let egl = match egl::Egl::new(conn.backend().display_ptr() as *mut _) {
+        Ok(egl) => egl,
+        Err(e) => no_gl(&e.to_string(), standalone),
+    };
     slint::platform::set_platform(Box::new(wayland::Platform { tx: tx.clone() })).expect("platform");
     register_fonts();
 
@@ -330,4 +333,39 @@ fn main() {
         let _ = std::fs::remove_file(state.join("tessera/standalone-starts"));
     }
     eprintln!("tessera-ui: bye");
+}
+
+/// EGL didn't start (no GPU driver's EGL, a broken install, a driver that
+/// refuses Wayland): this shell can't draw. Never no shell at all: started
+/// standalone (launch-shell.sh exec'd it, TESSERA_QML_FALLBACK names the QML
+/// shell's folder), this process becomes the QML shell, and the start count
+/// is set so the next starts are QML too until tessera-ui stays up again
+/// (launch-shell.sh's safety net). Beside the QML shell: it just ends, and
+/// the QML shell draws on.
+fn no_gl(e: &str, standalone: bool) -> ! {
+    eprintln!("tessera-ui: can't draw: EGL didn't start ({e})");
+    if !standalone {
+        std::process::exit(1);
+    }
+    let state = std::env::var_os("XDG_STATE_HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".local/state"));
+    let _ = std::fs::create_dir_all(state.join("tessera"));
+    let _ = std::fs::write(state.join("tessera/standalone-starts"), "3\n");
+    let Some(dir) = std::env::var_os("TESSERA_QML_FALLBACK").map(std::path::PathBuf::from).filter(|d| d.join("assets/scripts/launch-shell.sh").is_file()) else {
+        eprintln!("tessera-ui: no QML shell to fall back to (TESSERA_QML_FALLBACK); the next start is the QML shell");
+        std::process::exit(1);
+    };
+    eprintln!("tessera-ui: starting the QML shell instead ({})", dir.display());
+    // (the signals this process blocked for its signalfd would stay blocked
+    // in the shell it becomes: unblocked first)
+    unsafe {
+        let mut none: libc::sigset_t = std::mem::zeroed();
+        libc::sigemptyset(&mut none);
+        libc::pthread_sigmask(libc::SIG_SETMASK, &none, std::ptr::null_mut());
+    }
+    use std::os::unix::process::CommandExt;
+    let err = std::process::Command::new(dir.join("assets/scripts/launch-shell.sh")).arg("-p").arg(&dir).env("TESSERA_STANDALONE", "0").env_remove("TESSERA_QML_FALLBACK").exec();
+    eprintln!("tessera-ui: couldn't start the QML shell: {err}");
+    std::process::exit(1);
 }

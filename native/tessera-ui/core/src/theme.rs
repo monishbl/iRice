@@ -314,10 +314,13 @@ pub fn glass_material(v: &Value, material: bool, dark: bool, transparency: f32, 
     } else {
         setting
     };
-    // Cool-down swaps in a cheaper material (never a heavier one)
+    // Cool-down swaps in a cheaper material (never a heavier one); drawing
+    // on the CPU (llvmpipe: a VM, no GPU driver) is always at least Cool-down's
+    // frosted step: the lens's refraction is the costliest part of glass
+    let software = shell.cooldown == "keep" && crate::egl::software();
     let name = if shell.cooldown == "solid" {
         "solid"
-    } else if shell.cooldown == "frosted" && chosen != "solid" && chosen != "veil" {
+    } else if (shell.cooldown == "frosted" || software) && chosen != "solid" && chosen != "veil" {
         "frosted"
     } else {
         chosen

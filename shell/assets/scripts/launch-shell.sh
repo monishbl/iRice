@@ -147,6 +147,10 @@ if ui="$(standalone_ui)"; then
     export TESSERA_SHELL=1 TESSERA_LOOK="$look" IRICE_SHELL=1
     [[ "${TESSERA_TTY:-}" == 1 ]] && export IRICE_TTY=1
     export TESSERA_STANDALONE=1
+    # (where the QML shell is: tessera-ui becomes it when it can't draw, EGL
+    # not starting on this computer's graphics, so there's always a shell)
+    TESSERA_QML_FALLBACK="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../.." && pwd -P)"
+    export TESSERA_QML_FALLBACK
     mkdir -p "$(dirname "$STARTS")"
     echo $(( $(cat "$STARTS" 2>/dev/null || echo 0) + 1 )) > "$STARTS"
     # (its messages, and a crash's, in tessera-ui.log; the run before's in .1)

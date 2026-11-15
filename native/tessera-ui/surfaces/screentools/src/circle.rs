@@ -557,7 +557,7 @@ impl Circle {
         ui.set_ox(w / 2.0);
         ui.set_oy(h);
         ui.set_reduce_motion(reduce);
-        let style = super::edgefx::Style::from_cfg(st.shell.cfg["circle"]["glow"].as_str().unwrap_or(""));
+        let style = super::edgefx::Style::chosen(st.shell.cfg["circle"]["glow"].as_str().unwrap_or(""));
         ui.set_edge_style(style.index());
         ui.set_fx_soft(slint::Image::default());
         ui.set_fx_dots(slint::Image::default());
@@ -1073,7 +1073,7 @@ impl Circle {
     fn start_fx(&mut self, st: &State) {
         self.stop_fx();
         let Some(w) = &self.win else { return };
-        let style = super::edgefx::Style::from_cfg(st.shell.cfg["circle"]["glow"].as_str().unwrap_or(""));
+        let style = super::edgefx::Style::chosen(st.shell.cfg["circle"]["glow"].as_str().unwrap_or(""));
         if style == super::edgefx::Style::Bands {
             return;
         }

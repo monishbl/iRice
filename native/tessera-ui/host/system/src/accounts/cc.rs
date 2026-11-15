@@ -634,7 +634,8 @@ impl ControlCenter {
                     blocks.push(note(&n.failed, "danger", false));
                 }
             }
-            if on {
+            // (no adapter, Ethernet only or a USB stick pulled out: nothing to join with)
+            if on && present {
                 blocks.push(row(json!({"id": "join", "icon": "plus", "title": "Join other network…"})));
             }
         }

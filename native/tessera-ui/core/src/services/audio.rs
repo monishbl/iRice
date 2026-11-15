@@ -211,12 +211,22 @@ const MASK: u32 = 0x0001 | 0x0002 | 0x0004 | 0x0080;
 pub fn spawn(tx: Sender<Msg>) {
     std::thread::spawn(move || {
         let mut wait = 1;
+        // (the interface ended: this thread ends too. Not an io error kind: a
+        // sound server that crashes mid-write gives BrokenPipe as well, and
+        // that one is waited out)
+        let ui_gone = std::cell::Cell::new(false);
+        let gone = || {
+            ui_gone.set(true);
+            std::io::Error::other("ui gone")
+        };
         loop {
-            let run = || -> std::io::Result<()> {
+            let mut up = false;
+            let mut run = || -> std::io::Result<()> {
                 let mut c = Conn::open("Tessera")?;
                 c.subscribe(MASK)?;
                 let mut last = read(&mut c)?;
-                tx.send(Msg::Data(Box::new(last.clone()))).map_err(|_| std::io::ErrorKind::BrokenPipe)?;
+                up = true;
+                tx.send(Msg::Data(Box::new(last.clone()))).map_err(|_| gone())?;
                 loop {
                     // (events that came during the last reading count too;
                     // the next reading answers the whole burst)
@@ -236,13 +246,16 @@ pub fn spawn(tx: Sender<Msg>) {
                     }
                     if now != last {
                         last = now.clone();
-                        tx.send(Msg::Data(Box::new(now))).map_err(|_| std::io::ErrorKind::BrokenPipe)?;
+                        tx.send(Msg::Data(Box::new(now))).map_err(|_| gone())?;
                     }
                 }
             };
             let e = run().err();
-            if e.as_ref().is_some_and(|e| e.kind() == std::io::ErrorKind::BrokenPipe) {
+            if ui_gone.get() {
                 return; // (the interface ended)
+            }
+            if up {
+                wait = 1; // (it was up: a restart is looked for soon)
             }
             if crate::env::is_set("DEBUG") {
                 eprintln!("debug: sound server: {e:?}");
