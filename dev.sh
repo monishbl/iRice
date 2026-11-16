@@ -19,14 +19,25 @@ PKGS=(hyprland hypridle hyprpicker hyprsunset xdg-desktop-portal-hyprland
       foot thunar mousepad gnome-calculator imagemagick ffmpeg
       libqalculate ripgrep plocate swappy psmisc poppler ffmpegthumbnailer python-gobject matugen)
 
+# TESSERA_NO_BOX=1: no distrobox, the same isolated sandbox (its own virtual
+# KWin display, runtime dir, D-Bus, sound and home: sandbox/inner.sh) run
+# straight on this computer, which has the packages itself (a build and test
+# machine without distrobox, e.g. over ssh)
+if [[ "${TESSERA_NO_BOX:-0}" == 1 ]]; then
+    BOXCMD=()
+else
+    BOXCMD=(distrobox enter "$BOX" --)
+fi
 # (the arena's own home: distrobox gives every session the first one's)
 box() {
     if (($#)); then
-        distrobox enter "$BOX" -- env HOME="$TESSERA_HOME" TESSERA_ARENA="$TESSERA_ARENA" \
+        "${BOXCMD[@]}" env HOME="$TESSERA_HOME" TESSERA_ARENA="$TESSERA_ARENA" \
             XDG_CONFIG_HOME="$TESSERA_HOME/.config" XDG_CACHE_HOME="$TESSERA_HOME/.cache" \
             XDG_DATA_HOME="$TESSERA_HOME/.local/share" XDG_STATE_HOME="$TESSERA_HOME/.local/state" "$@"
-    else
+    elif ((${#BOXCMD[@]})); then
         distrobox enter "$BOX"
+    else
+        env HOME="$TESSERA_HOME" bash
     fi
 }
 # Runs a command inside the box, pointed at the nested compositor (another
@@ -87,7 +98,7 @@ case "${1:-help}" in
                 fd=${fd##*/}
                 ((fd > 2)) && eval "exec $fd>&-"
             done
-            exec setsid -f distrobox enter "$BOX" -- env HOME="$TESSERA_HOME" TESSERA_ARENA="$TESSERA_ARENA" TESSERA_HOST_WAYLAND="${WAYLAND_DISPLAY:-}" TESSERA_HYPRLAND="${TESSERA_HYPRLAND:-}" \
+            exec setsid -f "${BOXCMD[@]}" env HOME="$TESSERA_HOME" TESSERA_ARENA="$TESSERA_ARENA" TESSERA_HOST_WAYLAND="${WAYLAND_DISPLAY:-}" TESSERA_HYPRLAND="${TESSERA_HYPRLAND:-}" \
                 TESSERA_VISIBLE="${TESSERA_VISIBLE:-${IRICE_VISIBLE:-0}}" TESSERA_HOST_AUDIO="${TESSERA_HOST_AUDIO:-${IRICE_HOST_AUDIO:-0}}" \
                 "$ROOT/sandbox/inner.sh" >/dev/null 2>&1
         )
