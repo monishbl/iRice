@@ -26,6 +26,7 @@ if (( ${#missing[@]} > 0 )); then
     # (with second chances: a mirror that's behind is left out, then the
     # mirrors re-ranked; tools/pac.sh)
     source "$ROOT/tools/pac.sh"
+    pac_mirrors_check   # (mirror lists that are behind: re-ranked first)
     pac -S --needed --noconfirm "${missing[@]}" || { echo "Package install failed: see above, then run this again."; exit 1; }
 fi
 
@@ -44,7 +45,9 @@ if (( ${#missing[@]} > 0 )); then
         if ! command -v yay >/dev/null && ! command -v paru >/dev/null; then
             say "Installing yay (an AUR helper)…"
             tmp=$(mktemp -d)
-            git clone --depth 1 https://aur.archlinux.org/yay-bin.git "$tmp/yay-bin" && (cd "$tmp/yay-bin" && makepkg -si --noconfirm)
+            # (from the AUR, else Arch's GitHub mirror of it: tools/pac.sh)
+            source "$ROOT/tools/pac.sh"
+            aur_clone yay-bin "$tmp/yay-bin" && (cd "$tmp/yay-bin" && makepkg -si --noconfirm)
             rm -rf "$tmp"
         fi
         helper=$(command -v yay || command -v paru || true)

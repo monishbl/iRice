@@ -347,6 +347,73 @@ class Fetch(Fixture):
             self.assertIsNone(ni.releases_base(str(self.repo)))
 
 
+# ── Sources: GitHub, then the GitLab mirror (tools/sources.txt) ───────────
+
+class Mirrors(Fixture):
+    """Each source in turn, every one checked the same way."""
+
+    def setUp(self):
+        super().setUp()
+        if not HAS_CRYPTO:
+            self.skipTest("python-cryptography")
+        self.dead = "file://" + str(self.d / "nothing-here") + "/{tag}"
+
+    def test_a_dead_first_source_falls_through_to_the_second(self):
+        self.publish()
+        got = self.fetch(base=[self.dead, self.base])
+        self.assertEqual(got["info"]["commit"], self.commit)
+
+    def test_an_unreachable_https_source_is_passed_over_quickly(self):
+        self.publish()
+        import time
+        t = time.time()
+        got = self.fetch(base=["https://127.0.0.1:9/x/{tag}", self.base])
+        self.assertLess(time.time() - t, 20)
+        self.assertEqual(got["info"]["source"], "ready-made")
+
+    def test_the_mirror_is_checked_as_strictly(self):
+        self.publish(key=Key())  # (signed with a key this copy doesn't trust)
+        with self.assertRaisesRegex(ni.Failed, "another key") as e:
+            self.fetch(base=[self.dead, self.base])
+        self.assertEqual(e.exception.kind, "refused")
+        self.assertFalse((self.dest / ".incoming-t").exists())
+
+    def test_a_tampered_tarball_on_the_mirror_is_refused(self):
+        out = self.publish()
+        f = out / ni.tarball_name(self.tree, "x86-64-v3")
+        f.write_bytes(f.read_bytes() + b"x")
+        with self.assertRaisesRegex(ni.Failed, "checksum"):
+            self.fetch(base=[self.dead, self.base])
+
+    def test_a_refused_first_source_is_never_used_but_a_good_second_is(self):
+        good_rel = self.d / "good"
+        self.publish()
+        shutil.copytree(self.rel, good_rel)
+        bad = self.rel / ni.ROLLING / ni.tarball_name(self.tree, "x86-64-v3")
+        bad.write_bytes(bad.read_bytes() + b"x")
+        got = self.fetch(base=[self.base, "file://" + str(good_rel) + "/{tag}"])
+        self.assertEqual(got["info"]["commit"], self.commit)
+
+    def test_releases_bases_follow_the_sources(self):
+        with mock.patch.dict(os.environ, {"TESSERA_RELEASES": "", "TESSERA_MIRRORS": ""}):
+            git(self.repo, "remote", "add", "origin", "https://github.com/monishbl/iRice.git")
+            self.assertEqual(ni.releases_bases(str(self.repo)), [
+                "https://github.com/monishbl/iRice/releases/download/{tag}",
+                "https://gitlab.com/api/v4/projects/monishbl%2FiRice/packages/generic/tessera-ui/{tag}"])
+            # (a fork: its own releases only)
+            git(self.repo, "remote", "set-url", "origin", "https://github.com/someone/Tessera.git")
+            self.assertEqual(ni.releases_bases(str(self.repo)), ["https://github.com/someone/Tessera/releases/download/{tag}"])
+        with mock.patch.dict(os.environ, {"TESSERA_RELEASES": "file:///a/{tag} file:///b/{tag}"}):
+            self.assertEqual(ni.releases_bases(str(self.repo)), ["file:///a/{tag}", "file:///b/{tag}"])
+
+    def test_plan_finds_it_on_the_mirror(self):
+        self.publish()
+        (self.d / "pub").write_text(self.key.pub)
+        with mock.patch.dict(os.environ, {"TESSERA_RELEASES": self.dead + " " + self.base, "TESSERA_UI_PUBKEY": str(self.d / "pub")}):
+            p = ni.plan("HEAD", online=True, dest=str(self.dest), repo=str(self.repo), config={})
+        self.assertTrue(p["available"], p)
+
+
 # ── Installing: atomic, keeping .prev, undo ───────────────────────────────
 
 @unittest.skipUnless(HAS_CRYPTO, "python-cryptography isn't installed")
@@ -623,6 +690,8 @@ class CommandLine(Fixture):
         super().setUp()
         (self.repo / "tools").mkdir()
         shutil.copy2(HELPER, self.repo / "tools/native-install.py")
+        shutil.copy2(ROOT / "tools/tessera_sources.py", self.repo / "tools/tessera_sources.py")
+        shutil.copy2(ROOT / "tools/sources.txt", self.repo / "tools/sources.txt")
         shutil.copy2(ROOT / "tools/build-native.sh", self.repo / "tools/build-native.sh")
         (self.repo / "tools/tessera-ui.pub").write_text(self.key.pub)
         (self.repo / "shell/assets/scripts").mkdir(parents=True)

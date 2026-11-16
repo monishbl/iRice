@@ -247,3 +247,80 @@ tar --zstd -tvf "tessera-ui-$tree-x86-64-v3.tar.zst"
 
 `tools/native-install.py fetch` does the same checks in a temporary folder
 and installs nothing.
+
+## Mirrors
+
+Tessera's code and its ready-made builds come from an ordered list,
+`tools/sources.txt` (one place; `TESSERA_MIRRORS="url url …"` overrides it
+for one run, and `setup.sh` carries a copy, kept the same by
+`tests/test_mirrors.py`):
+
+| Order | Source | Used for |
+|---|---|---|
+| 1 | `https://github.com/monishbl/iRice.git` | everything (today's only source) |
+| 2 | `https://gitlab.com/monishbl/iRice.git` | the code (git), and the builds from its generic package registry: `https://gitlab.com/api/v4/projects/monishbl%2FiRice/packages/generic/tessera-ui/<tag>/<file>` |
+| 3 | `https://codeload.github.com/monishbl/iRice/tar.gz/refs/heads/<branch>` | a fresh install only: the files without git history (Software Update can't update such a copy until `setup.sh` is run again) |
+
+- **setup.sh** clones from the first that works; a source is looked at first
+  (5 seconds to connect, `info/refs`), so a dead one, or a GitLab project that
+  doesn't exist yet (it answers 401), is passed over in a second or two,
+  never with a password prompt. A copy cloned from a mirror gets GitHub as its
+  `origin`.
+- **Software Update** (`tools/tessera-update.py`, and `tessera update` through
+  its `fetch` command) fetches the channel's branch (`main` or `beta`) from
+  `origin`, then, when `origin` is one of these sources, from each other one
+  by URL into the same `origin/<branch>`: your remote is never rewritten. A
+  fork's checkout only uses its own remote.
+- **Ready-made tessera-ui** (`tools/native-install.py`) looks in GitHub's
+  releases, then the GitLab mirror's packages. Every source is checked
+  exactly the same way: the signature against `tools/tessera-ui.pub`, the
+  manifest's tree and commit, each checksum. A download refused anywhere is
+  never installed; a mirror without the build just falls through.
+
+### Pacman mirrors and the AUR
+
+Before the first package is installed or updated (`install.sh`,
+`tools/setup-tty.sh`, Software Update's system part), `tools/pac.sh` checks the
+mirror lists pacman.conf uses, Arch's `mirrorlist` and CachyOS's
+`cachyos*-mirrorlist`: fewer than 5 servers, or the first server (or 2 of the
+first 3) behind or not answering, and they're re-ranked
+(`cachyos-rate-mirrors` on CachyOS, else `reflector --latest 20 --protocol
+https --sort rate`, installed first when missing), each old list kept once as
+`<list>.tessera-backup`. The probes run side by side, 3 seconds each.
+`--plan` and `--dry-run` show it as a "Mirrors" row and change nothing.
+Manjaro's lists (pacman-mirrors) are left alone. Software Update asks
+`tools/pac.sh mirrors-stale` as you; its root part re-ranks with fixed
+commands only (`tessera-root update --mirrors`, which takes nothing but those
+lists' paths).
+
+When aur.archlinux.org doesn't answer, AUR packages (yay itself, the pointer
+and emoji extras) come from Arch's GitHub mirror of the AUR, one branch per
+package (`git clone --branch <pkg> --single-branch
+https://github.com/archlinux/aur.git`), built with `makepkg -si`.
+
+### One-time setup: the GitLab mirror
+
+Until this is done, every source after GitHub is passed over quietly, and the
+CI jobs below say they skipped (a notice, never a failed build).
+
+1. On gitlab.com, create the project **monishbl/iRice** (empty, without a
+   README), **public**, so installs need no login. (Another path: change it in
+   `tools/sources.txt`, `setup.sh` and the README, and set the repository
+   variable or secret `GITLAB_PROJECT` to it.)
+2. In the project: Settings → Repository → Protected branches: allow force
+   push on `main` (and `beta` once it exists) for Maintainers, since the
+   mirror always follows GitHub.
+3. Settings → Access tokens: a **project access token**, role Maintainer,
+   scopes **write_repository** and **api**, with an expiry you'll remember.
+4. On GitHub: Settings → Secrets and variables → Actions → New repository
+   secret **`GITLAB_TOKEN`** with that token. (Optional: `GITLAB_PROJECT`.)
+5. Run the **gitlab-mirror** workflow once by hand (Actions → gitlab-mirror →
+   Run workflow) to fill the mirror; from then on every push to `main` or
+   `beta` and every tag updates it. The **tessera-ui** workflow uploads each
+   new build and its signatures to the project's package registry
+   (`tessera-ui/<tag>`), keeping the three newest builds of each rolling tag.
+   Builds published before the token existed reach GitLab with the next
+   change to `native/` (or rerun the workflow).
+
+Renew the token before it expires: with an expired one the gitlab-mirror job fails at the
+push and tessera-ui's GitLab step warns; the mirror stops moving (GitHub keeps working).

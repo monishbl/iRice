@@ -57,10 +57,15 @@ With the password:
       is using it.
 With the password, once, at the start:
   update [--snapshot snapper|timeshift] [--system] [--ignore a,b]
-         [--install a,b] [--remove a,b] [--downgrade f,g] [--setup <shell folder>] [--broker]
+         [--install a,b] [--remove a,b] [--downgrade f,g] [--mirrors l,m] [--setup <shell folder>] [--broker]
       the whole system part of an update (sysupdate.py starts it): snapshot,
       this helper's own files (--setup), pacman -Syu, Tessera's packages,
-      dropped ones. "@@step" lines say where it is; exit codes say which
+      dropped ones. --mirrors: these mirror lists are behind (sysupdate.py
+      asks tools/pac.sh), so before pacman -Syu they're re-ranked by fixed
+      commands (cachyos-rate-mirrors, else reflector), each old list kept
+      as <list>.tessera-backup; never a reason to stop. Only Arch's
+      /etc/pacman.d/mirrorlist and CachyOS's cachyos*-mirrorlist are taken.
+      "@@step" lines say where it is; exit codes say which
       step failed (20 snapshot, 21 system, 22 install, 23 remove, 24
       downgrade). --downgrade: going back to before an update, pacman -U of
       earlier package files, only from pacman's cache, your yay/paru cache
@@ -1392,6 +1397,37 @@ SNAPSHOT = {
     "snapper": ["snapper", "-c", "root", "create", "-d", "Before Tessera update", "-c", "number"],
     "timeshift": ["timeshift", "--create", "--comments", "Before Tessera update", "--scripted"],
 }
+# The mirror lists --mirrors may re-rank: Arch's, CachyOS's
+MIRRORLIST = re.compile(r"^/etc/pacman\.d/(mirrorlist|cachyos(-v[0-9])?-mirrorlist)$")
+
+
+def refresh_mirrors(lists, say, out, prefix="/", run=subprocess.run, which=shutil.which):
+    """The mirror lists that are behind, re-ranked before pacman -Syu
+    (tools/pac.sh's pac_mirrors_refresh, as root: fixed commands only). Each
+    old list kept once as <list>.tessera-backup. Returns True when re-ranked;
+    on any failure the lists stay as they are."""
+    at = lambda f: os.path.join(prefix, f.lstrip("/"))
+    for f in lists:
+        if os.path.isfile(at(f)) and not os.path.exists(at(f) + ".tessera-backup"):
+            with contextlib.suppress(OSError):
+                shutil.copy2(at(f), at(f) + ".tessera-backup")
+    say("Re-ranking the mirrors first (" + ", ".join(os.path.basename(f) for f in lists) + " behind; the old lists kept as *.tessera-backup)")
+    try:
+        if which("cachyos-rate-mirrors"):
+            return run(["cachyos-rate-mirrors"], stdout=out, stderr=subprocess.STDOUT, timeout=600).returncode == 0
+        if "/etc/pacman.d/mirrorlist" not in lists:
+            say("CachyOS's mirror lists are behind; cachyos-rate-mirrors (pacman -S cachyos-rate-mirrors) ranks them")
+            return False
+        if not which("reflector") and run([PACMAN, "-S", "--needed", "--noconfirm", "reflector"], stdout=out,
+                                          stderr=subprocess.STDOUT, timeout=600).returncode != 0:
+            say("reflector couldn't be installed, so the mirror list stays as it is")
+            return False
+        return run(["reflector", "--latest", "20", "--protocol", "https", "--sort", "rate", "--age", "12",
+                    "--save", at("/etc/pacman.d/mirrorlist")], stdout=out, stderr=subprocess.STDOUT, timeout=600).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 # A package name: never starting with "-" (it would pass as a pacman option)
 NAME = re.compile(r"^[a-z0-9@_+][a-z0-9@._+-]*$")
 
@@ -1428,7 +1464,8 @@ def check_package_file(v, dirs):
 
 def parse_update(args, dirs=None):
     """update's arguments, strictly: known flags only, package names checked."""
-    p = {"snapshot": "", "system": False, "ignore": [], "install": [], "remove": [], "downgrade": [], "setup": "", "broker": False}
+    p = {"snapshot": "", "system": False, "ignore": [], "install": [], "remove": [], "downgrade": [], "mirrors": [], "setup": "",
+         "broker": False}
     i = 0
     while i < len(args):
         a = args[i]
@@ -1436,7 +1473,7 @@ def parse_update(args, dirs=None):
             p[a[2:]] = True
             i += 1
             continue
-        if a not in ("--snapshot", "--ignore", "--install", "--remove", "--downgrade", "--setup") or i + 1 >= len(args):
+        if a not in ("--snapshot", "--ignore", "--install", "--remove", "--downgrade", "--mirrors", "--setup") or i + 1 >= len(args):
             raise Refused(f"unknown argument: {a}")
         v = args[i + 1]
         i += 2
@@ -1448,6 +1485,12 @@ def parse_update(args, dirs=None):
             p["setup"] = check_folder(v)
         elif a == "--downgrade":
             p["downgrade"] = [check_package_file(f, dirs or []) for f in v.split(",") if f]
+        elif a == "--mirrors":
+            lists = [f for f in v.split(",") if f]
+            bad = [f for f in lists if not MIRRORLIST.match(f)]
+            if bad:
+                raise Refused("not a mirror list: " + ", ".join(bad))
+            p["mirrors"] = lists
         else:
             names = [n for n in v.split(",") if n]
             bad = [n for n in names if not NAME.match(n)]
@@ -1601,6 +1644,9 @@ def update(args, uid, out=sys.stdout):
         if subprocess.run([PACMAN, "-U", "--noconfirm", "--"] + p["downgrade"], stdout=out, stderr=subprocess.STDOUT,
                           env=dict(os.environ, LANG="C", LC_ALL="C")).returncode != 0:
             return 24
+    if p["system"] and p["mirrors"]:
+        if not refresh_mirrors(p["mirrors"], say, out):
+            say("The mirrors couldn't be re-ranked: going on with the ones there are")
     code = subprocess.run(["/bin/sh", "-c", UPDATE_SCRIPT, "sh", p["snapshot"], ",".join(p["ignore"]),
                            ",".join(p["install"]), ",".join(p["remove"]), "1" if p["system"] else "0"],
                           stdout=out, stderr=subprocess.STDOUT).returncode

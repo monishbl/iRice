@@ -102,6 +102,14 @@ On Arch Linux (a fresh install or your current one), one line does everything:
 bash <(curl -fsSL https://raw.githubusercontent.com/monishbl/iRice/main/setup.sh)
 ```
 
+When GitHub can't be reached, the same script from Tessera's GitLab mirror:
+
+```sh
+bash <(curl -fsSL https://gitlab.com/monishbl/iRice/-/raw/main/setup.sh)
+```
+
+Either way it tries GitHub, then the GitLab mirror, then a plain download of the files (`tools/sources.txt`; `TESSERA_MIRRORS` overrides it), and Software Update and the ready-made `tessera-ui` downloads fall back the same way. Before installing packages it checks your pacman mirror lists (Arch's and CachyOS's): ones that are short or behind are re-ranked first (the old lists kept as `*.tessera-backup`), and when the AUR is down, AUR packages come from Arch's GitHub mirror of it.
+
 It downloads Tessera to `~/.local/share/tessera/repo` and runs the installer. It asks which way you'd like: **interactive** (full screen, arrow keys and space to tick, with live progress and a summary; it needs `python-rich` and offers to install it) or **classic** (one question at a time). Either way every question comes first, then the whole plan (each package, file and service), and nothing changes until you start. The installer then:
 1. checks your system (Arch, sudo, internet, disk space, a GPU render device, virtual machine)
 2. takes a snapshot first when snapper or Timeshift is set up

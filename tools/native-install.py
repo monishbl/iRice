@@ -13,7 +13,8 @@ native/tessera-events), in $XDG_DATA_HOME/tessera/bin, matching this checkout.
 
 How (rust.uiSource in Settings' config.json, or --mode):
   auto        (the default) the ready-made build for this exact version,
-              from the project's GitHub releases: the one for this processor
+              from the project's GitHub releases (else its GitLab mirror's
+              packages, tools/sources.txt): the one for this processor
               (x86-64-v3, or generic), its minisign signature checked against
               tools/tessera-ui.pub and its sha256 against the signed manifest.
               Without one (a checkout with your own edits, a version not
@@ -189,16 +190,43 @@ def release_tags(commit, repo=None, channel="stable"):
     return sorted(tags, reverse=True) + ROLLINGS.get(channel, ROLLINGS["stable"])
 
 
-GITHUB = re.compile(r"^(?:https://github\.com/|git@github\.com:|ssh://git@github\.com/)([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?/?$")
+def _load_sources():
+    # (tools/sources.txt, through tools/tessera_sources.py: loaded by its path,
+    # since python -I leaves tools/ off sys.path)
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "tessera_sources", os.path.join(os.path.dirname(os.path.abspath(__file__)), "tessera_sources.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+SOURCES = _load_sources()
+
+
+def releases_bases(repo=None):
+    """Where the ready-made builds are, in order, each a download URL with
+    {tag} in it: the origin remote's (GitHub releases, or a GitLab project's
+    generic packages), then, when origin is one of Tessera's own sources
+    (tools/sources.txt), each other source's (the GitLab mirror). Every one
+    is checked the same way: signature, manifest, checksums. TESSERA_RELEASES
+    sets the list (space-separated; tests: file:// folders)."""
+    if os.environ.get("TESSERA_RELEASES", "").strip():
+        return os.environ["TESSERA_RELEASES"].split()
+    origin = git("remote", "get-url", "origin", repo=repo) or ""
+    out = [SOURCES.release_base(origin)]
+    if SOURCES.is_official(origin):
+        out += [SOURCES.release_base(u) for u in SOURCES.git_sources()]
+    seen = []
+    for b in out:
+        if b and b not in seen:
+            seen.append(b)
+    return seen
 
 
 def releases_base(repo=None):
-    """The download URL with {tag} in it, from the origin remote (GitHub
-    only), or None. TESSERA_RELEASES sets it (tests: a file:// folder)."""
-    if os.environ.get("TESSERA_RELEASES"):
-        return os.environ["TESSERA_RELEASES"]
-    m = GITHUB.match(git("remote", "get-url", "origin", repo=repo) or "")
-    return f"https://github.com/{m[1]}/{m[2]}/releases/download/{{tag}}" if m else None
+    """The first of releases_bases(), or None."""
+    return (releases_bases(repo) or [None])[0]
 
 
 def manifest_name(tree):
@@ -280,7 +308,7 @@ def _verify_with_program(pubkey_text, data, sig_text, trusted):
 
 # ── Downloading ──────────────────────────────────────────────────────────
 
-def download(url, path, max_bytes, timeout=300):
+def download(url, path, max_bytes, timeout=300, retries=3, connect=10):
     """curl, with timeouts and retries. Raises Failed(kind=missing) for a
     file that isn't there, Failed(kind=network) for anything else."""
     local = url.startswith("file://")
@@ -288,8 +316,8 @@ def download(url, path, max_bytes, timeout=300):
         raise Failed("only https downloads are allowed", "network")
     cmd = ["curl", "--fail", "--silent", "--show-error", "--location",
            "--proto", "=file" if local else "=https", "--proto-redir", "=https",
-           "--connect-timeout", "10", "--max-time", str(timeout),
-           "--retry", "3", "--retry-delay", "2", "--max-filesize", str(max_bytes),
+           "--connect-timeout", str(connect), "--max-time", str(timeout),
+           "--retry", str(retries), "--retry-delay", "2", "--max-filesize", str(max_bytes),
            "--user-agent", "Tessera", "--write-out", "%{http_code}", "--output", path, url]
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 60)
@@ -385,10 +413,27 @@ def fetch(tree, commit, variant, work, *, base=None, tags=None, pubkey=None, rep
     pubkey = pubkey if pubkey is not None else _read(pubkey_path())
     if not pubkey:
         raise Failed("this copy of Tessera has no release key yet (tools/tessera-ui.pub)", "missing")
-    base = base if base is not None else releases_base(repo)
-    if not base:
-        raise Failed("this checkout doesn't come from GitHub, where the ready-made builds are", "missing")
+    bases = base if base is not None else releases_bases(repo)
+    bases = [bases] if isinstance(bases, str) else [b for b in bases if b]
+    if not bases:
+        raise Failed("this checkout doesn't come from GitHub or GitLab, where the ready-made builds are", "missing")
     tags = tags if tags is not None else release_tags(commit, repo, channel or configured_channel(repo=repo))
+    # Each source in turn (GitHub, then its GitLab mirror): one that's down,
+    # doesn't exist yet or hasn't this build is passed over; every one is
+    # checked exactly the same way, and a refused download is never used
+    errors = []
+    for b in bases:
+        shutil.rmtree(work, ignore_errors=True)
+        try:
+            return _fetch_from(b, tree, commit, variant, work, tags, pubkey, repo)
+        except Failed as e:
+            errors.append(e)
+    shutil.rmtree(work, ignore_errors=True)
+    refused = [e for e in errors if e.kind == "refused"]
+    raise refused[0] if refused else errors[0]
+
+
+def _fetch_from(base, tree, commit, variant, work, tags, pubkey, repo):
     os.makedirs(work, exist_ok=True)
     mpath = os.path.join(work, "manifest.json")
     found = None
@@ -396,7 +441,8 @@ def fetch(tree, commit, variant, work, *, base=None, tags=None, pubkey=None, rep
     for tag in tags:
         url = base.replace("{tag}", tag) + "/" + manifest_name(tree)
         try:
-            download(url, mpath, MAX_MANIFEST, timeout=60)
+            # (a source that doesn't answer is given up on in seconds)
+            download(url, mpath, MAX_MANIFEST, timeout=60, retries=1, connect=5)
             found = (tag, url)
             break
         except Failed as e:
@@ -771,12 +817,16 @@ def plan(ref="HEAD", online=False, mode=None, dest=None, repo=None, config=None,
     why = ("your edits in native/" if edited and ref == "HEAD" else "not a git checkout" if not tree else
            "no ready-made build for this processor" if variant is None else
            "no release key yet" if not _read(pubkey_path()) else "")
-    base = releases_base(repo)
-    if not why and not base:
-        why = "not from GitHub"
+    bases = releases_bases(repo)
+    if not why and not bases:
+        why = "not from GitHub or GitLab"
     if not why and online:
         tags = release_tags(commit, repo, channel or configured_channel(config, repo))
-        seen = [exists_online(base.replace("{tag}", t) + "/" + manifest_name(tree)) for t in tags]
+        seen = []
+        for b in bases:  # (GitHub, then its mirror: the first that has it will do)
+            seen += [exists_online(b.replace("{tag}", t) + "/" + manifest_name(tree)) for t in tags]
+            if True in seen:
+                break
         out["available"] = True if True in seen else None if None in seen else False
         if out["available"] is False:
             why = "no ready-made build for it yet"

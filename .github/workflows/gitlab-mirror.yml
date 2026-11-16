@@ -1,0 +1,60 @@
+# Keeps Tessera's GitLab mirror (tools/sources.txt: the second source for
+# setup.sh, Software Update and the ready-made tessera-ui) in step with
+# GitHub: on every push to main or beta and every tag, those branches and
+# all tags are pushed there as they are here (force: the mirror follows
+# GitHub, never the other way). The release files go there from
+# tessera-ui.yml's publish job.
+#
+# Secrets: GITLAB_TOKEN, a GitLab project access token with write_repository
+# and api; GITLAB_PROJECT (or the repository variable of that name), the
+# project's path, monishbl/iRice when unset. Without GITLAB_TOKEN the job
+# says so and stops, successfully. One-time setup: docs/releases.md
+# ("Mirrors").
+name: gitlab-mirror
+on:
+  push:
+    branches: [main, beta]
+    tags: ["v*"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: gitlab-mirror
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    name: Mirror to GitLab
+    runs-on: ubuntu-latest
+    env:
+      GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+      GITLAB_PROJECT: ${{ secrets.GITLAB_PROJECT || vars.GITLAB_PROJECT || 'monishbl/iRice' }}
+      GITLAB_HOST: gitlab.com
+    steps:
+      - name: Is there a GitLab token?
+        id: token
+        run: |
+          if [[ -z "$GITLAB_TOKEN" ]]; then
+            echo "::notice title=GitLab mirror skipped::There's no GITLAB_TOKEN secret, so the GitLab mirror isn't updated. One-time setup: docs/releases.md (Mirrors)"
+            echo "ready=no" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=yes" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.token.outputs.ready == 'yes'
+        with:
+          fetch-depth: 0
+      - name: Push main, beta and the tags
+        if: steps.token.outputs.ready == 'yes'
+        run: |
+          set -euo pipefail
+          # (the token goes in a header, never in a URL or the log)
+          auth=$(printf 'oauth2:%s' "$GITLAB_TOKEN" | base64 -w0)
+          echo "::add-mask::$auth"
+          url="https://$GITLAB_HOST/$GITLAB_PROJECT.git"
+          refs=()
+          for b in main beta; do
+            git rev-parse --verify --quiet "refs/remotes/origin/$b" >/dev/null && refs+=("+refs/remotes/origin/$b:refs/heads/$b")
+          done
+          git -c credential.helper= -c "http.extraHeader=Authorization: Basic $auth" \
+            push --force "$url" "${refs[@]}" '+refs/tags/*:refs/tags/*'

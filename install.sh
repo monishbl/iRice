@@ -510,6 +510,10 @@ show_plan() {
         esac
         mapfile -t need < <(missing_of "${want[@]}")
         plan_row Packages "updates the system (pacman -Syu)$( ((${#need[@]})) && printf ' and installs %d: %s' ${#need[@]} "${need[*]}")"
+        # (mirror lists that are behind: re-ranked first, tools/pac.sh)
+        local stale
+        stale=$(pac_mirrors_stale 2>/dev/null)
+        [[ -n "$stale" ]] && plan_row Mirrors "re-ranked first ($(cut -f1 <<<"$stale" | xargs -n1 basename | paste -sd, - | sed 's/,/, /g'): $(cut -f2 <<<"$stale" | head -1)); the old lists kept as *.tessera-backup"
         if [[ $PULSE == yes ]]; then
             plan_row "" "removes $(pacman -Qq pulseaudio pulseaudio-bluetooth 2>/dev/null | xargs): PipeWire replaces it"
         elif [[ $PULSE == no ]]; then
@@ -664,6 +668,8 @@ install_packages() {
     [[ $WANT_APPS == 1 ]] && avail+=("${APPS[@]}")
     say "  Updating the system and installing ${#avail[@]} packages (already installed ones are kept)…"
     note "Arch needs the system up to date for new packages (pacman -Syu)."
+    # (mirror lists that are behind are re-ranked first: tools/pac.sh)
+    pac_mirrors_check
     pac -Syu --needed --noconfirm "${avail[@]}" || return 1
     [[ $DRY == 1 ]] && return 0
     local hv qv
@@ -725,7 +731,12 @@ install_yay() {
     say "  Installing yay (an AUR helper)…"
     local tmp
     tmp=$(mktemp -d)
-    run git clone --depth 1 https://aur.archlinux.org/yay-bin.git "$tmp/yay-bin" || return 1
+    # (from the AUR, else Arch's GitHub mirror of it: aur_clone, tools/pac.sh)
+    if [[ $DRY == 1 ]]; then
+        run git clone --depth 1 https://aur.archlinux.org/yay-bin.git "$tmp/yay-bin"
+    else
+        aur_clone yay-bin "$tmp/yay-bin" || return 1
+    fi
     (cd "$tmp/yay-bin" && run makepkg -si --noconfirm) || return 1
     rm -rf "$tmp"
     command -v yay >/dev/null || [[ $DRY == 1 ]]
@@ -739,6 +750,13 @@ aur_install() { # want "what" packages…
     mapfile -t missing < <(missing_of "$@")
     [[ ${#missing[@]} == 0 ]] && { note "$what: installed."; return 0; }
     [[ $want == 1 ]] || { note "Skipped."; return 0; }
+    # The AUR down: yay and paru can't work, so each is built from Arch's
+    # GitHub mirror of the AUR instead (tools/pac.sh)
+    if [[ $DRY == 0 ]] && ! aur_reachable; then
+        warn "The AUR (aur.archlinux.org) isn't answering: building ${missing[*]} from Arch's GitHub mirror of it."
+        aur_build_from_mirror "${missing[@]}"
+        return
+    fi
     helper=$(aur_helper)
     if [[ -z "$helper" && $DRY == 0 ]] && command -v pamac >/dev/null; then
         note "Skipped: no yay or paru (with pamac: pamac build ${missing[*]})"

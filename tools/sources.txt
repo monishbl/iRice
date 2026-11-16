@@ -1,0 +1,14 @@
+# Where Tessera's code and its ready-made tessera-ui builds come from, tried in
+# this order (docs/releases.md, "Mirrors"). The one place to change the list;
+# TESSERA_MIRRORS (the same entries, separated by spaces) overrides it for one
+# run. setup.sh carries a copy of this list (it runs before anything is
+# downloaded; tests/test_mirrors.py keeps the two the same).
+#
+#   a git URL               cloned or fetched; its builds: a github.com URL's
+#                           releases, a gitlab.com URL's generic packages
+#   a URL with {branch}     a tarball of that branch: a fresh install's last
+#                           resort (no git history, so it can't update itself
+#                           until setup.sh is run again)
+https://github.com/monishbl/iRice.git
+https://gitlab.com/monishbl/iRice.git
+https://codeload.github.com/monishbl/iRice/tar.gz/refs/heads/{branch}

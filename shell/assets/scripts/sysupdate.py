@@ -332,13 +332,65 @@ def aur_setup():
     return "yay", [p for p in ("base-devel", "git") if not installed(p)], True
 
 
+AUR_GIT = "https://aur.archlinux.org"
+AUR_MIRROR = "https://github.com/archlinux/aur.git"  # Arch's own mirror of the AUR (tools/pac.sh: aur_clone)
+
+
+def aur_answers():
+    try:
+        return subprocess.run(["curl", "-fsI", "--connect-timeout", "5", "--max-time", "8", "-o", "/dev/null", AUR_GIT + "/"],
+                              timeout=15).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def pac_sh():
+    """tools/pac.sh of the Tessera this shell came from: next to this shell
+    folder (a checkout's shell/), else the source the installer wrote down."""
+    cand = [os.path.join(os.path.dirname(SHELL), "tools", "pac.sh")]
+    data = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
+    try:
+        with open(os.path.join(data, "tessera", "source")) as f:
+            cand.append(os.path.join(f.read().strip(), "tools", "pac.sh"))
+    except OSError:
+        pass
+    return next((c for c in cand if os.path.isfile(c)), None)
+
+
+def stale_mirrors():
+    """The mirror lists that are behind (tools/pac.sh mirrors-stale: under
+    10 s, nothing changed), for the root part to re-rank before pacman -Syu."""
+    script = pac_sh()
+    if not script:
+        return []
+    try:
+        r = subprocess.run(["bash", script, "mirrors-stale"], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    lists = []
+    for line in r.stdout.splitlines():
+        path, _, why = line.partition("\t")
+        if path:
+            out(f"Mirrors: {path}: {why}; re-ranking them first")
+            lists.append(path)
+    return lists
+
+
 def bootstrap_yay(env):
     """yay-bin from the AUR, built as you (makepkg), installed through the
     root part (tessera-sudo pacman -U). Returns 0 when yay is there."""
     work = tempfile.mkdtemp(prefix="tessera-yay-")
     try:
         out("==> Getting yay (an AUR helper) first")
-        code = stream(["git", "clone", "--depth", "1", "https://aur.archlinux.org/yay-bin.git", os.path.join(work, "yay-bin")], aur=True, env=env)
+        quiet = dict(env, GIT_TERMINAL_PROMPT="0")
+        code = stream(["git", "clone", "--depth", "1", AUR_GIT + "/yay-bin.git", os.path.join(work, "yay-bin")], aur=True, env=quiet) \
+            if aur_answers() else 1
+        if code != 0:
+            # (the AUR down: Arch's GitHub mirror of it, a branch per package)
+            out("==> The AUR isn't answering: getting yay-bin from Arch's GitHub mirror of the AUR")
+            shutil.rmtree(os.path.join(work, "yay-bin"), ignore_errors=True)
+            code = stream(["git", "clone", "--depth", "1", "--branch", "yay-bin", "--single-branch", AUR_MIRROR,
+                           os.path.join(work, "yay-bin")], aur=True, env=quiet)
         if code != 0:
             return code
         code = stream(["sh", "-c", 'cd "$1" && makepkg --noconfirm', "sh", os.path.join(work, "yay-bin")], aur=True, env=env)
@@ -730,7 +782,7 @@ def root_command(plan, broker):
         cmd += ["--snapshot", plan["snapshot"]]
     if plan["system"]:
         cmd.append("--system")
-    for k in ("ignore", "install", "remove", "downgrade"):
+    for k in ("ignore", "install", "remove", "downgrade", "mirrors"):
         if plan.get(k):
             cmd += ["--" + k, ",".join(plan[k])]
     if plan["setup"]:
@@ -897,6 +949,8 @@ def real_run(plan):
         return finish("done", "Updated")  # (nothing for root to do)
     if cancel_asked:
         return finish("cancelled", "Update cancelled")
+    if plan["system"] and "mirrors" not in plan:
+        plan["mirrors"] = stale_mirrors()
     # The root part, even for the AUR alone: its pacman commands go through it
     chan, theirs = socket.socketpair()
     try:

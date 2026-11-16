@@ -28,6 +28,10 @@
 #        tools/tessera-ui.pub. Without the key or the .pub it still builds,
 #        then says in the log that it skipped signing and publishing.
 #        One-time setup: docs/releases.md.
+# Mirror: with the secret GITLAB_TOKEN, the same files (signatures too) go to
+#        the GitLab mirror's generic package registry (tessera-ui/<tag>), the
+#        second place installs look; without it, skipped (docs/releases.md,
+#        "Mirrors"). The code itself: gitlab-mirror.yml.
 name: tessera-ui
 on:
   push:
@@ -225,4 +229,52 @@ jobs:
             for name in $(gh release view "$TAG" --json assets --jq ".assets[].name | select(startswith(\"tessera-ui-$t\"))"); do
               gh release delete-asset "$TAG" "$name" --yes
             done
+          done
+      # The same files, signatures included, on the GitLab mirror (the
+      # second place tools/native-install.py looks, checked the same way):
+      # its generic package registry, package tessera-ui, the tag as the
+      # version. Without the GITLAB_TOKEN secret: skipped, not failed.
+      - name: Mirror to GitLab
+        if: steps.key.outputs.ready == 'yes'
+        # (GitHub's release is already out: a mirror that fails is a warning)
+        continue-on-error: true
+        env:
+          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+          GITLAB_PROJECT: ${{ secrets.GITLAB_PROJECT || vars.GITLAB_PROJECT || 'monishbl/iRice' }}
+          TREE: ${{ steps.manifest.outputs.tree }}
+          TAG: ${{ steps.manifest.outputs.tag }}
+          CHANNEL: ${{ steps.manifest.outputs.channel }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$GITLAB_TOKEN" ]]; then
+            echo "::notice title=GitLab mirror skipped::There's no GITLAB_TOKEN secret, so the builds aren't copied to GitLab. One-time setup: docs/releases.md (Mirrors)"
+            exit 0
+          fi
+          api="https://gitlab.com/api/v4/projects/$(jq -rn --arg p "$GITLAB_PROJECT" '$p | @uri')"
+          hdr="PRIVATE-TOKEN: $GITLAB_TOKEN"
+          for f in out/*; do
+            curl --fail --silent --show-error --retry 3 --header "$hdr" --upload-file "$f" \
+              "$api/packages/generic/tessera-ui/$TAG/$(basename "$f")" >/dev/null
+            echo "uploaded $(basename "$f")"
+          done
+          [[ "$CHANNEL" == release ]] && exit 0
+          # A rolling one keeps the three newest builds there too (by their
+          # manifests' upload time), and one copy of each file
+          pkg=$(curl -fsS --header "$hdr" "$api/packages?package_type=generic&package_name=tessera-ui&per_page=100" |
+                jq -r --arg v "$TAG" '[.[] | select(.version == $v)][0].id // empty')
+          [[ -n "$pkg" ]] || exit 0
+          files=$(curl -fsS --header "$hdr" "$api/packages/$pkg/package_files?per_page=100")
+          # (the three newest trees, by their manifests, newest first)
+          keep=$(jq -r '[.[] | select(.file_name | test("^tessera-ui-[0-9a-f]{40}\\.manifest\\.json$"))] | sort_by(.created_at) | reverse
+                        | map(.file_name | capture("^tessera-ui-(?<t>[0-9a-f]{40})").t)
+                        | reduce .[] as $t ([]; if index([$t]) then . else . + [$t] end) | .[:3] | .[]' <<<"$files" | xargs)
+          keep="$keep $TREE"
+          # Removed: older trees' files, and older copies of a file uploaded again
+          seen=" "
+          jq -r 'sort_by(.created_at) | reverse | .[] | "\(.id) \(.file_name)"' <<<"$files" | while read -r id name; do
+            t=$(sed -nE 's/^tessera-ui-([0-9a-f]{40}).*/\1/p' <<<"$name")
+            if [[ " $keep " != *" $t "* || "$seen" == *" $name "* ]]; then
+              curl -fsS --request DELETE --header "$hdr" "$api/packages/$pkg/package_files/$id" >/dev/null && echo "removed $name"
+            fi
+            seen="$seen$name "
           done

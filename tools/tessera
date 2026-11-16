@@ -27,13 +27,21 @@ case "${1:-help}" in
         need_src
         if [[ -d "$SRC/.git" ]]; then
             echo "Getting the latest Tessera…"
-            git -C "$SRC" pull --ff-only || { echo "Couldn't update $SRC (local changes?)."; exit 1; }
+            # (from GitHub, else its mirrors in tools/sources.txt; the remote stays)
+            python3 -I "$SRC/tools/tessera-update.py" fetch --config "$CONFIG/tessera" >/dev/null ||
+                { echo "Couldn't download the update from GitHub or its mirrors (tools/sources.txt). Check the connection."; exit 1; }
+            git -C "$SRC" merge --ff-only --quiet "@{u}" || { echo "Couldn't update $SRC (local changes?)."; exit 1; }
         fi
         "$SRC/install.sh" --yes --no-extras --no-greeter "${@:2}" || exit 1
-        # AUR extras (themes, cursors) too
+        # AUR extras (themes, cursors) too, when the AUR answers (yay can't
+        # use its GitHub mirror: install.sh builds from it when it must)
         if command -v yay >/dev/null; then
-            echo "Updating AUR packages…"
-            yay -Sua --noconfirm --answerdiff None --answerclean None
+            if curl -fsI --connect-timeout 5 --max-time 10 -o /dev/null https://aur.archlinux.org/; then
+                echo "Updating AUR packages…"
+                yay -Sua --noconfirm --answerdiff None --answerclean None
+            else
+                echo "The AUR (aur.archlinux.org) isn't answering: AUR updates are left for next time."
+            fi
         fi
         ;;
     rebuild)

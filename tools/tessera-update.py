@@ -7,6 +7,11 @@ conflict you decide, and nothing is applied until all of them are decided.
     tessera-update.py apply  --config <dir> --choices <file.json>
     tessera-update.py info   --config <dir>            -> channel, version, date (no download)
     tessera-update.py peek   --config <dir> [--mark]   -> is there a newer version? (the notice)
+    tessera-update.py fetch  --config <dir>            -> download the followed branch (tessera update)
+
+Downloads come from the checkout's remote, else the other sources in
+tools/sources.txt (GitHub, its GitLab mirror), fetched by URL: the remote
+isn't rewritten, and a mirror that doesn't answer is passed over in seconds.
 
 Channels (config.json's update.channel, or --channel): stable follows the
 branch main, beta the branch beta. Until one is chosen the checkout's own
@@ -58,6 +63,57 @@ def git(*args, check=True):
     if check and r.returncode != 0:
         raise RuntimeError("git " + " ".join(args) + ": " + (r.stderr.strip() or r.stdout.strip()))
     return r.stdout
+
+
+def _load_sources():
+    # (tools/sources.txt, through tools/tessera_sources.py: loaded by its path,
+    # since python -I leaves tools/ off sys.path)
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "tessera_sources", os.path.join(os.path.dirname(os.path.abspath(__file__)), "tessera_sources.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+SOURCES = _load_sources()
+
+
+def fetch_branch(remote, branch, target):
+    """BRANCH into refs/remotes/TARGET: from REMOTE first, then, when REMOTE
+    is one of Tessera's own sources (tools/sources.txt; or TESSERA_MIRRORS is
+    set), from each other one in turn, by URL: the remote itself is never
+    rewritten. A source that doesn't answer within seconds, or doesn't exist
+    yet (a GitLab mirror not created), is passed over quietly.
+    Returns {"ok", "source", "missing", "why"}: missing when a source that
+    answered has no such branch."""
+    spec = f"+refs/heads/{branch}:refs/remotes/{target}"
+    url = git("remote", "get-url", remote, check=False).strip()
+    official = SOURCES.is_official(url)
+    tries = [(remote, url)]
+    if official or os.environ.get("TESSERA_MIRRORS", "").strip():
+        tries += [(u, u) for u in SOURCES.git_sources() if not SOURCES.same_repo(u, url)]
+    env = dict(os.environ, **SOURCES.QUIET_GIT)
+    why, missing = [], False
+    for i, (src, shown) in enumerate(tries):
+        if (i or official) and not SOURCES.reachable(shown):
+            why.append(f"{shown}: didn't answer")
+            continue
+        try:
+            r = subprocess.run(["git", "-C", REPO, "fetch", "--quiet", src, spec], capture_output=True, text=True,
+                               env=env, timeout=900)
+        except subprocess.TimeoutExpired:
+            why.append(f"{shown}: took too long")
+            continue
+        if r.returncode == 0:
+            return {"ok": True, "source": shown, "missing": False, "why": []}
+        lines = (r.stderr.strip() or r.stdout.strip()).splitlines()
+        if any("couldn't find remote ref" in l.lower() for l in lines):
+            missing = True
+            if i == 0:
+                break  # (the branch's own home says it isn't there: no mirror has it either)
+        why += lines[-1:] or [f"{shown}: no answer"]
+    return {"ok": False, "source": None, "missing": missing, "why": why}
 
 
 def show(rev, path):
@@ -322,13 +378,14 @@ def position(config_dir, fetch=True, channel=None):
     if fetch:
         # (only this branch: a copy cloned with one branch gets the other
         # channel's when it's chosen)
-        r = subprocess.run(["git", "-C", REPO, "fetch", "--quiet", remote, f"+refs/heads/{branch}:refs/remotes/{target}"],
-                           capture_output=True, text=True)
-        if r.returncode != 0:
-            why = (r.stderr.strip() or r.stdout.strip()).splitlines()
-            if any("couldn't find remote ref" in l.lower() for l in why):
+        # (from the remote, else Tessera's mirrors: tools/sources.txt)
+        f = fetch_branch(remote, branch, target)
+        if not f["ok"]:
+            if f["missing"]:
                 return dict(out, error=f"The {NAMES[ch]} channel isn't published yet. Choose Stable for now.")
+            why = f["why"]
             return dict(out, error="Couldn't reach the update server: " + (why[-1] if why else "no answer").split(": ", 1)[-1])
+        out["source"] = f["source"]
     if subprocess.run(["git", "-C", REPO, "rev-parse", "--verify", "--quiet", target + "^{commit}"], capture_output=True).returncode != 0:
         return dict(out, error=f"This copy hasn't downloaded the {NAMES[ch]} channel yet. Check for updates while online.")
     new_id = git("rev-parse", target).strip()
@@ -902,7 +959,7 @@ def apply_after_merge(config_dir, choices, report, edited, merged, stash):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["check", "apply", "info", "peek"])
+    ap.add_argument("command", choices=["check", "apply", "info", "peek", "fetch"])
     ap.add_argument("--channel", choices=sorted(CHANNELS), help="this channel instead of config.json's update.channel")
     ap.add_argument("--mark", action="store_true", help="peek: write down that a new version was mentioned")
     ap.add_argument("--config", required=True, help="the shell's config folder (config.json, keybinds.json)")
@@ -917,6 +974,13 @@ def main():
             out = position(a.config, False, a.channel) if is_checkout() else {"error": NOT_A_CHECKOUT}
         elif a.command == "peek":
             out = peek(a.config, a.channel, a.mark)
+        elif a.command == "fetch":
+            # (tessera update: the branch this checkout follows, from wherever answers)
+            up = tracked() if is_checkout() else ""
+            remote, branch = up.split("/", 1) if up else follow(a.config, a.channel)[1:]
+            f = fetch_branch(remote, branch, remote + "/" + branch) if is_checkout() else {"ok": False, "why": [NOT_A_CHECKOUT]}
+            out = {"upstream": remote + "/" + branch, "source": f.get("source")} if f["ok"] else \
+                {"error": "Couldn't download the update: " + ((f["why"] or ["no answer"])[-1])}
         else:
             out = apply(a.config, load_json(a.choices, {}) if a.choices else {}, [r for r in a.rebuild.split(",") if r], a.channel)
     except (RuntimeError, SystemExit) as e:
