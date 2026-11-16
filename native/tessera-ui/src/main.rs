@@ -121,6 +121,15 @@ fn host_services() -> Vec<Box<dyn tessera_core::host::Service>> {
 
 fn main() {
     let started = Instant::now();
+    // (an XDG folder set but empty or relative means "the default" by the
+    // spec: taken out before anything reads it, so Mesa's shader cache, the
+    // shell's children and every crate here use ~/.cache and the rest, not
+    // "/mesa_shader_cache" or a path from wherever they started)
+    for v in ["XDG_CACHE_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_DATA_DIRS", "XDG_CONFIG_DIRS"] {
+        if std::env::var_os(v).is_some_and(|p| !std::path::Path::new(&p).is_absolute()) {
+            std::env::remove_var(v);
+        }
+    }
     let args: Vec<String> = std::env::args().collect();
     if args.get(1).map(String::as_str) == Some("--material-roles") {
         let seed = args.get(2).map_or("#6750A4", String::as_str);
