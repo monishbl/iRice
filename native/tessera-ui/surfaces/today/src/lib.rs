@@ -112,7 +112,7 @@ pub struct Today {
     ticked: HashSet<String>,
     account: String,
     weather_settings: (String, bool),
-    tick: slint::Timer,
+    tick: tessera_core::pacing::FrameTimer,
     minute: slint::Timer,
 }
 
@@ -133,7 +133,7 @@ impl Default for Today {
             ticked: HashSet::new(),
             account: String::new(),
             weather_settings: (String::new(), true),
-            tick: slint::Timer::default(),
+            tick: tessera_core::pacing::FrameTimer::default(),
             minute: slint::Timer::default(),
         }
     }
@@ -305,7 +305,7 @@ impl Today {
         w.ui.invoke_focus_day();
         self.backdrop(st, &output);
         let to = Self::send(st);
-        self.tick.start(slint::TimerMode::Repeated, Duration::from_millis(8), move || to(Box::new(M::Tick)));
+        self.tick.start(move || to(Box::new(M::Tick)));
         let to = Self::send(st);
         self.minute.start(slint::TimerMode::Repeated, Duration::from_secs(60), move || to(Box::new(M::Minute)));
     }
@@ -344,7 +344,7 @@ impl Today {
         }
         if !self.tick.running() {
             let to = Self::send(st);
-            self.tick.start(slint::TimerMode::Repeated, Duration::from_millis(8), move || to(Box::new(M::Tick)));
+            self.tick.start(move || to(Box::new(M::Tick)));
         }
         if tell {
             crate::shell::ask("today.close", serde_json::json!([]));

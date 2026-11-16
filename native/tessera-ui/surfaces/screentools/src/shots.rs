@@ -161,7 +161,7 @@ pub struct Core {
     start_crop: Rect,
     pressed: bool,
     pub live: Live,
-    glow_timer: Rc<slint::Timer>,
+    glow_timer: tessera_core::pacing::FrameTimer,
     live_said: slint::Timer,
     // ── the lists handed to the editor once (changed in place: rows.rs) ──
     anns: Rows<ui::StAnn>,
@@ -220,7 +220,7 @@ impl Default for Core {
             start_crop: Rect::default(),
             pressed: false,
             live: Live::new(),
-            glow_timer: Rc::new(slint::Timer::default()),
+            glow_timer: tessera_core::pacing::FrameTimer::default(),
             live_said: slint::Timer::default(),
             anns: Rows::new(),
             width_tips: Rows::new(),
@@ -1095,19 +1095,14 @@ impl Core {
 
     fn glow(&mut self) {
         let weak = self.ed.clone();
-        let me = Rc::downgrade(&self.glow_timer);
         let t0 = Instant::now();
-        self.glow_timer.start(slint::TimerMode::Repeated, Duration::from_millis(16), move || {
+        self.glow_timer.start_while(move || {
             let ms = t0.elapsed().as_secs_f32() * 1000.0;
             if let Some(ui) = weak.as_ref().and_then(|w| w.upgrade()) {
                 ui.set_glow(ltui::glow_at(ms));
             }
             // (done: no more frames once it's gone, as the QML's animation ends)
-            if ms >= 1000.0 {
-                if let Some(t) = me.upgrade() {
-                    t.stop();
-                }
-            }
+            ms < 1000.0
         });
     }
 

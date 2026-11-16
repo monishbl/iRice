@@ -32,6 +32,7 @@ pub mod icons;
 pub mod picture;
 pub mod power_supply; // (/sys/class/power_supply: own batteries, adapters of any name)
 pub mod rank;
+pub mod pacing; // (the display's refresh, frames on screen, frame timers, the idle timer grid)
 pub mod perf; // (debug: loop stalls and list/window reloads, TESSERA_DEBUG: perf.rs)
 pub mod rows; // (lists changed in place, not handed a new model: rows.rs)
 pub mod runloop;

@@ -42,7 +42,12 @@ else
     # nested Hyprland is its only window.
     mkdir -m 700 "$RT/display"
     sock=irice-display
-    env -u WAYLAND_DISPLAY -u DISPLAY XDG_RUNTIME_DIR="$RT/display" KWIN_COMPOSE=O2ES \
+    # (TESSERA_SANDBOX_RENDER_NODE=/dev/dri/renderD129: the hidden display,
+    # and so the nested Hyprland, draw on that GPU, e.g. a laptop's Intel
+    # one as its real desktop does, not whichever node comes first)
+    node=()
+    [[ -n "${TESSERA_SANDBOX_RENDER_NODE:-}" ]] && node=(KWIN_RENDER_NODES="$TESSERA_SANDBOX_RENDER_NODE")
+    env -u WAYLAND_DISPLAY -u DISPLAY XDG_RUNTIME_DIR="$RT/display" KWIN_COMPOSE=O2ES "${node[@]}" \
         kwin_wayland --virtual --width 1920 --height 1080 --socket "$sock" >"$RT/display.log" 2>&1 &
     helpers+=($!)
     for _ in $(seq 80); do [[ -S "$RT/display/$sock" ]] && break; sleep 0.1; done

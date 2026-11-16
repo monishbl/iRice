@@ -116,13 +116,13 @@ pub struct Session {
     pressed: Option<usize>,
     /// Material: each option's morph, 0 a rounded square .. 1 its shape
     morph: [f64; 5],
-    frames: slint::Timer,
+    frames: tessera_core::pacing::FrameTimer,
     hide: slint::Timer,
 }
 
 impl Default for Session {
     fn default() -> Self {
-        Self { win: None, open: String::new(), action: String::new(), current: 4, pressed: None, morph: [0.0; 5], frames: slint::Timer::default(), hide: slint::Timer::default() }
+        Self { win: None, open: String::new(), action: String::new(), current: 4, pressed: None, morph: [0.0; 5], frames: tessera_core::pacing::FrameTimer::default(), hide: slint::Timer::default() }
     }
 }
 
@@ -301,7 +301,7 @@ impl Session {
         }
         if !self.frames.running() {
             let to = Self::send(st);
-            self.frames.start(slint::TimerMode::Repeated, Duration::from_millis(16), move || to(Box::new(M::Frame)));
+            self.frames.start(move || to(Box::new(M::Frame)));
         }
     }
 

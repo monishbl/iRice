@@ -512,7 +512,7 @@ pub fn run(args: &[String], started: Instant) {
         let timeout = if state.wants_frame_soon() {
             Some(Duration::ZERO)
         } else if state.animating_unpaced() {
-            Some(Duration::from_millis(16))
+            Some(tessera_core::pacing::refresh())
         } else {
             slint::platform::duration_until_next_timer_update()
         };

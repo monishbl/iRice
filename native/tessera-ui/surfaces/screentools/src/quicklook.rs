@@ -277,7 +277,7 @@ pub struct QuickLook {
     player: Player,
     frame: Arc<Mutex<Option<Px>>>,
     tick: slint::Timer,
-    glow: slint::Timer,
+    glow: tessera_core::pacing::FrameTimer,
     said: slint::Timer,
     prep: slint::Timer,
     copied: slint::Timer,
@@ -307,7 +307,7 @@ impl Default for QuickLook {
             player: Player::default(),
             frame: Arc::new(Mutex::new(None)),
             tick: slint::Timer::default(),
-            glow: slint::Timer::default(),
+            glow: tessera_core::pacing::FrameTimer::default(),
             said: slint::Timer::default(),
             prep: slint::Timer::default(),
             copied: slint::Timer::default(),
@@ -939,10 +939,14 @@ impl Part for QuickLook {
                         if self.live.borrow().found {
                             self.live.borrow_mut().found = false;
                             let (weak, t0) = (self.win.as_ref().map(|w| w.ui.as_weak()), Instant::now());
-                            self.glow.start(slint::TimerMode::Repeated, Duration::from_millis(16), move || {
+                            // (one frame each, until the glow is over: it ran on
+                            // at 60 Hz for as long as Quick Look lived)
+                            self.glow.start_while(move || {
+                                let ms = t0.elapsed().as_secs_f32() * 1000.0;
                                 if let Some(ui) = weak.as_ref().and_then(|w| w.upgrade()) {
-                                    ui.set_glow(ltui::glow_at(t0.elapsed().as_secs_f32() * 1000.0));
+                                    ui.set_glow(ltui::glow_at(ms));
                                 }
+                                ms < 1000.0
                             });
                         }
                         self.push();

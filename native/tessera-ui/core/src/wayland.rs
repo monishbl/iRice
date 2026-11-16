@@ -35,6 +35,10 @@ use smithay_client_toolkit::{
                 zwp_text_input_v3::{self, ContentHint, ContentPurpose, ZwpTextInputV3},
             },
             viewporter::client::{wp_viewport::WpViewport, wp_viewporter::WpViewporter},
+            presentation_time::client::{
+                wp_presentation::{self, WpPresentation},
+                wp_presentation_feedback::{self, WpPresentationFeedback},
+            },
         },
     },
     registry::{ProvidesRegistryState, RegistryState},
@@ -68,7 +72,16 @@ use std::rc::{Rc, Weak};
 use std::time::Instant;
 
 /// How long a frame callback may take before it counts as lost (a frame at
-/// 60 Hz is 17 ms; a busy compositor takes a few)
+/// 60 Hz is 17 ms; a busy compositor takes a few). Hyprland withholds the
+/// callback while nobody can see the surface: its output off, the session
+/// locked (every layer surface but the lock's), under a full-screen window.
+/// The real logs showed what drawing on every 250 ms meant there: the
+/// laptop's bar lost 12,155 callbacks in a session, 1-2 a second for two
+/// hours with the screen off, each one a frame drawn for nothing; server1's
+/// lock screen did the same while locked with its screen off. So a surface
+/// that keeps losing them waits twice as long each time, up to 16 times this
+/// (4 s): when it's seen again the compositor sends the callback it kept,
+/// and it draws at once.
 const LOST_FRAME: std::time::Duration = std::time::Duration::from_millis(250);
 
 // ── One layer surface = one Slint window ────────────────────────────────────
@@ -113,6 +126,17 @@ pub struct Surface {
     /// (the compositor can withhold it) would freeze the surface for good,
     /// and with it the glass shapes waiting for that frame (`recover_lost_frames`)
     frame_asked: Cell<Option<Instant>>,
+    /// frame callbacks lost in a row (LOST_FRAME's back-off)
+    lost_streak: Cell<u32>,
+    /// the drawing turn (RENDER_TURN) before its last frame callback came: a
+    /// frame drawn in the turn right after one is an animation's next frame
+    /// (pacing.rs)
+    last_done: Cell<Option<u64>>,
+    /// when its last animation frame reached the screen (wp_presentation, ns
+    /// on the compositor's clock; 0: none yet)
+    last_present_ns: Cell<u64>,
+    /// the last frame that took the processor long (its `rendered` number)
+    cpu_slow: Cell<Option<u32>>,
     pub mapped: Cell<bool>,
     /// hidden by `hide` until `show`: a configure meanwhile (Hyprland answers
     /// the null buffer with one) must not draw and map it again
@@ -203,6 +227,10 @@ impl Surface {
     pub fn window(&self) -> &slint::Window {
         &self.window
     }
+    /// A frame is on its way to the screen: its frame callback will wake the loop
+    pub fn frame_pending(&self) -> bool {
+        self.frame_pending.get()
+    }
     pub fn logical_size(&self) -> (u32, u32) {
         self.logical.get()
     }
@@ -232,13 +260,19 @@ impl Surface {
         self.needs_redraw.set(true);
         self.renderer.damage.all();
     }
-    fn render(&self, qh: &QueueHandle<State>) {
+    fn render(&self, qh: &QueueHandle<State>, presentation: Option<&WpPresentation>) {
         if !self.configured.get() || self.frame_pending.get() || !self.needs_redraw.get() {
             return;
         }
         self.needs_redraw.set(false);
         self.wl.frame(qh, self.wl.clone());
         let t = Instant::now();
+        // (drawn as soon as its frame callback let it: the next frame of an
+        // animation, timed on screen by wp_presentation; pacing.rs)
+        let refresh = crate::pacing::refresh_of(&self.output);
+        let chained = self.last_done.get().is_some_and(|d| d + 1 == RENDER_TURN.get());
+        let cpu = thread_cpu();
+        let feedback = presentation.filter(|_| chained && (wakes_on() || crate::gpu::watching())).map(|p| p.feedback(&self.wl, qh, Fb { surface: WlProxy::id(&self.wl), frame: self.rendered.get() }));
         // (the first two frames after `show` are drawn whole: the first can
         // come out empty, and the second, drawn to fix it, found "nothing
         // changed" and fixed nothing: a frosted panel left empty until
@@ -258,9 +292,21 @@ impl Surface {
         if let Err(e) = crate::perf::time(|| format!("femtovg draw {}", self.namespace), || self.renderer.draw()) {
             eprintln!("tessera-ui: render failed: {e}");
         }
-        self.stats.borrow_mut().rendered(t.elapsed());
+        let took = t.elapsed();
+        self.stats.borrow_mut().rendered(took);
         if wakes_on() {
-            drew_after_press(&self.namespace, t.elapsed().as_secs_f64() * 1000.0);
+            drew_after_press(&self.namespace, took.as_secs_f64() * 1000.0);
+        }
+        if chained {
+            crate::pacing::animating();
+        }
+        if feedback.is_none() {
+            // (a lone frame: the next one's interval doesn't start from an old one)
+            self.last_present_ns.set(0);
+        } else if thread_cpu().saturating_sub(cpu) >= refresh / 2 {
+            // (a frame that kept the processor more than half a frame: if it's
+            // late, that isn't the GPU's doing, so the slow-GPU watch skips it)
+            self.cpu_slow.set(Some(self.rendered.get()));
         }
         self.rendered.set(self.rendered.get().wrapping_add(1));
         self.shown_frames.set(self.shown_frames.get().saturating_add(1));
@@ -287,6 +333,11 @@ impl Surface {
     pub fn redraw_all(&self) {
         self.renderer.damage.all();
         self.needs_redraw.set(true);
+    }
+    /// When its pending frame callback counts as lost (LOST_FRAME, doubled
+    /// for each one lost in a row before it)
+    fn lost_frame_at(&self) -> Option<Instant> {
+        self.frame_asked.get().map(|t| t + LOST_FRAME * (1u32 << self.lost_streak.get().min(4)))
     }
     /// Unmap (a null buffer); `show` asks for a new configure
     pub fn hide(&self) {
@@ -337,6 +388,9 @@ impl Surface {
             return;
         }
         self.hidden.set(false);
+        // (a window opening — a shortcut or the shell asked, not input to us —
+        // is activity too: its timers keep their time, off the idle grid)
+        crate::pacing::input();
         if wakes_on() {
             eprintln!("show {} at {}", self.namespace, crate::util::now_ms());
         }
@@ -365,7 +419,11 @@ impl WindowAdapter for Surface {
         &self.renderer
     }
     fn request_redraw(&self) {
-        self.needs_redraw.set(true);
+        // (the wake log: a window that isn't on screen asking to draw, its
+        // animations or timers ticking for nothing)
+        if !self.needs_redraw.replace(true) && (self.hidden.get() || !self.configured.get()) && wakes_on() {
+            HIDDEN_ASKS.with(|h| *h.borrow_mut().entry(self.namespace.clone()).or_default() += 1);
+        }
     }
     fn internal(&self, _: i_slint_core::InternalToken) -> Option<&dyn i_slint_core::window::WindowAdapterInternal> {
         Some(self)
@@ -441,6 +499,26 @@ thread_local! {
     static POINTER_SERIAL: Cell<u32> = const { Cell::new(0) };
     // the last button press or key press (a popup's grab names the input that opened it)
     static INPUT_SERIAL: Cell<u32> = const { Cell::new(0) };
+    // render_all's turns, counted (a frame drawn in the turn after its
+    // surface's frame callback came is an animation's next frame)
+    static RENDER_TURN: Cell<u64> = const { Cell::new(0) };
+    // the wake log's: hidden windows that asked to be drawn this second
+    static HIDDEN_ASKS: RefCell<std::collections::BTreeMap<String, u32>> = const { RefCell::new(std::collections::BTreeMap::new()) };
+}
+
+/// This thread's processor time (not the time it waited, in the GPU driver
+/// or elsewhere)
+fn thread_cpu() -> std::time::Duration {
+    let mut ts: libc::timespec = unsafe { std::mem::zeroed() };
+    unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut ts) };
+    std::time::Duration::new(ts.tv_sec.max(0) as u64, ts.tv_nsec.clamp(0, 999_999_999) as u32)
+}
+
+/// A presentation feedback's surface
+pub struct Fb {
+    surface: smithay_client_toolkit::reexports::client::backend::ObjectId,
+    /// the surface's frame number (`rendered` as it was drawn)
+    frame: u32,
 }
 
 // ── The Slint platform ──────────────────────────────────────────────────────
@@ -465,6 +543,11 @@ impl slint::platform::Platform for Platform {
         NEXT.with(|n| n.borrow_mut().take())
             .map(|s| s as Rc<dyn WindowAdapter>)
             .ok_or_else(|| "tessera-ui: a component was made without a layer surface".into())
+    }
+    // (Slint's clock, for its timers and animations: from pacing's epoch, so
+    // the idle loop can lay Slint's timers on a grid of its own; pacing.rs)
+    fn duration_since_start(&self) -> std::time::Duration {
+        crate::pacing::epoch().elapsed()
     }
     fn new_event_loop_proxy(&self) -> Option<Box<dyn slint::platform::EventLoopProxy>> {
         Some(Box::new(LoopProxy(std::sync::Mutex::new(self.tx.clone()))))
@@ -566,6 +649,8 @@ pub struct State {
     /// ext-session-lock-v1 (the lock part's; unbound when the compositor has none)
     pub session_lock: SessionLockState,
     idle_inhibit: Option<ZwpIdleInhibitManagerV1>,
+    /// wp_presentation: when frames really reached the screen (pacing.rs)
+    presentation: Option<WpPresentation>,
     /// ext-idle-notify-v1 (None: the compositor has none), the watches asked
     /// for by id (idle.rs) and what each last said
     idle_notifier: Option<ExtIdleNotifierV1>,
@@ -588,6 +673,7 @@ impl State {
         let session_lock = SessionLockState::new(globals, &qh);
         let idle_inhibit = globals.bind(&qh, 1..=1, ()).ok();
         let idle_notifier = globals.bind(&qh, 1..=2, ()).ok();
+        let presentation = globals.bind(&qh, 1..=2, ()).ok();
         Self {
             registry: RegistryState::new(globals),
             outputs: OutputState::new(globals, &qh),
@@ -622,6 +708,7 @@ impl State {
             exit: false,
             session_lock,
             idle_inhibit,
+            presentation,
             idle_notifier,
             idle_watches: Default::default(),
             idle_state: Default::default(),
@@ -742,6 +829,10 @@ impl State {
             needs_redraw: Cell::new(true),
             frame_pending: Cell::new(false),
             frame_asked: Cell::new(None),
+            lost_streak: Cell::new(0),
+            last_done: Cell::new(None),
+            last_present_ns: Cell::new(0),
+            cpu_slow: Cell::new(None),
             mapped: Cell::new(false),
             hidden: Cell::new(false),
             retired: Cell::new(false),
@@ -827,13 +918,14 @@ impl State {
 
     /// After each event loop turn: draw what changed
     pub fn render_all(&mut self) {
+        RENDER_TURN.set(RENDER_TURN.get() + 1);
         self.recover_lost_frames();
         for s in &self.surfaces {
             s.drew.set(false);
         }
         for s in self.surfaces.clone() {
             // (its bindings call the part's pure callbacks: the part's code, contain.rs)
-            crate::perf::time(|| format!("render {}", s.namespace), || crate::contain::guard(s.owner, || s.render(&self.qh)));
+            crate::perf::time(|| format!("render {}", s.namespace), || crate::contain::guard(s.owner, || s.render(&self.qh, self.presentation.as_ref())));
         }
         if IME_DIRTY.replace(false) {
             self.sync_text_input();
@@ -877,12 +969,16 @@ impl State {
     /// the surface then never drew again: a bar stuck mid-animation, and the
     /// island's glass waiting on that frame left up as an empty pill.)
     fn recover_lost_frames(&self) {
+        let now = Instant::now();
         for s in &self.surfaces {
-            if s.frame_pending.get() && s.frame_asked.get().is_some_and(|t| t.elapsed() >= LOST_FRAME) {
-                if crate::env::is_set("DEBUG") || wakes_on() {
+            if s.frame_pending.get() && s.lost_frame_at().is_some_and(|t| now >= t) {
+                let streak = s.lost_streak.get();
+                if streak == 0 && (crate::env::is_set("DEBUG") || wakes_on()) {
                     eprintln!("debug: frame callback lost on {}: drawing on", s.namespace);
                 }
+                s.lost_streak.set(streak.saturating_add(1));
                 s.frame_pending.set(false);
+                s.last_done.set(None);
                 s.presented.set(s.rendered.get());
             }
         }
@@ -891,7 +987,13 @@ impl State {
     /// A surface waits on a frame callback with more to draw: the loop wakes
     /// by LOST_FRAME to draw on should the callback never come
     pub fn waits_on_frame(&self) -> bool {
-        self.surfaces.iter().any(|s| s.frame_pending.get() && s.needs_redraw.get() && s.configured.get())
+        self.lost_frame_deadline().is_some()
+    }
+
+    /// When the first callback still awaited by a surface with more to draw
+    /// counts as lost (the loop's deadline for it)
+    pub fn lost_frame_deadline(&self) -> Option<Instant> {
+        self.surfaces.iter().filter(|s| s.frame_pending.get() && s.needs_redraw.get() && s.configured.get()).filter_map(|s| s.lost_frame_at()).min()
     }
 
     pub fn wants_frame_soon(&self) -> bool {
@@ -899,8 +1001,13 @@ impl State {
     }
 
     /// An animation runs but no frame callback will wake the loop: tick anyway
+    /// (at the display's refresh: pacing::refresh). Slint's flag is one for
+    /// every window (`has_active_animations` asks the one animation clock);
+    /// with no window on screen, nothing of it can be seen.
     pub fn animating_unpaced(&self) -> bool {
-        !self.surfaces.iter().any(|s| s.frame_pending.get()) && self.surfaces.iter().any(|s| s.window.has_active_animations())
+        !self.surfaces.iter().any(|s| s.frame_pending.get())
+            && self.surfaces.iter().any(|s| s.mapped.get())
+            && self.surfaces.first().is_some_and(|s| s.window.has_active_animations())
     }
 
     fn set_cursor(&self, serial: u32, shape: Shape) {
@@ -961,6 +1068,8 @@ impl CompositorHandler for State {
     fn frame(&mut self, _: &Connection, _: &QueueHandle<Self>, wl: &WlSurface, time: u32) {
         if let Some(s) = self.find(wl) {
             s.frame_pending.set(false);
+            s.lost_streak.set(0);
+            s.last_done.set(Some(RENDER_TURN.get()));
             s.presented.set(s.presented.get().wrapping_add(1).min(s.rendered.get()));
             s.stats.borrow_mut().presented(time);
             if !self.first_frame_logged {
@@ -980,14 +1089,27 @@ impl OutputHandler for State {
         &mut self.outputs
     }
     fn new_output(&mut self, _: &Connection, _: &QueueHandle<Self>, output: WlOutput) {
+        self.note_refresh(&output);
         let name = self.outputs.info(&output).and_then(|i| i.name).unwrap_or_default();
         self.each_part(|p, st| p.output_added(st, &output, &name));
     }
-    fn update_output(&mut self, _: &Connection, _: &QueueHandle<Self>, _: WlOutput) {}
+    fn update_output(&mut self, _: &Connection, _: &QueueHandle<Self>, output: WlOutput) {
+        self.note_refresh(&output);
+    }
     fn output_destroyed(&mut self, _: &Connection, _: &QueueHandle<Self>, output: WlOutput) {
         if let Some(name) = self.outputs.info(&output).and_then(|i| i.name) {
+            crate::pacing::set_output_refresh(&name, 0);
             self.each_part(|p, st| p.output_removed(st, &name));
         }
+    }
+}
+
+impl State {
+    /// An output's refresh rate (its current mode), for animations' pace
+    fn note_refresh(&self, output: &WlOutput) {
+        let Some(info) = self.outputs.info(output) else { return };
+        let mhz = info.modes.iter().find(|m| m.current).map_or(0, |m| m.refresh_rate);
+        crate::pacing::set_output_refresh(&info.name.unwrap_or_default(), mhz);
     }
 }
 
@@ -1191,6 +1313,7 @@ pub fn shortcut_text(sym: Option<char>, evdev: u32, shift: bool) -> Option<Strin
 
 impl State {
     fn key(&mut self, e: KeyEvent, kind: KeyKind) {
+        crate::pacing::input();
         if crate::perf::on() {
             let on = self.keyboard_on.as_ref().map(|s| s.namespace.clone()).unwrap_or_default();
             return crate::perf::time(|| format!("key on {on}"), || self.key_now(e, kind));
@@ -1256,6 +1379,7 @@ impl KeyboardHandler for State {
 
 impl PointerHandler for State {
     fn pointer_frame(&mut self, c: &Connection, q: &QueueHandle<Self>, p: &WlPointer, events: &[PointerEvent]) {
+        crate::pacing::input();
         if crate::perf::on() || wakes_on() {
             let what = events.iter().find_map(|e| self.find(&e.surface).map(|s| format!("pointer {} on {}", match e.kind {
                 PointerEventKind::Enter { .. } => "enter",
@@ -1404,6 +1528,34 @@ macro_rules! no_events {
 no_events!(WpViewporter, WpViewport, WpFractionalScaleManagerV1, ZwpTextInputManagerV3);
 no_events!(ZwpIdleInhibitManagerV1, ZwpIdleInhibitorV1);
 no_events!(ExtIdleNotifierV1);
+
+// wp_presentation: its clock (CLOCK_MONOTONIC on Linux compositors: the
+// timestamps are only compared with each other)
+impl Dispatch<WpPresentation, ()> for State {
+    fn event(_: &mut Self, _: &WpPresentation, _: wp_presentation::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {}
+}
+
+// An animation frame reached the screen, or never did: the time since the
+// surface's last one on screen is a frame interval (pacing.rs)
+impl Dispatch<WpPresentationFeedback, Fb> for State {
+    fn event(state: &mut Self, _: &WpPresentationFeedback, ev: wp_presentation_feedback::Event, fb: &Fb, _: &Connection, _: &QueueHandle<Self>) {
+        let Some(s) = state.surfaces.iter().find(|s| WlProxy::id(&s.wl) == fb.surface) else { return };
+        match ev {
+            wp_presentation_feedback::Event::Presented { tv_sec_hi, tv_sec_lo, tv_nsec, refresh, .. } => {
+                let ns = ((((tv_sec_hi as u64) << 32) | tv_sec_lo as u64) * 1_000_000_000).wrapping_add(tv_nsec as u64);
+                let last = s.last_present_ns.replace(ns);
+                if last > 0 && ns > last {
+                    crate::pacing::presented(ns - last, refresh as u64, s.cpu_slow.get() != Some(fb.frame));
+                }
+            }
+            wp_presentation_feedback::Event::Discarded => {
+                s.last_present_ns.set(0);
+                crate::pacing::discarded();
+            }
+            _ => {}
+        }
+    }
+}
 
 // An idle watch said idle or resumed: the newest picture of all watches is the
 // shell's `Idle` data, and every part (and the host's services) hear of it
@@ -1557,14 +1709,34 @@ fn drew_after_press(ns: &str, render_ms: f64) {
     });
 }
 
-/// TESSERA_WAKES=1: once a second, why the loop woke and which surfaces drew
-/// or were animating (finding what keeps an idle shell busy)
+/// TESSERA_WAKES=1: once a second, why the loop turned and which surfaces
+/// drew (finding what keeps an idle shell busy):
+/// `wakes: {why: turns} sleeps N cpu MS drew {surface: frames} animating
+/// TURNS hidden-asks {surface: n} frames {…} msgs {…} ms […]`.
+/// `sleeps` are the times the UI thread really slept and woke (its voluntary
+/// context switches), `cpu` its processor time; `animating` the turns
+/// Slint's one animation clock ran (it is shared by every window, so it says
+/// nothing of which); `hidden-asks` windows that aren't on screen asking to
+/// be drawn (an animation or timer ticking where nobody sees it); `frames`
+/// the animation frames on screen (pacing.rs: intervals, missed).
 #[derive(Default)]
 pub struct Wakes {
     since: Option<std::time::Instant>,
     turns: std::collections::BTreeMap<&'static str, u32>,
     drew: std::collections::BTreeMap<String, u32>,
-    anim: std::collections::BTreeMap<String, u32>,
+    anim: u32,
+    /// the UI thread's (voluntary switches, cpu µs) at `since`
+    usage: (i64, i64),
+}
+
+/// This thread's voluntary context switches and processor time (µs)
+fn thread_usage() -> (i64, i64) {
+    let mut ru: libc::rusage = unsafe { std::mem::zeroed() };
+    if unsafe { libc::getrusage(libc::RUSAGE_THREAD, &mut ru) } != 0 {
+        return (0, 0);
+    }
+    let us = |t: libc::timeval| t.tv_sec * 1_000_000 + t.tv_usec;
+    (ru.ru_nvcsw, us(ru.ru_utime) + us(ru.ru_stime))
 }
 
 impl Wakes {
@@ -1577,16 +1749,32 @@ impl Wakes {
             if s.drew.get() {
                 *self.drew.entry(s.namespace.clone()).or_default() += 1;
             }
-            if s.window.has_active_animations() {
-                *self.anim.entry(format!("{}{}", s.namespace, if s.mapped.get() { "" } else { "(hidden)" })).or_default() += 1;
-            }
+        }
+        if st.surfaces.first().is_some_and(|s| s.window.has_active_animations()) {
+            self.anim += 1;
         }
         let now = std::time::Instant::now();
-        let since = *self.since.get_or_insert(now);
-        if now.duration_since(since) >= std::time::Duration::from_secs(1) {
+        if self.since.is_none() {
+            self.since = Some(now);
+            self.usage = thread_usage();
+        }
+        if now.duration_since(self.since.unwrap()) >= std::time::Duration::from_secs(1) {
             let msgs = WAKE_MSGS.with(|m| std::mem::take(&mut *m.borrow_mut()));
-            eprintln!("wakes: {:?} drew {:?} animating {:?} msgs {:?} ms {:?}", self.turns, self.drew, self.anim, msgs, crate::perf::spent_top(14));
-            *self = Wakes { since: Some(now), ..Default::default() };
+            let hidden = HIDDEN_ASKS.with(|h| std::mem::take(&mut *h.borrow_mut()));
+            let u = thread_usage();
+            let frames = crate::pacing::take_second().unwrap_or_else(|| "{}".into());
+            eprintln!(
+                "wakes: {:?} sleeps {} cpu {:.1} drew {:?} animating {} hidden-asks {:?} frames {frames} msgs {:?} ms {:?}",
+                self.turns,
+                u.0 - self.usage.0,
+                (u.1 - self.usage.1) as f64 / 1000.0,
+                self.drew,
+                self.anim,
+                hidden,
+                msgs,
+                crate::perf::spent_top(14)
+            );
+            *self = Wakes { since: Some(now), usage: u, ..Default::default() };
         }
     }
 }

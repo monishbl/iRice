@@ -50,7 +50,7 @@ pub struct Intro {
     asked: Option<Instant>,
     pace: f64,
     material: bool,
-    timer: slint::Timer,
+    timer: tessera_core::pacing::FrameTimer,
     picture: Option<(String, Image, Image)>,
 }
 
@@ -111,7 +111,7 @@ impl Intro {
                 self.started = None;
                 self.asked = Some(Instant::now());
                 let to = st.shell.sender(super::NAME);
-                self.timer.start(slint::TimerMode::Repeated, Duration::from_millis(16), move || to(Box::new(Tick)));
+                self.timer.start(move || to(Box::new(Tick)));
             }
             _ => self.stop(st),
         }

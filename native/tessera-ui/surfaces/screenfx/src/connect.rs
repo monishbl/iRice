@@ -122,7 +122,7 @@ struct Win {
 pub struct DisplayConnect {
     wins: Vec<Win>,
     motion: f32,
-    tick: slint::Timer,
+    tick: tessera_core::pacing::FrameTimer,
     ticking: bool,
 }
 
@@ -393,7 +393,7 @@ impl DisplayConnect {
         } else if !self.ticking {
             self.ticking = true;
             let to = st.shell.sender(NAME);
-            self.tick.start(slint::TimerMode::Repeated, Duration::from_millis(16), move || to(Box::new(Msg::Tick)));
+            self.tick.start(move || to(Box::new(Msg::Tick)));
         }
     }
 

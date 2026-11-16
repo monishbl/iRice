@@ -552,6 +552,12 @@ impl Glass {
     pub fn has_held(&self) -> bool {
         !self.held.borrow().is_empty()
     }
+    /// When the oldest held shapes go regardless (MAX_HOLD after they were
+    /// set): the loop's deadline. Before it, a frame drawn or shown (which
+    /// wakes the loop anyway) sends them.
+    pub fn held_deadline(&self) -> Option<std::time::Instant> {
+        self.held.borrow().values().filter_map(|q| q.front().map(|e| e.2 + MAX_HOLD)).min()
+    }
     /// A surface's shapes taken off. On the way out it waits (so the shapes
     /// don't outlive the bar); from the UI thread otherwise (a panel moving
     /// to another display, a display gone) it goes the way every shape goes,
