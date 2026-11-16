@@ -48,6 +48,7 @@ pub mod util;
 pub mod wallpaper;
 pub mod wayland;
 pub mod wm;
+pub mod work; // (blocking work off the UI thread: a fixed pool and ordered lanes)
 
 pub enum Msg {
     Run(Box<dyn FnOnce() + Send>),

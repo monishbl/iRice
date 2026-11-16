@@ -55,8 +55,9 @@ pub enum Msg {
     /// a Hyprland event: name, data
     Ev(String, String),
     Tick(&'static str),
-    /// something to do on the loop (a thread's answer)
-    Run(Box<dyn FnOnce(&mut Wm, &mut Host, &mut Io) + Send>),
+    /// something to do on the loop (a thread's answer), named for the
+    /// timing log's path
+    Run(&'static str, Box<dyn FnOnce(&mut Wm, &mut Host, &mut Io) + Send>),
 }
 
 /// Timers and the way back to the service from threads and timers
@@ -90,14 +91,24 @@ impl Io {
     pub fn fetch_then(&self, f: impl FnOnce(&mut Wm, &mut Host, &mut Io, Fresh) + Send + 'static) {
         self.thread_then(hx::fetch, f);
     }
-    /// `work` on a thread, then `then` on the loop with its result
-    pub fn thread_then<T: Send + 'static>(&self, work: impl FnOnce() -> T + Send + 'static, then: impl FnOnce(&mut Wm, &mut Host, &mut Io, T) + Send + 'static) {
+    /// `work` on the pool (tessera_core::work, never the loop), then `then`
+    /// on the loop with its result
+    pub fn thread_then<T: Send + 'static, F: FnOnce(&mut Wm, &mut Host, &mut Io, T) + Send + 'static>(&self, work: impl FnOnce() -> T + Send + 'static, then: F) {
         let post = self.post.clone();
-        std::thread::spawn(move || {
+        // (the answer's name in the timing log: the closure's, as
+        // "…::wm::spaces::Spaces::reconcile::{{closure}}" → "spaces::Spaces::reconcile")
+        let name = short_name(std::any::type_name::<F>());
+        tessera_core::work::spawn(move || {
             let r = work();
-            post(Msg::Run(Box::new(move |wm, h, io| then(wm, h, io, r))));
+            post(Msg::Run(name, Box::new(move |wm, h, io| then(wm, h, io, r))));
         });
     }
+}
+
+/// A closure's type name, short: its module path inside wm, without the closures
+fn short_name(full: &'static str) -> &'static str {
+    let s = full.split("::{{closure}}").next().unwrap_or(full);
+    s.split_once("::wm::").map_or(s, |(_, rest)| rest)
 }
 
 /// Hyprland's events worth following, from its socket2
@@ -434,16 +445,21 @@ impl Service for Wm {
 
     fn message(&mut self, h: &mut Host, msg: Box<dyn Any + Send>) {
         let Ok(m) = msg.downcast::<Msg>() else { return };
+        // (each step named in the timing log: tessera_core::perf's tripwire)
+        use tessera_core::perf::time;
         match *m {
-            Msg::Ev(name, data) => self.event(h, &name, &data),
-            Msg::Tick(key) => self.tick(h, key),
-            Msg::Run(f) => {
-                let mut io = self.io.take();
-                f(self, h, &mut io);
-                self.io.restore(io);
-            }
+            Msg::Ev(name, data) => time(|| format!("event {name}"), || self.event(h, &name, &data)),
+            Msg::Tick(key) => time(|| format!("tick {key}"), || self.tick(h, key)),
+            Msg::Run(name, f) => time(
+                || format!("answer {name}"),
+                || {
+                    let mut io = self.io.take();
+                    f(self, h, &mut io);
+                    self.io.restore(io);
+                },
+            ),
         }
-        self.settings_feed(h);
+        time(|| "settings feed".into(), || self.settings_feed(h));
     }
 
     fn quit(&mut self, h: &mut Host) {

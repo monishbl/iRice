@@ -55,7 +55,7 @@ impl Decorations {
     /// (it sends its own style, apptheme.rs; the plugin outlives the shell)
     pub fn apply_controls(&self, h: &Host) {
         let (controls, dark, material) = (self.mode == "controls", h.st.shell.look.dark, h.st.shell.look.material);
-        std::thread::spawn(move || {
+        tessera_core::work::spawn(move || {
             if !hx::glass_available() {
                 return;
             }

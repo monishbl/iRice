@@ -305,7 +305,7 @@ impl WindowRules {
     fn rearrange(&mut self, h: &Host, layout: &str) {
         let rules = rules_of(h.cfg());
         let floating = layout == "floating";
-        std::thread::spawn(move || {
+        tessera_core::work::spawn(move || {
             let get = |p: &str| hypr::request(p).ok().and_then(|s| serde_json::from_str::<Value>(&s).ok()).and_then(|v| v.as_array().cloned());
             let (Some(clients), Some(mons)) = (get("j/clients"), get("j/monitors")) else { return };
             let rule_of = |cls: &str| rules.iter().find(|r| r.class == cls);

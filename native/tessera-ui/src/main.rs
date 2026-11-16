@@ -198,6 +198,8 @@ fn main() {
         return;
     }
 
+    // (this thread is the UI thread: blocking work goes elsewhere, tessera_core::work)
+    tessera_core::work::mark_ui_thread();
     let mut event_loop: EventLoop<'static, State> = EventLoop::try_new().expect("event loop");
     let lh = event_loop.handle();
     // Signals first: the threads started below inherit the blocked mask, so
@@ -365,7 +367,12 @@ fn main() {
             prewarm = state.prewarm_part(i).then_some(i + 1);
         }
     }
+    tessera_core::work::set_leaving();
     state.each_part(|p, st| p.quit(st));
+    // (settings and state queued from the loop: written before we go; and
+    // Hyprland's dispatches asked last)
+    tessera_core::cfgfile::flush();
+    tessera_core::services::hypr::IN_ORDER.flush(Duration::from_secs(2));
     // (an orderly exit — a look switch, a restart asked for — isn't a failed
     // start: launch-shell.sh's count of them fell back to the QML shell after
     // three look switches within a minute)

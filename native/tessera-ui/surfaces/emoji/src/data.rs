@@ -334,9 +334,8 @@ impl Remembered {
     }
 
     pub fn save(&self) {
-        if let Err(e) = crate::util::write_atomic(&Self::path(), self.to_json().as_bytes()) {
-            eprintln!("tessera-ui: emoji: can't save what you used: {e}");
-        }
+        // (synced to disk: on the files lane, never the UI thread)
+        tessera_core::cfgfile::write_later(Self::path(), self.to_json().into_bytes());
     }
 
     /// Most used first, weighted toward recent use (a week halves the weight)

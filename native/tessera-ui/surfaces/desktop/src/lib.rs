@@ -282,15 +282,14 @@ fn write_cfg(section: &str, key: &str, value: Value) {
     let (section, key) = (section.to_string(), key.to_string());
     // (the file as it is now, under a lock, written whole; a broken one kept
     // aside, never written over: tessera_core::cfgfile)
-    std::thread::spawn(move || {
-        let _ = tessera_core::cfgfile::edit_config(|m| {
-            let sec = m.entry(section).or_insert_with(|| json!({}));
-            if !sec.is_object() {
-                *sec = json!({});
-            }
-            sec[&key] = value;
-            true
-        });
+    // (queued on the files lane: no thread per write, read as set at once)
+    tessera_core::cfgfile::edit_config_later(move |m| {
+        let sec = m.entry(section.clone()).or_insert_with(|| json!({}));
+        if !sec.is_object() {
+            *sec = json!({});
+        }
+        sec[&key] = value.clone();
+        true
     });
 }
 

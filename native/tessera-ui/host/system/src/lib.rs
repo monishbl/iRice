@@ -110,8 +110,15 @@ impl Mirror {
         if !si.is_null() {
             let want = si["osLogo"].as_str().filter(|l| !l.is_empty()).unwrap_or("distributor-logo").to_string();
             if self.logo.as_ref().map(|l| &l.0) != Some(&want) {
-                let path = tessera_core::icon_theme::find(&want, None).or_else(|| tessera_core::icon_theme::find("computer", None)).map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
-                self.logo = Some((want, path));
+                // (looked up on the pool: a miss walks every theme's folders,
+                // 150 ms at start; the card shows it when it comes)
+                let path = self.logo.take().map(|l| l.1).unwrap_or_default();
+                self.logo = Some((want.clone(), path));
+                let send = h.sender("SystemMirror");
+                tessera_core::work::spawn(move || {
+                    let path = tessera_core::icon_theme::find(&want, None).or_else(|| tessera_core::icon_theme::find("computer", None)).map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+                    send(Box::new(Logo(want, path)));
+                });
             }
             let logo = self.logo.as_ref().map(|l| l.1.clone()).unwrap_or_default();
             h.set_state("about.info", json!({"osName": si["osName"], "hostname": si["hostname"], "cpu": si["cpu"], "gpu": si["gpu"], "memory": si["memory"], "kernel": si["kernel"], "logo": logo}));
@@ -146,4 +153,16 @@ impl Service for Mirror {
     fn config_changed(&mut self, h: &mut tessera_core::host::Host) {
         self.publish(h);
     }
+    fn message(&mut self, h: &mut tessera_core::host::Host, msg: Box<dyn std::any::Any + Send>) {
+        if let Ok(l) = msg.downcast::<Logo>() {
+            let Logo(name, path) = *l;
+            if self.logo.as_ref().is_some_and(|l| l.0 == name) {
+                self.logo = Some((name, path));
+                self.publish(h);
+            }
+        }
+    }
 }
+
+/// The About card's logo, found off the UI thread: its name and file
+struct Logo(String, String);

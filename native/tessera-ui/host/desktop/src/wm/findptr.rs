@@ -82,7 +82,7 @@ impl FindPointer {
                 for line in BufReader::new(out).lines().map_while(Result::ok) {
                     let mut p = line.split(',').map(|x| x.trim().parse::<f64>());
                     if let (Some(Ok(x)), Some(Ok(y))) = (p.next(), p.next()) {
-                        send(Box::new(super::Msg::Run(Box::new(move |wm, h, _io| {
+                        send(Box::new(super::Msg::Run("findpointer.position", Box::new(move |wm, h, _io| {
                             if wm.findp.active {
                                 h.tell("findpointer", json!({"show": true, "x": x, "y": y}));
                             }

@@ -165,7 +165,7 @@ pub fn quiet_ms() -> u64 {
 pub fn refresh() {
     let tx = LINK.lock().ok().and_then(|l| l.0.clone());
     let Some(tx) = tx else { return };
-    std::thread::spawn(move || {
+    crate::work::spawn(move || {
         if let Some(s) = snapshot() {
             let _ = tx.send(Msg::Data(Box::new(s)));
         }
@@ -278,18 +278,21 @@ impl Burst {
     }
 }
 
-/// A dispatch (Hyprland's Lua: `hl.dsp.window.float({ … })`), on a thread
+/// Requests that change Hyprland, one after another in the order asked
+/// (a move then a focus must stay so), on one thread: dispatches here and
+/// the host's dispatches and `hyprctl eval`s (host/desktop wm/hx.rs)
+pub static IN_ORDER: crate::work::Lane = crate::work::Lane::new("hypr");
+
+/// A dispatch (Hyprland's Lua: `hl.dsp.window.float({ … })`), in order, off the UI thread
 pub fn dispatch(cmd: impl Into<String>) {
     let cmd = cmd.into();
-    std::thread::spawn(move || {
+    IN_ORDER.run(move || {
         let _ = request(&format!("dispatch {cmd}"));
     });
 }
 
 pub fn focus_workspace(id: i32) {
-    std::thread::spawn(move || {
-        let _ = request(&format!("dispatch hl.dsp.focus({{ workspace = {id} }})"));
-    });
+    dispatch(format!("hl.dsp.focus({{ workspace = {id} }})"));
 }
 
 // ── the glass plugin ────────────────────────────────────────────────────────
@@ -362,6 +365,9 @@ const PING: &str = "\0ping";
 impl Glass {
     pub fn spawn(ui: Sender<Msg>) -> Self {
         let (tx, rx) = mpsc::channel::<(String, String)>();
+        if let Ok(mut s) = SENDER.lock() {
+            *s = Some(tx.clone());
+        }
         std::thread::spawn(move || {
             // (TESSERA_GLASS_FORCE=1: send shapes even without the plugin, to see them in TESSERA_DEBUG's log)
             let debug = crate::env::is_set("DEBUG");
@@ -546,11 +552,24 @@ impl Glass {
     pub fn has_held(&self) -> bool {
         !self.held.borrow().is_empty()
     }
-    /// Blocking: used on the way out, so the shapes don't outlive the bar
+    /// A surface's shapes taken off. On the way out it waits (so the shapes
+    /// don't outlive the bar); from the UI thread otherwise (a panel moving
+    /// to another display, a display gone) it goes the way every shape goes,
+    /// on the sender thread, in order with that surface's other shapes
     pub fn clear_now(monitor: &str, ns: &str) {
-        let _ = request(&format!("{} set {monitor} {ns} 0", glass_cmd()));
+        let cmd = format!("{} set {monitor} {ns} 0", glass_cmd());
+        if crate::work::on_ui_thread() && !crate::work::leaving() {
+            if let Some(tx) = SENDER.lock().ok().and_then(|s| s.clone()) {
+                let _ = tx.send((format!("{monitor}\n{ns}"), cmd));
+                return;
+            }
+        }
+        let _ = request(&cmd);
     }
 }
+
+/// The sender thread's queue (Glass::spawn), for `Glass::clear_now`
+static SENDER: std::sync::Mutex<Option<mpsc::Sender<(String, String)>>> = std::sync::Mutex::new(None);
 
 #[cfg(test)]
 mod tests {

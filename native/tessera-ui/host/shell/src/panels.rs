@@ -333,7 +333,7 @@ impl Panels {
                         s.window().dispatch_event(slint::platform::WindowEvent::KeyPressed { text: esc.clone() });
                         s.window().dispatch_event(slint::platform::WindowEvent::KeyReleased { text: esc });
                     } else {
-                        let _ = tessera_core::services::hypr::request("dispatch hl.dsp.window.close()");
+                        tessera_core::services::hypr::dispatch("hl.dsp.window.close()");
                     }
                 }
             }

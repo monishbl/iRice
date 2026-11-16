@@ -182,7 +182,8 @@ impl Polkit {
         if self.win.is_some() {
             return true;
         }
-        let focused = crate::services::hypr::request("j/monitors").ok().and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok()).and_then(|v| v.as_array()?.iter().find(|m| m["focused"].as_bool() == Some(true))?["name"].as_str().map(str::to_string));
+        // (Hyprland's focused screen as its event thread last read it: no request on the UI thread)
+        let focused = st.shell.get::<crate::services::hypr::Snapshot>().map(|s| s.focused.clone()).filter(|f| !f.is_empty());
         let outputs = st.outputs_now();
         let Some((wl, name)) = outputs.iter().find(|(_, n)| Some(n) == focused.as_ref()).or(outputs.first()).cloned() else { return false };
         let surface = st.prepare_surface(Spec {

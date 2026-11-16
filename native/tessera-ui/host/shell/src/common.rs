@@ -290,12 +290,16 @@ pub fn ui_set(key: &str, value: Value) {
     let id = format!("rs{}-{}", std::process::id(), now_ms());
     let dir = state_dir();
     let journal = json!({ key: { "revision": [now_ms(), id, seq], "value": value } });
-    let _ = std::fs::create_dir_all(dir.join("pending"));
-    if tessera_core::util::write_atomic(&dir.join("pending").join(format!("{id}-{seq}.json")), journal.to_string().as_bytes()).is_err() {
-        return;
-    }
     let merger = script("state-merge.py").to_string_lossy().into_owned();
-    run_owned(vec!["python3".into(), "-I".into(), merger, dir.to_string_lossy().into_owned()]);
+    // (the journal is synced to disk: on the files lane, in order, never on the loop)
+    tessera_core::cfgfile::FILES.run(move || {
+        let _ = std::fs::create_dir_all(dir.join("pending"));
+        if tessera_core::util::write_atomic(&dir.join("pending").join(format!("{id}-{seq}.json")), journal.to_string().as_bytes()).is_err() {
+            return;
+        }
+        // (the merge, here too: one after another, no thread of its own)
+        let _ = Command::new("python3").arg("-I").arg(&merger).arg(&dir).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status();
+    });
 }
 
 /// UiState.widget(id): an overlay widget's state, with the defaults
