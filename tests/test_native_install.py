@@ -590,7 +590,7 @@ class Modes(Fixture):
         self.publish()
         r, calls = self.install("build")
         self.assertEqual((r["source"], r["label"]), ("built", "built here"))
-        self.assertEqual(calls, [("build", False, False)])
+        self.assertEqual(calls, [("build", False, True)])
         r, calls = self.install("buildTuned", ui=True)
         self.assertEqual((r["source"], r["label"]), ("built-tuned", "built here, tuned"))
         self.assertEqual(calls, [("build", True, True)])
@@ -606,7 +606,7 @@ class Modes(Fixture):
         self.publish()
         self.install()
         r, calls = self.install("build")
-        self.assertEqual(calls, [("build", False, False)])  # (tessera-ui is built here only when used)
+        self.assertEqual(calls, [("build", False, True)])  # (tessera-ui is the shell: built too)
         r, calls = self.install()  # auto takes a build made here as it is
         self.assertEqual(calls, [])
 
@@ -614,17 +614,17 @@ class Modes(Fixture):
         r, calls = self.install()
         self.assertTrue(r["ok"], r)
         self.assertEqual(r["source"], "built")
-        self.assertEqual(calls, [("fetch", "x86-64-v3"), ("build", False, False)])
+        self.assertEqual(calls, [("fetch", "x86-64-v3"), ("build", False, True)])
         self.assertIn("no ready-made build", r["fallback"])
 
     def test_fallback_offline_or_with_edits(self):
         self.publish()
         r, calls = self.install(offline=True)
-        self.assertEqual(calls, [("build", False, False)])
+        self.assertEqual(calls, [("build", False, True)])
         self.assertEqual(r["fallback"], "offline")
         (self.repo / "native/tessera-ui/main.rs").write_text("// mine\n")
         r, calls = self.install()
-        self.assertEqual(calls, [("build", False, False)])
+        self.assertEqual(calls, [("build", False, True)])
         self.assertIn("edits of its own", r["fallback"])
         self.assertIsNone(ni.read_info(str(self.dest), "tessera-events")["tree"])  # (never taken for a clean build)
 
