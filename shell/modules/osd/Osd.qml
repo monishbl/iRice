@@ -328,6 +328,9 @@ Scope {
                 y: 6 - (Config.options.appearance.reduceMotion === true ? 0 : Math.round((1 - fsBar.fade) * 4))
                 spacing: 8
                 opacity: fsBar.fade
+                // (on the Row: Accessible attaches only to an Item; on the window Qt 6.12 drops it with a warning)
+                Accessible.role: Accessible.ProgressBar
+                Accessible.name: root.barKind === "brightness" ? "Brightness" : root.barKind === "mic" ? "Microphone" : "Volume"
                 // A soft dark halo so it reads over bright video too
                 layer.enabled: true
                 layer.effect: MultiEffect {
@@ -364,8 +367,6 @@ Scope {
                     }
                 }
             }
-            Accessible.role: Accessible.ProgressBar
-            Accessible.name: root.barKind === "brightness" ? "Brightness" : root.barKind === "mic" ? "Microphone" : "Volume"
         }
     }
 

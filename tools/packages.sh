@@ -5,7 +5,7 @@ PACKAGES=(
     hyprland hypridle hyprpicker hyprsunset quickshell xdg-desktop-portal-hyprland xdg-desktop-portal-gtk
     # Building the glass plugin, shaders and tessera-events (Rust)
     base-devel git pkgconf qt6-shadertools cmake ninja rust
-    qt6-declarative qt6-svg qt6-imageformats qt6-multimedia qt6-multimedia-ffmpeg ffmpeg qt6-5compat qt6-wayland plasma-integration
+    qt6-declarative qt6-svg qt6-imageformats qt6-multimedia qt6-multimedia-ffmpeg ffmpeg qt6-wayland plasma-integration
     # Sound, network, Bluetooth, power, keyring, polkit
     pipewire pipewire-pulse pipewire-alsa wireplumber networkmanager bluez bluez-utils upower power-profiles-daemon
     gnome-keyring libsecret openssl polkit brightnessctl playerctl libnotify mesa mesa-utils xdg-user-dirs

@@ -11,7 +11,7 @@ BOX=irice
 source "$ROOT/sandbox/lib.sh"
 RT="$TESSERA_RT"
 PKGS=(hyprland hypridle hyprpicker hyprsunset xdg-desktop-portal-hyprland
-      quickshell qt6-declarative qt6-svg qt6-imageformats qt6-multimedia qt6-5compat qt6-wayland qt6-shadertools
+      quickshell qt6-declarative qt6-svg qt6-imageformats qt6-multimedia qt6-wayland qt6-shadertools
       pipewire wireplumber pipewire-pulse networkmanager bluez-utils upower libsecret brightnessctl playerctl
       libnotify mesa-utils mesa vulkan-intel intel-media-driver dbus
       grim slurp wl-clipboard cliphist wf-recorder tesseract tesseract-data-eng wtype translate-shell curl jq

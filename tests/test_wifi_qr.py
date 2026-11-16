@@ -40,7 +40,7 @@ else:
 class Text(unittest.TestCase):
     def test_escaping_round_trip(self):
         t = wq.wifi_text('Café; "Home":5G', "WPA", "pa\\ss;word,1", hidden=True)
-        self.assertEqual(t, 'WIFI:T:WPA;S:Café\; \\"Home\\"\\:5G;P:pa\\\\ss\;word\\,1;H:true;;')
+        self.assertEqual(t, 'WIFI:T:WPA;S:Café\\; \\"Home\\"\\:5G;P:pa\\\\ss\\;word\\,1;H:true;;')
         self.assertEqual(wq.parse_wifi(t), {"ssid": 'Café; "Home":5G', "security": "WPA",
                                             "password": "pa\\ss;word,1", "hidden": True})
 
