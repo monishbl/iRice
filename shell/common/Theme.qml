@@ -186,18 +186,19 @@ Singleton {
         // Cool-down swaps in a cheaper material (never a heavier one)
         readonly property string material: CoolDown.glass === "solid" ? "solid" : CoolDown.glass === "frosted" && chosen !== "solid" && chosen !== "veil" ? "frosted" : chosen
         readonly property var amounts: material === "custom" ? [Config.options.appearance.glassLens, Config.options.appearance.glassFrost, Config.options.appearance.glassSolid, Config.options.appearance.glassTint] : (presets[material] ?? presets.liquid)
-        // Switching materials (Cool-down, or picking Glass, Frost or Solid)
-        // glides over about 0.6 s rather than snapping; Custom's sliders
-        // apply at once
-        property real lensAmount: amounts[0]
-        property real frostAmount: amounts[1]
-        property real solidAmount: amounts[2]
-        property real tintAmount: amounts[3] ?? 0.45
-        readonly property bool gliding: material !== "custom"
-        Behavior on lensAmount { enabled: glassTheme.gliding; NumberAnimation { duration: 600; easing.type: Easing.InOutCubic } }
-        Behavior on frostAmount { enabled: glassTheme.gliding; NumberAnimation { duration: 600; easing.type: Easing.InOutCubic } }
-        Behavior on solidAmount { enabled: glassTheme.gliding; NumberAnimation { duration: 600; easing.type: Easing.InOutCubic } }
-        Behavior on tintAmount { enabled: glassTheme.gliding; NumberAnimation { duration: 600; easing.type: Easing.InOutCubic } }
+        // (16 Nov: no glide between materials: a crossfade of the frost
+        // read as two layers; the glass is one, it blurs and bends at once)
+        readonly property real lensAmount: amounts[0]
+        readonly property real frostAmount: amounts[1]
+        readonly property real solidAmount: amounts[2]
+        readonly property real tintAmount: amounts[3] ?? 0.45
+        // Frost: how much the glass blurs what's behind, logical px (4..12,
+        // 6 by default), the same for every material (Settings → Glass →
+        // Advanced); the plugin blurs its own copy, then the lens bends it.
+        // (An older plugin takes 0..1 there: GlassPlugin sets blurPx when its
+        // ping says "blur")
+        property bool blurPx: false
+        readonly property real blur: Math.max(4, Math.min(12, Config.options.appearance.glassBlur ?? 6))
         // How much 3D lighting (specular, glint, sheen, inner shadow): full
         // for clear glass, fading to an even hairline as it frosts, none solid
         readonly property real gloss: lensAmount * (1 - 0.85 * frostAmount) * (1 - solidAmount)
@@ -242,25 +243,26 @@ Singleton {
             const thick = depth === "depth" || (depth === "auto" && minSide <= 140);
             if (s >= 0.99)
                 return { mode: 2, refraction: 0, depth: 0, bevel: 8, frost: 0, chroma: 0, rim: 0, gloss: 0, tint: solid, saturation: 1 };
-            // Tint: how much it darkens (light mode: whitens) what's behind
-            const k = 0.3 + 1.4 * tintAmount;
-            const clearTint = Qt.alpha(tint, Math.min(0.9, (root.dark ? 0.16 : 0.18) * k));
-            const frostTint = Qt.alpha(frost, Math.min(0.9, (root.dark ? 0.38 : 0.45) * (0.6 + 0.8 * tintAmount)));
-            // Body: clear tint, toward the frosted tint as it frosts, toward
-            // the solid colour as it gets opaque
-            const body = mixc(clearTint, frostTint, f);
+            // The tint (as the Rust shell's, core/src/theme.rs): the glass's
+            // own colour over the blurred picture, two thirds of the Tint
+            // amount (the default 0.75: half), with the picture lifted 5%
+            // under it (folded into the colour: mix(c + l, t, a) =
+            // mix(c, t + l·(1 − a)/a, a)); then toward solid
+            const a = Math.max(0.05, Math.min(0.9, tintAmount * 2 / 3));
+            const lift = 0.05 * (1 - a) / a;
+            const body = Qt.rgba(Math.min(1, tint.r + lift), Math.min(1, tint.g + lift), Math.min(1, tint.b + lift), a);
             const t = mixc(body, Qt.alpha(solid, 1), Math.max(0, (s - body.a) / Math.max(0.01, 1 - body.a)));
             return {
                 mode: 0,
-                refraction: (thick ? 30 : 22) * l * bend,
+                refraction: (thick ? 55 : 40) * l * bend,
                 depth: (thick ? 0.55 : 0) * l * Math.min(1.5, bend),
-                bevel: (thick ? 26 : 18) * (0.5 + 0.5 * l) * band,
-                frost: f,
+                bevel: (thick ? 34 : 24) * (0.5 + 0.5 * l) * band,
+                frost: blurPx ? blur : Math.min(1, f),
                 chroma: (thick ? 0.28 : 0.18) * l * dispersion,
                 rim: root.material ? 0 : (0.12 + 0.16 * l) * (1 - s),
                 gloss: gloss,
                 tint: t,
-                saturation: 1.35 + 0.15 * f - 0.5 * s
+                saturation: 1.15 - 0.5 * s
             };
         }
     }

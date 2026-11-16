@@ -33,7 +33,9 @@ Singleton {
     signal ready // answered a ping: (re)loaded plugins start blank, so resend state
 
     // Extra frost where glass covers windows (Settings → Appearance)
-    readonly property real windowFrost: Config.ready ? Config.options.appearance.glassWindowFrost : 0
+    // (16 Nov: none; one layer of glass that blurs and bends, the same
+    // over windows as over the desktop, as the Rust shell)
+    readonly property real windowFrost: 0
     function sendWindowFrost() {
         if (available)
             command("window-frost", root.name + " window-frost " + windowFrost.toFixed(2));
@@ -119,6 +121,9 @@ Singleton {
                 if (root.isPing) {
                     root.available = data.startsWith(root.pingName);
                     root.version = root.available ? (parseInt(data.split(" ")[1]) || 1) : 0;
+                    // (6+: the frost is the blur in px, the plugin's own;
+                    // older ones take a 0..1 amount)
+                    Theme.glass.blurPx = root.available && data.split(/\s+/).indexOf("blur") > 0;
                     if (root.available) {
                         root.name = root.pingName;
                         Qt.callLater(root.ready);

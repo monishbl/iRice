@@ -98,7 +98,7 @@ Column {
                             Repeater {
                                 model: [
                                     { key: "glassLens", label: "Glass", hint: "How much it bends what's behind" },
-                                    { key: "glassFrost", label: "Frost", hint: "How much it blurs" },
+                                    { key: "glassBlur", label: "Frost", hint: "How much it blurs what's behind, every material", min: 4, max: 12, px: true },
                                     { key: "glassSolid", label: "Solid", hint: "How opaque it is" },
                                     { key: "glassTint", label: "Tint", hint: Theme.dark ? "How much it darkens what's behind" : "How milky it is", max: 2 }
                                 ]
@@ -116,17 +116,23 @@ Column {
                                         }
                                         Text {
                                             anchors.right: parent.right
-                                            text: Math.round(Config.options.appearance[parent.parent.modelData.key] * 100) + "%"
+                                            text: parent.parent.modelData.px ? Math.round(Config.options.appearance[parent.parent.modelData.key]) + " px" : Math.round(Config.options.appearance[parent.parent.modelData.key] * 100) + "%"
                                             color: Theme.color.secondary
                                             font { family: Theme.font.family; pixelSize: Theme.font.small; features: { "tnum": 1 } }
                                         }
                                     }
                                     Slider {
                                         width: parent.width
-                                        from: 0
+                                        from: parent.modelData.min ?? 0
                                         to: parent.modelData.max ?? 1 // tint goes to 200%
                                         value: Config.options.appearance[parent.modelData.key]
                                         onMoved: v => {
+                                            // (Frost is whole px for every material: it
+                                            // doesn't make the material Custom)
+                                            if (parent.modelData.px) {
+                                                Config.options.appearance[parent.modelData.key] = Math.round(v);
+                                                return;
+                                            }
                                             Config.options.appearance[parent.modelData.key] = Math.round(v * 100) / 100;
                                             Config.options.appearance.glass = "custom";
                                         }
@@ -254,6 +260,7 @@ Column {
                                     Config.options.appearance.glassIor = 1.5;
                                     Config.options.appearance.glassRefraction = 1;
                                     Config.options.appearance.glassDispersion = 0.35;
+                                    Config.options.appearance.glassBlur = 6;
                                     const p = Theme.glass.presets.liquid;
                                     Config.options.appearance.glassLens = p[0];
                                     Config.options.appearance.glassFrost = p[1];
@@ -382,25 +389,6 @@ Column {
                 Switch {
                     checked: Config.options.appearance.wallpaperTint
                     onToggled: Config.options.appearance.wallpaperTint = !checked
-                }
-            }
-            Row {
-                visible: GlassPlugin.available && Theme.glass.tier !== "solid"
-                label: "Frost over windows"
-                detail: "Glass covering a window blurs it more, so its text doesn't compete with what's on the glass"
-                Segmented {
-                    width: 300
-                    readonly property var values: [0, 0.5, 0.75, 0.95]
-                    options: ["Off", "Subtle", "Medium", "Strong"]
-                    current: {
-                        const v = Config.options.appearance.glassWindowFrost;
-                        let best = 0;
-                        for (let i = 1; i < values.length; i++)
-                            if (Math.abs(values[i] - v) < Math.abs(values[best] - v))
-                                best = i;
-                        return best;
-                    }
-                    onSelected: i => Config.options.appearance.glassWindowFrost = values[i]
                 }
             }
         }
