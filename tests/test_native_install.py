@@ -828,3 +828,18 @@ class InstallerAdvanced(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class UiInUse(unittest.TestCase):
+    """tessera-ui is the shell unless rust.standalone is false: an install or
+    update must build it (16 Nov: it read only rust.surfaces, so installs and
+    updates left it unbuilt and laptops started the QML shell)"""
+
+    def test_the_rust_shell_is_built_unless_turned_off(self):
+        ui = ni.ui_in_use
+        self.assertTrue(ui({}))
+        self.assertTrue(ui({"rust": {}}))
+        self.assertTrue(ui({"rust": {"standalone": True, "surfaces": []}}))
+        self.assertTrue(ui({"rust": {"surfaces": []}}))
+        self.assertFalse(ui({"rust": {"standalone": False, "surfaces": []}}))
+        self.assertTrue(ui({"rust": {"standalone": False, "surfaces": ["dock"]}}))

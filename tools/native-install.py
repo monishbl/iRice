@@ -129,8 +129,16 @@ def configured_channel(config=None, repo=None):
 
 
 def ui_in_use(config=None):
+    """Is tessera-ui the shell (or drawing part of it)? As launch-shell.sh
+    decides: the shell itself unless rust.standalone is false, which is the
+    default since the Rust shell became Tessera (the QML one is its
+    fallback). It read only rust.surfaces, from when tessera-ui drew a few
+    panels for the QML shell: an install and every update left tessera-ui
+    unbuilt, and the computer started the QML shell."""
     rust = (config if config is not None else load_config()).get("rust")
-    return isinstance(rust, dict) and bool(rust.get("surfaces"))
+    if not isinstance(rust, dict):
+        return True
+    return rust.get("standalone") is not False or bool(rust.get("surfaces"))
 
 
 # ── The processor ────────────────────────────────────────────────────────
