@@ -1,0 +1,17 @@
+# Tessera's release builder (tools/release-builder/tessera-release, installed
+# as ~/bin/tessera-release): builds and signs tessera-ui for main, beta and v*
+# tags when their native/ tree has no build yet, and leaves each signed set
+# ready for the laptop's publisher. It never publishes. docs/releases.md.
+[Unit]
+Description=Tessera release builder (builds and signs tessera-ui on server1)
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/bin/tessera-release
+Environment=PATH=%h/.local/bin:%h/bin:/usr/local/bin:/usr/bin
+Nice=10
+IOSchedulingClass=idle
+# (a full LTO build of both variants takes a while; cargo itself runs in a
+# tbuild scope of its own: low CPU/IO weight, capped memory)
+TimeoutStartSec=6h

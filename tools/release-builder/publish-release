@@ -1,0 +1,486 @@
+#!/usr/bin/env python3
+"""Tessera's release builder (the signing and publishing half), on the
+user's laptop: takes the tessera-ui sets server1 has built (tools/release-
+builder/tessera-release there; it has no key and signs nothing), checks each
+one, signs it here, checks the signatures, publishes it to GitHub with this
+machine's gh and tells server1 it's out. Light work only: ssh, scp,
+checksums, minisign and gh. Installed as ~/tessera-verify/publish-release.sh
+(tools/release-builder/install-publisher.sh), run by a systemd user timer every
+10 minutes (docs/releases.md, "The release builder").
+
+    publish-release              sign and publish every ready set
+    publish-release --dry-run    fetch, check and sign them in the staging folder; publish nothing
+    publish-release --status     the status JSON
+
+Needs, here: the signing key ~/.minisign/tessera-ui.key, its password in
+~/.minisign/tessera-ui.password (mode 600; handed to minisign on its input,
+never written or logged anywhere else), minisign, and gh logged in to an
+account that can publish to monishbl/iRice. Without one of them it stops
+before fetching anything, says what to do, and the sets stay waiting.
+
+For each set server1 lists (`tessera-release --list-ready`, over ssh):
+  1. copied here with scp into ~/.cache/tessera-publish/<tag>/<tree>/;
+  2. checked: exactly the three files a set has (both archives and the
+     manifest); each file's size and sha256 as server1 listed them; the
+     manifest's format, tree, commit and release, and both archives' size and
+     sha256; and, when the checkout here has the commit, that its native/ is
+     that tree. A set that fails a check is neither signed nor published;
+  3. signed with minisign, the signed comment naming the file, the tree and
+     the commit (what installs check), and each signature checked against
+     tools/tessera-ui.pub of that commit (from the checkout here, TESSERA_REPO,
+     default ~/Projects/Personal/iRice; else that commit's file on GitHub;
+     never server1's copy): a key and public key that don't belong together
+     never get published;
+  4. published with gh to its release (tessera-ui-latest for main,
+     tessera-ui-beta for beta, a v* tag's own release), created the first time
+     as the workflow did; the archives first, the manifest last; a rolling
+     release keeps its three newest builds; then the manifest is downloaded
+     back from GitHub and compared;
+  5. copied to the GitLab mirror's package registry when
+     ~/.config/tessera/gitlab-token exists here (skipped quietly otherwise; a
+     failure there is only a warning);
+  6. marked published on server1 (`tessera-release --mark-published`), so
+     it's never offered again.
+
+Log: ~/.cache/tessera-publish.log. Status: ~/.cache/tessera-publish.json:
+state (idle, fetching, checking, signing, publishing, failed), current,
+checked, error, waiting, and per release the last set published (URLs, sizes,
+time). One run at a time (flock).
+"""
+import argparse
+import fcntl
+import hashlib
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+
+HOME = os.path.expanduser("~")
+CACHE = os.path.join(HOME, ".cache")
+STAGE = os.path.join(CACHE, "tessera-publish")
+LOG = os.path.join(CACHE, "tessera-publish.log")
+STATUS = os.path.join(CACHE, "tessera-publish.json")
+KEY = os.path.join(HOME, ".minisign", "tessera-ui.key")
+PASSWORD = os.path.join(HOME, ".minisign", "tessera-ui.password")
+GITLAB_TOKEN_FILE = os.path.join(HOME, ".config", "tessera", "gitlab-token")
+GITLAB_PROJECT_FILE = os.path.join(HOME, ".config", "tessera", "gitlab-project")
+HOST = os.environ.get("TESSERA_BUILDER") or "user@server1"
+REPO = os.path.expanduser(os.environ.get("TESSERA_REPO") or "~/Projects/Personal/iRice")
+GH_REPO = os.environ.get("TESSERA_RELEASE_GH_REPO") or "monishbl/iRice"
+SSH = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15"]
+SCP = ["scp", "-q", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15"]
+ROLLING = {"tessera-ui-latest": "main", "tessera-ui-beta": "beta"}
+KEEP = 3  # builds per rolling release, as CI
+HEX40 = re.compile(r"^[0-9a-f]{40}$")
+TAG_RE = re.compile(r"^v[0-9A-Za-z._-]+$")
+MANIFEST_RE = re.compile(r"^tessera-ui-([0-9a-f]{40})\.manifest\.json$")
+
+
+class Refused(Exception):
+    """This set isn't published; the message says why."""
+
+
+# ── Log and status ───────────────────────────────────────────────────────
+
+def now():
+    return time.strftime("%Y-%m-%dT%H:%M:%S%z")
+
+
+def log(msg):
+    line = time.strftime("%Y-%m-%d %H:%M:%S ") + msg
+    print(line, flush=True)
+    os.makedirs(CACHE, exist_ok=True)
+    try:
+        if os.path.getsize(LOG) > 4 << 20:
+            os.replace(LOG, LOG + ".1")
+    except OSError:
+        pass
+    with open(LOG, "a") as f:
+        f.write(line + "\n")
+
+
+def load_status():
+    try:
+        with open(STATUS) as f:
+            s = json.load(f)
+            return s if isinstance(s, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+STATE = load_status()
+
+
+def status(**kw):
+    STATE.update(kw)
+    STATE["updated"] = now()
+    os.makedirs(CACHE, exist_ok=True)
+    tmp = STATUS + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(STATE, f, indent=2)
+        f.write("\n")
+    os.replace(tmp, STATUS)
+
+
+# ── Helpers ──────────────────────────────────────────────────────────────
+
+def run(cmd, what, timeout=600, **kw):
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, **kw)
+    except subprocess.TimeoutExpired:
+        raise Refused(f"{what} took too long") from None
+    if r.returncode != 0:
+        raise Refused(f"{what} failed: " + (r.stderr.strip().splitlines() or [f"exit {r.returncode}"])[-1])
+    return r.stdout
+
+
+def sha256_of(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def git(*args):
+    r = subprocess.run(["git", "-C", REPO, *args], capture_output=True, text=True, timeout=60)
+    return r.stdout if r.returncode == 0 else None
+
+
+def unsigned_files(tree):
+    """What server1 sends: both archives and the manifest."""
+    return sorted([f"tessera-ui-{tree}-x86-64-v3.tar.zst", f"tessera-ui-{tree}-generic.tar.zst",
+                   f"tessera-ui-{tree}.manifest.json"])
+
+
+def expected_files(tree):
+    """What a release has: those and a signature of each."""
+    return sorted(unsigned_files(tree) + [n + ".minisig" for n in unsigned_files(tree)])
+
+
+# ── Signing (here only) ──────────────────────────────────────────────────
+
+def read_password():
+    try:
+        st = os.stat(PASSWORD)
+    except FileNotFoundError:
+        raise Refused(f"there's no {PASSWORD}: put the signing key's password in it, mode 600 "
+                      f"(docs/releases.md, \"What it needs\"); the sets wait on server1 meanwhile") from None
+    if st.st_mode & 0o077:
+        raise Refused(f"{PASSWORD} can be read by others: chmod 600 {PASSWORD}")
+    with open(PASSWORD, "rb") as f:
+        pw = f.read()
+    pw = pw[:-1] if pw.endswith(b"\n") else pw
+    pw = pw[:-1] if pw.endswith(b"\r") else pw
+    if not pw:
+        raise Refused(f"{PASSWORD} is empty")
+    return pw
+
+
+def preflight(publish=True):
+    """What signing and publishing need, before anything is fetched."""
+    if not os.path.exists(KEY):
+        raise Refused(f"there's no signing key at {KEY}")
+    if not shutil.which("minisign"):
+        raise Refused("minisign isn't installed here (sudo pacman -S minisign)")
+    read_password()
+    if publish:
+        can_publish()
+
+
+def sign(dest, s):
+    """Signs the set's three files in DEST and checks each signature
+    against the commit's tools/tessera-ui.pub."""
+    tree, commit = s["tree"], s["commit"]
+    status(state="signing")
+    pub_text, pub_from = pubkey_for(commit)
+    pub_path = os.path.join(dest, ".tessera-ui.pub")
+    with open(pub_path, "w") as f:
+        f.write(pub_text)
+    pw = read_password()
+    try:
+        for n in unsigned_files(tree):
+            path = os.path.join(dest, n)
+            # (the trusted comment is signed too: installs check tree= in it)
+            r = subprocess.run(["minisign", "-S", "-s", KEY, "-m", path, "-t", f"{n} tree={tree} commit={commit}"],
+                               input=pw + b"\n", capture_output=True, timeout=120)
+            if r.returncode != 0:
+                why = r.stderr.decode(errors="replace").strip().splitlines()
+                raise Refused(f"signing {n} failed: " + (why[-1] if why else f"exit {r.returncode}")
+                              + f" (is {PASSWORD} the key's password?)")
+            trusted = verify_sig(pub_path, path)
+            if trusted.split() != [n, f"tree={tree}", f"commit={commit}"]:
+                raise Refused(f"{n}'s signed comment is {trusted!r}, not this file, tree and commit")
+    finally:
+        del pw
+    os.remove(pub_path)
+    log(f"{s['tag']}: signed tree {tree[:12]}; signatures checked against tools/tessera-ui.pub from {pub_from}")
+
+
+# ── Fetch and check ──────────────────────────────────────────────────────
+
+def list_ready():
+    out = run(SSH + [HOST, "bin/tessera-release --list-ready"], "asking server1 for ready sets", timeout=120)
+    sets = json.loads(out)
+    if not isinstance(sets, list):
+        raise Refused("server1's list isn't a list")
+    return sets
+
+
+def pubkey_for(commit):
+    """tools/tessera-ui.pub of COMMIT: from the checkout here when it has
+    the commit, else that commit's file on GitHub. Never server1's copy."""
+    text = git("show", f"{commit}:tools/tessera-ui.pub")
+    if text:
+        return text, "the checkout here"
+    url = f"https://raw.githubusercontent.com/{GH_REPO}/{commit}/tools/tessera-ui.pub"
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "tessera-publish"}), timeout=30) as r:
+            return r.read(4096).decode(), "GitHub"
+    except (urllib.error.URLError, OSError) as e:
+        raise Refused(f"there's no tools/tessera-ui.pub for {commit[:12]} here or on GitHub ({e})") from None
+
+
+def verify_sig(pub_path, path):
+    """minisign -V; returns the trusted comment."""
+    out = run(["minisign", "-V", "-p", pub_path, "-m", path],
+              f"checking the signature of {os.path.basename(path)} against tools/tessera-ui.pub "
+              "(is the key here the one whose public half is committed?)", timeout=60)
+    for line in out.splitlines():
+        if line.startswith("Trusted comment: "):
+            return line[len("Trusted comment: "):]
+    raise Refused(f"minisign gave no signed comment for {os.path.basename(path)}")
+
+
+def fetch_and_check(s):
+    tag, tree, commit, name = s.get("tag", ""), s.get("tree", ""), s.get("commit", ""), s.get("name", "")
+    if not (tag in ROLLING or TAG_RE.match(tag)) or not HEX40.match(tree) or not HEX40.match(commit):
+        raise Refused(f"server1 listed a set this doesn't publish ({tag!r}, {tree!r})")
+    if tag in ROLLING and name != ROLLING[tag]:
+        raise Refused(f"{tag} is {ROLLING[tag]}'s release, not {name!r}'s")
+    if TAG_RE.match(tag) and name != tag:
+        raise Refused(f"the set for {tag} says it's {name!r}")
+    files = s.get("files") or {}
+    want = unsigned_files(tree)
+    if sorted(files) != want:
+        raise Refused(f"the set has {sorted(files)}, not both archives and the manifest")
+    dest = os.path.join(STAGE, tag, tree)
+    shutil.rmtree(dest, ignore_errors=True)
+    os.makedirs(dest)
+    status(state="fetching", current=f"{tag}/{tree}")
+    remote = f"tessera-release/out/{tag}/{tree}"
+    run(SCP + [f"{HOST}:{remote}/{n}" for n in want] + [dest + "/"], "copying the set from server1", timeout=1800)
+    status(state="checking")
+    for n in want:
+        p = os.path.join(dest, n)
+        if os.path.getsize(p) != files[n].get("size") or sha256_of(p) != files[n].get("sha256"):
+            raise Refused(f"{n} changed on the way from server1")
+    with open(os.path.join(dest, f"tessera-ui-{tree}.manifest.json")) as f:
+        m = json.load(f)
+    if (m.get("format"), m.get("name"), m.get("tree"), m.get("commit"), m.get("tag")) != (1, "tessera-ui", tree, commit, tag):
+        raise Refused("the signed manifest names another build or release")
+    for v in ("x86-64-v3", "generic"):
+        e = (m.get("variants") or {}).get(v) or {}
+        p = os.path.join(dest, f"tessera-ui-{tree}-{v}.tar.zst")
+        if e.get("file") != os.path.basename(p) or e.get("size") != os.path.getsize(p) or e.get("sha256") != sha256_of(p):
+            raise Refused(f"the {v} archive doesn't match the signed manifest")
+    known = git("rev-parse", "--verify", "--quiet", f"{commit}:native")
+    if known is not None and known.strip() != tree:
+        raise Refused(f"commit {commit[:12]}'s native/ isn't tree {tree[:12]}")
+    log(f"{tag}: tree {tree[:12]} (commit {commit[:12]}) fetched and checked: sizes, checksums, manifest")
+    return dest, m
+
+
+# ── Publish ──────────────────────────────────────────────────────────────
+
+def gh(*args, what=None):
+    env = dict(os.environ, GH_REPO=GH_REPO, GH_PROMPT_DISABLED="1", NO_COLOR="1", GH_NO_UPDATE_NOTIFIER="1")
+    return run(["gh", *args], what or f"gh {' '.join(args[:2])}", timeout=1800, env=env)
+
+
+def can_publish():
+    if gh("api", f"repos/{GH_REPO}", "--jq", ".permissions.push", what="asking GitHub").strip() != "true":
+        login = gh("api", "user", "--jq", ".login", what="asking GitHub who this is").strip()
+        raise Refused(f"gh here is logged in as {login}, which can't publish releases to {GH_REPO} "
+                      f"(gh auth switch to an account that can)")
+
+
+def publish_github(s, dest, m):
+    tag, tree, commit = s["tag"], s["tree"], s["commit"]
+    status(state="publishing")
+    names = expected_files(tree)
+    exists = subprocess.run(["gh", "release", "view", tag], capture_output=True,
+                            env=dict(os.environ, GH_REPO=GH_REPO, GH_PROMPT_DISABLED="1")).returncode == 0
+    rolling = tag in ROLLING
+    branch = ROLLING.get(tag)
+    channel = m.get("channel", "")
+    notes = (f"Rolling builds of tessera-ui from {branch} (the {channel.capitalize()} channel), for "
+             f"tools/native-install.py (docs/releases.md). Newest: {commit} (native/ tree {tree}). "
+             f"The three newest builds are kept; older ones are deleted.") if rolling else \
+        f"Tessera {tag}. Its ready-made tessera-ui is below (docs/releases.md)."
+    if not exists:
+        if rolling:
+            gh("release", "create", tag, "--prerelease", "--target", commit, "--title", f"tessera-ui ({branch}, rolling)",
+               "--notes", notes)
+        else:
+            gh("release", "create", tag, "--verify-tag", "--title", f"Tessera {tag}", "--notes", notes)
+        log(f"{tag}: created the release")
+    # (the archives first, the manifest last: an install never finds a
+    # manifest whose archive isn't there yet)
+    first = [n for n in names if ".manifest.json" not in n]
+    gh("release", "upload", tag, *[os.path.join(dest, n) for n in first], "--clobber")
+    gh("release", "upload", tag, *[os.path.join(dest, n) for n in names if n not in first], "--clobber")
+    if rolling:
+        gh("release", "edit", tag, "--notes", notes)
+        # Only the three newest builds stay (by their manifests' upload time)
+        assets = json.loads(gh("release", "view", tag, "--json", "assets"))["assets"]
+        manifests = sorted((a for a in assets if MANIFEST_RE.match(a["name"])), key=lambda a: a["createdAt"], reverse=True)
+        for a in manifests[KEEP:]:
+            old = MANIFEST_RE.match(a["name"])[1]
+            if old == tree:
+                continue
+            for b in assets:
+                if b["name"].startswith("tessera-ui-" + old):
+                    gh("release", "delete-asset", tag, b["name"], "--yes")
+            log(f"{tag}: removed the older build {old[:12]}")
+    # Back from GitHub, as an install would get it
+    base = f"https://github.com/{GH_REPO}/releases/download/{tag}"
+    mname = f"tessera-ui-{tree}.manifest.json"
+    got = os.path.join(dest, ".downloaded")
+    run(["curl", "-fsSL", "--retry", "3", "--proto", "=https", "-o", got, f"{base}/{mname}"], "downloading the manifest back")
+    if sha256_of(got) != sha256_of(os.path.join(dest, mname)):
+        raise Refused(f"GitHub serves another {mname} than was uploaded")
+    os.remove(got)
+    return [f"{base}/{n}" for n in names]
+
+
+def gitlab(method, url, token, data=None):
+    req = urllib.request.Request(url, data=data, method=method,
+                                 headers={"PRIVATE-TOKEN": token, "User-Agent": "tessera-publish"})
+    with urllib.request.urlopen(req, timeout=600) as r:
+        body = r.read()
+    return json.loads(body) if body[:1] in (b"[", b"{") else None
+
+
+def publish_gitlab(s, dest):
+    """Like the workflow's Mirror step: skipped quietly without a token;
+    a failure is a warning (GitHub's release is already out)."""
+    if not os.path.exists(GITLAB_TOKEN_FILE):
+        return
+    tag, tree = s["tag"], s["tree"]
+    with open(GITLAB_TOKEN_FILE) as f:
+        token = f.read().strip()
+    project = "monishbl/iRice"
+    if os.path.exists(GITLAB_PROJECT_FILE):
+        with open(GITLAB_PROJECT_FILE) as f:
+            project = f.read().strip() or project
+    api = "https://gitlab.com/api/v4/projects/" + urllib.parse.quote(project, safe="")
+    names = expected_files(tree)
+    try:
+        for n in [n for n in names if ".manifest.json" not in n] + [n for n in names if ".manifest.json" in n]:
+            with open(os.path.join(dest, n), "rb") as f:
+                gitlab("PUT", f"{api}/packages/generic/tessera-ui/{tag}/{n}", token, f.read())
+        if tag in ROLLING:
+            pkgs = gitlab("GET", f"{api}/packages?package_type=generic&package_name=tessera-ui&per_page=100", token) or []
+            pkg = next((p["id"] for p in pkgs if p.get("version") == tag), None)
+            if pkg:
+                files = gitlab("GET", f"{api}/packages/{pkg}/package_files?per_page=100", token) or []
+                files.sort(key=lambda x: x["created_at"], reverse=True)
+                keep = []
+                for x in files:
+                    mm = MANIFEST_RE.match(x["file_name"])
+                    if mm and mm[1] not in keep:
+                        keep.append(mm[1])
+                keep = set(keep[:KEEP]) | {tree}
+                seen = set()
+                for x in files:
+                    mm = re.match(r"^tessera-ui-([0-9a-f]{40})", x["file_name"])
+                    if (mm and mm[1] not in keep) or x["file_name"] in seen:
+                        gitlab("DELETE", f"{api}/packages/{pkg}/package_files/{x['id']}", token)
+                    seen.add(x["file_name"])
+        log(f"{tag}: mirrored to GitLab ({project}, tessera-ui/{tag})")
+    except (urllib.error.URLError, OSError, ValueError, KeyError) as e:
+        log(f"{tag}: warning: the GitLab mirror failed ({e}); GitHub's release is out")
+
+
+# ── A run ────────────────────────────────────────────────────────────────
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--dry-run", action="store_true", help="fetch and check the ready sets; publish nothing")
+    ap.add_argument("--status", action="store_true", help="print the status JSON")
+    a = ap.parse_args(argv)
+    if a.status:
+        print(json.dumps(load_status(), indent=2))
+        return 0
+    os.makedirs(CACHE, exist_ok=True)
+    lock = open(os.path.join(CACHE, "tessera-publish.lock"), "w")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        print("publish-release: another run is going", file=sys.stderr)
+        return 0
+    last_error = STATE.get("error")
+    status(state="fetching", current=None, error=None, pid=os.getpid())
+    sets = []
+    try:
+        sets = list_ready()
+        status(waiting=[f"{s.get('tag')}/{s.get('tree')}" for s in sets])
+        if sets:
+            preflight(publish=not a.dry_run)
+    except (Refused, ValueError) as e:
+        # (said once in the log, not every ten minutes; the sets stay waiting)
+        if last_error != str(e):
+            log(f"failed: {e}")
+        status(state="failed", error=str(e), checked=now(), current=None, pid=None)
+        return 1
+    failed = []
+    for s in sets:
+        t0 = time.time()
+        key = f"{s.get('tag')}/{s.get('tree')}"
+        try:
+            dest, m = fetch_and_check(s)
+            sign(dest, s)
+            if a.dry_run:
+                log(f"{key}: checked and signed in {dest} (dry run: not published)")
+                continue
+            urls = publish_github(s, dest, m)
+            publish_gitlab(s, dest)
+            run(SSH + [HOST, f"bin/tessera-release --mark-published {s['tag']} {s['tree']}"], "marking it published on server1",
+                timeout=120)
+            sizes = {os.path.basename(u): os.path.getsize(os.path.join(dest, os.path.basename(u)))
+                     for u in urls if u.endswith(".tar.zst")}
+            secs = int(time.time() - t0)
+            STATE.setdefault("published", {})[s["tag"]] = {
+                "tree": s["tree"], "commit": s["commit"], "name": s.get("name"), "at": now(), "seconds": secs,
+                "urls": urls, "sizes": sizes}
+            status()
+            log(f"{s['tag']}: published tree {s['tree'][:12]} in {secs} s")
+            shutil.rmtree(dest, ignore_errors=True)
+            try:
+                os.rmdir(os.path.dirname(dest))  # (the release's folder, once empty)
+            except OSError:
+                pass
+        except (Refused, OSError, ValueError, KeyError) as e:
+            msg = f"{key}: {e}"
+            if msg not in (last_error or ""):
+                log("failed: " + msg)
+            failed.append(msg)
+    end = dict(checked=now(), current=None, pid=None)
+    if failed:
+        status(state="failed", error="; ".join(failed), **end)
+        return 1
+    if not a.dry_run:
+        status(waiting=[])
+    status(state="idle", error=None, **end)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

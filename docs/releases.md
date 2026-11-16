@@ -2,9 +2,11 @@
 
 Tessera's Rust programs, **tessera-ui** (the interface in Rust) and
 **tessera-events** (the system watcher), don't have to be compiled on your
-computer. GitHub Actions builds them for every change to `native/` and every
-release tag, signs them, and the installer and Software Update download the
-build for the exact version they install. You can still build them yourself.
+computer. The release builder (below) builds them on server1 for every new
+`native/` on `main`, `beta` and every `v*` tag; the user's laptop signs them
+and publishes them as GitHub releases; and the installer and Software Update
+download the build for the exact version they install. You can still build
+them yourself.
 
 ## How it works
 
@@ -155,14 +157,16 @@ switch, switch back.
 
 | Releases | When | Where | How long it stays |
 |---|---|---|---|
-| **Stable** | every push to `main` that touches `native/` | the prerelease `tessera-ui-latest`, one asset set per tree | The **three newest** builds. Older ones are deleted, so an older commit's build is gone soon after main moves on. Installing or updating to such a commit builds locally: that's what the fallback is for. Updating right after a push, before CI has finished (about 15 to 25 minutes), also builds locally, and the check says so. |
-| **Beta** | every push to `beta` that touches `native/` | the prerelease `tessera-ui-beta`, the same way | The three newest builds of beta. |
-| **Tags** | every `v*` tag | that tag's own release | As long as the release exists. |
+| **Stable** | the release builder finds a new `native/` tree on `main` | the prerelease `tessera-ui-latest`, one asset set per tree | The **three newest** builds. Older ones are deleted, so an older commit's build is gone soon after main moves on. Installing or updating to such a commit builds locally: that's what the fallback is for. Updating right after a push, before the build is out (server1 looks every 10 minutes and builds for about an hour; the laptop publishes within 10 minutes after), also builds locally, and the check says so. |
+| **Beta** | the same, for `beta` | the prerelease `tessera-ui-beta`, the same way | The three newest builds of beta. |
+| **Tags** | the release builder finds a `v*` tag without a build | that tag's own release | As long as the release exists. |
 
 The installer looks in its channel's rolling release first, then the other's
 (`native-install.py plan --channel beta` to ask for one). Promoting beta to
-main pushes the same `native/` tree to main: main's workflow builds it again,
-and until that's done the build is found in `tessera-ui-beta`.
+main pushes the same `native/` tree to main: server1 then packs beta's build
+again for main (no new build: it keeps the newest six trees it built), the
+laptop signs and publishes it to `tessera-ui-latest`, and until that's done
+the build is found in `tessera-ui-beta`.
 
 Each set is `tessera-ui-<tree>-x86-64-v3.tar.zst`,
 `tessera-ui-<tree>-generic.tar.zst` (both programs in each),
@@ -171,58 +175,159 @@ beta or release, and each
 variant's file, size and sha256, and each program's sha256 and version), and a
 `.minisig` signature next to each file.
 
-The workflow is `.github/workflows/tessera-ui.yml`. It builds in an
-`archlinux:base-devel` container (so the libraries match Arch users') with the
-full release profile (LTO, one codegen unit), caches cargo with
-actions/cache, and has a marked `TODO(PGO)` for profile-guided builds of
-stable tags (not built yet).
+## The release builder
 
-## One-time setup: the signing key
+GitHub Actions can't run while the account is locked for billing, so two of
+the user's machines make the releases instead, each doing one half:
 
-Until this is done the workflow still builds, then says in its log that it
-skipped signing and publishing, and installs build locally. Nobody else can
-do these steps for you: the private key must only ever be on your computer
-and in the repository's secrets.
+| Machine | Does | Never does |
+|---|---|---|
+| **server1** (`tools/release-builder/tessera-release`, as `~/bin/tessera-release`; a systemd user timer on the tens: :00, :10, …) | builds both variants, packs them and writes the manifest, exactly like the workflow; leaves the set ready | sign (there is no key on server1) or publish |
+| **the laptop** (`tools/release-builder/publish-release`, as `~/tessera-verify/publish-release.sh`; a systemd user timer on the fives: :05, :15, …) | fetches each ready set, checks it, signs it, checks the signatures, publishes it with its own `gh`, marks it published on server1 | build anything (light work only: ssh, scp, checksums, minisign, gh) |
 
-1. Install minisign: `sudo pacman -S minisign`.
-2. Make the key pair, with a password:
+What they make is exactly what `.github/workflows/tessera-ui.yml` made (same
+names, archives, manifest and signatures), so `tools/native-install.py` can't
+tell the difference. The workflow is kept, but it runs only by hand now (and
+fails to start while Actions are locked): two publishers of the same tree
+would upload different builds, and installs refuse a manifest that doesn't
+match its archive. Turn its push trigger back on only after stopping both
+timers.
+
+Releases upload fine while Actions are locked: the lock stops workflows, not
+the releases API (the first beta release went out this way on 17 November
+2026).
+
+### server1: building
+
+For `main`, `beta` and every `v*` tag, each run:
+
+1. Fetches them from GitHub (https, the public repository) into its own clean
+   clone, `~/tessera-release/src` (never `~/iRice`, `~/tessera-build` or the
+   agents' `~/tb-*`).
+2. Names the build by `git rev-parse <commit>:native`. Nothing to do when the
+   release already has that tree's manifest (GitHub, asked anonymously), or a
+   set for it is ready or published here. A commit without
+   `tools/tessera-ui.pub` is skipped (said once in the log): nothing built from
+   it could be checked. That's why `main` is skipped until it has the key.
+3. Builds both variants like the workflow: `cargo build --release --locked`
+   (the full `release` profile: LTO, one codegen unit; never `fast`) for
+   tessera-ui and tessera-events, `RUSTFLAGS="-C target-cpu=x86-64-v3"` and
+   `RUSTFLAGS=""`, each variant in its own target folder
+   (`~/tessera-release/target/<variant>`). Every cargo goes through
+   `~/bin/tbuild` (not urgent: a cgroup scope with CPU and IO weight 10 and
+   capped memory, paused by tgovernor when memory runs short), so the
+   machine's own work always comes first. The first beta build took 27 + 25
+   minutes, sharing the machine with another build. Built variants are kept in
+   `~/tessera-release/built/<tree>` (the newest six trees).
+4. Packs and writes the manifest exactly like the workflow into
+   `~/tessera-release/out/<release>/<tree>/` (both archives and the manifest,
+   unsigned) and writes `READY` last: what the set is, and each file's size and
+   sha256. The laptop's mark renames it `PUBLISHED`; the three newest
+   published sets per release are kept.
+
+```sh
+tessera-release                     # what the timer runs: main, beta, v* tags
+tessera-release --branch beta       # one branch (no tags)
+tessera-release --build-only        # build and pack; no ready set
+tessera-release --status            # the status JSON
+tessera-release --list-ready        # the sets waiting for the laptop
+systemctl --user start tessera-release            # a run now, as the timer would
+systemctl --user disable --now tessera-release.timer   # stop building releases
+bash tools/release-builder/install.sh             # install or update it (from a checkout on server1)
+```
+
+### The laptop: signing and publishing
+
+Each run first checks what it needs: the key `~/.minisign/tessera-ui.key`,
+its password in `~/.minisign/tessera-ui.password` (mode 600), minisign, and
+`gh` logged in to an account that can publish to `monishbl/iRice`. When one is
+missing it says what to do (once in the log, and in the status file),
+fetches nothing, and the sets wait on server1. Then for each set
+`tessera-release --list-ready` gives (over `ssh -o BatchMode=yes
+user@server1`):
+
+1. Copies it with scp into `~/.cache/tessera-publish/<release>/<tree>/`.
+2. Checks it: exactly both archives and the manifest; each file's size and
+   sha256 as server1 listed them; the manifest's format, tree, commit and
+   release, and both archives' size and sha256; and, when the checkout here
+   has the commit, that its `native/` is that tree. A set that fails is
+   neither signed nor published, and the log says why.
+3. Signs each file with minisign (the password handed to minisign on its
+   input, never written or logged anywhere else), the signed comment naming
+   the file, the tree and the commit (what installs check), and checks every
+   signature against `tools/tessera-ui.pub` of that commit: from the checkout
+   here (`TESSERA_REPO`, default `~/Projects/Personal/iRice`), else that
+   commit's file on GitHub, never server1's copy. A key and public key that
+   don't belong together never get published.
+4. Publishes with `gh` to its release (created the first time as the workflow
+   did: a prerelease whose tag points at that commit for main and beta; a
+   tag's own release for a tag): the archives first, the manifest last; a
+   rolling release keeps its three newest builds. Then downloads the manifest
+   back from GitHub and compares it.
+5. When `~/.config/tessera/gitlab-token` exists here, copies the files to the
+   GitLab mirror's package registry (skipped quietly without it; a failure
+   there is only a warning).
+6. Marks the set published on server1 (`tessera-release --mark-published`),
+   so it's never offered again.
+
+```sh
+~/tessera-verify/publish-release.sh             # what the timer runs
+~/tessera-verify/publish-release.sh --dry-run   # fetch, check and sign into the staging folder; publish nothing
+~/tessera-verify/publish-release.sh --status    # the status JSON
+systemctl --user start tessera-publish           # a run now, as the timer would
+systemctl --user disable --now tessera-publish.timer   # stop publishing
+bash tools/release-builder/install-publisher.sh  # install or update it (from this checkout)
+```
+
+### Where to look
+
+| What | Where |
+|---|---|
+| server1's log | `~/.cache/tessera-release.log` (cargo's own output: `~/tessera-release/logs/<tree>-<variant>.log`) |
+| server1's status | `~/.cache/tessera-release.json`: `state` (`idle`, `building`, `ready`, `failed`), `target`, `tree`, `commit`, `step`, `progress` (`done` crates, `about` from the last build), `started` and `finished` (the last build), `checked` (the last look), `error`, `ready` (the sets waiting for the laptop), and `targets.<name>`: the last result per branch or tag (`ready`, `published`, `up-to-date`, `built`, `skipped` or `failed` with `why`) |
+| the laptop's log | `~/.cache/tessera-publish.log` |
+| the laptop's status | `~/.cache/tessera-publish.json`: `state` (`idle`, `fetching`, `checking`, `signing`, `publishing`, `failed`), `current`, `waiting`, `checked`, `error`, and `published.<release>`: the last set published (tree, commit, URLs, sizes, seconds) |
+| the timers | `systemctl --user list-timers 'tessera-*'`, `journalctl --user -u tessera-release` (server1), `journalctl --user -u tessera-publish` (laptop) |
+
+### What it needs, once
+
+Nothing here needs sudo.
+
+1. **On the laptop:** the signing key at `~/.minisign/tessera-ui.key` (mode
+   600) and its password in `~/.minisign/tessera-ui.password` (mode 600, the
+   password on one line):
 
    ```sh
-   mkdir -p ~/.minisign
-   minisign -G -p tools/tessera-ui.pub -s ~/.minisign/tessera-ui.key -c "Tessera tessera-ui release key"
+   bash -c 'umask 077; read -rs -p "Key password: " pw && printf "%s\n" "$pw" > ~/.minisign/tessera-ui.password; echo'
    ```
+2. **On the laptop:** minisign (`sudo pacman -S minisign`) and `gh` logged in
+   as an account that can publish to `monishbl/iRice` (the active account; it
+   checks before every publish and says so when it can't). ssh to
+   `user@server1` with a key (BatchMode: it never asks for a password).
+3. **On server1:** cargo, zstd, git, and `~/bin/tbuild`. No key, no password,
+   no GitHub login.
+4. **Optional, on the laptop:** the GitLab mirror's token in
+   `~/.config/tessera/gitlab-token` (mode 600), and its project path in
+   `~/.config/tessera/gitlab-project` when it isn't `monishbl/iRice`.
 
-   Run it in the Tessera checkout so the public key lands in `tools/`. Back up
-   `~/.minisign/tessera-ui.key` and its password somewhere safe (a password
-   manager). Without them you can't sign again, and every install would need
-   a new public key.
-3. Give GitHub the secret key and its password:
+## The signing key
 
-   ```sh
-   gh secret set TESSERA_UI_MINISIGN_KEY < ~/.minisign/tessera-ui.key
-   gh secret set TESSERA_UI_MINISIGN_PASSWORD   # it asks; paste the password
-   ```
-4. Commit and push the public key:
+The key pair was made once (16 November 2026) with minisign:
 
-   ```sh
-   git add tools/tessera-ui.pub
-   git commit -m "Releases: the tessera-ui signing key (public half)"
-   git push
-   ```
+```sh
+mkdir -p ~/.minisign
+minisign -G -p tools/tessera-ui.pub -s ~/.minisign/tessera-ui.key -c "Tessera tessera-ui release key"
+```
 
-   The push touches no `native/` file, so run the workflow once by hand
-   (Actions → tessera-ui → Run workflow, or `gh workflow run tessera-ui.yml`)
-   to publish the first build (and once on the `beta` branch, after you
-   create it: `gh workflow run tessera-ui.yml --ref beta`). After that every
-   change to `native/` on main or beta, and every tag, publishes on its own.
+The public half is committed as `tools/tessera-ui.pub`. The secret key and its
+password live only on the user's laptop (`~/.minisign/`), where releases are
+signed; never on the build machine. Back both up somewhere safe (a password
+manager): without them nobody can sign again, and every install would need a
+new public key. The publisher never copies or prints either.
 
-Before publishing, the workflow checks each signature against the committed
-`tools/tessera-ui.pub`, so a key and public key that don't belong together
-never get published.
-
-**If the key leaks:** make a new pair (step 2), replace both secrets (step 3)
-and commit the new `.pub` (step 4). Copies of Tessera from before that commit
-then refuse new builds and build locally until they update. Delete the
+**If the key leaks:** make a new pair (as above), put its password beside it,
+and commit the new `.pub` to main and beta. Copies of Tessera from before that
+commit then refuse new builds and build locally until they update. Delete the
 releases signed with the old key.
 
 ## Checking a build by hand
@@ -301,7 +406,7 @@ https://github.com/archlinux/aur.git`), built with `makepkg -si`.
 ### One-time setup: the GitLab mirror
 
 Until this is done, every source after GitHub is passed over quietly, and the
-CI jobs below say they skipped (a notice, never a failed build).
+laptop's publisher skips the upload (quietly, never a failed publish).
 
 1. On gitlab.com, create the project **monishbl/iRice** (empty, without a
    README), **public**, so installs need no login. (Another path: change it in
@@ -312,15 +417,20 @@ CI jobs below say they skipped (a notice, never a failed build).
    mirror always follows GitHub.
 3. Settings → Access tokens: a **project access token**, role Maintainer,
    scopes **write_repository** and **api**, with an expiry you'll remember.
-4. On GitHub: Settings → Secrets and variables → Actions → New repository
-   secret **`GITLAB_TOKEN`** with that token. (Optional: `GITLAB_PROJECT`.)
-5. Run the **gitlab-mirror** workflow once by hand (Actions → gitlab-mirror →
-   Run workflow) to fill the mirror; from then on every push to `main` or
-   `beta` and every tag updates it. The **tessera-ui** workflow uploads each
-   new build and its signatures to the project's package registry
-   (`tessera-ui/<tag>`), keeping the three newest builds of each rolling tag.
-   Builds published before the token existed reach GitLab with the next
-   change to `native/` (or rerun the workflow).
+4. For the builds: on the laptop that publishes, put the token in
+   `~/.config/tessera/gitlab-token` (mode 600; the project path in
+   `~/.config/tessera/gitlab-project` if it isn't `monishbl/iRice`). The
+   publisher then uploads each new build and its signatures to the
+   project's package registry (`tessera-ui/<tag>`), keeping the three newest
+   builds of each rolling tag. Builds published before the token existed
+   reach GitLab with the next change to `native/`.
+5. For the code: on GitHub, Settings → Secrets and variables → Actions → New
+   repository secret **`GITLAB_TOKEN`** with that token (optional:
+   `GITLAB_PROJECT`), and run the **gitlab-mirror** workflow once by hand
+   (Actions → gitlab-mirror → Run workflow); from then on every push to `main`
+   or `beta` and every tag updates it. This one is still a GitHub workflow:
+   while the account's Actions are locked it doesn't run, and the mirror's
+   git copy stands still.
 
 Renew the token before it expires: with an expired one the gitlab-mirror job fails at the
-push and tessera-ui's GitLab step warns; the mirror stops moving (GitHub keeps working).
+push and the publisher's GitLab step warns; the mirror stops moving (GitHub keeps working).

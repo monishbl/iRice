@@ -1,0 +1,11 @@
+# Every 10 minutes, five minutes after server1's builder looks (its timer runs
+# on the tens). A run still going isn't started twice.
+[Unit]
+Description=Tessera release publisher, every 10 minutes
+
+[Timer]
+OnCalendar=*:5/10
+Persistent=true
+
+[Install]
+WantedBy=timers.target

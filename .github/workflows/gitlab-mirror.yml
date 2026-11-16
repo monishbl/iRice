@@ -2,8 +2,11 @@
 # setup.sh, Software Update and the ready-made tessera-ui) in step with
 # GitHub: on every push to main or beta and every tag, those branches and
 # all tags are pushed there as they are here (force: the mirror follows
-# GitHub, never the other way). The release files go there from
-# tessera-ui.yml's publish job.
+# GitHub, never the other way). The release files go there from the
+# release publisher on the user's laptop (tools/release-builder/
+# publish-release; formerly tessera-ui.yml's publish job). While the account's Actions are locked
+# (billing) this workflow just fails to start, and the mirror's git copy
+# stands still; nothing else depends on it.
 #
 # Secrets: GITLAB_TOKEN, a GitLab project access token with write_repository
 # and api; GITLAB_PROJECT (or the repository variable of that name), the

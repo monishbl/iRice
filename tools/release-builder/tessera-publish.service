@@ -1,0 +1,15 @@
+# Signs and publishes the tessera-ui sets server1 has built (tools/release-builder/
+# publish-release, installed as ~/tessera-verify/publish-release.sh): fetch,
+# check, sign, publish with gh, mark published. On the user's laptop; light work only.
+# docs/releases.md.
+[Unit]
+Description=Tessera release publisher (signs tessera-ui sets built on server1, publishes them to GitHub)
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/tessera-verify/publish-release.sh
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=1h
