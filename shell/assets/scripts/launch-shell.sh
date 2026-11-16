@@ -120,10 +120,13 @@ setsid -f "$(dirname -- "${BASH_SOURCE[0]}")/start-idle.sh" "$QS" </dev/null >/d
 # does what the QML shell did (native/tessera-ui/host). This process becomes it,
 # as it becomes the shell below. Without the tessera-ui binary: the QML shell.
 # A safety net: each standalone start is counted in $STARTS, and tessera-ui
-# removes the count once it has stayed up 30 s; three starts in a row that
-# didn't (it keeps crashing) and this start is the QML shell instead, until
-# tessera-ui next stays up (a new build, or `rm` the file).
+# removes the count once it has stayed up 5 minutes. A crash is retried once
+# (keep-shell.sh starts it again); a second start that didn't last and this
+# start is the QML shell instead, the basic fallback (16 Nov: only the Rust
+# shell is maintained), with a note in $FALLBACK saying why: the QML shell
+# shows it (modules/fallback) with Try again, until tessera-ui next stays up.
 STARTS="${XDG_STATE_HOME:-$HOME/.local/state}/tessera/standalone-starts"
+FALLBACK="${XDG_STATE_HOME:-$HOME/.local/state}/tessera/fallback"
 standalone_ui() {
     [[ "${TESSERA_STANDALONE:-}" == 0 ]] && return 1
     if [[ "${TESSERA_STANDALONE:-}" != 1 ]]; then
@@ -139,7 +142,22 @@ try:
 except Exception:
     off = False
 sys.exit(1 if off else 0)' "$c" 2>/dev/null && return 1
-        (( $(cat "$STARTS" 2>/dev/null || echo 0) >= 3 )) && { echo "launch-shell: tessera-ui didn't stay up 3 times: the QML shell this time ($STARTS)" >&2; return 1; }
+        # (a new login tries the Rust shell again: the fallback holds for the
+        # session it happened in, the note's third line)
+        if [[ -s "$FALLBACK" && "$(sed -n 3p "$FALLBACK")" != "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]]; then
+            rm -f "$FALLBACK" "$STARTS"
+        fi
+        if (( $(cat "$STARTS" 2>/dev/null || echo 0) >= 2 )); then
+            echo "launch-shell: tessera-ui didn't stay up twice: the QML shell this time ($STARTS)" >&2
+            # (why, for the fallback's notice: the crash's own line when the
+            # log has one; an EGL failure wrote its note already)
+            if [[ ! -s "$FALLBACK" ]]; then
+                local why
+                why=$(grep -ahm1 -e 'panicked at' -e "can't draw" "$(dirname "$STARTS")/tessera-ui.log" 2>/dev/null | sed 's/^tessera-ui: //' | cut -c1-160)
+                printf '%s\n%s\n%s\n' "The Rust shell crashed twice${why:+ ($why)}" "$(date +%s)" "${HYPRLAND_INSTANCE_SIGNATURE:-}" >"$FALLBACK" 2>/dev/null
+            fi
+            return 1
+        fi
     fi
     local b
     for b in "${TESSERA_UI:-}" "${XDG_DATA_HOME:-$HOME/.local/share}/tessera/bin/tessera-ui" "$HOME/.local/share/tessera/bin/tessera-ui" "${XDG_DATA_HOME:-$HOME/.local/share}/irice/bin/tessera-ui" "$HOME/.local/share/irice/bin/tessera-ui"; do

@@ -46,6 +46,7 @@ import qs.modules.emoji
 import qs.modules.notes
 import qs.modules.hotcorners
 import qs.modules.welcome
+import qs.modules.fallback
 
 ShellRoot {
     id: root
@@ -86,6 +87,7 @@ ShellRoot {
     }
 
     Background {}
+    FallbackNotice {} // (the Rust shell crashed: this is the fallback, and says so)
     ScreenCorners {}
     Twin { surface: "menubar"; file: "modules/menubar/MenuBar.qml" }
     RustBridge {} // (the menu bar drawn in Rust: what it shows from here)

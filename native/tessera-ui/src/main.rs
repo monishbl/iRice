@@ -272,12 +272,14 @@ fn main() {
     let mut parts: Vec<Box<dyn shell::Part>> = surfaces.on.iter().filter_map(|n| surfaces::make(n)).collect();
     if standalone {
         tessera_core::host::set_standalone(tx.clone());
-        // (launch-shell.sh counts standalone starts and falls back to the QML
-        // shell after three that didn't last: up 30 s, this one counts as good)
+        // (launch-shell.sh counts standalone starts: a crash is retried once,
+        // a second start that didn't last is the QML fallback. Up 5 minutes,
+        // this one counts as good: the count and the fallback's note go)
         std::thread::spawn(|| {
-            std::thread::sleep(std::time::Duration::from_secs(30));
+            std::thread::sleep(std::time::Duration::from_secs(300));
             let state = tessera_core::util::xdg("XDG_STATE_HOME", ".local/state");
             let _ = std::fs::remove_file(state.join("tessera/standalone-starts"));
+            let _ = std::fs::remove_file(state.join("tessera/fallback"));
         });
         // (first: its services are up before any surface asks them)
         parts.insert(0, Box::new(tessera_core::host::HostPart::new(host_services())));
@@ -386,7 +388,10 @@ fn no_gl(e: &str, standalone: bool) -> ! {
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".local/state"));
     let _ = std::fs::create_dir_all(state.join("tessera"));
-    let _ = std::fs::write(state.join("tessera/standalone-starts"), "3\n");
+    let _ = std::fs::write(state.join("tessera/standalone-starts"), "2\n");
+    // (the QML fallback shows why: modules/fallback)
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+    let _ = std::fs::write(state.join("tessera/fallback"), format!("The Rust shell can't draw on this computer's graphics (EGL: {})\n{now}\n{}\n", e.chars().take(120).collect::<String>(), std::env::var("HYPRLAND_INSTANCE_SIGNATURE").unwrap_or_default()));
     let Some(dir) = std::env::var_os("TESSERA_QML_FALLBACK").map(std::path::PathBuf::from).filter(|d| d.join("assets/scripts/launch-shell.sh").is_file()) else {
         eprintln!("tessera-ui: no QML shell to fall back to (TESSERA_QML_FALLBACK); the next start is the QML shell");
         std::process::exit(1);
