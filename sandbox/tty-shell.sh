@@ -74,11 +74,26 @@ shell_pids() {
 # Does the shell answer? (tessera-ui over its own socket, through its main
 # loop, so a frozen one doesn't; the QML one over Quickshell's IPC)
 answers() {
+    # (a computer that's swapping or busy with disk, a big build, takes
+    # longer just to start the asking process: 12 s then, 4 otherwise)
+    local t=4
+    busy && t=12
     if is_standalone "$1"; then
-        [[ "$(timeout 4 "/proc/$1/exe" ipc call shell ready 2>/dev/null)" == yes ]]
+        [[ "$(timeout "$t" "/proc/$1/exe" ipc call shell ready 2>/dev/null)" == yes ]]
     else
-        timeout 4 "$QS" ipc --pid "$1" show >/dev/null 2>&1
+        timeout "$t" "$QS" ipc --pid "$1" show >/dev/null 2>&1
     fi
+}
+
+# Is the computer under memory or disk pressure right now (PSI: tasks
+# stalled more than 10% of the last 10 s)?
+busy() {
+    local f v
+    for f in /proc/pressure/memory /proc/pressure/io; do
+        v=$(sed -n 's/^some avg10=\([0-9.]*\).*/\1/p' "$f" 2>/dev/null)
+        [[ -n $v ]] && awk -v v="$v" 'BEGIN { exit !(v > 10) }' && return 0
+    done
+    return 1
 }
 
 # Is the compositor with this signature gone for good? Only when its socket
@@ -174,9 +189,13 @@ case "${1:-start}" in
             if (( ${#pids[@]} > 1 )); then
                 kill "${pids[@]:1}" 2>/dev/null # keep the oldest
             fi
+            # (a frozen shell: two missed checks in a row; while the computer
+            # is under pressure, four, so a slow moment isn't taken for one)
+            limit=2
+            busy && limit=4
             if answers "${pids[0]}"; then
                 misses=0
-            elif (( ++misses >= 2 )); then
+            elif (( ++misses >= limit )); then
                 notify-send -a Tessera "Restarting the shell" "It stopped responding." 2>/dev/null
                 stop; start
                 misses=0
