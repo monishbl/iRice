@@ -144,73 +144,10 @@ codegen-units = 1
 # of the shell draws on: core/src/contain.rs)
 strip = true
 
-# Unwinding (above) costs ~20% more code: its landing pads. Made up for in
-# the surfaces that draw no running animation and the host's services,
-# optimized for size: Settings, the screenshot tools, the system services,
-# menus and sheets that open and wait. What moves every frame (dock, menu
-# bar, overview, Mission Control, switchers, notifications, desktop,
-# OSD, Slint and FemtoVG themselves) stays at opt-level 3. (`fast` inherits these.)
-[profile.release.package.tessera-settings]
-opt-level = "s"
-[profile.release.package.tessera-screentools]
-opt-level = "s"
-[profile.release.package.tessera-host-system]
-opt-level = "s"
-[profile.release.package.tessera-host-desktop]
-opt-level = "s"
-[profile.release.package.tessera-host-shell]
-opt-level = "s"
-[profile.release.package.tessera-host-sharing]
-opt-level = "s"
-[profile.release.package.tessera-lock]
-opt-level = "s"
-[profile.release.package.tessera-statusmenus]
-opt-level = "s"
-[profile.release.package.tessera-appstore]
-opt-level = "s"
-[profile.release.package.tessera-overlay]
-opt-level = "s"
-[profile.release.package.tessera-greeter]
-opt-level = "s"
-[profile.release.package.tessera-network]
-opt-level = "s"
-[profile.release.package.tessera-share]
-opt-level = "s"
-[profile.release.package.tessera-welcome]
-opt-level = "s"
-[profile.release.package.tessera-controlcenter]
-opt-level = "s"
-[profile.release.package.tessera-sidebar]
-opt-level = "s"
-[profile.release.package.tessera-notes]
-opt-level = "s"
-[profile.release.package.tessera-resources]
-opt-level = "s"
-[profile.release.package.tessera-polkit]
-opt-level = "s"
-[profile.release.package.tessera-session]
-opt-level = "s"
-[profile.release.package.tessera-cheatsheet]
-opt-level = "s"
-[profile.release.package.tessera-captions]
-opt-level = "s"
-[profile.release.package.tessera-today]
-opt-level = "s"
-[profile.release.package.tessera-emoji]
-opt-level = "s"
-[profile.release.package.tessera-clipboard]
-opt-level = "s"
-[profile.release.package.tessera-osk]
-opt-level = "s"
-[profile.release.package.tessera-updatescreen]
-opt-level = "s"
-[profile.release.package.tessera-lookcover]
-opt-level = "s"
-
-# For testing builds (sandboxes, the build machine): the release build's
-# speed nearly, built in a minute or two, not 10-15 (thin LTO across all
-# cores, and only what changed rebuilt). Releases and updates keep the full
-# one above. cargo build --profile fast → target/fast/tessera-ui
+# For testing builds (sandboxes, the build machine): built in a minute or
+# two, not 10-15 (thin LTO across all cores, only what changed rebuilt).
+# Releases and updates keep the full one above.
+# cargo build --profile fast → target/fast/tessera-ui
 [profile.fast]
 inherits = "release"
 lto = "thin"
