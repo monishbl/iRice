@@ -23,8 +23,10 @@ both go through it.
    xsave (Intel Haswell and AMD Excavator onwards), otherwise **generic**
    (any x86-64). Other architectures have no ready-made build.
 3. **Where.** A `v*` tag pointing at the commit has its own release; then
-   main's rolling prerelease, `tessera-ui-latest`. Downloads use curl
-   (https only, timeouts, three retries, a size limit).
+   the rolling prereleases, your channel's first: `tessera-ui-latest` (main,
+   Stable) and `tessera-ui-beta` (beta, Beta). A build is found by its tree in
+   either, so a version promoted from beta to main uses the build beta already
+   has. Downloads use curl (https only, timeouts, three retries, a size limit).
 4. **Checks**, all of them before anything is installed:
    - the manifest's minisign signature, against `tools/tessera-ui.pub` in
      your checkout (with python-cryptography, which Tessera already installs,
@@ -89,16 +91,83 @@ on failure. If the update rolls back, the code goes back and
 `.prev`, with no download or build. Any time the checkout returns to the
 version of the `.prev` build, an install swaps it back instead of downloading.
 
-## Channels
+## Update channels
 
-| Channel | When | Where | How long it stays |
+Settings → Software Update → **Channel** says which Tessera to follow
+(`update.channel` in `config.json`):
+
+| Channel | Branch | Changes when |
+|---|---|---|
+| **Stable** (the default) | `main` | you promote a version (`git push origin beta:main`, or a merge into main). There's no schedule. |
+| **Beta** | `beta` | every push to `beta`. |
+
+Every branch carries both shells (QML, and Rust with the QML fallback), so the
+channel only decides which branch the checkout follows. Until a channel is
+chosen (`update.channel` empty), the branch the checkout already follows
+decides: `main` is Stable, `beta` is Beta, and a developer's checkout on any
+other branch keeps following that branch ("your branch"; choosing a channel
+moves it to that channel's branch).
+
+**Both channels always ask.** Nothing is installed on its own:
+
+- *The notice.* While **Check automatically** is on (`update.autoCheck`, on by
+  default), the shell runs `tools/tessera-update.py peek --mark` a few minutes
+  after login and then every six hours. It fetches only the channel's branch
+  and says whether to mention it: once per new version, and again a day later
+  while it isn't installed (`$XDG_STATE_HOME/tessera/update-notice.json`). The
+  notice reads "Update available" with **Update** and **Later**. Update opens
+  Software Update and runs a full check; Later leaves it. Going back to an
+  older version (below) is never a notice, only a choice in Settings.
+- *The check and Update* are Software Update's, as before: what's new, every
+  conflict to decide, then one Update for Tessera and the system.
+
+**How the check and Update work per channel** (`tools/tessera-update.py`):
+
+1. `check` fetches the channel's branch only
+   (`git fetch origin +refs/heads/<branch>:refs/remotes/origin/<branch>`, so
+   a copy cloned with one branch gets the other when it's chosen) and compares
+   it with the checkout: *none* (up to date), *update* (the channel's version
+   has everything this copy has, and more), or *switch* (it lacks some of this
+   copy's commits). A commit no branch on the remote has is your own work:
+   then nothing is applied automatically, as before.
+2. A *switch* is going back to an older version (`"downgrade": true`), usually
+   Beta to Stable. Software Update says so plainly: "Going back to Stable:
+   this installs an older version of Tessera", how many changes it's behind,
+   and which ones go away (`"leaving"`). Your settings and shortcuts are
+   backed up first; switching back to Beta brings the changes back.
+3. Update (`apply`, behind the update screen) checks out the channel's branch
+   at its version (a fast-forward when it's newer on the same branch) and makes
+   the checkout follow it, then installs that version's tessera-ui as below.
+   On any failure everything goes back: the branch that was checked out, at
+   the version it was, your edits, your settings, and the previous tessera-ui.
+
+`tessera-update.py info` (no download) gives the channel, branch, version and
+its date: the line next to the picker ("On Beta: version 1a2b3c4d, from 14
+November 2026").
+
+Going back after an update stays as it was: the system part has **Go back to
+before the last update** (pacman's cache), tessera-ui keeps the previous
+build as `.prev` (`native-install.py restore`), and a failed Tessera update
+rolls back on its own. To return to the version you had before a channel
+switch, switch back.
+
+## Build channels
+
+| Releases | When | Where | How long it stays |
 |---|---|---|---|
-| **latest** | every push to `main` that touches `native/` | the prerelease `tessera-ui-latest`, one asset set per tree | The **three newest** builds. Older ones are deleted, so an older commit's build is gone soon after main moves on. Installing or updating to such a commit builds locally: that's what the fallback is for. Updating right after a push, before CI has finished (about 15 to 25 minutes), also builds locally, and the check says so. |
-| **stable** | every `v*` tag | that tag's own release | As long as the release exists. |
+| **Stable** | every push to `main` that touches `native/` | the prerelease `tessera-ui-latest`, one asset set per tree | The **three newest** builds. Older ones are deleted, so an older commit's build is gone soon after main moves on. Installing or updating to such a commit builds locally: that's what the fallback is for. Updating right after a push, before CI has finished (about 15 to 25 minutes), also builds locally, and the check says so. |
+| **Beta** | every push to `beta` that touches `native/` | the prerelease `tessera-ui-beta`, the same way | The three newest builds of beta. |
+| **Tags** | every `v*` tag | that tag's own release | As long as the release exists. |
+
+The installer looks in its channel's rolling release first, then the other's
+(`native-install.py plan --channel beta` to ask for one). Promoting beta to
+main pushes the same `native/` tree to main: main's workflow builds it again,
+and until that's done the build is found in `tessera-ui-beta`.
 
 Each set is `tessera-ui-<tree>-x86-64-v3.tar.zst`,
 `tessera-ui-<tree>-generic.tar.zst` (both programs in each),
-`tessera-ui-<tree>.manifest.json` (commit, tree, version, channel, and each
+`tessera-ui-<tree>.manifest.json` (commit, tree, version, channel: stable,
+beta or release, and each
 variant's file, size and sha256, and each program's sha256 and version), and a
 `.minisig` signature next to each file.
 
@@ -143,8 +212,9 @@ and in the repository's secrets.
 
    The push touches no `native/` file, so run the workflow once by hand
    (Actions → tessera-ui → Run workflow, or `gh workflow run tessera-ui.yml`)
-   to publish the first build. After that every change to `native/` and
-   every tag publishes on its own.
+   to publish the first build (and once on the `beta` branch, after you
+   create it: `gh workflow run tessera-ui.yml --ref beta`). After that every
+   change to `native/` on main or beta, and every tag, publishes on its own.
 
 Before publishing, the workflow checks each signature against the committed
 `tools/tessera-ui.pub`, so a key and public key that don't belong together

@@ -268,6 +268,12 @@ pub fn fmt_day(secs: i64) -> String {
     format!("{} {}", DAYS[(tm.tm_wday as usize) % 7], fmt_hm(secs, false).to_lowercase())
 }
 
+/// "d MMMM yyyy" (a version's date: Software Update's channel line)
+pub fn fmt_date(secs: i64) -> String {
+    let tm = local(secs);
+    format!("{} {} {}", tm.tm_mday, MONTHS[(tm.tm_mon as usize) % 12], tm.tm_year + 1900)
+}
+
 /// JavaScript truthiness of a JSON value
 pub fn truthy(v: &Value) -> bool {
     match v {

@@ -5,7 +5,8 @@ import Quickshell.Io
 import qs.common
 
 // Software Update's one button: Tessera and the system together, in a safe
-// order. Nothing is checked on its own; Check for updates looks at:
+// order. Nothing is installed on its own (TesseraUpdate only mentions a new
+// Tessera, every few hours, with Update / Later); Check for updates looks at:
 //   Tessera    git fetch (TesseraUpdate: what's new, conflicts to decide), and the
 //            new version's compat.json (tested Hyprland) and packages.sh
 //   system   checkupdates, and yay/paru -Qua for the AUR (Updates)
@@ -48,6 +49,16 @@ Singleton {
         hyprProc.running = true;
         snapProc.running = true;
         helperProc.running = true;
+    }
+    // Software Update's channel picker: follow Stable (main) or Beta (beta)
+    // from now on, then a fresh check, which offers the channel's version
+    // (from Beta to Stable that's an older one: the page says so). Nothing
+    // is installed until Update.
+    function setChannel(ch) {
+        if (running || checking || (ch !== "stable" && ch !== "beta"))
+            return;
+        Config.options.update.channel = ch;
+        check();
     }
     // A new check: the last run's result (Updated, Tessera's notes) gives way
     // to what's found now, instead of hiding it until Done. A restart that

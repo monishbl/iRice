@@ -5,7 +5,7 @@ native/tessera-events), in $XDG_DATA_HOME/tessera/bin, matching this checkout.
 
     native-install.py install [--mode auto|build|buildTuned] [--ui] [--offline] [--only-prev] [--json]
     native-install.py fetch   [--ref REF] [--json]   download and check only (installs nothing)
-    native-install.py plan    [--ref REF] [--online] [--json]   what install would do
+    native-install.py plan    [--ref REF] [--online] [--channel stable|beta] [--json]   what install would do
     native-install.py status  [--json]                what's installed, from where
     native-install.py restore                         the previous build back (undo)
     native-install.py cpu                             x86-64-v3, generic (or nothing)
@@ -56,7 +56,9 @@ PROGRAMS = ("tessera-ui", "tessera-events")
 VARIANTS = ("x86-64-v3", "generic")
 MODES = ("auto", "build", "buildTuned")
 SHORT = {"x86-64-v3": "v3", "generic": "generic"}
-ROLLING = "tessera-ui-latest"  # main's builds (a rolling prerelease); tags v* get their own
+ROLLING = "tessera-ui-latest"  # main's builds, the Stable channel (a rolling prerelease); tags v* get their own
+BETA = "tessera-ui-beta"  # the beta branch's builds, the Beta channel (rolling too)
+ROLLINGS = {"stable": [ROLLING, BETA], "beta": [BETA, ROLLING]}  # where to look first, per channel
 MAX_DOWNLOAD = 200 * 1024 * 1024
 MAX_MANIFEST = 256 * 1024
 GIB = 1024 ** 3
@@ -115,6 +117,16 @@ def configured_mode(config=None):
     return mode if mode in MODES else "auto"
 
 
+def configured_channel(config=None, repo=None):
+    """Software Update's channel (update.channel): stable | beta. Until one
+    is chosen, the branch the checkout follows (beta: beta)."""
+    up = (config if config is not None else load_config()).get("update")
+    ch = up.get("channel") if isinstance(up, dict) else None
+    if ch in ROLLINGS:
+        return ch
+    return "beta" if (git("rev-parse", "--abbrev-ref", "@{u}", repo=repo) or "").endswith("/beta") else "stable"
+
+
 def ui_in_use(config=None):
     rust = (config if config is not None else load_config()).get("rust")
     return isinstance(rust, dict) and bool(rust.get("surfaces"))
@@ -168,11 +180,13 @@ def native_tree(ref="HEAD", repo=None):
     return tree, commit, edited
 
 
-def release_tags(commit, repo=None):
+def release_tags(commit, repo=None, channel="stable"):
     """Where a build for COMMIT can be: its own release when a v* tag points
-    at it (stable), then main's rolling one (latest)."""
+    at it, then the rolling releases, the channel's first (main's for
+    Stable, beta's for Beta). A build is named by its native/ tree, so a
+    version promoted from beta to main finds its build in either."""
     tags = (git("tag", "--points-at", commit, "--list", "v*", repo=repo) or "").split() if commit else []
-    return sorted(tags, reverse=True) + [ROLLING]
+    return sorted(tags, reverse=True) + ROLLINGS.get(channel, ROLLINGS["stable"])
 
 
 GITHUB = re.compile(r"^(?:https://github\.com/|git@github\.com:|ssh://git@github\.com/)([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?/?$")
@@ -361,7 +375,7 @@ def unpack(tarball, into, expect):
 
 # ── Ready-made: find, check, keep ready ──────────────────────────────────
 
-def fetch(tree, commit, variant, work, *, base=None, tags=None, pubkey=None, repo=None):
+def fetch(tree, commit, variant, work, *, base=None, tags=None, pubkey=None, repo=None, channel=None):
     """Downloads and checks the build for TREE into WORK (a new folder in
     the destination's file system): signature, manifest (tree, commit,
     variant), checksums, contents and --version. Returns
@@ -374,7 +388,7 @@ def fetch(tree, commit, variant, work, *, base=None, tags=None, pubkey=None, rep
     base = base if base is not None else releases_base(repo)
     if not base:
         raise Failed("this checkout doesn't come from GitHub, where the ready-made builds are", "missing")
-    tags = tags if tags is not None else release_tags(commit, repo)
+    tags = tags if tags is not None else release_tags(commit, repo, channel or configured_channel(repo=repo))
     os.makedirs(work, exist_ok=True)
     mpath = os.path.join(work, "manifest.json")
     found = None
@@ -736,7 +750,7 @@ def _install(out, mode, tree, commit, edited, build_ui, names, offline, only_pre
         shutil.rmtree(stage, ignore_errors=True)
 
 
-def plan(ref="HEAD", online=False, mode=None, dest=None, repo=None, config=None):
+def plan(ref="HEAD", online=False, mode=None, dest=None, repo=None, config=None, channel=None):
     """What install would do for REF (Software Update's check): {"mode",
     "variant", "available", "changes", "label"}. online: ask the release
     server whether the ready-made build is there (a HEAD request)."""
@@ -761,7 +775,7 @@ def plan(ref="HEAD", online=False, mode=None, dest=None, repo=None, config=None)
     if not why and not base:
         why = "not from GitHub"
     if not why and online:
-        tags = release_tags(commit, repo)
+        tags = release_tags(commit, repo, channel or configured_channel(config, repo))
         seen = [exists_online(base.replace("{tag}", t) + "/" + manifest_name(tree)) for t in tags]
         out["available"] = True if True in seen else None if None in seen else False
         if out["available"] is False:
@@ -792,6 +806,7 @@ def main(argv=None):
     ap.add_argument("--only-prev", action="store_true", help="install: only the .prev build, when it's this version's (going back)")
     ap.add_argument("--online", action="store_true", help="plan: ask the release server")
     ap.add_argument("--ref", default="HEAD")
+    ap.add_argument("--channel", choices=sorted(ROLLINGS), help="plan, fetch: whose rolling release to look in first (default: Software Update's channel)")
     ap.add_argument("--packages", action="store_true", help="can-build: rust comes with Tessera's packages")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--progress", action="store_true", help="install: each step as a STEP line on stderr (the updater)")
@@ -812,7 +827,7 @@ def main(argv=None):
         emit(s, "\n".join(f"{n}: {i['label']}" + (f" ({i.get('tree', '')[:12]})" if i.get("tree") else "") for n, i in s.items()) or "Nothing installed")
         return 0
     if a.command == "plan":
-        p = plan(a.ref, online=a.online, mode=a.mode)
+        p = plan(a.ref, online=a.online, mode=a.mode, channel=a.channel)
         emit(p, p["label"])
         return 0
     if a.command == "restore":
@@ -824,7 +839,7 @@ def main(argv=None):
         dest = dest_dir()
         work = os.path.join(dest, ".incoming-" + secrets.token_hex(4))
         try:
-            got = fetch(tree, commit, detect_cpu(), work) if tree else None
+            got = fetch(tree, commit, detect_cpu(), work, channel=a.channel) if tree else None
             if not got:
                 raise Failed("not a git checkout", "missing")
             emit(dict(got["info"], ok=True), "Checked: " + label(got["info"]))

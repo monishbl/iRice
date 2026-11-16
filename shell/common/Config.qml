@@ -630,6 +630,15 @@ Singleton {
                 property real magnifiedScale: 1.45
             }
 
+            // Settings → Software Update (tools/tessera-update.py, docs/releases.md)
+            property JsonObject update: JsonObject {
+                // stable (the branch main: changes when a version is promoted) | beta (the
+                // branch beta: every change). Empty until chosen: the branch this copy
+                // follows (main: Stable). Both ask before installing anything
+                property string channel: ""
+                property bool autoCheck: true // look for a new Tessera every few hours and say so (a notice with Update / Later); nothing installs on its own
+            }
+
             // Tessera's interface in Rust (native/tessera-ui, docs/rust-ui-plan.md):
             // the surfaces it draws in place of this shell's, as they move over
             // (services/RustUi.qml). Empty: this shell draws everything

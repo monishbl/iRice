@@ -178,7 +178,13 @@ impl About {
         };
         let at = su.undo["at"].as_f64().unwrap_or(0.0);
         let sk: Vec<Value> = su.skipped_all(up).iter().map(|p| json!({"name": p["name"], "to": p["to"]})).collect();
-        let report = tu.report.as_ref().map(|r| json!({"current": s(&r["current"]), "latest": s(&r["latest"]), "ui": s(&r["ui"]["label"]), "changelog": r["changelog"].as_array().cloned().map(Value::from).unwrap_or(json!([])), "notes": r["notes"].as_array().cloned().map(Value::from).unwrap_or(json!([]))}));
+        let report = tu.report.as_ref().map(|r| json!({"current": s(&r["current"]), "latest": s(&r["latest"]), "ui": s(&r["ui"]["label"]), "changelog": r["changelog"].as_array().cloned().map(Value::from).unwrap_or(json!([])), "notes": r["notes"].as_array().cloned().map(Value::from).unwrap_or(json!([])),
+            "downgrade": r["downgrade"] == true, "ahead": r["ahead"].as_u64().unwrap_or(0), "leaving": r["leaving"].as_array().cloned().map(Value::from).unwrap_or(json!([])), "channelName": s(&r["channelName"])}));
+        // (the channel: what this copy is now, no download)
+        let tu_info = tu.info.as_ref().map(|i| {
+            let date = i["date"].as_i64().unwrap_or(0);
+            json!({"channel": s(&i["channel"]), "channelName": s(&i["channelName"]), "branch": s(&i["branch"]), "current": s(&i["current"]), "date": if date > 0 { helpers::fmt_date(date) } else { String::new() }})
+        });
         let result = tu.result.as_ref().map(|r| json!({"backup": helpers::home_tilde(r["backup"].as_str().unwrap_or("")), "now": s(&r["now"]), "changelog": r["changelog"].as_array().cloned().map(Value::from).unwrap_or(json!([])), "notes": r["notes"].as_array().cloned().map(Value::from).unwrap_or(json!([]))}));
         let conflicts: Vec<Value> = tu.conflicts().iter().map(|c| json!({"id": c["id"], "kind": c["kind"], "title": s(&c["title"]), "detail": s(&c["detail"]), "mine": s(&c["mine"]), "theirs": s(&c["theirs"]), "choices": c["choices"].as_array().cloned().map(Value::from).unwrap_or(json!([])), "labels": if c["labels"].is_object() { c["labels"].clone() } else { json!({}) }, "change": s(&c["change"])})).collect();
         let job = up.job.as_ref().map(|j| json!({
@@ -216,7 +222,7 @@ impl About {
                 "canGoBack": su.can_go_back(tu, up), "skippedAll": sk, "includeSkipped": su.include_skipped,
             },
             "tu": {
-                "allowed": tu.allowed(), "available": tu.available(), "error": tu.error, "applying": tu.applying, "report": report, "result": result,
+                "allowed": tu.allowed(), "available": tu.available(), "error": tu.error, "applying": tu.applying, "report": report, "info": tu_info, "result": result,
                 "conflicts": conflicts, "choices": Value::Object(tu.choices.clone()),
                 "missing": tu.packages["missing"].as_array().cloned().unwrap_or_default(), "dropped": tu.packages["dropped"].as_array().cloned().unwrap_or_default(),
                 "reasons": if tu.packages["reasons"].is_object() { tu.packages["reasons"].clone() } else { json!({}) },
@@ -403,7 +409,19 @@ impl About {
         }
         match what {
             // Software Update
-            "su.check" => self.su.check(&tx, &mut self.tu, &mut self.up),
+            "su.check" => {
+                self.tu.sync_channel(h);
+                self.su.check(&tx, &mut self.tu, &mut self.up)
+            }
+            // The channel picker (Settings wrote update.channel; it may not be
+            // in config.json yet): follow it from now on, and a fresh check
+            "su.channel" => {
+                if (a0s == "stable" || a0s == "beta") && !SoftwareUpdate::running(&self.up, &self.tu) && !self.su.checking(&self.tu, &self.up) {
+                    self.tu.channel = a0s.clone();
+                    self.tu.read_info(&tx);
+                    self.su.check(&tx, &mut self.tu, &mut self.up)
+                }
+            }
             "su.update" => self.su.update(h, &tx, &mut self.tu, &mut self.up),
             "su.cancel" => self.up.cancel(),
             "su.goBack" => self.su.go_back(&tx, &self.tu, &mut self.up),
@@ -557,6 +575,7 @@ impl Service for About {
                 // The menu bar's and Spotlight's "Install updates": Software Update
                 "install" => {
                     h.ask("panels.openSettings", json!(["update"]));
+                    self.tu.sync_channel(h);
                     self.su.check(&tx, &mut self.tu, &mut self.up);
                 }
                 "showDetails" => {
@@ -565,7 +584,10 @@ impl Service for About {
                 _ => {}
             },
             "tesseraupdate" => match f {
-                "check" => self.tu.check(&tx),
+                "check" => {
+                    self.tu.sync_channel(h);
+                    self.tu.check(&tx)
+                }
                 "choose" => {
                     let a = args.as_array().cloned().unwrap_or_default();
                     self.tu.choose(a.first().and_then(Value::as_str).unwrap_or(""), a.get(1).and_then(Value::as_str).unwrap_or(""));
@@ -575,7 +597,10 @@ impl Service for About {
                 _ => {}
             },
             "softwareupdate" => match f {
-                "check" => self.su.check(&tx, &mut self.tu, &mut self.up),
+                "check" => {
+                    self.tu.sync_channel(h);
+                    self.su.check(&tx, &mut self.tu, &mut self.up)
+                }
                 "update" => self.su.update(h, &tx, &mut self.tu, &mut self.up),
                 "cancel" => self.up.cancel(),
                 "goBack" => self.su.go_back(&tx, &self.tu, &mut self.up),
@@ -593,7 +618,7 @@ impl Service for About {
             Ok(t) => {
                 match t.0 {
                     "upPoll" | "upLog" | "upLock" => self.up.tick(&tx, t.0),
-                    "tuStart" | "tuAnnounce" => self.tu.tick(h, t.0),
+                    "tuStart" | "tuAnnounce" | "tuPeek" => self.tu.tick(h, &tx, t.0),
                     _ => {}
                 }
                 return self.after(h);
@@ -618,6 +643,12 @@ impl Service for About {
         let msg = match msg.downcast::<tessera_update::Ev>() {
             Ok(ev) => {
                 self.tu.event(&tx, *ev);
+                // The update notice's Update: Software Update, with a fresh check
+                if std::mem::take(&mut self.tu.open_asked) {
+                    h.ask("panels.openSettings", json!(["update"]));
+                    self.tu.sync_channel(h);
+                    self.su.check(&tx, &mut self.tu, &mut self.up);
+                }
                 return self.after(h);
             }
             Err(m) => m,

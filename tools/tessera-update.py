@@ -5,6 +5,14 @@ conflict you decide, and nothing is applied until all of them are decided.
 
     tessera-update.py check  --config <dir>            -> JSON report on stdout
     tessera-update.py apply  --config <dir> --choices <file.json>
+    tessera-update.py info   --config <dir>            -> channel, version, date (no download)
+    tessera-update.py peek   --config <dir> [--mark]   -> is there a newer version? (the notice)
+
+Channels (config.json's update.channel, or --channel): stable follows the
+branch main, beta the branch beta. Until one is chosen the checkout's own
+branch decides (main: stable, beta: beta, any other: that branch). Going to
+another channel whose version lacks some of this copy's commits is going back
+to an older version: the report says so ("downgrade", "leaving").
 
 <dir> is where the shell keeps config.json and keybinds.json. The repository
 is the one this script lives in.
@@ -242,9 +250,131 @@ def progress(percent, text):
     print(f"PROGRESS {int(percent)} {text}", file=sys.stderr, flush=True)
 
 
-def upstream():
+# ── Channels ───────────────────────────────────────────────────────────────
+# Which branch this copy follows (Settings → Software Update → Channel,
+# config.json's update.channel). Every branch carries both shells (QML and
+# Rust): the channel only decides which one to follow. Both always ask
+# before installing (docs/releases.md).
+CHANNELS = {"stable": "main", "beta": "beta"}
+NAMES = {"stable": "Stable", "beta": "Beta", "custom": "Your branch"}
+NOTICE_EVERY = 24 * 3600  # an update not installed is mentioned again a day later
+
+
+def tracked():
+    """The remote branch this checkout follows ("origin/main"), or ""."""
     r = subprocess.run(["git", "-C", REPO, "rev-parse", "--abbrev-ref", "@{u}"], capture_output=True, text=True)
-    return r.stdout.strip() if r.returncode == 0 else "origin/main"
+    return r.stdout.strip() if r.returncode == 0 else ""
+
+
+def upstream():
+    return tracked() or "origin/main"
+
+
+def local_branch():
+    """The branch checked out ("" when HEAD is detached)."""
+    r = subprocess.run(["git", "-C", REPO, "symbolic-ref", "--quiet", "--short", "HEAD"], capture_output=True, text=True)
+    return r.stdout.strip() if r.returncode == 0 else ""
+
+
+def configured_channel(config_dir):
+    c = load_json(os.path.join(config_dir, "config.json"), {}) if config_dir else {}
+    u = c.get("update") if isinstance(c, dict) else None
+    return u.get("channel", "") if isinstance(u, dict) else ""
+
+
+def follow(config_dir, channel=None):
+    """(channel, remote, branch) this copy follows. A channel chosen in
+    Settings wins; until one is chosen, the branch the checkout follows says
+    (main: Stable, beta: Beta, anything else: that branch, "custom", so a
+    developer's checkout keeps following its own branch)."""
+    ch = channel if channel is not None else configured_channel(config_dir)
+    up = tracked()
+    remote, _, ub = up.partition("/") if up else ("origin", "", "")
+    if ch in CHANNELS:
+        return ch, remote, CHANNELS[ch]
+    for k, b in CHANNELS.items():
+        if ub == b:
+            return k, remote, b
+    if ub:
+        return "custom", remote, ub
+    return "stable", remote, CHANNELS["stable"]
+
+
+def commit_time(rev):
+    try:
+        return int(git("log", "-1", "--format=%ct", rev).strip() or 0)
+    except RuntimeError:
+        return 0
+
+
+def position(config_dir, fetch=True, channel=None):
+    """Where this copy is against its channel: {"channel", "channelName",
+    "branch", "upstream", "local", "current", "date", "latest",
+    "latestDate", "behind", "ahead", "own", "kind", "available",
+    "downgrade"}, with "error" when it can't tell or can't go there.
+    kind: none | update (newer: taken as it is) | switch (the channel's
+    version lacks some of this copy's commits, another channel's: going
+    there is going back to an older version, "downgrade")."""
+    ch, remote, branch = follow(config_dir, channel)
+    target = remote + "/" + branch
+    out = {"channel": ch, "channelName": NAMES[ch], "branch": branch, "upstream": target, "local": local_branch(),
+           "current": git("rev-parse", "--short=8", "HEAD").strip(), "date": commit_time("HEAD"), "available": False}
+    if fetch:
+        # (only this branch: a copy cloned with one branch gets the other
+        # channel's when it's chosen)
+        r = subprocess.run(["git", "-C", REPO, "fetch", "--quiet", remote, f"+refs/heads/{branch}:refs/remotes/{target}"],
+                           capture_output=True, text=True)
+        if r.returncode != 0:
+            why = (r.stderr.strip() or r.stdout.strip()).splitlines()
+            if any("couldn't find remote ref" in l.lower() for l in why):
+                return dict(out, error=f"The {NAMES[ch]} channel isn't published yet. Choose Stable for now.")
+            return dict(out, error="Couldn't reach the update server: " + (why[-1] if why else "no answer").split(": ", 1)[-1])
+    if subprocess.run(["git", "-C", REPO, "rev-parse", "--verify", "--quiet", target + "^{commit}"], capture_output=True).returncode != 0:
+        return dict(out, error=f"This copy hasn't downloaded the {NAMES[ch]} channel yet. Check for updates while online.")
+    new_id = git("rev-parse", target).strip()
+    behind = int(git("rev-list", "--count", f"HEAD..{target}").strip() or 0)
+    ahead = int(git("rev-list", "--count", f"{target}..HEAD").strip() or 0)
+    # Commits here that no branch of the remote has: your own work
+    own = int(git("rev-list", "--count", "HEAD", "--not", f"--remotes={remote}").strip() or 0) if ahead else 0
+    kind = "none" if behind == 0 and ahead == 0 else "update" if ahead == 0 else "switch"
+    out.update(latest=new_id[:8], latestDate=commit_time(target), behind=behind, ahead=ahead, own=own, kind=kind,
+               available=kind != "none", downgrade=ahead > 0)
+    if ahead and (own or ch == "custom"):
+        out.update(available=False, error=f"This copy has {own or ahead} commit(s) of its own, so the update can't be applied on top automatically. Ask for help, or move your changes out first.")
+    return out
+
+
+def notice_path():
+    base = os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state")
+    return os.path.join(base, "tessera", "update-notice.json")
+
+
+def peek(config_dir, channel=None, mark=False, now=None):
+    """The background check (both shells, every few hours, while Software
+    Update's "Check automatically" is on): is there a newer version on this
+    copy's channel? It only fetches; nothing is installed. "notify" is true
+    once per new version, and again a day later while it isn't installed
+    (only for a newer version: going back to another channel is asked in
+    Settings, never pushed). mark: write down that it was mentioned now."""
+    now = time.time() if now is None else now
+    if not is_checkout():
+        return {"error": NOT_A_CHECKOUT, "notify": False}
+    p = position(config_dir, True, channel)
+    seen = load_json(notice_path(), {})
+    seen = seen if isinstance(seen, dict) else {}
+    try:
+        due = float(seen.get("next", 0) or 0)
+    except (TypeError, ValueError):
+        due = 0
+    fresh = p.get("latest") != seen.get("commit") or now >= due
+    p["notify"] = bool(not p.get("error") and p.get("kind") == "update" and fresh)
+    if p["notify"] and mark:
+        try:
+            os.makedirs(os.path.dirname(notice_path()), exist_ok=True)
+            write_json(notice_path(), {"commit": p["latest"], "next": now + NOTICE_EVERY})
+        except OSError:
+            pass
+    return p
 
 
 # ── Update notes (CHANGELOG.md) ────────────────────────────────────────────
@@ -283,29 +413,35 @@ def new_entries(base, new):
     return [e for e in changelog_entries(show(new, "CHANGELOG.md")) if e["heading"] not in have]
 
 
-def check(config_dir, fetch=True):
-    if not os.path.isdir(os.path.join(REPO, ".git")):
-        return {"error": "This copy of Tessera isn't a git checkout, so it can't update itself. Get it with the install command from irice.monishbl.in."}
-    if fetch:
-        try:
-            git("fetch", "--quiet")
-        except RuntimeError as e:
-            return {"error": "Couldn't reach the update server: " + str(e).split(": ", 1)[-1]}
-    base, new = "HEAD", upstream()
-    base_id, new_id = git("rev-parse", base).strip(), git("rev-parse", new).strip()
-    behind = int(git("rev-list", "--count", f"{base}..{new}").strip() or 0)
-    ahead = int(git("rev-list", "--count", f"{new}..{base}").strip() or 0)
-    report = {"current": base_id[:8], "latest": new_id[:8], "upstream": new, "available": behind > 0,
-              "ahead": ahead, "notes": [], "conflicts": [], "keeps": []}
+def is_checkout():
+    return os.path.exists(os.path.join(REPO, ".git"))
+
+
+NOT_A_CHECKOUT = "This copy of Tessera isn't a git checkout, so it can't update itself. Get it with the install command from irice.monishbl.in."
+
+
+def check(config_dir, fetch=True, channel=None):
+    """The full report: position() on this copy's channel, plus what's new
+    (or, going back, what goes away), the conflicts to decide, and how
+    tessera-ui comes with it."""
+    if not is_checkout():
+        return {"error": NOT_A_CHECKOUT}
+    report = position(config_dir, fetch, channel)
+    report.update(notes=[], conflicts=[], keeps=[], leaving=[])
+    if "latest" not in report:
+        return report
+    base, new = "HEAD", report["upstream"]
+    new_id = git("rev-parse", new).strip()
     # How tessera-ui comes with it ("tessera-ui: ready-made (v3)"; the line
     # Software Update shows): tools/native-install.py plan
     if fetch:
-        report["ui"] = native_plan(new_id)
-    if behind == 0:
+        report["ui"] = native_plan(new_id, report["channel"])
+    if not report["available"]:
         return report
-    if ahead > 0:
-        report["error"] = f"This copy has {ahead} commit(s) of its own, so the update can't be applied on top automatically. Ask for help, or move your changes out first."
     report["notes"] = [l for l in git("log", "--format=%s", f"{base}..{new}").splitlines() if l][:30]
+    # Going back to another channel's version: what goes away with it
+    if report["downgrade"]:
+        report["leaving"] = [l for l in git("log", "--format=%s", f"{new}..{base}").splitlines() if l][:30]
     # Proper notes when the changelog has them (the commit subjects otherwise)
     report["changelog"] = new_entries(base, new)
 
@@ -471,10 +607,12 @@ def load_json_text(text, fallback):
 NATIVE = os.path.join(REPO, "tools", "native-install.py")
 
 
-def native_plan(ref):
-    """{"label", "changes", …} for the version REF, or None."""
+def native_plan(ref, channel=None):
+    """{"label", "changes", …} for the version REF, or None. channel: which
+    rolling release to look in first."""
     try:
-        r = subprocess.run([sys.executable, "-I", NATIVE, "plan", "--ref", ref, "--online", "--json"],
+        r = subprocess.run([sys.executable, "-I", NATIVE, "plan", "--ref", ref, "--online", "--json"] +
+                           (["--channel", channel] if channel in CHANNELS else []),
                            capture_output=True, text=True, timeout=60)
         return json.loads(r.stdout) if r.returncode == 0 else None
     except (OSError, subprocess.SubprocessError, ValueError):
@@ -534,11 +672,57 @@ def repo_lock():
     return f
 
 
-def apply(config_dir, choices, extra=()):
+def take(report):
+    """Moves this copy to its channel's version, on the channel's branch
+    (following it from now on). A newer version on the branch checked out
+    is a fast-forward; anything else (another channel, going back to an
+    older version) checks the branch out at that version: the commits it
+    leaves stay on the other channel's branch. Returns how to undo it."""
+    target = report["upstream"]
+    branch = report.get("branch") or ""
+    here = local_branch()
+    undo = {"here": here, "branch": branch, "had": None, "upstream": None}
+    if report.get("channel") == "custom" or not branch or (branch == here and report.get("kind", "update") == "update"):
+        git("merge", "--ff-only", target)
+        return undo
+    undo["had"] = git("rev-parse", "--verify", "--quiet", "refs/heads/" + branch, check=False).strip() or None
+    undo["upstream"] = git("rev-parse", "--abbrev-ref", branch + "@{u}", check=False).strip() or None if undo["had"] else None
+    undo["moved"] = True
+    git("checkout", "--quiet", "-B", branch, target)
+    # Following it: the branch's remote and name (set directly: a copy
+    # cloned with one branch doesn't count the other as a remote branch),
+    # and the remote's fetch list gets it, so a plain git pull works too
+    remote = target.split("/", 1)[0]
+    spec = f"+refs/heads/{branch}:refs/remotes/{target}"
+    specs = git("config", "--get-all", f"remote.{remote}.fetch", check=False).split()
+    if spec not in specs and f"+refs/heads/*:refs/remotes/{remote}/*" not in specs:
+        git("config", "--add", f"remote.{remote}.fetch", spec)
+    git("config", f"branch.{branch}.remote", remote)
+    git("config", f"branch.{branch}.merge", "refs/heads/" + branch)
+    return undo
+
+
+def untake(undo, old_head):
+    """take() undone: the branch that was checked out, at OLD_HEAD."""
+    # (on another branch now: back to the one before, and this one as it was)
+    if undo and undo.get("moved") and undo["branch"] != undo.get("here"):
+        git("checkout", "--quiet", "--force", undo["here"] or old_head)
+        if undo.get("had"):
+            git("update-ref", "refs/heads/" + undo["branch"], undo["had"])
+            r, _, b = (undo.get("upstream") or "").partition("/")
+            if b:
+                git("config", f"branch.{undo['branch']}.remote", r, check=False)
+                git("config", f"branch.{undo['branch']}.merge", "refs/heads/" + b, check=False)
+        else:
+            git("branch", "--quiet", "-D", undo["branch"], check=False)
+    git("reset", "--hard", "--quiet", old_head)
+
+
+def apply(config_dir, choices, extra=(), channel=None):
     """extra: parts to rebuild whatever the update says (the glass plugin
     after a Hyprland update); with no Tessera update, only those are rebuilt."""
     lock = repo_lock()  # noqa: F841 (held while this runs)
-    report = check(config_dir, fetch=False)
+    report = check(config_dir, fetch=False, channel=channel)
     if report.get("error"):
         raise SystemExit(report["error"])
     if not report["available"]:
@@ -595,6 +779,7 @@ def apply(config_dir, choices, extra=()):
             merged[f] = text
     stash = None
     ui = None
+    undo = None
     try:
         for f in untracked:
             dest = os.path.join(aside, f)
@@ -603,7 +788,7 @@ def apply(config_dir, choices, extra=()):
         if edited:
             git("stash", "push", "-m", "tessera-update " + stamp)
             stash = git("rev-parse", "stash@{0}").strip()
-        git("merge", "--ff-only", report["upstream"])
+        undo = take(report)
     except BaseException:
         try:
             if stash:
@@ -626,7 +811,7 @@ def apply(config_dir, choices, extra=()):
         why = str(e) or e.__class__.__name__
         restored = ""
         try:
-            git("reset", "--hard", "--quiet", old_head)
+            untake(undo, old_head)
             # (the build for the old version back too, when it was replaced:
             # install --offline finds it as .prev, no download or build)
             if ui is not None and ui.get("changed"):
@@ -717,7 +902,9 @@ def apply_after_merge(config_dir, choices, report, edited, merged, stash):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["check", "apply"])
+    ap.add_argument("command", choices=["check", "apply", "info", "peek"])
+    ap.add_argument("--channel", choices=sorted(CHANNELS), help="this channel instead of config.json's update.channel")
+    ap.add_argument("--mark", action="store_true", help="peek: write down that a new version was mentioned")
     ap.add_argument("--config", required=True, help="the shell's config folder (config.json, keybinds.json)")
     ap.add_argument("--choices", help="apply: JSON file mapping conflict ids to choices")
     ap.add_argument("--no-fetch", action="store_true")
@@ -725,9 +912,13 @@ def main():
     a = ap.parse_args()
     try:
         if a.command == "check":
-            out = check(a.config, fetch=not a.no_fetch)
+            out = check(a.config, fetch=not a.no_fetch, channel=a.channel)
+        elif a.command == "info":
+            out = position(a.config, False, a.channel) if is_checkout() else {"error": NOT_A_CHECKOUT}
+        elif a.command == "peek":
+            out = peek(a.config, a.channel, a.mark)
         else:
-            out = apply(a.config, load_json(a.choices, {}) if a.choices else {}, [r for r in a.rebuild.split(",") if r])
+            out = apply(a.config, load_json(a.choices, {}) if a.choices else {}, [r for r in a.rebuild.split(",") if r], a.channel)
     except (RuntimeError, SystemExit) as e:
         out = {"error": str(e)}
     except Exception as e:  # anything unexpected still answers in JSON

@@ -10,6 +10,12 @@
 //! behind a full-screen "Tessera is updating" screen, rebuilds, and starts
 //! the new shell once.
 //!
+//! The channel (config.json's update.channel: stable follows the branch
+//! main, beta the branch beta) is passed to the helper. Every few hours,
+//! while update.autoCheck is on, a light check (`peek`) says whether a newer
+//! Tessera is out on it, as a notice with Update / Later: Update opens
+//! Software Update with a fresh check; nothing is installed from here.
+//!
 //! A plain model owned by the About service (bridge_about.rs).
 
 use super::helpers::{self, Ticker, Tx};
@@ -27,7 +33,17 @@ pub enum Ev {
     Packages(String),
     /// the result file of the last apply (None: no file)
     Result(Option<Value>),
+    /// tessera-update.py info: this copy's channel and version
+    Info(String),
+    /// tessera-update.py peek: is there a newer version to mention
+    Peek(String),
+    /// the notice's answer (notify-send's action: "update", "later" or "")
+    Answer(String),
 }
+
+/// The first light check after login, then every six hours
+const PEEK_FIRST_MS: u64 = 3 * 60 * 1000;
+const PEEK_EVERY_MS: u64 = 6 * 60 * 60 * 1000;
 
 pub struct TesseraUpdate {
     pub repo: String,
@@ -41,8 +57,17 @@ pub struct TesseraUpdate {
     pub choices: Map<String, Value>,
     pub packages: Value, // { missing, unavailable, dropped, reasons }
     pub packages_checking: bool,
+    /// update.channel as the helper gets it ("stable", "beta"; empty: the
+    /// branch this copy follows)
+    pub channel: String,
+    /// tessera-update.py info: { channel, channelName, branch, current, date, … }
+    pub info: Option<Value>,
+    /// the notice's Update was pressed: About opens Software Update and checks
+    pub open_asked: bool,
+    peeking: bool,
     t_start: Ticker,
     t_announce: Ticker,
+    t_peek: Ticker,
 }
 
 impl Default for TesseraUpdate {
@@ -59,8 +84,13 @@ impl Default for TesseraUpdate {
             choices: Map::new(),
             packages: json!({"missing": [], "unavailable": [], "dropped": []}),
             packages_checking: false,
+            channel: String::new(),
+            info: None,
+            open_asked: false,
+            peeking: false,
             t_start: Ticker::new("tuStart"),
             t_announce: Ticker::new("tuAnnounce"),
+            t_peek: Ticker::new("tuPeek"),
         }
     }
 }
@@ -69,9 +99,59 @@ fn config_dir() -> String {
     tessera_core::theme::config_path().parent().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default()
 }
 
+/// The helper's --channel for update.channel (nothing until one is chosen)
+pub fn channel_args(channel: &str) -> Vec<String> {
+    match channel {
+        "stable" | "beta" => vec!["--channel".into(), channel.into()],
+        _ => vec![],
+    }
+}
+
+/// The notice's text for a peek that says to mention it (None: nothing to say)
+pub fn notice(r: &Value) -> Option<String> {
+    if r["notify"] != true {
+        return None;
+    }
+    let n = r["behind"].as_u64().unwrap_or(0);
+    Some(format!("Tessera {} has {n} new change{}. Nothing installs until you choose Update.", r["channelName"].as_str().unwrap_or(""), if n == 1 { "" } else { "s" }))
+}
+
 impl TesseraUpdate {
     pub fn helper(&self) -> String {
         format!("{}/tools/tessera-update.py", self.repo)
+    }
+    /// update.channel from the settings (before a check: the helper reads
+    /// config.json too, but a change may not be written yet)
+    pub fn sync_channel(&mut self, h: &Host) {
+        self.channel = h.cfg()["update"]["channel"].as_str().unwrap_or("").to_string();
+    }
+    /// What this copy is now (no download): the channel picker's line
+    pub fn read_info(&self, tx: &Tx) {
+        if self.repo.is_empty() {
+            return;
+        }
+        let (t, helper, cfg, ch) = (tx.clone(), self.helper(), config_dir(), channel_args(&self.channel));
+        std::thread::spawn(move || {
+            let mut c = vec!["python3", "-I", &helper, "info", "--config", &cfg];
+            c.extend(ch.iter().map(String::as_str));
+            let out = util::capture(&c, Duration::from_secs(30)).map(|(_, o)| o).unwrap_or_default();
+            t(Box::new(Ev::Info(out)));
+        });
+    }
+    /// The light check (tuPeek): fetches, and says whether to mention a new version
+    fn peek(&mut self, h: &Host, tx: &Tx) {
+        if self.peeking || self.checking || self.applying || self.repo.is_empty() || !self.allowed() || h.cfg()["update"]["autoCheck"] == false {
+            return;
+        }
+        self.sync_channel(h);
+        self.peeking = true;
+        let (t, helper, cfg, ch) = (tx.clone(), self.helper(), config_dir(), channel_args(&self.channel));
+        std::thread::spawn(move || {
+            let mut c = vec!["python3", "-I", &helper, "peek", "--mark", "--config", &cfg];
+            c.extend(ch.iter().map(String::as_str));
+            let out = util::capture(&c, Duration::from_secs(300)).map(|(_, o)| o).unwrap_or_default();
+            t(Box::new(Ev::Peek(out)));
+        });
     }
     /// Never from the dev sandbox on its own copy: it would update the developer's working tree
     pub fn allowed(&self) -> bool {
@@ -142,9 +222,11 @@ impl TesseraUpdate {
         }
         self.checking = true;
         self.error.clear();
-        let (t, helper, cfg) = (tx.clone(), self.helper(), config_dir());
+        let (t, helper, cfg, ch) = (tx.clone(), self.helper(), config_dir(), channel_args(&self.channel));
         std::thread::spawn(move || {
-            let out = util::capture(&["python3", "-I", &helper, "check", "--config", &cfg], Duration::from_secs(300)).map(|(_, o)| o).unwrap_or_default();
+            let mut c = vec!["python3", "-I", &helper, "check", "--config", &cfg];
+            c.extend(ch.iter().map(String::as_str));
+            let out = util::capture(&c, Duration::from_secs(300)).map(|(_, o)| o).unwrap_or_default();
             t(Box::new(Ev::Report(out)));
         });
     }
@@ -228,8 +310,12 @@ impl TesseraUpdate {
         self.t_start.once(tx, 20000);
     }
 
-    pub fn tick(&mut self, h: &mut Host, name: &str) {
+    pub fn tick(&mut self, h: &mut Host, tx: &Tx, name: &str) {
         match name {
+            "tuPeek" => {
+                self.t_peek.once(tx, PEEK_EVERY_MS);
+                self.peek(h, tx);
+            }
             // If the update screen never took over (the helper couldn't start)
             "tuStart" => {
                 if self.applying {
@@ -267,6 +353,8 @@ impl TesseraUpdate {
                     self.repo = s;
                 }
                 self.source_ready = true;
+                self.read_info(tx);
+                self.t_peek.once(tx, PEEK_FIRST_MS);
                 if self.pending_check {
                     self.pending_check = false;
                     self.check(tx);
@@ -292,9 +380,33 @@ impl TesseraUpdate {
                 // The packages of the version that would be installed
                 let upstream = if r["available"] == true { r["upstream"].as_str().unwrap_or("").to_string() } else { String::new() };
                 self.report = Some(r);
+                self.read_info(tx); // (the channel's branch may be new here)
                 self.check_packages(tx, &upstream);
                 self.checking = false; // (last: the package check is already under way)
                 report_changed = true;
+            }
+            Ev::Info(text) => {
+                if let Ok(v) = serde_json::from_str::<Value>(text.trim()) {
+                    self.info = Some(v);
+                }
+            }
+            Ev::Peek(text) => {
+                self.peeking = false;
+                let r = serde_json::from_str::<Value>(text.trim()).unwrap_or(Value::Null);
+                if let Some(body) = notice(&r).filter(|_| !self.applying) {
+                    // (waits for the answer: the notice can sit in Notification Center)
+                    let t = tx.clone();
+                    std::thread::spawn(move || {
+                        let c = ["timeout", "86400", "notify-send", "-a", "Tessera", "-i", "system-software-update", "-A", "update=Update", "-A", "later=Later", "Update available", &body];
+                        let out = util::capture(&c, Duration::from_secs(86400 + 60)).map(|(_, o)| o).unwrap_or_default();
+                        t(Box::new(Ev::Answer(out.trim().to_string())));
+                    });
+                }
+            }
+            Ev::Answer(a) => {
+                if a == "update" {
+                    self.open_asked = true;
+                }
             }
             Ev::Packages(text) => {
                 self.packages_checking = false;
@@ -334,5 +446,20 @@ mod tests {
         t.choose("b", "nope");
         assert_eq!(t.undecided(), 1);
         assert!(t.available());
+    }
+
+    #[test]
+    fn the_channel_goes_to_the_helper_once_chosen() {
+        assert_eq!(channel_args("beta"), vec!["--channel".to_string(), "beta".into()]);
+        assert_eq!(channel_args("stable"), vec!["--channel".to_string(), "stable".into()]);
+        assert!(channel_args("").is_empty() && channel_args("nightly").is_empty());
+    }
+
+    #[test]
+    fn the_notice_only_when_the_helper_says_so() {
+        assert_eq!(notice(&json!({"notify": true, "behind": 3, "channelName": "Beta"})).as_deref(), Some("Tessera Beta has 3 new changes. Nothing installs until you choose Update."));
+        assert_eq!(notice(&json!({"notify": true, "behind": 1, "channelName": "Stable"})).as_deref(), Some("Tessera Stable has 1 new change. Nothing installs until you choose Update."));
+        assert!(notice(&json!({"notify": false, "behind": 3})).is_none());
+        assert!(notice(&Value::Null).is_none());
     }
 }

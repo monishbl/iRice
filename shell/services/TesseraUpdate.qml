@@ -6,9 +6,11 @@ import qs.common
 import "../common/phosphor.js" as Phosphor
 
 // Tessera's own updates (not the system's: that's Updates), from the git
-// repository this shell runs from, through tools/tessera-update.py. Checked
-// only when you ask (Software Update → Check for updates; SoftwareUpdate
-// runs this, the system check and the package check together). The report
+// repository this shell runs from, through tools/tessera-update.py, on the
+// channel chosen in Software Update (Stable: main, Beta: beta). The full
+// check runs when you ask (Software Update → Check for updates; SoftwareUpdate
+// runs this, the system check and the package check together); a light one
+// every few hours only says so (a notice with Update / Later). The report
 // lists what's new and every conflict (your code edits, settings whose
 // defaults change, the material you use, shortcut clashes); nothing is
 // applied until each one is decided.
@@ -25,13 +27,87 @@ Singleton {
         stdout: StdioCollector { onStreamFinished: {
             if (!root.repo) root.repo = text.trim();
             root.sourceReady = true;
+            root.readInfo();
             if (root.pendingCheck) { root.pendingCheck = false; root.check(); }
         } }
     }
     readonly property string helper: repo + "/tools/tessera-update.py"
+
+    // ── Channel ───────────────────────────────────────────────────────────
+    // Stable follows the branch main, Beta the branch beta (update.channel;
+    // empty: the branch this copy follows). Passed to the helper as it is in
+    // memory: config.json is written a moment later
+    readonly property string channel: Config.options.update.channel
+    readonly property var channelArgs: channel === "stable" || channel === "beta" ? ["--channel", channel] : []
+    // What this copy is now, without downloading anything (tessera-update.py
+    // info): { channel, channelName, branch, current, date, … }
+    property var info: null
+    function readInfo() {
+        if (repo && !infoProc.running)
+            infoProc.running = true;
+    }
+    Process {
+        id: infoProc
+        command: ["python3", "-I", root.helper, "info", "--config", Config.dir].concat(root.channelArgs)
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    root.info = JSON.parse(text);
+                } catch (e) {}
+            }
+        }
+    }
+    onChannelChanged: readInfo()
+
+    // ── The notice: a newer Tessera on your channel ───────────────────────
+    // Every few hours (the first a few minutes after login), while Check
+    // automatically is on: tessera-update.py peek fetches and says whether
+    // to mention it (once per new version, again a day later while it isn't
+    // installed). Update opens Software Update with a fresh check; Later
+    // leaves it. Nothing is ever installed from here.
+    Timer {
+        id: peekTimer
+        interval: 3 * 60 * 1000
+        running: root.sourceReady && root.repo !== "" && root.allowed && Config.options.update.autoCheck
+        repeat: true
+        onTriggered: {
+            interval = 6 * 60 * 60 * 1000;
+            if (!root.checking && !root.applying && !peekProc.running)
+                peekProc.running = true;
+        }
+    }
+    Process {
+        id: peekProc
+        command: ["python3", "-I", root.helper, "peek", "--mark", "--config", Config.dir].concat(root.channelArgs)
+        stdout: StdioCollector {
+            onStreamFinished: {
+                let r = null;
+                try {
+                    r = JSON.parse(text);
+                } catch (e) {
+                    return;
+                }
+                if (!r.notify || root.applying)
+                    return;
+                const n = r.behind ?? 0;
+                notice.body = "Tessera " + (r.channelName ?? "") + " has " + n + " new change" + (n === 1 ? "" : "s") + ". Nothing installs until you choose Update.";
+                if (!notice.running)
+                    notice.running = true;
+            }
+        }
+    }
+    Process {
+        id: notice
+        property string body: ""
+        // (waits for the answer: the notice can sit in Notification Center)
+        command: ["timeout", "86400", "notify-send", "-a", "Tessera", "-i", "system-software-update", "-A", "update=Update", "-A", "later=Later", "Update available", body]
+        stdout: StdioCollector {
+            onStreamFinished: if (text.trim() === "update") Updates.install()
+        }
+    }
     // Never from the dev sandbox on its own copy: it would update the
     // developer's working tree
-    readonly property bool allowed: (Quickshell.env("TESSERA_SANDBOX") || Quickshell.env("IRICE_SANDBOX")) !== "1" || (Quickshell.env("TESSERA_UPDATE_REPO") || Quickshell.env("IRICE_UPDATE_REPO")) !== ""
+    readonly property bool allowed: (Quickshell.env("TESSERA_SANDBOX") || Quickshell.env("IRICE_SANDBOX")) !== "1" || (Quickshell.env("TESSERA_UPDATE_REPO") || Quickshell.env("IRICE_UPDATE_REPO") || "") !== "" // (unset is undefined, not "")
     readonly property bool tty: (Quickshell.env("TESSERA_TTY") || Quickshell.env("IRICE_TTY")) === "1"
 
     property var report: null // the helper's check result
@@ -62,7 +138,7 @@ Singleton {
     }
     Process {
         id: checkProc
-        command: ["python3", "-I", root.helper, "check", "--config", Config.dir]
+        command: ["python3", "-I", root.helper, "check", "--config", Config.dir].concat(root.channelArgs)
         stdout: StdioCollector {
             onStreamFinished: {
                 let r = null;
@@ -81,6 +157,7 @@ Singleton {
                         kept[c.id] = root.choices[c.id];
                 root.choices = kept;
                 root.report = r;
+                root.readInfo(); // (the channel's branch may be new here)
                 // The packages of the version that would be installed
                 root.checkPackages(r.available ? (r.upstream ?? "") : "");
                 root.checking = false; // (last: the package check is already under way)

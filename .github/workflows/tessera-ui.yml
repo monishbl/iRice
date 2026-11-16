@@ -3,9 +3,13 @@
 # version being installed or updated to, checks it and swaps it in
 # (docs/releases.md).
 #
-# When:  a push to main that touches native/ ("latest": the rolling
-#        prerelease tessera-ui-latest), and every tag v* ("stable": the tag's
-#        own release). (Path filters don't apply to tags: every tag builds.)
+# When:  a push to main that touches native/ (the Stable channel: the
+#        rolling prerelease tessera-ui-latest), a push to beta that does (the
+#        Beta channel: the rolling prerelease tessera-ui-beta), and every tag
+#        v* (the tag's own release). (Path filters don't apply to tags: every
+#        tag builds.) The installer looks in its channel's rolling release
+#        first, then the other's: builds are named by the native/ tree, so a
+#        version promoted from beta to main finds its build in either.
 # Where: an Arch Linux container, so the libraries match Arch users'.
 # What:  two variants with the full release profile (LTO, one codegen unit):
 #        x86-64-v3 (AVX2 processors, about 2015 on) and generic (any x86-64).
@@ -15,8 +19,8 @@
 #        signature (.minisig) of each. <tree> is the git tree of native/
 #        (git rev-parse HEAD:native): a commit that changes only QML needs no
 #        new build, and the installer finds this one by that name.
-# Kept:  the rolling release keeps the three newest builds of main and
-#        deletes older ones, so an older commit's build is soon gone: installs
+# Kept:  each rolling release keeps the three newest builds of its branch
+#        and deletes older ones, so an older commit's build is soon gone: installs
 #        of it build locally instead (the fallback). A tag keeps its builds as
 #        long as its release exists.
 # Signs: with the secrets TESSERA_UI_MINISIGN_KEY (the secret key file's
@@ -27,7 +31,7 @@
 name: tessera-ui
 on:
   push:
-    branches: [main]
+    branches: [main, beta]
     tags: ["v*"]
     paths: ["native/**", ".github/workflows/tessera-ui.yml"]
   workflow_dispatch:
@@ -35,8 +39,8 @@ permissions:
   contents: read
 concurrency:
   group: tessera-ui-${{ github.ref }}
-  # (a newer push to main makes an older run's build pointless; tags finish)
-  cancel-in-progress: ${{ github.ref == 'refs/heads/main' }}
+  # (a newer push to a branch makes an older run's build pointless; tags finish)
+  cancel-in-progress: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/beta' }}
 
 jobs:
   build:
@@ -144,7 +148,13 @@ jobs:
         run: |
           set -euo pipefail
           tree=$(git rev-parse HEAD:native)
-          if [[ "$GITHUB_REF" == refs/tags/* ]]; then channel=stable tag="$GITHUB_REF_NAME"; else channel=latest tag=tessera-ui-latest; fi
+          # (a tag: its own release; beta: the Beta channel's rolling one;
+          # main, or a run by hand from any other branch: Stable's)
+          case "$GITHUB_REF" in
+            refs/tags/*)       channel=release tag="$GITHUB_REF_NAME" ;;
+            refs/heads/beta)   channel=beta tag=tessera-ui-beta ;;
+            *)                 channel=stable tag=tessera-ui-latest ;;
+          esac
           version=$(sed -n 's/^version = "\(.*\)"$/\1/p' native/tessera-ui/Cargo.toml | head -1)
           jq -n --arg commit "$GITHUB_SHA" --arg tree "$tree" --arg version "$version" --arg channel "$channel" --arg tag "$tag" \
             --arg built "$(date -u +%FT%TZ)" --slurpfile v3 out/variant-x86-64-v3.json --slurpfile generic out/variant-generic.json \
@@ -195,15 +205,16 @@ jobs:
           CHANNEL: ${{ steps.manifest.outputs.channel }}
         run: |
           set -euo pipefail
-          if [[ "$CHANNEL" == stable ]]; then
+          if [[ "$CHANNEL" == release ]]; then
             gh release view "$TAG" >/dev/null 2>&1 ||
               gh release create "$TAG" --verify-tag --title "Tessera $TAG" --notes "Tessera $TAG. Its ready-made tessera-ui is below (docs/releases.md)."
             gh release upload "$TAG" out/* --clobber
             exit 0
           fi
-          notes="Rolling builds of tessera-ui from main, for tools/native-install.py (docs/releases.md). Newest: $GITHUB_SHA (native/ tree $TREE). The three newest builds are kept; older ones are deleted."
+          branch=$([[ "$CHANNEL" == beta ]] && echo beta || echo main)
+          notes="Rolling builds of tessera-ui from $branch (the ${CHANNEL^} channel), for tools/native-install.py (docs/releases.md). Newest: $GITHUB_SHA (native/ tree $TREE). The three newest builds are kept; older ones are deleted."
           gh release view "$TAG" >/dev/null 2>&1 ||
-            gh release create "$TAG" --prerelease --target "$GITHUB_SHA" --title "tessera-ui (main, rolling)" --notes "$notes"
+            gh release create "$TAG" --prerelease --target "$GITHUB_SHA" --title "tessera-ui ($branch, rolling)" --notes "$notes"
           gh release upload "$TAG" out/* --clobber
           gh release edit "$TAG" --notes "$notes"
           # Only the three newest builds stay (by their manifests' upload time)

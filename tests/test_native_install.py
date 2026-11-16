@@ -275,7 +275,9 @@ class Fetch(Fixture):
 
     def test_a_tag_at_the_commit_comes_first(self):
         git(self.repo, "tag", "v1.0")
-        self.assertEqual(ni.release_tags(self.commit, str(self.repo)), ["v1.0", ni.ROLLING])
+        self.assertEqual(ni.release_tags(self.commit, str(self.repo)), ["v1.0", ni.ROLLING, ni.BETA])
+        # (Beta looks in its own rolling release first)
+        self.assertEqual(ni.release_tags(self.commit, str(self.repo), "beta"), ["v1.0", ni.BETA, ni.ROLLING])
         self.publish(tag="v1.0")
         self.assertEqual(self.fetch(tags=ni.release_tags(self.commit, str(self.repo)))["info"]["tag"], "v1.0")
 
@@ -671,7 +673,7 @@ class CommandLine(Fixture):
 class Wiring(unittest.TestCase):
     def test_updater_installs_with_the_pull_and_puts_it_back_on_failure(self):
         src = (ROOT / "tools/tessera-update.py").read_text()
-        self.assertIn('report["ui"] = native_plan(new_id)', src)
+        self.assertIn('report["ui"] = native_plan(new_id, report["channel"])', src)
         apply_part = src[src.index("def apply("):]
         # (after the update's code is in, inside the part that goes back on failure)
         self.assertLess(apply_part.index("apply_after_merge(config_dir"), apply_part.index("ui = native_install(40)"))

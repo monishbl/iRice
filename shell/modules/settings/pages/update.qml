@@ -10,7 +10,8 @@ import qs.services
 // its own). The plan lists what's new in Tessera and every conflict to decide,
 // the system's updates, Tessera's packages, and Hyprland when the new one isn't
 // supported yet; Update runs the system part, then Tessera's, with one
-// progress view (it keeps going with this window closed).
+// progress view (it keeps going with this window closed). The channel
+// (Stable: main, Beta: beta) says which Tessera to follow.
 Column {
     id: page
     width: parent?.width ?? 0
@@ -40,10 +41,10 @@ Column {
     // ── Status, and Check for updates ───────────────────────────────────
     Group {
         width: parent.width
-        footer: !TesseraUpdate.allowed ? "Updates are off in the dev sandbox (they would change this copy of Tessera); the system part is simulated." : TesseraUpdate.result ? "Tessera was updated. Your settings and shortcuts were backed up" + (TesseraUpdate.result.backup ? " to " + TesseraUpdate.result.backup.replace(Quickshell.env("HOME"), "~") : "") + "." : "Nothing is checked on its own. Checking downloads nothing but the package lists."
+        footer: !TesseraUpdate.allowed ? "Updates are off in the dev sandbox (they would change this copy of Tessera); the system part is simulated." : TesseraUpdate.result ? "Tessera was updated. Your settings and shortcuts were backed up" + (TesseraUpdate.result.backup ? " to " + TesseraUpdate.result.backup.replace(Quickshell.env("HOME"), "~") : "") + "." : (Config.options.update.autoCheck ? "Tessera looks for its own updates every few hours; your system's are checked only here." : "Nothing is checked on its own.") + " Checking downloads nothing but the package lists."
         Row {
             label: SoftwareUpdate.running ? "Updating…" : SoftwareUpdate.checking ? "Checking for updates…" : !SoftwareUpdate.checked ? "Software Update" : SoftwareUpdate.anything ? "Updates are ready" : "Everything is up to date"
-            detail: !SoftwareUpdate.checked ? "Tessera and your system (pacman, and the AUR if you use yay or paru), together." : page.report ? "Tessera " + page.report.current + (TesseraUpdate.available ? " → " + page.report.latest : "") + (page.report.ui?.label ? " · " + page.report.ui.label : "") + (SoftwareUpdate.hyprNow ? " · Hyprland " + SoftwareUpdate.hyprNow : "") : ""
+            detail: !SoftwareUpdate.checked ? "Tessera and your system (pacman, and the AUR if you use yay or paru), together." : page.report ? "Tessera " + page.report.current + (TesseraUpdate.available ? " → " + page.report.latest + (page.report.downgrade ? " (older, " + (page.report.channelName ?? "") + ")" : "") : "") + (page.report.ui?.label ? " · " + page.report.ui.label : "") + (SoftwareUpdate.hyprNow ? " · Hyprland " + SoftwareUpdate.hyprNow : "") : ""
             SettingsButton {
                 visible: !SoftwareUpdate.running
                 text: SoftwareUpdate.checked ? "Check again" : "Check for updates"
@@ -61,6 +62,40 @@ Column {
                 text: "Restart"
                 icon: "arrow-clockwise"
                 onClicked: Quickshell.execDetached(["systemctl", "reboot"])
+            }
+        }
+    }
+
+    // ── Channel: which Tessera to follow ───────────────────────────────────
+    // Stable (main) changes only when a version is promoted; Beta (beta)
+    // gets every change first. Switching runs a check; from Beta to Stable
+    // that offers an older version, said plainly below. Nothing installs
+    // until Update.
+    Group {
+        id: channelGroup
+        readonly property var now: TesseraUpdate.info
+        readonly property string picked: TesseraUpdate.channel !== "" ? TesseraUpdate.channel : (now?.channel ?? "")
+        width: parent.width
+        title: "Channel"
+        footer: "Stable changes only when a tested version is promoted. Beta gets every change first, so expect rough edges. Either way, nothing installs until you choose Update."
+        Row {
+            label: "Follow"
+            detail: !channelGroup.now ? "" : channelGroup.picked === "custom" ? "This copy follows " + (channelGroup.now.branch ?? "its own branch") + ", a development branch. Choose a channel to follow it instead."
+                : "On " + (channelGroup.now.channelName ?? "") + ": version " + (channelGroup.now.current ?? "") + (channelGroup.now.date ? ", from " + Qt.formatDate(new Date(channelGroup.now.date * 1000), "d MMMM yyyy") : "")
+            Segmented {
+                width: Math.max(implicitWidth, 200)
+                enabled: !SoftwareUpdate.running && !SoftwareUpdate.checking && TesseraUpdate.allowed
+                options: ["Stable", "Beta"]
+                current: ["stable", "beta"].indexOf(channelGroup.picked)
+                onSelected: i => SoftwareUpdate.setChannel(["stable", "beta"][i])
+            }
+        }
+        Row {
+            label: "Check automatically"
+            detail: "Looks for a new Tessera every few hours and tells you, with Update and Later. Nothing installs on its own."
+            Switch {
+                checked: Config.options.update.autoCheck
+                onToggled: Config.options.update.autoCheck = !checked
             }
         }
     }
@@ -91,6 +126,26 @@ Column {
             bottomPadding: 14
             entries: page.report?.changelog ?? []
             fallback: page.report?.notes ?? []
+        }
+    }
+    // Going to a channel whose version is older (Beta to Stable): said
+    // plainly, with what goes away
+    Group {
+        visible: page.showPlan && TesseraUpdate.available && page.report?.downgrade === true
+        width: parent.width
+        title: "Going back to " + (page.report?.channelName ?? "")
+        footer: "Your settings and shortcuts are backed up first. Switch back to Beta to get these changes again."
+        Row {
+            label: "This installs an older version of Tessera"
+            detail: (page.report?.channelName ?? "") + " is " + page.plural(page.report?.ahead ?? 0, "change") + " behind the version you have" + ((page.report?.leaving?.length ?? 0) > 0 ? ". These go away:" : ".")
+        }
+        UpdateNotes {
+            visible: (page.report?.leaving?.length ?? 0) > 0
+            x: page.pad
+            width: parent.width - 2 * page.pad
+            bottomPadding: 14
+            entries: []
+            fallback: page.report?.leaving ?? []
         }
     }
     Repeater {
@@ -320,7 +375,7 @@ Column {
         footer: "Your system is updated first, then Tessera, which restarts the shell; your apps keep running. Your password is asked once, at the start."
         Row {
             label: SoftwareUpdate.undecided > 0 ? page.plural(SoftwareUpdate.undecided, "thing") + " left to decide" : "Ready to update"
-            detail: SoftwareUpdate.undecided > 0 ? "Choose for each item above; nothing changes until you update." : [page.plan.system || page.plan.aur ? "the system" : "", page.plan.install.length > 0 || page.plan.remove.length > 0 ? "Tessera's packages" : "", page.plan.setup && !page.plan.tessera ? "Tessera's system helper (for the firewall fix, Quick Share and more)" : "", page.plan.tessera ? "Tessera" : page.plan.rebuild.length > 0 ? "the glass plugin (rebuilt for the new Hyprland)" : ""].filter(x => x).join(", ").replace(/^./, c => c.toUpperCase())
+            detail: SoftwareUpdate.undecided > 0 ? "Choose for each item above; nothing changes until you update." : [page.plan.system || page.plan.aur ? "the system" : "", page.plan.install.length > 0 || page.plan.remove.length > 0 ? "Tessera's packages" : "", page.plan.setup && !page.plan.tessera ? "Tessera's system helper (for the firewall fix, Quick Share and more)" : "", page.plan.tessera ? (page.report?.downgrade ? "Tessera (going back to the older " + (page.report.channelName ?? "") + " version)" : "Tessera") : page.plan.rebuild.length > 0 ? "the glass plugin (rebuilt for the new Hyprland)" : ""].filter(x => x).join(", ").replace(/^./, c => c.toUpperCase())
             SettingsButton {
                 text: "Update"
                 icon: "arrow-circle-up"

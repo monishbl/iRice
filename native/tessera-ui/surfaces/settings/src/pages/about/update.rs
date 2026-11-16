@@ -35,11 +35,15 @@ pub fn short(c: &Value, ch: &str) -> String {
 
 /// What an update will touch, as the Update row says it
 pub fn plan_detail(plan: &Value) -> String {
+    plan_detail_with(plan, "Tessera")
+}
+/// The same, naming Tessera's part as `tessera` says
+pub fn plan_detail_with(plan: &Value, tessera: &str) -> String {
     let parts = [
         if b(&plan["system"]) || b(&plan["aur"]) { "the system" } else { "" },
         if n(&plan["install"]) > 0 || n(&plan["remove"]) > 0 { "Tessera's packages" } else { "" },
         if b(&plan["setup"]) && !b(&plan["tessera"]) { "Tessera's system helper (for the firewall fix, Quick Share and more)" } else { "" },
-        if b(&plan["tessera"]) { "Tessera" } else if n(&plan["rebuild"]) > 0 { "the glass plugin (rebuilt for the new Hyprland)" } else { "" },
+        if b(&plan["tessera"]) { tessera } else if n(&plan["rebuild"]) > 0 { "the glass plugin (rebuilt for the new Hyprland)" } else { "" },
     ];
     let j = parts.iter().filter(|x| !x.is_empty()).copied().collect::<Vec<_>>().join(", ");
     let mut c = j.chars();
@@ -47,6 +51,22 @@ pub fn plan_detail(plan: &Value) -> String {
         Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
         None => String::new(),
     }
+}
+
+/// plan_detail, saying so when Tessera goes back to an older channel's version
+pub fn plan_detail_for(plan: &Value, report: &Value) -> String {
+    if b(&report["downgrade"]) {
+        return plan_detail_with(plan, &format!("Tessera (going back to the older {} version)", s(&report["channelName"])));
+    }
+    plan_detail(plan)
+}
+
+/// What a going-back leaves behind, as the notes show commits (None: nothing)
+fn cx_notes_leaving(cx: &mut Ctx, leaving: &[String], raw: &Value) -> Option<Row> {
+    if leaving.is_empty() {
+        return None;
+    }
+    Some(notes(cx, "about.update.leavingAll", &json!([]), raw))
 }
 
 /// Update notes (UpdateNotes.qml) as a custom row: each changelog entry
@@ -101,6 +121,19 @@ pub fn plain(md: &str) -> String {
     out.trim_end().to_string()
 }
 
+/// The channel picker's line: the channel and the version this copy has
+pub fn channel_line(picked: &str, info: &Value) -> String {
+    if info.is_null() {
+        return String::new();
+    }
+    if picked == "custom" {
+        let branch = s(&info["branch"]);
+        return format!("This copy follows {}, a development branch. Choose a channel to follow it instead.", if branch.is_empty() { "its own branch".to_string() } else { branch });
+    }
+    let date = s(&info["date"]);
+    format!("On {}: version {}{}", s(&info["channelName"]), s(&info["current"]), if date.is_empty() { String::new() } else { format!(", from {date}") })
+}
+
 /// One package line (update.qml's PkgLine): name, a badge, versions or a reason
 fn pkg(name: &str, from: &str, to: &str, badge: &str, dim: bool) -> Opt {
     let right = if from.is_empty() { to.to_string() } else { format!("{from}  →  {to}") };
@@ -135,6 +168,8 @@ pub fn page(cx: &mut Ctx, p: &mut Page) {
     } else if !tu["result"].is_null() {
         let backup = s(&tu["result"]["backup"]);
         format!("Tessera was updated. Your settings and shortcuts were backed up{}.", if backup.is_empty() { String::new() } else { format!(" to {backup}") })
+    } else if cx.b("update.autoCheck") {
+        "Tessera looks for its own updates every few hours; your system's are checked only here. Checking downloads nothing but the package lists.".into()
     } else {
         "Nothing is checked on its own. Checking downloads nothing but the package lists.".into()
     };
@@ -156,7 +191,7 @@ pub fn page(cx: &mut Ctx, p: &mut Page) {
         format!(
             "Tessera {}{}{}{}",
             s(&report["current"]),
-            if available { format!(" → {}", s(&report["latest"])) } else { String::new() },
+            if available { format!(" → {}{}", s(&report["latest"]), if b(&report["downgrade"]) { format!(" (older, {})", s(&report["channelName"])) } else { String::new() }) } else { String::new() },
             if s(&report["ui"]).is_empty() { String::new() } else { format!(" · {}", s(&report["ui"])) },
             if hypr.is_empty() { String::new() } else { format!(" · Hyprland {hypr}") }
         )
@@ -174,6 +209,32 @@ pub fn page(cx: &mut Ctx, p: &mut Page) {
         })
         .row(Row::new("Restart to finish the last update").visible(b(&su["restartPending"]) && !running).detail("The kernel or system libraries changed.").buttons(vec![btn("Restart").icon("arrow-clockwise")], reboot));
 
+    // ── Channel: which Tessera to follow ──
+    // Stable (main) changes only when a version is promoted; Beta (beta)
+    // gets every change first. Switching runs a check; from Beta to Stable
+    // that offers an older version, said plainly below
+    let info = &tu["info"];
+    let chosen = cx.s("update.channel");
+    let picked = if chosen.is_empty() { s(&info["channel"]) } else { chosen };
+    let follow = channel_line(&picked, info);
+    let pick = cx.on(|cx, a| {
+        if let Some(ch) = ["stable", "beta"].get(a.i.max(0) as usize) {
+            cx.set("update.channel", *ch);
+            cx.ask("about", "su.channel", json!([ch]));
+        }
+    });
+    let auto = cx.toggle("update.autoCheck");
+    p.group("Channel")
+        .footer("Stable changes only when a tested version is promoted. Beta gets every change first, so expect rough edges. Either way, nothing installs until you choose Update.")
+        .row(Row::new("Follow")
+            .detail(follow)
+            .segmented(&["Stable", "Beta"], ["stable", "beta"].iter().position(|c| *c == picked).map_or(-1, |i| i as i32), pick)
+            .enabled(!running && !checking && b(&tu["allowed"]))
+            .width(200.0))
+        .row(Row::new("Check automatically")
+            .detail("Looks for a new Tessera every few hours and tells you, with Update and Later. Nothing installs on its own.")
+            .switch(cx.b("update.autoCheck"), auto));
+
     // Errors say what happened and what to do
     let err = s(&tu["error"]);
     let again = cx.on(|cx, _| cx.ask("about", "su.check", Value::Null));
@@ -184,6 +245,19 @@ pub fn page(cx: &mut Ctx, p: &mut Page) {
     if show_plan && available && has_notes {
         let r = notes(cx, "about.update.notesAll", &report["changelog"], &report["notes"]);
         p.group("What's new in Tessera").row(r);
+    }
+    // Going to a channel whose version is older (Beta to Stable): said
+    // plainly, with what goes away
+    if show_plan && available && b(&report["downgrade"]) {
+        let name = s(&report["channelName"]);
+        let leaving = strings(&report["leaving"]);
+        let what = cx_notes_leaving(cx, &leaving, &report["leaving"]);
+        let g = p.group(format!("Going back to {name}"));
+        g.footer("Your settings and shortcuts are backed up first. Switch back to Beta to get these changes again.")
+            .row(Row::new("This installs an older version of Tessera").detail(format!("{name} is {} behind the version you have{}", plural(n(&report["ahead"]), "change"), if leaving.is_empty() { "." } else { ". These go away:" })));
+        if let Some(r) = what {
+            g.row(r);
+        }
     }
     let conflicts: Vec<Value> = tu["conflicts"].as_array().cloned().unwrap_or_default();
     if show_plan && available {
@@ -317,7 +391,7 @@ pub fn page(cx: &mut Ctx, p: &mut Page) {
         p.group("")
             .footer("Your system is updated first, then Tessera, which restarts the shell; your apps keep running. Your password is asked once, at the start.")
             .row(Row::new(if undecided > 0 { format!("{} left to decide", plural(undecided, "thing")) } else { "Ready to update".into() })
-                .detail(if undecided > 0 { "Choose for each item above; nothing changes until you update.".to_string() } else { plan_detail(plan) })
+                .detail(if undecided > 0 { "Choose for each item above; nothing changes until you update.".to_string() } else { plan_detail_for(plan, report) })
                 .buttons(vec![btn("Update").icon("arrow-circle-up").primary().off(!b(&su["canUpdate"]))], go));
     }
 

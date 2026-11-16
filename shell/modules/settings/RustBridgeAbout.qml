@@ -213,7 +213,9 @@ Scope {
                 available: TesseraUpdate.available,
                 error: TesseraUpdate.error,
                 applying: TesseraUpdate.applying,
-                report: TesseraUpdate.report ? { current: TesseraUpdate.report.current ?? "", latest: TesseraUpdate.report.latest ?? "", ui: TesseraUpdate.report.ui?.label ?? "", changelog: TesseraUpdate.report.changelog ?? [], notes: TesseraUpdate.report.notes ?? [] } : null,
+                report: TesseraUpdate.report ? { current: TesseraUpdate.report.current ?? "", latest: TesseraUpdate.report.latest ?? "", ui: TesseraUpdate.report.ui?.label ?? "", changelog: TesseraUpdate.report.changelog ?? [], notes: TesseraUpdate.report.notes ?? [], downgrade: TesseraUpdate.report.downgrade === true, ahead: TesseraUpdate.report.ahead ?? 0, leaving: TesseraUpdate.report.leaving ?? [], channelName: TesseraUpdate.report.channelName ?? "" } : null,
+                // (the channel: what this copy is now, no download)
+                info: TesseraUpdate.info ? { channel: TesseraUpdate.info.channel ?? "", channelName: TesseraUpdate.info.channelName ?? "", branch: TesseraUpdate.info.branch ?? "", current: TesseraUpdate.info.current ?? "", date: TesseraUpdate.info.date ? Qt.formatDate(new Date(TesseraUpdate.info.date * 1000), "d MMMM yyyy") : "" } : null,
                 result: TesseraUpdate.result ? { backup: root.home(TesseraUpdate.result.backup ?? ""), now: TesseraUpdate.result.now ?? "", changelog: TesseraUpdate.result.changelog ?? [], notes: TesseraUpdate.result.notes ?? [] } : null,
                 conflicts: TesseraUpdate.conflicts.map(c => ({ id: c.id, kind: c.kind, title: c.title ?? "", detail: c.detail ?? "", mine: c.mine ?? "", theirs: c.theirs ?? "", choices: c.choices ?? [], labels: c.labels ?? {}, change: c.change ?? "" })),
                 choices: TesseraUpdate.choices,
@@ -324,6 +326,9 @@ Scope {
             break;
         case "su.includeSkip":
             SoftwareUpdate.includeSkip(String(a[0] ?? ""), !!a[1]);
+            break;
+        case "su.channel":
+            SoftwareUpdate.setChannel(String(a[0] ?? ""));
             break;
         case "tu.choose":
             TesseraUpdate.choose(String(a[0] ?? ""), String(a[1] ?? ""));
