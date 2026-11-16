@@ -148,6 +148,65 @@ fn more(total: usize, open: bool, which: f32) -> Opt {
     Opt::new(if open { "Show fewer".to_string() } else { format!("and {} more", total - 8) }).style(2).num(which)
 }
 
+/// m:ss, h:mm:ss from an hour (tessera_core::build_progress::clock)
+fn clock(secs: f64) -> String {
+    tessera_core::build_progress::clock(secs)
+}
+
+/// The progress row's text for a build: its percent, else the time so far
+pub fn build_progress_text(fraction: f64, time: &str) -> String {
+    if fraction >= 0.0 {
+        format!("{}%", (fraction * 100.0).round())
+    } else {
+        time.split(" · ").next().unwrap_or("").to_string()
+    }
+}
+
+/// A build's group: running (bar, step, time) or failed (why, Done), and
+/// its output behind Show details
+fn build_section(cx: &mut Ctx, p: &mut Page, bd: &Value) {
+    if bd.is_null() {
+        return;
+    }
+    let failed = b(&bd["failed"]);
+    let details = b(&bd["details"]);
+    let fraction = bd["fraction"].as_f64().unwrap_or(-1.0);
+    let id = bd["id"].as_f64().unwrap_or(0.0);
+    let detail = if failed { format!("{}\n{}", s(&bd["step"]), s(&bd["time"])) } else { format!("{} · {}", s(&bd["step"]), s(&bd["time"])) };
+    let done = cx.on(move |cx, _| cx.ask("about", "build.dismiss", json!([id])));
+    let mut dbtn = Vec::new();
+    if details {
+        dbtn.push(btn("Copy").icon("copy"));
+    }
+    dbtn.push(btn(if details { "Hide details" } else { "Show details" }).icon(if details { "caret-up" } else { "terminal-window" }));
+    let dact = cx.on(move |cx, a| {
+        if details && a.i == 0 {
+            cx.ask("about", "build.copyLog", Value::Null);
+        } else {
+            cx.ask("about", "build.details", json!([!details]));
+        }
+    });
+    let g = p.group("Build");
+    g.footer(if failed {
+        "What was installed before stays in use. The whole log is in ~/.local/state/tessera/build.log."
+    } else {
+        "Keeps going if you close Settings. The first build takes several minutes; later ones only what changed."
+    });
+    let head = Row::new(s(&bd["title"])).detail(detail);
+    g.row(if failed { head.tone(2).button("Done", done) } else { head });
+    if !failed {
+        // (no total to measure against: the bar moves without claiming how far)
+        g.row(Row::custom("about", "progress").num(if fraction >= 0.0 { fraction.max(0.02) as f32 } else { -1.0 }).text_value(build_progress_text(fraction, &s(&bd["time"]))));
+    }
+    g.row(Row::new("Details").detail("The build's full output").buttons(dbtn, dact));
+    if details {
+        let log = s(&bd["log"]);
+        let mut r = Row::custom("about", "log").text_value(if log.is_empty() { "Waiting for output…".to_string() } else { log }).num(240.0);
+        r.on = true; // (follow the end)
+        g.row(r);
+    }
+}
+
 pub fn page(cx: &mut Ctx, p: &mut Page) {
     let f = feed(cx);
     let (su, tu, up, bs) = (&f["su"], &f["tu"], &f["up"], &f["bs"]);
@@ -468,7 +527,9 @@ pub fn page(cx: &mut Ctx, p: &mut Page) {
             g.row(Row::custom("about", "steps").data(steps));
         }
         if b(&up["running"]) {
-            g.row(Row::custom("about", "progress").num(progress.max(0.02)).text_value(format!("{}%", (progress.max(0.0) * 100.0).round())));
+            let elapsed = f["jobElapsed"].as_f64().unwrap_or(0.0);
+            let pct = format!("{}%", (progress.max(0.0) * 100.0).round());
+            g.row(Row::custom("about", "progress").num(progress.max(0.02)).text_value(if elapsed >= 1.0 { format!("{pct} · {}", clock(elapsed)) } else { pct }));
         }
         if has_job {
             g.row(Row::new("Details").detail(format!("The full output of pacman{}", if b(&job["aur"]) { " and the AUR helper" } else { "" })).buttons(dbtn, dact));
@@ -479,6 +540,12 @@ pub fn page(cx: &mut Ctx, p: &mut Page) {
             }
         }
     }
+
+    // ── A build (the shell, tessera-events, the glass plugin): how far it
+    // is, what it's on, the time, and its output (tools/build-progress.py;
+    // the updater's own builds run behind the update screen, `tessera
+    // rebuild` and the installer's show here too) ──
+    build_section(cx, p, &f["build"]);
 
     // ── Going back ──
     let from_snapshot = !s(&bs["booted"]).is_empty();
@@ -621,6 +688,13 @@ mod tests {
     #[test]
     fn notes_as_plain_text() {
         assert_eq!(plain("**New:** see [the docs](https://x.y) and `cfg`\n- one\n  - two"), "New: see the docs and cfg\n•  one\n  •  two");
+    }
+
+    #[test]
+    fn a_builds_bar_says_its_percent_or_its_time() {
+        assert_eq!(build_progress_text(0.494, "3:12 · about 4 min left"), "49%");
+        assert_eq!(build_progress_text(-1.0, "3:12"), "3:12");
+        assert_eq!(build_progress_text(-1.0, "3:12 · about 4 min left"), "3:12");
     }
 
     #[test]

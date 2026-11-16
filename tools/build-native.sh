@@ -48,14 +48,27 @@ if [[ "${1:-}" == --stage ]]; then
         sfx="/tuned"
     fi
     mkdir -p "$STAGE"
+    # Each build through tools/build-progress.py: how far it is, the crate
+    # it's on, the time (and how long is left, after a first build), live;
+    # $XDG_STATE_HOME/tessera/build-progress.json and build.log for the
+    # installer and Software Update. Plain cargo when python3 isn't there.
+    cargo_build() { # label title final cargo-args…
+        local label="$1" title="$2" final="$3"
+        shift 3
+        if command -v python3 >/dev/null && [[ -f "$ROOT/tools/build-progress.py" ]]; then
+            python3 -I "$ROOT/tools/build-progress.py" cargo --label "$label" --title "$title" --final "$final" -- cargo build "$@"
+        else
+            cargo build --quiet "$@"
+        fi
+    }
     CRATE="$ROOT/native/tessera-events"
-    cargo build --release --locked --quiet --manifest-path "$CRATE/Cargo.toml" --target-dir "$CRATE/target$sfx"
+    cargo_build tessera-events tessera-events tessera-events --release --locked --manifest-path "$CRATE/Cargo.toml" --target-dir "$CRATE/target$sfx"
     cp "$CRATE/target$sfx/release/tessera-events" "$STAGE/tessera-events"
     [[ $UI == 1 ]] || exit 0
     # tessera-ui: its first build takes several minutes (Slint, link-time
     # optimisation). A failed one still installs tessera-events
     UI_CRATE="$ROOT/native/tessera-ui"
-    if cargo build --release --locked --quiet --manifest-path "$UI_CRATE/Cargo.toml" --target-dir "$UI_CRATE/target$sfx" --bin tessera-ui; then
+    if cargo_build tessera-ui "the shell" tessera-ui --release --locked --manifest-path "$UI_CRATE/Cargo.toml" --target-dir "$UI_CRATE/target$sfx" --bin tessera-ui; then
         cp "$UI_CRATE/target$sfx/release/tessera-ui" "$STAGE/tessera-ui"
     else
         echo "tessera-ui didn't build"

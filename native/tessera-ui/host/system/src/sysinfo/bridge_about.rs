@@ -68,6 +68,10 @@ pub struct About {
     last_feed: Value,
     t_feed: Option<Ticker>,
     log_shown: bool,
+    /// a build's output shown (Software Update's build section)
+    build_details: bool,
+    /// the failed build (its started_at) dismissed with Done
+    build_dismissed: f64,
 }
 
 fn obj(name: &str) -> Value {
@@ -255,7 +259,27 @@ impl About {
             },
             "keymap": {"ready": b(&km["ready"]), "dialog": b(&km["hasZenity"]) || b(&km["hasKdialog"])},
             "ie": Value::Object(self.ie.clone()),
+            "build": if self.page() == "update" { self.build_feed() } else { Value::Null },
+            "jobElapsed": if up.running() { up.job.as_ref().and_then(|j| j["started"].as_f64()).map(|t| helpers::now_s() - t).unwrap_or(0.0) } else { 0.0 },
         })
+    }
+
+    /// A build in progress (tools/build-progress.py: the updater's, `tessera
+    /// rebuild`'s, the installer's), or one that just failed: null when none
+    fn build_feed(&self) -> Value {
+        let Some(v) = tessera_core::build_progress::read() else { return Value::Null };
+        if v.failed && v.id == self.build_dismissed {
+            return Value::Null;
+        }
+        let log = if self.build_details {
+            let path = if v.log.is_empty() { tessera_core::build_progress::log_path() } else { std::path::PathBuf::from(&v.log) };
+            let t = tessera_core::build_progress::tail(&path, 200);
+            if t.is_empty() { v.tail.join("\n") } else { t }
+        } else {
+            String::new()
+        };
+        json!({"active": v.active, "failed": v.failed, "title": v.title, "step": v.step, "time": v.time,
+               "fraction": v.fraction.map_or(-1.0, |f| f as f64), "id": v.id, "details": self.build_details, "log": log})
     }
 
     fn push(&mut self, h: &mut Host) {
@@ -433,6 +457,13 @@ impl About {
             "tu.dismissResult" => self.tu.dismiss_result(),
             "up.dismiss" => self.up.dismiss(),
             "up.copyLog" => self.up.copy_log(),
+            // A build's section: its output, copying it, Done after a failure
+            "build.details" => self.build_details = a0.as_bool().unwrap_or(false),
+            "build.copyLog" => {
+                let log = tessera_core::build_progress::log_path();
+                tessera_core::services::bridge::run(&["sh", "-c", "wl-copy < \"$1\"", "sh", &log.to_string_lossy()]);
+            }
+            "build.dismiss" => self.build_dismissed = a0.as_f64().unwrap_or(0.0),
             "up.showDetails" => {
                 self.up.show_details = a0.as_bool().unwrap_or(false);
                 let old = self.page().to_string();

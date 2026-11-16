@@ -8,6 +8,10 @@
 //! <dir> is the update's copy of the screen (`$T/ui`); like the QML, it reads
 //!   <dir>/../status     update-run.sh's: state \t percent \t text \t detail[\x1f backup folder]
 //!                       (state run | restart | done: fade out, quit | error: wait for Close)
+//!   <dir>/../log        the update's whole output (Show details: its last lines)
+//!   $XDG_STATE_HOME/tessera/build-progress.json  while the shell (or the
+//!                       glass plugin) is built: the step, how far, the time
+//!                       (tools/build-progress.py; tessera_core::build_progress)
 //!   <dir>/../look.json  the menu icon: {"glyph": Phosphor glyph, "image": a picture's path}
 //!   <dir>/Phosphor-Fill.ttf  the glyph's font (else the repository's, as the shell finds it)
 //! The `-p` is accepted (and passed by the scripts) so the process reads
@@ -20,7 +24,9 @@
 //! As the QML: up at least 5 s; the status read every 250 ms until done or
 //! error; done: 600 ms or more of "up to date", then a 400 ms fade and quit;
 //! error: the keyboard (Return, Escape) and the pointer (Close), else clicks
-//! pass through; gone after 15 minutes unless it's showing an error.
+//! pass through but for Show details (and the output and its Copy, once
+//! open); gone after 15 minutes unless it's showing an error (or a build
+//! is still going: the first build of the shell can take longer).
 
 pub mod ui {
     slint::include_modules!();
@@ -129,6 +135,8 @@ pub fn finish_pause(open_for: Duration) -> Duration {
 enum M {
     Poll,
     Close,
+    Details,
+    Copy,
     Fade,
     Quit,
     GiveUp,
@@ -140,6 +148,8 @@ struct Win {
     ui: ui::UpdateScreen,
     opened: bool,
     settled: bool,
+    /// the input region last set while it works (Show details and the output)
+    hit: (i32, i32, i32, i32),
 }
 
 pub struct UpdateScreen {
@@ -155,6 +165,24 @@ pub struct UpdateScreen {
     finish: slint::Timer,
     quit: slint::Timer,
     give_up: slint::Timer,
+    /// the build under way, as shown
+    build: Option<tessera_core::build_progress::View>,
+    details: bool,
+    log: String,
+    polls: u32,
+}
+
+/// The step line for a build: "Building the shell — compiling slint (212 of 431)"
+/// ("Linking the shell (the longest step, a few minutes)" says it all)
+pub fn build_line(v: &tessera_core::build_progress::View) -> String {
+    if v.step.is_empty() || v.step.starts_with("Linking") {
+        return if v.step.is_empty() { v.title.clone() } else { v.step.clone() };
+    }
+    let mut c = v.step.chars();
+    let first = c.next().map(|f| f.to_lowercase().collect::<String>()).unwrap_or_default();
+    // (a crate's name stays as it is: only a capital word is lowered)
+    let step = if v.step.split(' ').next().is_some_and(|w| w.chars().skip(1).all(|ch| ch.is_lowercase())) { first + c.as_str() } else { v.step.clone() };
+    format!("{} — {step}", v.title)
 }
 
 impl UpdateScreen {
@@ -183,6 +211,10 @@ impl UpdateScreen {
             finish: slint::Timer::default(),
             quit: slint::Timer::default(),
             give_up: slint::Timer::default(),
+            build: None,
+            details: false,
+            log: String::new(),
+            polls: 0,
         }
     }
 
@@ -195,7 +227,22 @@ impl UpdateScreen {
         self.status.phase == "error"
     }
 
+    /// The build's progress and (Show details) the output, with the status
+    fn reload_build(&mut self) {
+        self.polls = self.polls.wrapping_add(1);
+        let b = if self.status.phase == "run" { tessera_core::build_progress::read().filter(|v| v.active) } else { None };
+        let log_due = self.details && (self.polls % 4 == 1 || self.log.is_empty());
+        if log_due {
+            self.log = tessera_core::build_progress::tail(&self.dir.join("../log"), 200);
+        }
+        if b != self.build || log_due {
+            self.build = b;
+            self.push();
+        }
+    }
+
     fn reload(&mut self, st: &mut State) {
+        self.reload_build();
         let Ok(text) = std::fs::read_to_string(self.dir.join("../status")) else { return };
         let Some(s) = read_status(&text, &self.status, &self.home) else { return };
         let was_error = self.error();
@@ -222,6 +269,26 @@ impl UpdateScreen {
             g.set_step(self.status.step.clone().into());
             g.set_detail(self.status.detail.clone().into());
             g.set_backup(self.status.backup.clone().into());
+            g.set_build(self.build.is_some());
+            if let Some(b) = &self.build {
+                g.set_build_step(build_line(b).into());
+                g.set_build_time(b.time.clone().into());
+                g.set_build_fraction(b.fraction.unwrap_or(-1.0));
+            }
+            g.set_details(self.details);
+            g.set_log(self.log.clone().into());
+        }
+    }
+
+    /// While it works only Show details (and the open output) takes clicks:
+    /// the rectangle the UI says, set again when it moves
+    fn hit_region(st: &mut State, w: &mut Win) {
+        let ui = &w.ui;
+        let r = (ui.get_hit_x() as i32, ui.get_hit_y() as i32, ui.get_hit_w().ceil() as i32, ui.get_hit_h().ceil() as i32);
+        if r != w.hit {
+            w.hit = r;
+            st.set_input_region(&w.surface, Some(&[r]));
+            w.surface.layer.commit();
         }
     }
 
@@ -234,7 +301,8 @@ impl UpdateScreen {
     }
 
     fn input_of(st: &mut State, w: &Win, error: bool) {
-        st.set_input_region(&w.surface, if error { None } else { Some(&[]) });
+        let hit = [w.hit];
+        st.set_input_region(&w.surface, if error { None } else { Some(&hit) });
         w.surface.layer.set_keyboard_interactivity(if error { KeyboardInteractivity::Exclusive } else { KeyboardInteractivity::None });
         w.surface.layer.commit();
         if error {
@@ -294,10 +362,14 @@ impl Part for UpdateScreen {
         }
         let to = Self::send(st);
         g.on_close(move || to(M::Close));
+        let to = Self::send(st);
+        g.on_toggle_details(move || to(M::Details));
+        let to = Self::send(st);
+        g.on_copy_log(move || to(M::Copy));
         // (a window made while it fades out starts out faded)
         g.set_leaving(self.quit.running());
         ui.show().expect("show");
-        let w = Win { output: name.to_string(), surface, ui, opened: false, settled: false };
+        let w = Win { output: name.to_string(), surface, ui, opened: false, settled: false, hit: (0, 0, 0, 0) };
         st.set_input_region(&w.surface, if error { None } else { Some(&[]) });
         if error {
             w.ui.invoke_focus_keys();
@@ -325,8 +397,22 @@ impl Part for UpdateScreen {
         match *m {
             M::Poll => self.reload(st),
             M::Close => st.exit = true,
+            M::Details => {
+                self.details = !self.details;
+                self.log.clear();
+                self.reload_build();
+                self.push();
+            }
+            M::Copy => {
+                let log = self.dir.join("../log").to_string_lossy().into_owned();
+                tessera_core::services::bridge::run(&["sh", "-c", "wl-copy < \"$1\"", "sh", &log]);
+            }
             M::GiveUp => {
-                if !self.error() {
+                // (a build still going: the first one of the shell can take longer)
+                if self.build.is_some() {
+                    let to = Self::send(st);
+                    self.give_up.start(slint::TimerMode::SingleShot, Duration::from_secs(5 * 60), move || to(M::GiveUp));
+                } else if !self.error() {
                     st.exit = true;
                 }
             }
@@ -341,8 +427,12 @@ impl Part for UpdateScreen {
         }
     }
 
-    fn after_frame(&mut self, _st: &mut State) {
+    fn after_frame(&mut self, st: &mut State) {
+        let error = self.error();
         for w in self.wins.iter_mut() {
+            if !error {
+                Self::hit_region(st, w);
+            }
             tessera_core::picture::second_frame(&w.surface, &mut w.settled);
             // (fades in once it's on screen: QML's shown = 1 at start)
             if !w.opened && w.surface.mapped.get() {
@@ -473,6 +563,17 @@ mod tests {
         assert_eq!(read_status("", &s, ""), None);
         let e = read_status("error\t100\tThe update didn't finish\tIt broke.\u{1f}/home/ada/.local/state/tessera/backup-1\n", &s, "/home/ada").unwrap();
         assert_eq!((e.phase.as_str(), e.detail.as_str(), e.backup.as_str()), ("error", "It broke.", "~/.local/state/tessera/backup-1"));
+    }
+
+    #[test]
+    fn a_build_in_one_line() {
+        use tessera_core::build_progress::View;
+        let v = |title: &str, step: &str| View { title: title.into(), step: step.into(), active: true, ..Default::default() };
+        assert_eq!(build_line(&v("Building the shell", "Compiling slint (212 of 431)")), "Building the shell — compiling slint (212 of 431)");
+        assert_eq!(build_line(&v("Linking the shell", "Linking the shell (the longest step, a few minutes)")), "Linking the shell (the longest step, a few minutes)");
+        assert_eq!(build_line(&v("Building the glass plugin", "")), "Building the glass plugin");
+        // (a name in capitals stays as it is)
+        assert_eq!(build_line(&v("Building the shell", "GTK headers")), "Building the shell — GTK headers");
     }
 
     #[test]

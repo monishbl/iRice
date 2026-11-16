@@ -21,6 +21,7 @@ Needs python-rich; without it, install.sh's own prompts take over.
 """
 import importlib.util
 import io
+import json
 import os
 import re
 import select
@@ -39,6 +40,8 @@ try:
     from rich.console import Console, Group
     from rich.live import Live
     from rich.padding import Padding
+    from rich.panel import Panel
+    from rich.progress_bar import ProgressBar
     from rich.table import Table
     from rich.text import Text
 except ImportError:  # (install.sh offers to install it; this is the way out if it's gone since)
@@ -115,6 +118,11 @@ class Checks:
 
     def chosen(self):
         return [i["id"] for i in self.items if i["ticked"] and not i.get("locked")]
+
+
+def fmt_s(s):
+    s = int(max(0, s))
+    return "{}:{:02d}".format(s // 60, s % 60)
 
 
 def apps_missing():
@@ -194,6 +202,9 @@ class Installer:
         self.result = ""
         self.code = None
         self.started = 0.0
+        self.width = 100
+        self.build = None   # the last BUILD line of the step (a build's progress)
+        self.pacman = None  # pacman's last "(n/N) installing x" of the step
 
     # The install.sh options for these choices
     def args(self):
@@ -257,17 +268,35 @@ class Installer:
                 "extras": self.extras, "system": self.system, "hardware": self.hardware, "advanced": self.uisource}.get(self.name)
 
     # ── Installing: install.sh's output, line by line ──
+    # Its lines: "[n/14] Step" starts a step, "✓ ", "! ", "✗ … didn't
+    # finish" say how it went; anything else is the step's log. Two more
+    # kinds drive the progress bar: "BUILD {json}" (tools/build-progress.py
+    # with TESSERA_PROGRESS=lines: a build's phase, count, crate and times)
+    # and pacman's own "( 3/90) installing foo".
     STEP = re.compile(r"^\[(\d+)/(\d+)\] (.+)$")
+    PACMAN = re.compile(r"^\(\s*(\d+)/(\d+)\) (installing|upgrading|reinstalling|removing|downgrading|checking keys|checking package integrity"
+                        r"|loading package files|checking for file conflicts|checking available disk space|downloading)\s*(\S*)")
 
     def feed(self, line):
         line = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", line).rstrip()
         s = line.strip()
+        if s.startswith("BUILD {"):
+            try:
+                self.build = json.loads(s[6:])
+                self.build["seen"] = time.monotonic()
+            except ValueError:
+                pass
+            return
         m = self.STEP.match(s) or re.match(r"^\[✓\] (.+)$", s)
         if m:
             if self.steps and self.steps[-1]["state"] == "run":
                 self.steps[-1]["state"] = "ok"
             self.steps.append({"title": m.groups()[-1], "state": "run", "lines": []})
+            self.build = self.pacman = None
             return
+        p = self.PACMAN.match(s)
+        if p:
+            self.pacman = {"n": int(p[1]), "of": int(p[2]), "what": p[3], "name": p[4]}
         if self.steps:
             self.steps[-1]["lines"].append(line)
         if re.match(r"^✗ .+ didn't finish", s) and self.steps:
@@ -288,6 +317,7 @@ class Installer:
 
     # ── Drawing ──
     def render(self, width=100, height=40, spin=0):
+        self.width = width
         side = width >= 76
         body = self.body(height, spin)
         head = Text.assemble(("Tessera setup", "bold"), ("   " + self.pages[self.page][1], "dim") if not side else "")
@@ -419,9 +449,45 @@ class Installer:
                Text("Elapsed {}:{:02d}".format(*divmod(int(time.monotonic() - self.started), 60)) if self.started else "", style="dim"),
                Text(""), t]
         if self.steps and self.code is None:
-            tail = [x for x in self.steps[-1]["lines"] if x.strip()][-max(3, height - len(self.steps) - 12):]
-            out += [Text("")] + [Text(x[:200], style="dim") for x in tail]
+            bar = self.step_progress(self.width - (25 if self.width >= 76 else 0), spin)
+            if bar:
+                out += [Text("")] + bar
+            room = max(3, height - len(self.steps) - 14 - (len(bar) + 1 if bar else 0))
+            tail = [x for x in self.steps[-1]["lines"] if x.strip()][-room:]
+            if tail:
+                out += [Text(""), Panel(Group(*[Text(x[:300], style="dim", no_wrap=True, overflow="ellipsis") for x in tail]),
+                                        title="Log", title_align="left", border_style="dim", padding=(0, 1))]
         return Group(*out)
+
+    def step_progress(self, width=100, spin=0):
+        """The running step's bar, what it's on and the time: a build's
+        (BUILD lines) or pacman's (n/N); [] when it has neither"""
+        bw = max(20, min(60, width - 50))
+        b = self.build
+        if b and b.get("phase") not in ("done", "failed"):
+            since = time.monotonic() - b.get("seen", time.monotonic())
+            frac = b.get("fraction")
+            bar = ProgressBar(total=None if frac is None else 100, completed=0 if frac is None else round(100 * frac), width=bw,
+                              pulse=frac is None, animation_time=spin * 0.1, style="grey30", complete_style=ACCENT,
+                              finished_style=ACCENT, pulse_style=ACCENT)
+            when = [fmt_s(b.get("elapsed_s", 0) + since)]
+            if b.get("eta_s") is not None:
+                left = max(0, b["eta_s"] - since)
+                when.append("less than a minute left" if left < 60 else "about {} min left".format(round(left / 60)))
+            title = "Building " + b.get("title", b.get("label", ""))
+            row = Table.grid(padding=(0, 2))
+            row.add_row(bar, Text("{}%".format(round(100 * frac)) if frac is not None else "", style="dim"))
+            return [Text(title, style="bold"), row, Text(b.get("step", "") + " · " + " · ".join(when), style="dim")]
+        p = self.pacman
+        if p and p["of"] > 0:
+            frac = min(1.0, p["n"] / p["of"])
+            bar = ProgressBar(total=100, completed=round(100 * frac), width=bw, style="grey30", complete_style=ACCENT, finished_style=ACCENT)
+            row = Table.grid(padding=(0, 2))
+            row.add_row(bar, Text("{} of {}".format(p["n"], p["of"]), style="dim"))
+            what = {"installing": "Installing", "upgrading": "Updating", "reinstalling": "Reinstalling", "removing": "Removing",
+                    "downgrading": "Going back to", "downloading": "Downloading"}.get(p["what"], p["what"].capitalize())
+            return [Text("Packages", style="bold"), row, Text((what + " " + p["name"]).strip(), style="dim")]
+        return []
 
     def summary(self, log):
         """What happened, for the scrollback after the full screen closes."""
@@ -502,7 +568,9 @@ def run_install(ins, console, term):
         return 1
     term.cbreak()
     ins.started = time.monotonic()
-    proc = subprocess.Popen(ins.command(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, bufsize=0)
+    # (TESSERA_PROGRESS=lines: builds add BUILD lines, for the progress bar)
+    proc = subprocess.Popen(ins.command(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, bufsize=0,
+                            env=dict(os.environ, TESSERA_PROGRESS="lines"))
     buf = b""
     spin = 0
     with Live(ins.render(console.width, console.height), console=console, screen=True, auto_refresh=False) as live:

@@ -110,6 +110,9 @@ fi
 # ── Output ──────────────────────────────────────────────────────────────
 if [[ $VERIFY_ONLY == 0 && $DRY == 0 && $PLAN_ONLY == 0 ]]; then
     mkdir -p "$(dirname "$LOG")"
+    # Builds show one updating progress line on the terminal itself, while
+    # only their result goes through tee into the log (tools/build-progress.py)
+    [[ -t 1 && -w /dev/tty ]] && export TESSERA_PROGRESS_TTY=/dev/tty
     exec > >(tee -a "$LOG") 2>&1
     echo "=== $(date '+%F %T') Tessera install from $ROOT ($*)"
 fi
@@ -899,7 +902,7 @@ build() {
     run mkdir -p "$DATA/tessera/src/tools" "$DATA/tessera/src/hypr"
     run rm -rf "$DATA/tessera/src/hypr/plugin"
     run cp -r "$ROOT/hypr/plugin" "$DATA/tessera/src/hypr/plugin"
-    run cp "$ROOT/tools/build-plugin.sh" "$DATA/tessera/src/tools/"
+    run cp "$ROOT/tools/build-plugin.sh" "$ROOT/tools/build-progress.py" "$DATA/tessera/src/tools/"
     run make -C "$DATA/tessera/src/hypr/plugin/tessera-glass" clean >/dev/null 2>&1
     run "$DATA/tessera/src/tools/build-plugin.sh" || return 1
     [[ $DRY == 1 ]] || hypr_version >"$DATA/tessera/tessera-glass.built-for"

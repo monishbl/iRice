@@ -697,13 +697,41 @@ def run_build(stage, tuned, ui, say):
     cmd += ["--stage", stage] + (["--tuned"] if tuned else []) + (["--ui"] if ui else [])
     say("STEP Building " + ("tessera-ui and tessera-events" if ui else "tessera-events") + " here" + (", tuned" if tuned else "")
         + (" (several minutes)" if ui else ""))
-    r = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, text=True)
-    sys.stderr.write(r.stdout + r.stderr)
+    # Its output as it comes, on stderr (stdout is this program's JSON): the
+    # build's progress (tools/build-progress.py) live on a terminal, line by
+    # line for the installer and the updater; the last lines kept for why
+    sys.stderr.flush()
+    last = []
+    tty = sys.stderr.isatty()
+    # (a terminal: straight through, so the progress line updates in place)
+    with subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=sys.stderr.fileno() if tty else subprocess.PIPE,
+                          stderr=sys.stderr.fileno() if tty else subprocess.STDOUT) as p:
+        if not tty:
+            for raw in p.stdout:
+                line = raw.decode("utf-8", "replace").rstrip("\n")
+                sys.stderr.write(line + "\n")
+                sys.stderr.flush()
+                last = (last + [line])[-20:]
+        code = p.wait()
     files = {n: os.path.join(stage, n) for n in PROGRAMS if os.path.isfile(os.path.join(stage, n))}
-    if r.returncode != 0 or "tessera-events" not in files:
-        tail = (r.stderr.strip() or r.stdout.strip()).splitlines()[-1:] or ["exit " + str(r.returncode)]
-        raise Failed("it didn't build (" + tail[0] + ")", "build")
+    if code != 0 or "tessera-events" not in files:
+        raise Failed("it didn't build (" + build_error(last, code) + ")", "build")
     return files
+
+
+def build_error(last, code):
+    """Why a build failed, in one line: the compiler's first error (from
+    build-progress.json, when the build wrote one), else the last line said"""
+    path = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"), "tessera", "build-progress.json")
+    try:
+        with open(path) as f:
+            snap = json.load(f)
+        if snap.get("phase") == "failed" and snap.get("error") and time.time() - snap.get("updated_at", 0) < 600:
+            return snap["error"]
+    except (OSError, ValueError):
+        pass
+    lines = [x.strip() for x in last if x.strip() and not x.lstrip().startswith(("The whole log", "BUILD {"))]
+    return lines[-1] if lines else "exit " + str(code)
 
 
 # ── install ──────────────────────────────────────────────────────────────

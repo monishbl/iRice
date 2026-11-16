@@ -30,6 +30,25 @@ Item {
         NumberAnimation { target: slide; property: "pos"; from: 1; to: 0; duration: 900; easing.type: Easing.InOutCubic }
     }
 
+    // ── Glass: a thin rounded bar (it was missing: Glass drew no bar at all) ──
+    Rectangle {
+        visible: !Theme.material
+        anchors.verticalCenter: parent.verticalCenter
+        width: parent.width
+        height: 4
+        radius: 2
+        color: root.trackColor
+        clip: true
+        Rectangle {
+            x: root.indeterminate ? slide.pos * (parent.width - width) : 0
+            width: parent.width * root.shown
+            height: parent.height
+            radius: 2
+            color: root.color
+            Behavior on width { enabled: !root.indeterminate; NumberAnimation { duration: 200 } }
+        }
+    }
+
     // ── Material ──
     Loader {
         anchors.fill: parent

@@ -9,6 +9,9 @@ import Quickshell.Wayland
 // shell restarts. It reads ../status, written by update-run.sh:
 //   state \t percent \t text \t detail[\x1f backup folder]
 // phase: run | restart | done (fade out, quit) | error (wait for Close)
+// While the shell is built it also reads tools/build-progress.py's
+// $XDG_STATE_HOME/tessera/build-progress.json (the step, how far, the time);
+// Show details opens ../log, the update's whole output.
 ShellRoot {
     id: root
 
@@ -19,6 +22,42 @@ ShellRoot {
     property string backup: ""
     property bool leaving: false
     property real shown: 0
+    // A build under way: {line, time, fraction (-1: not known)}, or null
+    property var build: null
+    property bool details: false
+    property string log: ""
+    function clock(s) {
+        s = Math.max(0, Math.floor(s));
+        return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+    }
+    function readBuild(text) {
+        let b = null;
+        try { b = JSON.parse(text); } catch (e) {}
+        const since = b ? Math.max(0, Date.now() / 1000 - (b.updated_at ?? 0)) : 0;
+        if (!b || root.phase !== "run" || !["prepare", "download", "compile", "link"].includes(b.phase) || since > 30) {
+            root.build = null;
+            return;
+        }
+        const t = b.title || b.label || "";
+        const step = b.step || "";
+        root.build = {
+            line: step.startsWith("Linking") ? step : (b.phase === "link" ? "Linking " : "Building ") + t + (step ? " — " + step.charAt(0).toLowerCase() + step.slice(1) : ""),
+            time: root.clock((b.elapsed_s ?? 0) + since) + (b.eta_s === null || b.eta_s === undefined ? "" : " · " + (b.eta_s - since < 60 ? "less than a minute left" : "about " + Math.round((b.eta_s - since) / 60) + " min left")),
+            fraction: b.fraction === null || b.fraction === undefined ? -1 : b.fraction
+        };
+    }
+    FileView {
+        id: buildFile
+        path: (Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state") + "/tessera/build-progress.json"
+        printErrors: false
+        onLoaded: root.readBuild(text())
+        onLoadFailed: root.build = null
+    }
+    Process {
+        id: logTail
+        command: ["tail", "-n", "200", Quickshell.shellDir + "/../log"]
+        stdout: StdioCollector { onStreamFinished: root.log = this.text.replace(/^(BUILD \{|PROGRESS ).*\n/gm, "") }
+    }
     // Up for at least 5 s, however quick the update (it shouldn't flash by)
     property real openedAt: 0
     Component.onCompleted: {
@@ -71,13 +110,24 @@ ShellRoot {
         running: root.phase !== "done" && root.phase !== "error"
         interval: 250
         repeat: true
-        onTriggered: status.reload()
+        property int n: 0
+        onTriggered: {
+            status.reload();
+            buildFile.reload();
+            if (root.details && ++n % 4 === 1 && !logTail.running)
+                logTail.running = true;
+        }
     }
-    // A last way out if the updater itself is gone
+    // A last way out if the updater itself is gone (not while a build still
+    // goes: the shell's first build can take longer)
     Timer {
         running: root.phase !== "error"
         interval: 15 * 60 * 1000
-        onTriggered: Qt.quit()
+        repeat: true
+        onTriggered: {
+            if (!root.build)
+                Qt.quit();
+        }
     }
     SequentialAnimation {
         id: finish
@@ -101,9 +151,9 @@ ShellRoot {
             WlrLayershell.namespace: "tessera:update"
             WlrLayershell.keyboardFocus: root.phase === "error" ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
             color: "transparent"
-            // Clicks do nothing while it works (only the error screen's Close
-            // button takes input)
-            mask: Region { item: root.phase === "error" ? fullArea : null }
+            // Clicks do nothing while it works but Show details (and the
+            // output, once open); the error screen's Close takes them all
+            mask: Region { item: root.phase === "error" ? fullArea : detailsArea }
             Item { id: fullArea; anchors.fill: parent }
 
             Rectangle {
@@ -112,8 +162,9 @@ ShellRoot {
                 opacity: root.shown
 
                 Column {
+                    id: col
                     anchors.centerIn: parent
-                    width: Math.min(360, parent.width - 64)
+                    width: Math.min(root.details && root.phase !== "error" ? 640 : 360, parent.width - 64)
                     spacing: 0
                     // (moves up a little as it appears)
                     transform: Translate { y: (1 - root.shown) * 8 }
@@ -146,7 +197,7 @@ ShellRoot {
                     }
                     Item { width: 1; height: 14 }
 
-                    // Progress
+                    // Progress: the update's, or the build's while one runs
                     Rectangle {
                         visible: root.phase !== "error"
                         anchors.horizontalCenter: parent.horizontalCenter
@@ -154,8 +205,14 @@ ShellRoot {
                         height: 4
                         radius: 2
                         color: "#2C2C31"
+                        clip: true
                         Rectangle {
-                            width: Math.max(height, parent.width * root.percent / 100)
+                            id: fill
+                            readonly property bool sweep: !!root.build && root.build.fraction < 0
+                            property real t: 0
+                            NumberAnimation on t { running: fill.sweep; loops: Animation.Infinite; from: 0; to: 1; duration: 1600 }
+                            x: sweep ? -parent.width * 0.3 + parent.width * 1.3 * t : 0
+                            width: sweep ? parent.width * 0.3 : Math.max(height, parent.width * (root.build ? root.build.fraction * 100 : root.percent) / 100)
                             height: parent.height
                             radius: 2
                             color: "#EDEDEF"
@@ -164,10 +221,99 @@ ShellRoot {
                     Item { visible: root.phase !== "error"; width: 1; height: 12 }
                     Text {
                         visible: root.phase !== "error"
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        text: root.phase === "done" ? "Your settings and shortcuts are as you left them." : root.step + "…"
+                        width: parent.width
+                        horizontalAlignment: Text.AlignHCenter
+                        wrapMode: Text.Wrap
+                        text: root.phase === "done" ? "Your settings and shortcuts are as you left them." : root.build ? root.build.line : root.step + "…"
                         color: "#A1A1AA"
                         font { family: "Inter"; pixelSize: 12 }
+                    }
+                    Text {
+                        visible: !!root.build
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        topPadding: 4
+                        text: root.build?.time ?? ""
+                        color: "#94949D"
+                        font { family: "Inter"; pixelSize: 12 }
+                    }
+                    // Show details: the update's output, as it comes
+                    Item { visible: root.phase === "run" || root.phase === "restart"; width: 1; height: 16 }
+                    Column {
+                        id: detailsArea
+                        visible: root.phase === "run" || root.phase === "restart"
+                        width: parent.width
+                        spacing: 8
+                        Rectangle {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            width: toggleText.implicitWidth + 24
+                            height: 32
+                            radius: 10
+                            color: toggleMouse.pressed ? "#333338" : toggleMouse.containsMouse ? "#2C2C31" : "transparent"
+                            Text {
+                                id: toggleText
+                                anchors.centerIn: parent
+                                text: root.details ? "Hide details" : "Show details"
+                                color: "#A1A1AA"
+                                font { family: "Inter"; pixelSize: 12; weight: Font.Medium }
+                            }
+                            MouseArea {
+                                id: toggleMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    root.details = !root.details;
+                                    if (root.details)
+                                        logTail.running = true;
+                                }
+                            }
+                        }
+                        Rectangle {
+                            visible: root.details
+                            width: parent.width
+                            height: 240
+                            radius: 14
+                            color: "#1A1A1D"
+                            border { width: 1; color: "#26262A" }
+                            clip: true
+                            Flickable {
+                                id: logFlick
+                                anchors { fill: parent; leftMargin: 12; rightMargin: 12; topMargin: 10; bottomMargin: 10 }
+                                contentHeight: logText.implicitHeight
+                                clip: true
+                                property bool atEnd: true
+                                onContentYChanged: atEnd = contentY >= contentHeight - height - 4
+                                onContentHeightChanged: if (atEnd) contentY = Math.max(0, contentHeight - height)
+                                Text {
+                                    id: logText
+                                    width: logFlick.width
+                                    text: root.log === "" ? "Waiting for output…" : root.log
+                                    wrapMode: Text.WrapAnywhere
+                                    color: "#D4D4D8"
+                                    font { family: "JetBrains Mono"; pixelSize: 11 }
+                                }
+                            }
+                            Rectangle {
+                                anchors { top: parent.top; right: parent.right; margins: 8 }
+                                width: copyText.implicitWidth + 20
+                                height: 28
+                                radius: 10
+                                color: copyMouse.pressed ? "#36363C" : copyMouse.containsMouse ? "#333338" : "#2C2C31"
+                                Text {
+                                    id: copyText
+                                    anchors.centerIn: parent
+                                    text: "Copy"
+                                    color: "#EDEDEF"
+                                    font { family: "Inter"; pixelSize: 12; weight: Font.Medium }
+                                }
+                                MouseArea {
+                                    id: copyMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    onClicked: Quickshell.execDetached(["sh", "-c", "wl-copy < \"$1\"", "sh", Quickshell.shellDir + "/../log"])
+                                }
+                            }
+                        }
                     }
 
                     // Something went wrong: what, that nothing was lost, and Close

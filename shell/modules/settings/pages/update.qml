@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick as QQ
 import Quickshell
+import Quickshell.Io
 import qs.common
 import qs.modules.settings
 import qs.services
@@ -478,6 +479,125 @@ Column {
                 anchors { fill: parent; margins: 10 }
                 follow: true
                 text: Updates.log === "" ? "Waiting for output…" : Updates.log.replace(/^@@step .*\n/gm, "")
+            }
+        }
+    }
+
+    // ── A build (the shell, tessera-events, the glass plugin) ───────────
+    // tools/build-progress.py's build-progress.json, read every second while
+    // this page is up: running (bar, step, time) or just failed (why, Done),
+    // and the end of build.log behind Show details. (The QML is the
+    // fallback shell: the same as the Rust page's, kept simple.)
+    property var build: null
+    property real buildDismissed: 0
+    property bool buildDetails: false
+    property string buildLog: ""
+    readonly property string buildDir: Paths.stateHome + "/tessera"
+    function clock(s) {
+        s = Math.max(0, Math.floor(s));
+        return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+    }
+    function readBuild(text) {
+        let b = null;
+        try { b = JSON.parse(text); } catch (e) {}
+        const now = Date.now() / 1000;
+        const since = b ? Math.max(0, now - (b.updated_at ?? 0)) : 0;
+        const running = !!b && ["prepare", "download", "compile", "link"].includes(b.phase) && since < 30;
+        const failed = !!b && b.phase === "failed" && since < 1800 && b.started_at !== page.buildDismissed;
+        if (!running && !failed) {
+            page.build = null;
+            return;
+        }
+        const t = b.title || b.label || "";
+        const T = t.split(" ")[0].includes("-") ? t : t.charAt(0).toUpperCase() + t.slice(1);
+        page.build = {
+            failed: failed,
+            id: b.started_at,
+            title: failed ? T + " didn't build" : (b.phase === "link" ? "Linking " : "Building ") + t,
+            step: failed ? (b.error || "The log below says why.") : b.step,
+            time: failed ? "Stopped after " + page.clock(b.elapsed_s) : page.clock(b.elapsed_s + since) + (b.eta_s === null || b.eta_s === undefined ? "" : " · " + (b.eta_s - since < 60 ? "less than a minute left" : "about " + Math.round((b.eta_s - since) / 60) + " min left")),
+            fraction: b.fraction === null || b.fraction === undefined ? -1 : b.fraction
+        };
+    }
+    FileView {
+        id: buildFile
+        path: page.buildDir + "/build-progress.json"
+        printErrors: false
+        onLoaded: page.readBuild(text())
+        onLoadFailed: page.build = null
+    }
+    Process {
+        id: buildTail
+        command: ["tail", "-n", "200", page.buildDir + "/build.log"]
+        stdout: StdioCollector { onStreamFinished: page.buildLog = this.text.replace(/^(BUILD \{|PROGRESS ).*\n/gm, "") }
+    }
+    Timer {
+        running: page.visible
+        interval: 1000
+        repeat: true
+        triggeredOnStart: true
+        onTriggered: {
+            buildFile.reload();
+            if (page.build && page.buildDetails && !buildTail.running)
+                buildTail.running = true;
+        }
+    }
+    Group {
+        visible: !!page.build
+        width: parent.width
+        title: "Build"
+        footer: page.build?.failed ? "What was installed before stays in use. The whole log is in ~/.local/state/tessera/build.log." : "Keeps going if you close Settings. The first build takes several minutes; later ones only what changed."
+        Row {
+            label: page.build?.title ?? ""
+            detail: (page.build?.step ?? "") + (page.build?.failed ? "\n" : " · ") + (page.build?.time ?? "")
+            SettingsButton {
+                visible: page.build?.failed ?? false
+                text: "Done"
+                onClicked: { page.buildDismissed = page.build.id; page.build = null; }
+            }
+        }
+        Item {
+            visible: !(page.build?.failed ?? true)
+            width: parent.width
+            height: 32
+            WavyProgress {
+                anchors { left: parent.left; leftMargin: page.pad; right: buildPct.left; rightMargin: 12; verticalCenter: parent.verticalCenter }
+                value: (page.build?.fraction ?? -1) < 0 ? -1 : Math.max(0.02, page.build.fraction)
+            }
+            Text {
+                id: buildPct
+                anchors { right: parent.right; rightMargin: page.pad; verticalCenter: parent.verticalCenter }
+                text: (page.build?.fraction ?? -1) < 0 ? (page.build?.time ?? "").split(" · ")[0] : Math.round(page.build.fraction * 100) + "%"
+                color: Theme.color.secondary
+                font { family: Theme.font.family; pixelSize: Theme.font.small; features: { "tnum": 1 } }
+            }
+        }
+        Row {
+            label: "Details"
+            detail: "The build's full output"
+            QQ.Row {
+                spacing: 8
+                SettingsButton {
+                    visible: page.buildDetails
+                    text: "Copy"
+                    icon: "copy"
+                    onClicked: Quickshell.execDetached(["sh", "-c", "wl-copy < \"$1\"", "sh", page.buildDir + "/build.log"])
+                }
+                SettingsButton {
+                    text: page.buildDetails ? "Hide details" : "Show details"
+                    icon: page.buildDetails ? "caret-up" : "terminal-window"
+                    onClicked: { page.buildDetails = !page.buildDetails; if (page.buildDetails) buildTail.running = true; }
+                }
+            }
+        }
+        Item {
+            visible: page.buildDetails
+            width: parent.width
+            height: 240
+            LogView {
+                anchors { fill: parent; margins: 10 }
+                follow: true
+                text: page.buildLog === "" ? "Waiting for output…" : page.buildLog
             }
         }
     }

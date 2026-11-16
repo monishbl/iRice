@@ -171,6 +171,49 @@ Tessera is installed, with problems above.
         self.assertIn("Installing Tessera: skipped", text)
         self.assertIn("To look at", text)
 
+    def test_build_and_pacman_progress_with_the_log(self):
+        """BUILD lines (tools/build-progress.py, TESSERA_PROGRESS=lines) give
+        the build's bar, step and time; pacman's "(n/N) installing x" gives
+        the packages' bar; the step's own lines scroll in the log panel"""
+        spec = importlib.util.spec_from_file_location("tessera_tui", TUI)
+        tui = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(tui)
+        from rich.console import Console
+        import io
+
+        def screen(ins):
+            c = Console(file=io.StringIO(), width=110, height=40, color_system=None)
+            c.print(ins.render(110, 40, 3))
+            return c.file.getvalue()
+        ins = tui.Installer(FACTS, [], {"apps_missing": False, "walls_ready": True})
+        ins.page = len(ins.pages) - 1
+        ins.started = 1.0
+        for line in ["[3/14] Installing packages", "  Updating the system…", "( 3/90) installing hyprland", "( 4/90) installing foot"]:
+            ins.feed(line)
+        text = screen(ins)
+        self.assertIn("Packages", text)
+        self.assertIn("4 of 90", text)
+        self.assertIn("Installing foot", text)
+        self.assertIn("Log", text)
+        snap = {"phase": "compile", "title": "the shell", "label": "tessera-ui", "step": "Compiling slint (212 of 431)", "fraction": 0.49,
+                "elapsed_s": 192, "eta_s": 250, "done": 212, "total": 431}
+        for line in ["[10/14] Installing Tessera", "   Compiling slint v1.9.0", "BUILD " + json.dumps(snap)]:
+            ins.feed(line)
+        text = screen(ins)
+        self.assertIn("Building the shell", text)
+        self.assertIn("49%", text)
+        self.assertIn("Compiling slint (212 of 431) · 3:12 · about 4 min left", text)
+        self.assertIn("Compiling slint v1.9.0", text)  # (the log panel)
+        self.assertNotIn("BUILD {", text)
+        # Linking, no total: the bar sweeps, no percent
+        ins.feed("BUILD " + json.dumps(dict(snap, phase="link", fraction=None, eta_s=None, step="Linking the shell (the longest step, a few minutes)")))
+        text = screen(ins)
+        self.assertIn("Linking the shell", text)
+        self.assertNotIn("49%", text)
+        # A new step: the build's bar goes
+        ins.feed("[11/14] Setting up the login screen")
+        self.assertIsNone(ins.build)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -700,7 +700,9 @@ def rebuild(todo, base=45, span=40):
     """Rebuilds parts (plugin, native, shaders). Failures are reported, not
     fatal: the shell falls back (frosted glass without the plugin)."""
     built, failed = [], []
-    steps = {"plugin": ["make", "-C", os.path.join(REPO, "hypr/plugin/tessera-glass")],
+    # (the plugin through build-progress.py: its phase and log for the update screen)
+    steps = {"plugin": [sys.executable, "-I", os.path.join(REPO, "tools", "build-progress.py"), "make", "--label", "tessera-glass",
+                        "--title", "the glass plugin", "--", "make", "-C", os.path.join(REPO, "hypr/plugin/tessera-glass")],
              "native": [os.path.join(REPO, "shell/native/build.sh")],
              "shaders": [os.path.join(REPO, "tools/build-shaders.sh")]}
     names = {"plugin": "Building the glass plugin", "native": "Building native helpers", "shaders": "Building shaders"}

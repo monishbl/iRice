@@ -12,7 +12,14 @@ command -v pkg-config >/dev/null && pkg-config --exists hyprland || {
     echo "Hyprland headers not found. On Arch they come with the hyprland package; you also need: base-devel pkgconf"
     exit 1
 }
-make -C "$ROOT/hypr/plugin/tessera-glass" -s
+# (through tools/build-progress.py when it's beside this: the time, the log
+# in $XDG_STATE_HOME/tessera/build.log, and the phase for the installer and
+# Software Update)
+if command -v python3 >/dev/null && [[ -f "$ROOT/tools/build-progress.py" ]]; then
+    python3 -I "$ROOT/tools/build-progress.py" make --label tessera-glass --title "the glass plugin" -- make -C "$ROOT/hypr/plugin/tessera-glass" -s
+else
+    make -C "$ROOT/hypr/plugin/tessera-glass" -s
+fi
 mkdir -p "$DEST"
 cp "$ROOT/hypr/plugin/tessera-glass/tessera-glass.so" "$DEST/tessera-glass.so.new"
 mv "$DEST/tessera-glass.so.new" "$DEST/tessera-glass.so"

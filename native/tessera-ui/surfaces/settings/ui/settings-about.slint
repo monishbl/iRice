@@ -422,7 +422,7 @@ export component AboutCtl {
                     }
                 }
                 // done
-                Rectangle {
+                if r.num >= 0: Rectangle {
                     x: 0;
                     y: (parent.height - self.height) / 2;
                     width: parent.width * parent.v;
@@ -431,8 +431,20 @@ export component AboutCtl {
                     background: Theme.material ? Theme.m3-primary : Theme.accent;
                     animate width { duration: 200ms; }
                 }
+                // (num < 0: how far isn't known, so a segment sweeps along
+                // the track instead of claiming a percent; a loop: linear)
+                if r.num < 0: Rectangle {
+                    property <float> t: mod(animation-tick() / 1600ms, 1);
+                    property <length> seg: parent.width * 0.3;
+                    x: max(0px, -self.seg + (parent.width + self.seg) * self.t);
+                    y: (parent.height - self.height) / 2;
+                    width: max(0px, min(parent.width, -self.seg + (parent.width + self.seg) * self.t + self.seg) - self.x);
+                    height: parent.stroke;
+                    border-radius: 2px;
+                    background: Theme.material ? Theme.m3-primary : Theme.accent;
+                }
                 accessible-role: AccessibleRole.progress-indicator;
-                accessible-value: round(self.v * 100) + "%";
+                accessible-value: r.num < 0 ? "In progress" : round(self.v * 100) + "%";
             }
             Text {
                 text: r.text;
