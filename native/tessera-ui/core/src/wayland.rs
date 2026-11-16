@@ -123,6 +123,9 @@ pub struct Surface {
     pub stats: RefCell<crate::stats::Frames>,
     /// the pointer's shape Slint asked for over this surface (a TouchArea's `mouse-cursor`)
     pub cursor: Cell<Shape>,
+    /// the part that made it: its input runs as that part's code, and it
+    /// goes with that part if it panics (contain.rs)
+    pub owner: &'static str,
 }
 
 /// What a surface is to the compositor: a layer surface (every part's), a
@@ -203,6 +206,11 @@ impl Surface {
     pub fn logical_size(&self) -> (u32, u32) {
         self.logical.get()
     }
+    /// An event for its window: Slint runs the part's callbacks inside, so
+    /// as that part's code (contain.rs: a panic there is the part's)
+    pub fn dispatch(&self, e: WindowEvent) {
+        crate::contain::guard(self.owner, || self.window.dispatch_event(e));
+    }
     fn physical(&self) -> PhysicalSize {
         let (w, h) = self.logical.get();
         // (rounded, as wp_fractional_scale asks: Slint's to_physical cuts, and
@@ -219,8 +227,8 @@ impl Surface {
         } else {
             self.wl.set_buffer_scale(self.scale.get().round().max(1.0) as i32);
         }
-        self.window.dispatch_event(WindowEvent::ScaleFactorChanged { scale_factor: self.scale.get() });
-        self.window.dispatch_event(WindowEvent::Resized { size: LogicalSize::new(w as f32, h as f32) });
+        self.dispatch(WindowEvent::ScaleFactorChanged { scale_factor: self.scale.get() });
+        self.dispatch(WindowEvent::Resized { size: LogicalSize::new(w as f32, h as f32) });
         self.needs_redraw.set(true);
         self.renderer.damage.all();
     }
@@ -740,6 +748,7 @@ impl State {
             ime: RefCell::new(None),
             stats: RefCell::new(Default::default()),
             cursor: Cell::new(Shape::Default),
+            owner: crate::contain::current(),
         });
         NEXT.with(|n| *n.borrow_mut() = Some(surface.clone()));
         self.surfaces.push(surface.clone());
@@ -759,6 +768,14 @@ impl State {
         s.hide();
         s.retire_role();
         self.surfaces.retain(|x| !Rc::ptr_eq(x, s));
+        // (made but no component yet — a part that panicked in between,
+        // contain.rs: the next component made mustn't take it)
+        NEXT.with(|n| {
+            let mut n = n.borrow_mut();
+            if n.as_ref().is_some_and(|x| Rc::ptr_eq(x, s)) {
+                *n = None;
+            }
+        });
         if self.pointer_on.as_ref().is_some_and(|p| Rc::ptr_eq(p, s)) {
             self.pointer_on = None;
         }
@@ -815,7 +832,8 @@ impl State {
             s.drew.set(false);
         }
         for s in self.surfaces.clone() {
-            crate::perf::time(|| format!("render {}", s.namespace), || s.render(&self.qh));
+            // (its bindings call the part's pure callbacks: the part's code, contain.rs)
+            crate::perf::time(|| format!("render {}", s.namespace), || crate::contain::guard(s.owner, || s.render(&self.qh)));
         }
         if IME_DIRTY.replace(false) {
             self.sync_text_input();
@@ -1185,7 +1203,7 @@ impl State {
         if let Some(i) = MODS.iter().position(|m| text == slint::SharedString::from(*m)) {
             self.mods_sent[i] = !matches!(kind, KeyKind::Release);
         }
-        s.window.dispatch_event(match kind {
+        s.dispatch(match kind {
             KeyKind::Press => WindowEvent::KeyPressed { text },
             KeyKind::Repeat => WindowEvent::KeyPressRepeated { text },
             KeyKind::Release => WindowEvent::KeyReleased { text },
@@ -1198,12 +1216,12 @@ impl KeyboardHandler for State {
         self.keyboard_on = self.find(wl);
         self.mods_sent = [false; 4]; // (the seat's modifiers follow)
         if let Some(s) = &self.keyboard_on {
-            s.window.dispatch_event(WindowEvent::WindowActiveChanged(true));
+            s.dispatch(WindowEvent::WindowActiveChanged(true));
         }
     }
     fn leave(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlKeyboard, wl: &WlSurface, _: u32) {
         if let Some(s) = self.find(wl) {
-            s.window.dispatch_event(WindowEvent::WindowActiveChanged(false));
+            s.dispatch(WindowEvent::WindowActiveChanged(false));
             self.each_part(|p, st| p.keyboard_left(st, &s));
         }
         self.keyboard_on = None;
@@ -1230,7 +1248,7 @@ impl KeyboardHandler for State {
             if self.mods_sent[i] != want {
                 self.mods_sent[i] = want;
                 let text = slint::SharedString::from(MODS[i]);
-                s.window.dispatch_event(if want { WindowEvent::KeyPressed { text } } else { WindowEvent::KeyReleased { text } });
+                s.dispatch(if want { WindowEvent::KeyPressed { text } } else { WindowEvent::KeyReleased { text } });
             }
         }
     }
@@ -1267,16 +1285,16 @@ impl State {
                     self.set_cursor(*serial, s.cursor.get());
                     s.enters.set(s.enters.get().wrapping_add(1));
                     self.pointer_on = Some(s.clone());
-                    s.window.dispatch_event(WindowEvent::PointerMoved { position });
+                    s.dispatch(WindowEvent::PointerMoved { position });
                 }
                 PointerEventKind::Leave { .. } => {
                     if crate::env::is_set("DEBUG") {
                         eprintln!("debug: pointer leaves {}", s.namespace);
                     }
-                    s.window.dispatch_event(WindowEvent::PointerExited);
+                    s.dispatch(WindowEvent::PointerExited);
                     self.pointer_on = None;
                 }
-                PointerEventKind::Motion { .. } => s.window.dispatch_event(WindowEvent::PointerMoved { position }),
+                PointerEventKind::Motion { .. } => s.dispatch(WindowEvent::PointerMoved { position }),
                 PointerEventKind::Press { button, .. } | PointerEventKind::Release { button, .. } => {
                     let button = match *button {
                         0x110 => PointerEventButton::Left,
@@ -1295,17 +1313,17 @@ impl State {
                         if wakes_on() {
                             pressed_now(&s.namespace);
                         }
-                        s.window.dispatch_event(WindowEvent::PointerPressed { position, button });
+                        s.dispatch(WindowEvent::PointerPressed { position, button });
                     } else {
                         if wakes_on() {
                             eprintln!("release on {} at {}", s.namespace, crate::util::now_ms());
                         }
-                        s.window.dispatch_event(WindowEvent::PointerReleased { position, button });
+                        s.dispatch(WindowEvent::PointerReleased { position, button });
                     }
                 }
                 PointerEventKind::Axis { horizontal, vertical, .. } => {
                     let d = |a: &smithay_client_toolkit::seat::pointer::AxisScroll| -(a.absolute as f32);
-                    s.window.dispatch_event(WindowEvent::PointerScrolled { position, delta_x: d(horizontal), delta_y: d(vertical) });
+                    s.dispatch(WindowEvent::PointerScrolled { position, delta_x: d(horizontal), delta_y: d(vertical) });
                 }
             }
             if CURSOR_DIRTY.replace(false) && self.pointer_on.as_ref().is_some_and(|p| Rc::ptr_eq(p, &s)) {
@@ -1359,7 +1377,7 @@ impl Dispatch<ZwpTextInputV3, ()> for State {
                 if let Some(text) = commit {
                     let mut e = InternalKeyEvent { event_type: KeyEventType::CommitComposition, ..Default::default() };
                     e.key_event.text = text.into();
-                    s.window.dispatch_event(WindowEvent::internal(e));
+                    s.dispatch(WindowEvent::internal(e));
                 }
                 let (text, b, en) = preedit.unwrap_or_default();
                 let e = InternalKeyEvent {
@@ -1369,7 +1387,7 @@ impl Dispatch<ZwpTextInputV3, ()> for State {
                     preedit_selection: (b >= 0 && en > b).then_some(b..en),
                     ..Default::default()
                 };
-                s.window.dispatch_event(WindowEvent::internal(e));
+                s.dispatch(WindowEvent::internal(e));
             }
             _ => {}
         }

@@ -150,11 +150,18 @@ sys.exit(1 if off else 0)' "$c" 2>/dev/null && return 1
         if (( $(cat "$STARTS" 2>/dev/null || echo 0) >= 2 )); then
             echo "launch-shell: tessera-ui didn't stay up twice: the QML shell this time ($STARTS)" >&2
             # (why, for the fallback's notice: the crash's own line when the
-            # log has one; an EGL failure wrote its note already)
+            # log has one; an EGL failure wrote its note already. A panic in
+            # one part is caught and logged too, so the loop's own, the last
+            # "thread 'main' panicked", comes first; its crash report, in
+            # crashes/, is named: Settings → Report a Bug saves it)
             if [[ ! -s "$FALLBACK" ]]; then
-                local why
-                why=$(grep -ahm1 -e 'panicked at' -e "can't draw" "$(dirname "$STARTS")/tessera-ui.log" 2>/dev/null | sed 's/^tessera-ui: //' | cut -c1-160)
-                printf '%s\n%s\n%s\n' "The Rust shell crashed twice${why:+ ($why)}" "$(date +%s)" "${HYPRLAND_INSTANCE_SIGNATURE:-}" >"$FALLBACK" 2>/dev/null
+                local why log report
+                log="$(dirname "$STARTS")/tessera-ui.log"
+                why=$(grep -ah "thread 'main' panicked at" "$log" 2>/dev/null | tail -1)
+                [[ -n "$why" ]] || why=$(grep -ah -e 'panicked at' -e "can't draw" "$log" 2>/dev/null | tail -1)
+                why=$(printf '%s' "$why" | sed 's/^tessera-ui: //' | cut -c1-160)
+                report=$(ls -1t "$(dirname "$STARTS")/crashes/"*.txt 2>/dev/null | head -1)
+                printf '%s\n%s\n%s\n' "The Rust shell crashed twice${why:+ ($why)}${report:+; report: ${report##*/}}" "$(date +%s)" "${HYPRLAND_INSTANCE_SIGNATURE:-}" >"$FALLBACK" 2>/dev/null
             fi
             return 1
         fi

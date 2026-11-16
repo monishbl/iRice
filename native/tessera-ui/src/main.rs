@@ -119,6 +119,15 @@ fn host_services() -> Vec<Box<dyn tessera_core::host::Service>> {
     v
 }
 
+/// A part, made again after it panicked (tessera_core::contain): a surface,
+/// or the host
+fn make_part(name: &str) -> Option<Box<dyn shell::Part>> {
+    if name == tessera_core::host::NAME {
+        return Some(Box::new(tessera_core::host::HostPart::new(host_services())));
+    }
+    surfaces::make(name)
+}
+
 fn main() {
     let started = Instant::now();
     // (an XDG folder set but empty or relative means "the default" by the
@@ -197,6 +206,9 @@ fn main() {
         surfaces::announce(&surfaces);
         return;
     }
+    // (a panic in one part is caught, the part made again; crash reports:
+    // tessera_core::contain, crash)
+    tessera_core::contain::install(make_part);
 
     // (this thread is the UI thread: blocking work goes elsewhere, tessera_core::work)
     tessera_core::work::mark_ui_thread();
@@ -204,9 +216,11 @@ fn main() {
     let lh = event_loop.handle();
     // Signals first: the threads started below inherit the blocked mask, so
     // SIGTERM always reaches this loop (and the bar ends cleanly)
-    let signals = Signals::new(&[Signal::SIGTERM, Signal::SIGINT, Signal::SIGUSR1]).expect("signalfd");
+    let signals = Signals::new(&[Signal::SIGTERM, Signal::SIGINT, Signal::SIGUSR1, Signal::SIGUSR2]).expect("signalfd");
     lh
         .insert_source(signals, |ev, _, state: &mut State| match ev.signal() {
+            // (TESSERA_CRASH_TEST only: a panic in a part, contain.rs)
+            Signal::SIGUSR2 => tessera_core::contain::crash_test_signal(),
             Signal::SIGUSR1 => {
                 state.parts.iter().for_each(|p| p.stats());
                 let (reloads, stalls) = tessera_core::perf::counts();
@@ -346,11 +360,14 @@ fn main() {
             why = "timers";
             slint::platform::duration_until_next_timer_update()
         };
+        // (a part that panicked is taken down at once, one waiting is made again on time)
+        let timeout = tessera_core::contain::wake_by(timeout);
         wakes.note(why, &state);
         if let Err(e) = event_loop.dispatch(timeout, &mut state) {
             eprintln!("tessera-ui: event loop: {e}");
             break;
         }
+        state.tend_parts();
         tessera_core::perf::time(|| "slint timers".into(), slint::platform::update_timers_and_animations);
         tessera_core::perf::time(|| "render".into(), || state.render_all());
         tessera_core::perf::time(|| "after_frame".into(), || state.each_part(|p, st| {

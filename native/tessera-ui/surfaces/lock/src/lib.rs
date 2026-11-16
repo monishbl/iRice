@@ -257,6 +257,14 @@ struct Bedside {
     photo: usize,
 }
 
+/// What a lock that panicked hands the next one (Part::hand_over)
+struct HandOver {
+    lock: Option<SessionLock>,
+    finger_on: bool,
+    face_on: bool,
+    notes: Vec<Note>,
+}
+
 pub struct Lock {
     demo: bool,
     /// the look is Material (settings)
@@ -553,7 +561,9 @@ impl Lock {
     /// Lock the session (or, in `--demo`, cover the screens) and make a
     /// screen for every output
     fn take(&mut self, st: &mut State) {
-        if !self.demo {
+        // (a lock handed over by the lock before this one, which panicked:
+        // still locked, it's kept: `start`)
+        if !self.demo && self.lock.is_none() {
             match st.lock_session() {
                 Some(l) => self.lock = Some(l),
                 None => {
@@ -1562,6 +1572,27 @@ impl Part for Lock {
                 Backend::Mock { .. } => "mock",
             }
         );
+        // The lock before this one panicked while the session was locked
+        // (tessera_core::contain): its session lock is ours now, still
+        // locked; a screen on every output at once, as when it began
+        if let Some(h) = crate::contain::take_handed::<HandOver>(NAME) {
+            eprintln!("tessera-ui: lock: made again after a panic: {}", if h.lock.as_ref().is_some_and(|l| l.is_locked()) { "the session is still locked" } else { "locking" });
+            self.finger_on = h.finger_on;
+            self.face_on = h.face_on;
+            self.notes = h.notes;
+            self.secure = h.lock.as_ref().is_some_and(|l| l.is_locked());
+            self.lock = h.lock;
+            self.set_held(st, true);
+        }
+    }
+
+    fn hand_over(&mut self) -> Option<Box<dyn Any>> {
+        // (a session lock is never dropped here: destroying one that's
+        // locked ends the connection; the next lock keeps it)
+        if !self.held && self.lock.is_none() {
+            return None;
+        }
+        Some(Box::new(HandOver { lock: self.lock.take(), finger_on: self.finger_on, face_on: self.face_on, notes: std::mem::take(&mut self.notes) }))
     }
 
     fn output_added(&mut self, st: &mut State, output: &WlOutput, name: &str) {

@@ -14,6 +14,8 @@ pub mod a11y;
 pub mod appicon;
 pub mod build_progress; // (tools/build-progress.py's file: Software Update, the update screen)
 pub mod cfgfile; // (config.json and state.json read and changed safely)
+pub mod contain; // (a panic in one part never takes the shell down: contain.rs)
+pub mod crash; // (crash reports: crash.rs)
 pub mod damage;
 pub mod dnd;
 #[cfg(feature = "skia")]

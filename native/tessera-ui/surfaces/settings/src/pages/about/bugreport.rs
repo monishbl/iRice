@@ -2,11 +2,57 @@
 //! attached (screenshot, log, system info), each shown before it's sent and
 //! each can be left out. The report is the shell's (services/BugReport.qml:
 //! it scrubs the log and info and sends them); this shows its state and asks
-//! it (`bug.*`). Nothing private is read here.
+//! it (`bug.*`). Nothing private is read here. Above it, the crash reports
+//! (tessera_core::crash: written when a part of the shell panicked): how
+//! many, the latest's part and time, saved as one file to Downloads, deleted
+//! with Undo.
 
 use super::super::super::model::{btn, Ctx, Opt, Page, Row};
-use super::{b, feed, n, s};
+use super::{action, b, feed, n, s};
 use serde_json::{json, Value};
+use tessera_core::crash;
+
+/// The crash reports, for the group: {count, part, when}
+fn crashes_now() -> Value {
+    let all = crash::list();
+    let (part, when) = all.first().map(|p| crash::describe(p)).unwrap_or_default();
+    json!({"count": all.len(), "part": part, "when": when})
+}
+
+/// Crash reports: how many, the latest, Save and Delete
+fn crashes(cx: &mut Ctx, p: &mut Page) {
+    let v = cx.once("about.crashes", crashes_now);
+    let count = v["count"].as_u64().unwrap_or(0);
+    let g = p.group("Crash reports");
+    g.footer("Written when part of Tessera stops after an error: the error, where in Tessera it happened and the end of its log, with your home folder, user and computer names, e-mail, IP and MAC addresses taken out. Nothing is sent: save them, then attach the file to a report below.");
+    if v.is_null() {
+        g.row(Row::new("Crash reports").detail("Reading…"));
+        return;
+    }
+    if count == 0 {
+        g.row(Row::new("No crash reports").tone(1));
+        return;
+    }
+    let part = s(&v["part"]);
+    let latest = format!("Latest: {}, {}", tessera_core::contain::display_name(&part), s(&v["when"]));
+    let act = cx.on(|cx, a| {
+        if a.i == 0 {
+            match crash::save_bundle() {
+                Ok(path) => cx.toast(format!("Saved to Downloads as {}", path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()), None),
+                Err(e) => cx.toast(format!("Couldn't save the reports ({e}). Check that your Downloads folder exists and has space, then try again."), None),
+            }
+        } else {
+            let n = crash::delete_all();
+            cx.local_set("about.crashes", crashes_now());
+            let undo = action(|cx, _| {
+                crash::restore_deleted();
+                cx.local_set("about.crashes", crashes_now());
+            });
+            cx.toast(if n == 1 { "Deleted 1 crash report".to_string() } else { format!("Deleted {n} crash reports") }, Some(undo));
+        }
+    });
+    g.row(Row::new(format!("Crash reports: {count}")).detail(latest).buttons(vec![btn("Save report").icon("download-simple"), btn("Delete reports").icon("trash").danger()], act));
+}
 
 thread_local! {
     static SHOT: std::cell::RefCell<Option<(String, Option<slint::Image>)>> = const { std::cell::RefCell::new(None) };
@@ -50,6 +96,7 @@ fn with_switch(label: &str, detail: String, buttons: Vec<Opt>, on: bool, enabled
 
 pub fn page(cx: &mut Ctx, p: &mut Page) {
     p.title = "Report a Bug".into();
+    crashes(cx, p);
     let f = feed(cx);
     let r = &f["bug"];
     let gathering = b(&r["gathering"]);
