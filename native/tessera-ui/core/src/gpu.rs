@@ -212,8 +212,7 @@ mod tests {
         // /dev/dri/card2 is 226:2, renderD128 226:128
         assert_eq!(major_minor((226 << 8) | 2), (226, 2));
         assert_eq!(major_minor((226 << 8) | 128), (226, 128));
-        // a large minor uses the high bits
-        let dev = (226u64 << 8) | (0x123 << 12 & !0xff) | 0x45;
-        assert_eq!(major_minor(dev).0, 226);
+        // a minor over 255 continues above the major's 12 bits
+        assert_eq!(major_minor((226 << 8) | 0x45 | (0x123 << 20)), (226, 0x12345));
     }
 }
