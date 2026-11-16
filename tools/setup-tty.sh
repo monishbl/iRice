@@ -92,6 +92,18 @@ say "Building the glass plugin for Hyprland $(pkg-config --modversion hyprland 2
 make -C "$ROOT/hypr/plugin/tessera-glass" -s || echo "The glass plugin didn't build: glass falls back to frosted. Check the Hyprland headers (hyprland package), then run this again."
 say "Building the native helpers…"
 "$ROOT/shell/native/build.sh" >/dev/null || echo "Native helpers skipped: the shell uses its slower fallbacks."
+# The shell itself (tessera-ui, Rust; the QML shell is only its fallback),
+# into the console session's own folders (sandbox/tty-shell.sh): the signed
+# ready-made build for this version when there is one, else built here (the
+# first build takes several minutes; later ones only what changed). Run on
+# every update, so the console runs the version you have, not an old one.
+SB="$ROOT/.sandbox/home"
+mkdir -p "$SB/.local/share" "$SB/.local/state" "$SB/.config" "$SB/.cache"
+say "Getting the Tessera shell (Rust) for this version… (the first build takes several minutes)"
+if ! XDG_DATA_HOME="$SB/.local/share" XDG_STATE_HOME="$SB/.local/state" XDG_CONFIG_HOME="$SB/.config" XDG_CACHE_HOME="$SB/.cache" \
+    "$ROOT/tools/build-native.sh" --ui; then
+    echo "The Rust shell didn't build: the console runs the basic QML shell. Run this again to retry (it needs about 5 GB of free memory)."
+fi
 
 cat <<EOF
 
