@@ -698,7 +698,9 @@ class CommandLine(Fixture):
         (self.repo / "shell/assets/scripts/migrate-names.py").write_text("")
         self.builder = self.d / "builder.sh"
         self.builder.write_text("#!/bin/sh\n# --stage DIR [--tuned] [--ui]\necho \"$@\" > " + str(self.d / "built-with") + "\n"
-                                "printf '#!/bin/sh\\necho tessera-events 0.1.0\\n' > \"$2/tessera-events\"; chmod +x \"$2/tessera-events\"\n")
+                                "printf '#!/bin/sh\\necho tessera-events 0.1.0\\n' > \"$2/tessera-events\"; chmod +x \"$2/tessera-events\"\n"
+                                # (tessera-ui too when asked: it's the shell, built by default)
+                                "case \" $* \" in *' --ui '*) printf '#!/bin/sh\\necho tessera-ui 0.1.0\\n' > \"$2/tessera-ui\"; chmod +x \"$2/tessera-ui\";; esac\n")
         self.builder.chmod(0o755)
         self.run_env = dict(os.environ, TESSERA_RELEASES=self.base, TESSERA_NATIVE_BUILDER=str(self.builder))
         for k in ("WAYLAND_DISPLAY", "WAYLAND_SOCKET", "DISPLAY"):
