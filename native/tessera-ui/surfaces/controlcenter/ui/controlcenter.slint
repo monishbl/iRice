@@ -3040,13 +3040,15 @@ export component ControlCenter inherits Window {
             y: menu-y + self.height > root.height - 8px && menu-y > root.height - menu-y ? max(8px, menu-y - self.height) : min(menu-y, root.height - self.height - 8px);
             width: 240px;
             height: mcol.preferred-height;
-            border-radius: Theme.menu-radius;
-            // (Glass: the plugin's glass under it, lib.rs, like every other
-            // menu; without the plugin a solid stands in)
-            background: Theme.material ? Theme.m3-surface-container : Theme.plugin ? transparent : Theme.glass-solid;
-            border-width: Theme.material || Theme.plugin ? 0 : 0.5px;
+            border-radius: Theme.material ? 16px : Theme.menu-radius + 2px;
+            // (Glass: the plugin's glass under it, lib.rs, plus the menus'
+            // own fill, border and shadow, as the status menus: inside the
+            // panel its glass alone sees only what the panel's sees, and read
+            // as see-through)
+            background: Theme.material ? Theme.m3-surface-container : Theme.menu-bg;
+            border-width: Theme.material ? 0 : 0.5px;
             border-color: Theme.separator;
-            drop-shadow-blur: Theme.plugin && !Theme.material ? 0 : 16px;
+            drop-shadow-blur: 16px;
             drop-shadow-color: #00000040;
             drop-shadow-offset-y: 4px;
             mcol := VerticalLayout {
