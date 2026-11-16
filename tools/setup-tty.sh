@@ -23,7 +23,10 @@ if (( ${#missing[@]} > 0 )); then
         read -rp "Install them now with sudo pacman? [Y/n] " a
         [[ "${a,,}" == n* ]] && { echo "Skipped. Install them yourself, then run this again."; exit 1; }
     fi
-    sudo pacman -S --needed --noconfirm "${missing[@]}" || { echo "Package install failed: see above, then run this again."; exit 1; }
+    # (with second chances: a mirror that's behind is left out, then the
+    # mirrors re-ranked; tools/pac.sh)
+    source "$ROOT/tools/pac.sh"
+    pac -S --needed --noconfirm "${missing[@]}" || { echo "Package install failed: see above, then run this again."; exit 1; }
 fi
 
 # Your keyboard layout (localectl) for the test session (sandbox/hypr/tty.lua)

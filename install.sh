@@ -125,44 +125,9 @@ die() { printf '\n%s✗ %s%s\n' "$RED" "$*" "$R"; exit 1; }
 run() {
     if [[ $DRY == 1 ]]; then printf '  %swould run:%s %s\n' "$DIM" "$R" "$*"; else "$@"; fi
 }
-# pacman with a second chance. "Failed to retrieve some files" is a mirror
-# that's out of date (it no longer has the version the package lists name)
-# or a download that stalled: the package lists are refreshed from scratch
-# and the whole system brought up to them (-Syyu: never a partial upgrade),
-# and the same packages tried again. Still failing: with reflector, the
-# mirror list is replaced by the fastest up-to-date mirrors (the old one kept
-# as mirrorlist.tessera-backup) and it's tried once more; else how to do it.
-#   pac -S|-Syu [pacman options…] packages…
-pac() {
-    [[ $DRY == 1 ]] && { printf '  %swould run:%s sudo pacman %s\n' "$DIM" "$R" "$*"; return 0; }
-    local out rc
-    out=$(mktemp)
-    sudo pacman "$@" 2>&1 | tee "$out"; rc=${PIPESTATUS[0]}
-    if (( rc != 0 )) && grep -qiE "failed retrieving file|failed to retrieve some files|error 404|Operation too slow|Could not resolve host|Connection timed out" "$out"; then
-        local rest=() a
-        for a in "$@"; do [[ $a == -S* ]] || rest+=("$a"); done
-        warn "Some packages didn't download (an out-of-date mirror or a stalled download): refreshing the package lists and trying again…"
-        sudo pacman -Syyu "${rest[@]}" 2>&1 | tee "$out"; rc=${PIPESTATUS[0]}
-        if (( rc != 0 )) && grep -qiE "failed retrieving file|failed to retrieve some files|error 404|Operation too slow|Connection timed out" "$out"; then
-            if command -v reflector >/dev/null; then
-                warn "Still failing: switching to the fastest up-to-date mirrors (your list is kept as /etc/pacman.d/mirrorlist.tessera-backup)…"
-                sudo cp -n /etc/pacman.d/mirrorlist /etc/pacman.d/mirrorlist.tessera-backup 2>/dev/null
-                if sudo reflector --latest 20 --protocol https --sort rate --age 12 --save /etc/pacman.d/mirrorlist; then
-                    sudo pacman -Syyu "${rest[@]}" 2>&1 | tee "$out"; rc=${PIPESTATUS[0]}
-                fi
-            fi
-            (( rc != 0 )) && say "  The mirrors in /etc/pacman.d/mirrorlist are out of date or unreachable. Pick fresh ones, then run the installer again:" &&
-                say "    sudo pacman -S reflector && sudo reflector --latest 20 --protocol https --sort rate --save /etc/pacman.d/mirrorlist"
-        fi
-    elif (( rc != 0 )) && grep -qiE "unable to lock database" "$out"; then
-        say "  Another package manager is running (pacman's database is locked). Let it finish, then choose Retry."
-    elif (( rc != 0 )) && grep -qiE "invalid or corrupted package|signature .* is (unknown trust|invalid)|key .* could not be looked up" "$out"; then
-        warn "A package's signature didn't check out (often an old archlinux-keyring): updating the keyring and trying again…"
-        sudo pacman -Sy --needed --noconfirm archlinux-keyring && { sudo pacman "$@" 2>&1 | tee "$out"; rc=${PIPESTATUS[0]}; }
-    fi
-    rm -f "$out"
-    return "$rc"
-}
+# pacman with second chances (a mirror that's behind, a stalled download, an
+# old keyring): tools/pac.sh, shared with tools/setup-tty.sh
+source "$ROOT/tools/pac.sh"
 ask() { # question, default (y|n) -> 0 for yes
     local def="${2:-y}" reply
     [[ $YES == 1 || $DRY == 1 || $PLAN_ONLY == 1 ]] && [[ $def == y ]] && return 0
