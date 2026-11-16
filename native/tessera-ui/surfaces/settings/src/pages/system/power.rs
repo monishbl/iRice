@@ -338,11 +338,34 @@ pub fn cooldown(cx: &mut Ctx, p: &mut Page) {
         }
         let keep = cx.b("performance.keepPanelsLoaded");
         let kt = cx.toggle("performance.keepPanelsLoaded");
-        p.group("Performance").row(
+        let g = p.group("Performance");
+        g.row(
             Row::new("Keep panels loaded")
                 .detail("Search, Quick Settings and Notification Center stay ready after their first open: faster and lighter on the processor, about 50 MB more memory")
                 .switch(keep, kt),
         );
+        // (two or more GPUs, a laptop's Intel or AMD beside an NVIDIA: which
+        // one the shell draws on; tessera_core::gpu)
+        let gpus = tessera_core::gpu::gpus();
+        if gpus.len() > 1 {
+            let mut labels = vec!["Same as the desktop".to_string()];
+            let mut values = vec!["auto"];
+            for (f, _) in &gpus {
+                if !values.contains(f) {
+                    labels.push(tessera_core::gpu::family_label(f).to_string());
+                    values.push(f);
+                }
+            }
+            let v = cx.s("performance.gpu");
+            let index = values.iter().position(|x| *x == v).unwrap_or(0) as i32;
+            let id = cx.pick("performance.gpu", &values);
+            g.row(
+                Row::new("Graphics processor")
+                    .detail("Which GPU draws the shell. Same as the desktop is smoothest and saves battery: the other one would copy every frame across. Takes effect the next time you log in")
+                    .segmented(&labels.iter().map(String::as_str).collect::<Vec<_>>(), index, id)
+                    .width(110.0 * labels.len() as f32),
+            );
+        }
     }
     p.end_more();
 }

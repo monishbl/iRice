@@ -261,10 +261,14 @@ fn main() {
             .unwrap();
     }
 
+    // (the GPU the compositor draws on: not NVIDIA's beside an Intel one
+    // driving the screen, whose frames it then copied across; core/src/gpu.rs)
+    let vendor_set = tessera_core::gpu::prefer_compositor_gpu(&conn);
     let egl = match egl::Egl::new(conn.backend().display_ptr() as *mut _) {
         Ok(egl) => egl,
         Err(e) => no_gl(&e.to_string(), standalone),
     };
+    tessera_core::gpu::restore(vendor_set);
     slint::platform::set_platform(Box::new(wayland::Platform { tx: tx.clone() })).expect("platform");
     register_fonts();
 
