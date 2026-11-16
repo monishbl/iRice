@@ -79,16 +79,18 @@ int main() {
 
     @unittest.skipUnless(shutil.which('g++') and Path('/usr/include/hyprland/src/desktop/state/FocusState.hpp').exists(), 'requires Hyprland headers')
     def test_focus_reasons_match_hyprland(self):
-        # The policy mirrors Hyprland's eFocusReason by value: catch a
-        # reordering in a new Hyprland before it misreads every focus change
+        # pointer.cpp turns Hyprland's eFocusReason into the policy's own by
+        # name (0.56 numbered them, 0.57 made them bit flags): every reason
+        # this Hyprland has is handled there, none falls to the default
         header = Path('/usr/include/hyprland/src/desktop/state/FocusState.hpp').read_text()
         body = header[header.index('enum eFocusReason'):]
         body = body[body.index('{') + 1:body.index('}')]
         names = [n.strip().split('=')[0].strip() for n in body.split(',') if n.strip()]
-        ours = (ROOT / 'hypr/plugin/tessera-glass/focus-policy.hpp').read_text()
-        for value, name in enumerate(names):
-            short = name.removeprefix('FOCUS_REASON_')
-            self.assertIn(f'{short} = {value},', ours, f'{name} should be {value}')
+        pointer = (ROOT / 'hypr/plugin/tessera-glass/pointer.cpp').read_text()
+        mapping = pointer[pointer.index('ourReason(Desktop::eFocusReason'):]
+        mapping = mapping[:mapping.index('default:')]
+        for name in names:
+            self.assertIn(f'case {name}:', mapping, f'{name} is not handled in pointer.cpp ourReason')
 
     @unittest.skipUnless(shutil.which('lua'), 'requires Lua')
     def test_stationary_refocus_and_new_window_warp_only_when_hyprland_focused_it(self):

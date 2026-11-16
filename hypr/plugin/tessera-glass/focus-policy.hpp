@@ -14,7 +14,9 @@
 // and a pointer jumping out from under a click on the dock would be odd).
 namespace FocusPolicy {
 
-// Hyprland 0.56's Desktop::eFocusReason, by value (FocusState.hpp)
+// Why a window got focus: the policy's own names. pointer.cpp turns
+// Hyprland's Desktop::eFocusReason into these by name (0.56 numbered them
+// 0..17, 0.57 made them bit flags), so these values are this file's only
 enum Reason : int {
     UNKNOWN = 0,
     FFM = 1, // focus follows mouse

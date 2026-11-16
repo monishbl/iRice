@@ -347,7 +347,9 @@ Singleton {
         const apps = Apps.entries.filter(a => !a.noDisplay).map(a => ({
             entry: a,
             s: Math.max(score(a.name, q), score(a.genericName, q) * 0.8, score((a.keywords ?? []).join(" "), q) * 0.6, score(a.id, q) * 0.7)
-        })).filter(x => x.s >= 30).sort((a, b) => b.s - a.s).slice(0, 8);
+        // (equal scores by name, as rank.rs: not DesktopEntries' order,
+        // which changes from run to run)
+        })).filter(x => x.s >= 30).sort((a, b) => (b.s - a.s) || ((n, m) => n < m ? -1 : n > m ? 1 : 0)((a.entry.name ?? "").toLowerCase(), (b.entry.name ?? "").toLowerCase())).slice(0, 8);
         for (const x of apps)
             out.push({ section: "Applications", title: x.entry.name, subtitle: x.entry.genericName || x.entry.comment || "", icon: IconLookup.path(x.entry.icon, "application-x-executable"), run: () => Launch.app(x.entry), score: x.s });
 

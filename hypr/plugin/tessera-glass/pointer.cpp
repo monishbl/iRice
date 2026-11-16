@@ -78,8 +78,40 @@ static bool shows(const PHLWINDOW& w) {
     return w && w->m_isMapped && !w->isHidden() && w->m_workspace && w->m_workspace->isVisible();
 #endif
 }
+// Hyprland's reason as the policy's own (focus-policy.hpp): by name, so it
+// holds whatever values a Hyprland gives them (0.57 made them bit flags and
+// added CLICK_DOWN and CLICK_UP; read by number they meant other reasons)
+static FocusPolicy::Reason ourReason(Desktop::eFocusReason r) {
+    using namespace Desktop;
+    switch (r) {
+    case FOCUS_REASON_UNKNOWN: return FocusPolicy::UNKNOWN;
+    case FOCUS_REASON_FFM: return FocusPolicy::FFM;
+    case FOCUS_REASON_KEYBIND: return FocusPolicy::KEYBIND;
+    case FOCUS_REASON_DISPATCH_FOCUSWINDOW: return FocusPolicy::DISPATCH_FOCUSWINDOW;
+    case FOCUS_REASON_DISPATCH_MOVEWINDOWINTOGROUP: return FocusPolicy::DISPATCH_MOVEWINDOWINTOGROUP;
+    case FOCUS_REASON_CLICK: return FocusPolicy::CLICK;
+#if TG_057
+    case FOCUS_REASON_CLICK_DOWN:
+    case FOCUS_REASON_CLICK_UP: return FocusPolicy::CLICK;
+#endif
+    case FOCUS_REASON_OTHER: return FocusPolicy::OTHER;
+    case FOCUS_REASON_DESKTOP_STATE_CHANGE: return FocusPolicy::DESKTOP_STATE_CHANGE;
+    case FOCUS_REASON_SWITCH_TO_WINDOW_SOFT: return FocusPolicy::SWITCH_TO_WINDOW_SOFT;
+    case FOCUS_REASON_SWITCH_TO_WINDOW_HARD: return FocusPolicy::SWITCH_TO_WINDOW_HARD;
+    case FOCUS_REASON_GROUP_CURRENT_WINDOW_CHANGE: return FocusPolicy::GROUP_CURRENT_WINDOW_CHANGE;
+    case FOCUS_REASON_WORKSPACE_CHANGE: return FocusPolicy::WORKSPACE_CHANGE;
+    case FOCUS_REASON_TOGGLE_SPECIAL_WORKSPACE: return FocusPolicy::TOGGLE_SPECIAL_WORKSPACE;
+    case FOCUS_REASON_UNMAP_WINDOW_TILING: return FocusPolicy::UNMAP_WINDOW_TILING;
+    case FOCUS_REASON_UNMAP_WINDOW_FLOATING: return FocusPolicy::UNMAP_WINDOW_FLOATING;
+    case FOCUS_REASON_UNMAP_GROUPED_WINDOW: return FocusPolicy::UNMAP_GROUPED_WINDOW;
+    case FOCUS_REASON_NEW_WINDOW: return FocusPolicy::NEW_WINDOW;
+    case FOCUS_REASON_GHOSTS: return FocusPolicy::GHOSTS;
+    default: return FocusPolicy::CLICK; // (a reason newer than this list: never a warp)
+    }
+}
+
 static void onFocus(PHLWINDOW w, Desktop::eFocusReason reason) {
-    if (!followFocus || !shows(w) || !FocusPolicy::broughtForward((int)reason))
+    if (!followFocus || !shows(w) || !FocusPolicy::broughtForward(ourReason(reason)))
         return;
     // After the focus change has settled (not from inside it)
     PHLWINDOWREF ref = w;
@@ -95,7 +127,7 @@ static void onFocus(PHLWINDOW w, Desktop::eFocusReason reason) {
                 other = true;
                 break;
             }
-        if (FocusPolicy::shouldWarp((int)reason, inBox(box, pos), other))
+        if (FocusPolicy::shouldWarp(ourReason(reason), inBox(box, pos), other))
             Pointer::mgr()->warpTo(box.middle());
     });
 }
