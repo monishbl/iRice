@@ -20,6 +20,7 @@ pub mod dnd;
 pub mod skia;
 pub mod egl;
 pub mod gpu;
+pub mod inhibit;
 pub mod env;
 pub mod global_shortcuts; // (Hyprland's global shortcuts, as Quickshell's GlobalShortcut: standalone)
 pub mod host; // (wave 4: the QML shell's side, in Rust; standalone only)
