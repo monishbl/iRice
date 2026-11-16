@@ -125,6 +125,44 @@ die() { printf '\n%s✗ %s%s\n' "$RED" "$*" "$R"; exit 1; }
 run() {
     if [[ $DRY == 1 ]]; then printf '  %swould run:%s %s\n' "$DIM" "$R" "$*"; else "$@"; fi
 }
+# pacman with a second chance. "Failed to retrieve some files" is a mirror
+# that's out of date (it no longer has the version the package lists name)
+# or a download that stalled: the package lists are refreshed from scratch
+# and the whole system brought up to them (-Syyu: never a partial upgrade),
+# and the same packages tried again. Still failing: with reflector, the
+# mirror list is replaced by the fastest up-to-date mirrors (the old one kept
+# as mirrorlist.tessera-backup) and it's tried once more; else how to do it.
+#   pac -S|-Syu [pacman options…] packages…
+pac() {
+    [[ $DRY == 1 ]] && { printf '  %swould run:%s sudo pacman %s\n' "$DIM" "$R" "$*"; return 0; }
+    local out rc
+    out=$(mktemp)
+    sudo pacman "$@" 2>&1 | tee "$out"; rc=${PIPESTATUS[0]}
+    if (( rc != 0 )) && grep -qiE "failed retrieving file|failed to retrieve some files|error 404|Operation too slow|Could not resolve host|Connection timed out" "$out"; then
+        local rest=() a
+        for a in "$@"; do [[ $a == -S* ]] || rest+=("$a"); done
+        warn "Some packages didn't download (an out-of-date mirror or a stalled download): refreshing the package lists and trying again…"
+        sudo pacman -Syyu "${rest[@]}" 2>&1 | tee "$out"; rc=${PIPESTATUS[0]}
+        if (( rc != 0 )) && grep -qiE "failed retrieving file|failed to retrieve some files|error 404|Operation too slow|Connection timed out" "$out"; then
+            if command -v reflector >/dev/null; then
+                warn "Still failing: switching to the fastest up-to-date mirrors (your list is kept as /etc/pacman.d/mirrorlist.tessera-backup)…"
+                sudo cp -n /etc/pacman.d/mirrorlist /etc/pacman.d/mirrorlist.tessera-backup 2>/dev/null
+                if sudo reflector --latest 20 --protocol https --sort rate --age 12 --save /etc/pacman.d/mirrorlist; then
+                    sudo pacman -Syyu "${rest[@]}" 2>&1 | tee "$out"; rc=${PIPESTATUS[0]}
+                fi
+            fi
+            (( rc != 0 )) && say "  The mirrors in /etc/pacman.d/mirrorlist are out of date or unreachable. Pick fresh ones, then run the installer again:" &&
+                say "    sudo pacman -S reflector && sudo reflector --latest 20 --protocol https --sort rate --save /etc/pacman.d/mirrorlist"
+        fi
+    elif (( rc != 0 )) && grep -qiE "unable to lock database" "$out"; then
+        say "  Another package manager is running (pacman's database is locked). Let it finish, then choose Retry."
+    elif (( rc != 0 )) && grep -qiE "invalid or corrupted package|signature .* is (unknown trust|invalid)|key .* could not be looked up" "$out"; then
+        warn "A package's signature didn't check out (often an old archlinux-keyring): updating the keyring and trying again…"
+        sudo pacman -Sy --needed --noconfirm archlinux-keyring && { sudo pacman "$@" 2>&1 | tee "$out"; rc=${PIPESTATUS[0]}; }
+    fi
+    rm -f "$out"
+    return "$rc"
+}
 ask() { # question, default (y|n) -> 0 for yes
     local def="${2:-y}" reply
     [[ $YES == 1 || $DRY == 1 || $PLAN_ONLY == 1 ]] && [[ $def == y ]] && return 0
@@ -661,7 +699,7 @@ install_packages() {
     [[ $WANT_APPS == 1 ]] && avail+=("${APPS[@]}")
     say "  Updating the system and installing ${#avail[@]} packages (already installed ones are kept)…"
     note "Arch needs the system up to date for new packages (pacman -Syu)."
-    run sudo pacman -Syu --needed --noconfirm "${avail[@]}" || return 1
+    pac -Syu --needed --noconfirm "${avail[@]}" || return 1
     [[ $DRY == 1 ]] && return 0
     local hv qv
     hv=$(hypr_version)
@@ -697,7 +735,7 @@ build_quickshell() {
     local need=()
     mapfile -t need < <(pacman -T -- "${QUICKSHELL_BUILD[@]}" 2>/dev/null)
     if (( ${#need[@]} > 0 )); then
-        run sudo pacman -S --needed --noconfirm -- "${need[@]}" || return 1
+        pac -S --needed --noconfirm -- "${need[@]}" || return 1
     fi
     run "$ROOT/tools/build-quickshell.sh" "v${QS_BUNDLED:-$NEED_QUICKSHELL}" || return 1
     version_ge "$(qs_version)" "$NEED_QUICKSHELL" || { say "  The build finished, but Quickshell still isn't $NEED_QUICKSHELL or newer."; return 1; }
@@ -765,7 +803,7 @@ icon_themes() {
         if [[ " ${ICON_THEMES_REPO[*]} " == *" $p "* ]]; then repo+=("$p"); else aur+=("$p"); fi
     done
     mapfile -t repo < <(missing_of "${repo[@]}")
-    if (( ${#repo[@]} )); then run sudo pacman -S --needed --noconfirm "${repo[@]}" || return 1; fi
+    if (( ${#repo[@]} )); then pac -S --needed --noconfirm "${repo[@]}" || return 1; fi
     (( ${#aur[@]} == 0 )) || aur_install 1 "The icon themes from the AUR" "${aur[@]}"
 }
 
@@ -796,7 +834,7 @@ hardware_item() { # id
         esac
     done < <(python3 -I "$ROOT/tools/installer/hardware.py" apply "$1")
     mapfile -t pkgs < <(missing_of "${pkgs[@]}")
-    if (( ${#pkgs[@]} )); then run sudo pacman -S --needed --noconfirm "${pkgs[@]}" || return 1; fi
+    if (( ${#pkgs[@]} )); then pac -S --needed --noconfirm "${pkgs[@]}" || return 1; fi
     if (( ${#aur[@]} )); then aur_install 1 "Its AUR packages" "${aur[@]}" || return 1; fi
     for s in "${svcs[@]}"; do svc_on "$s" || return 1; done
     return 0
@@ -1179,7 +1217,7 @@ GREETER_DONE=0 OLD_CONFIG=""
 # replaced when you chose to)
 login() {
     if [[ $GREETER == yes ]]; then
-        if ! pkg_installed greetd; then run sudo pacman -S --needed --noconfirm greetd || return 1; fi
+        if ! pkg_installed greetd; then pac -S --needed --noconfirm greetd || return 1; fi
         # The greeter user can't read your home, so it gets its own copy
         local wall
         wall=$(python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); w=c.get("wallpaper",{}); print(w.get("darkPath") or w.get("path") or "")' "$CONFIG/tessera/config.json" 2>/dev/null || true)
