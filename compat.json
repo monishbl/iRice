@@ -2,8 +2,8 @@
     "_": "What this version of Tessera is tested with. Software Update reads the version it's about to install, so an Arch update can be held back until Tessera supports it. Packages: tools/packages.sh.",
     "hyprland": {
         "min": "0.56.0",
-        "max": "0.56.x",
-        "why": "The Lua config and the glass plugin (hypr/plugin/tessera-glass) are built against Hyprland 0.56."
+        "max": "0.57.x",
+        "why": "The Lua config and the glass plugin (hypr/plugin/tessera-glass) are built and tested against Hyprland 0.56 and 0.57 (the plugin picks the API at build time: hypr/plugin/tessera-glass/compat.hpp). 0.58 and later are held back until they're tested."
     },
     "quickshell": {
         "min": "0.3.2",

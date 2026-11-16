@@ -20,17 +20,14 @@
 #include <hyprland/src/render/pass/PassElement.hpp>
 #include <hyprland/src/render/OpenGL.hpp>
 #include <hyprland/src/render/Renderer.hpp>
-#include <hyprland/src/desktop/view/Window.hpp>
+#include "compat.hpp"
 #include <hyprland/src/desktop/state/FocusState.hpp>
 #include <hyprland/src/desktop/state/WindowState.hpp>
 #include <hyprland/src/desktop/state/ViewHitTester.hpp>
 #include <hyprland/src/desktop/state/ViewState.hpp>
 #include <hyprland/src/protocols/LayerShell.hpp>
-#include <hyprland/src/desktop/Workspace.hpp>
 #include <hyprland/src/devices/IPointer.hpp>
 #include <hyprland/src/event/EventBus.hpp>
-#include <hyprland/src/managers/EventManager.hpp>
-#include <hyprland/src/managers/KeybindManager.hpp>
 #include <hyprland/src/managers/SeatManager.hpp>
 #include <hyprland/src/managers/eventLoop/EventLoopManager.hpp>
 #include <hyprland/src/managers/eventLoop/EventLoopTimer.hpp>
@@ -46,6 +43,28 @@
 
 using namespace Render;
 using namespace Render::GL;
+
+// What changed between Hyprland 0.56 and 0.57 for this file: 0.57 passes the
+// render context to every draw (it was the renderer's), keeps a window's
+// decorations, offsets and state behind accessors, and runs dispatchers as
+// Config::Actions (the keybind manager's name table is gone)
+#if TG_057
+#define TG_CTX CRenderContext& ctx
+#define TG_CTX_ CRenderContext &ctx,
+#define TG_C ctx
+#define TG_C_ ctx,
+static bool tgMapped(const PHLWINDOW& w) { return w->mapped(); }
+static bool tgPinned(const PHLWINDOW& w) { return (bool)(w->m_state & Desktop::View::WINDOW_STATE_PINNED); }
+static bool tgNoBorders(const PHLWINDOW& w) { return w->backend().traits().suggestsNoBorder; }
+#else
+#define TG_CTX
+#define TG_CTX_
+#define TG_C
+#define TG_C_
+static bool tgMapped(const PHLWINDOW& w) { return w->m_isMapped; }
+static bool tgPinned(const PHLWINDOW& w) { return w->m_pinned; }
+static bool tgNoBorders(const PHLWINDOW& w) { return w->m_X11DoesntWantBorders; }
+#endif
 
 // Logical px
 constexpr float kTop = 6, kHandleW = 36, kHandleH = 5, kPillW = 68, kPillH = 20, kDot = 12, kGap = 8;
@@ -71,10 +90,10 @@ static std::vector<CTesseraControls*> g_decos;
 class CControlsPass : public IPassElement {
   public:
     CControlsPass(CTesseraControls* d, float a) : m_deco(d), m_a(a) {}
-    std::vector<UP<IPassElement>> draw() override;
-    bool                          needsLiveBlur() override { return false; }
-    bool                          needsPrecomputeBlur() override { return false; }
-    std::optional<CBox>           boundingBox() override;
+    std::vector<UP<IPassElement>> draw(TG_CTX) override;
+    bool                          needsLiveBlur(TG_CTX) override { return false; }
+    bool                          needsPrecomputeBlur(TG_CTX) override { return false; }
+    std::optional<CBox>           boundingBox(TG_CTX) override;
     const char*                   passName() override { return "CTesseraControlsPass"; }
     ePassElementType              type() override { return EK_CUSTOM; }
 
@@ -124,21 +143,35 @@ class CTesseraControls : public IHyprWindowDecoration {
             g_pHyprRenderer->damageBox(z.expand(4));
     }
 
+#if TG_057
+    void draw(CRenderContext& ctx, PHLMONITOR, float const& a, const SWindowRenderPresentation&) override {
+        if (!visible())
+            return;
+        g_pHyprRenderer->addPassElement(ctx, makeUnique<CControlsPass>(this, a));
+    }
+#else
     void draw(PHLMONITOR, float const& a) override {
         if (!visible())
             return;
         g_pHyprRenderer->m_renderPass.add(makeUnique<CControlsPass>(this, a));
     }
+#endif
 
     // Global logical box of the hover zone, following the window as drawn
     CBox zone() {
         auto w = m_window.lock();
-        if (!w || !w->m_isMapped)
+        if (!w || !tgMapped(w))
             return {};
         CBox box = w->getWindowMainSurfaceBox();
+#if TG_057
+        // (as Hyprland draws it: its floating offset and its space's slide)
+        const auto pres = w->presentation().renderPresentation();
+        box.translate(pres.floatingOffset + pres.workspaceOffset);
+#else
         box.translate(w->m_floatingOffset);
-        if (w->m_workspace && !w->m_pinned)
+        if (w->m_workspace && !tgPinned(w))
             box.translate(w->m_workspace->m_renderOffset->value());
+#endif
         return {box.x + box.w / 2 - kZoneW / 2, box.y, kZoneW, kZoneH};
     }
 
@@ -149,9 +182,13 @@ class CTesseraControls : public IHyprWindowDecoration {
         return {x0 + slotOf(i) * (dotD() + dotGap()), z.y + kTop + (pillH() - dotD()) / 2, dotD(), dotD()};
     }
 
-    void renderPass(float a) {
-        auto w   = m_window.lock();
+    void renderPass(TG_CTX_ float a) {
+        auto w = m_window.lock();
+#if TG_057
+        auto mon = ctx.m_data.pMonitor.lock();
+#else
         auto mon = g_pHyprRenderer->m_renderData.pMonitor.lock();
+#endif
         if (!w || !mon)
             return;
 
@@ -176,12 +213,12 @@ class CTesseraControls : public IHyprWindowDecoration {
         const CHyprColor handle = g_material ? CHyprColor{g_mInk.r, g_mInk.g, g_mInk.b, 0.5} : g_dark ? CHyprColor{1, 1, 1, 0.45} : CHyprColor{0, 0, 0, 0.35};
         const CHyprColor bg     = g_material ? g_mBg : g_dark ? CHyprColor{0.11, 0.11, 0.12, 0.82} : CHyprColor{0.98, 0.98, 0.98, 0.86};
         CHyprColor       c{handle.r + (bg.r - handle.r) * e, handle.g + (bg.g - handle.g) * e, handle.b + (bg.b - handle.b) * e, (handle.a + (bg.a - handle.a) * e) * a};
-        g_pHyprOpenGL->renderRect(pill, c, {.round = (int)(pill.h / 2), .roundingPower = 2.f});
+        g_pHyprOpenGL->renderRect(TG_C_ pill, c, {.round = (int)(pill.h / 2), .roundingPower = 2.f});
 
         if (e < 0.35f)
             return;
         if (g_material) {
-            renderMaterial(mon, (e - 0.35f) / 0.65f * a);
+            renderMaterial(TG_C_ mon, (e - 0.35f) / 0.65f * a);
             return;
         }
         static const CHyprColor kColors[3] = {{1.0, 0.373, 0.341, 1}, {0.996, 0.737, 0.18, 1}, {0.157, 0.784, 0.251, 1}};
@@ -193,21 +230,21 @@ class CTesseraControls : public IHyprWindowDecoration {
             if (m_hot == i)
                 col = CHyprColor{col.r * 0.85, col.g * 0.85, col.b * 0.85, 1};
             col.a *= da;
-            g_pHyprOpenGL->renderRect(b, col, {.round = (int)(b.w / 2), .roundingPower = 2.f});
+            g_pHyprOpenGL->renderRect(TG_C_ b, col, {.round = (int)(b.w / 2), .roundingPower = 2.f});
         }
     }
 
     // Material: each button a circle (a state layer while hovered; close
     // turns red), its icon drawn in the ink colour: a bar (minimize), a
     // square outline (maximize), a cross of two turned bars (close)
-    void renderMaterial(PHLMONITOR mon, float da) {
+    void renderMaterial(TG_CTX_ PHLMONITOR mon, float da) {
         const float s   = mon->m_scale;
         auto        ink = [&](float al) { return CHyprColor{g_mInk.r, g_mInk.g, g_mInk.b, al * da}; };
         auto        rect = [&](double x, double y, double w, double h, const CHyprColor& c, double rot = 0) {
             CBox b{x, y, w, h};
             b.translate(-mon->m_position).scale(s);
             b.rot = rot;
-            g_pHyprOpenGL->renderRect(b, c, {.round = (int)std::round(std::min(b.w, b.h) / 2), .roundingPower = 2.f});
+            g_pHyprOpenGL->renderRect(TG_C_ b, c, {.round = (int)std::round(std::min(b.w, b.h) / 2), .roundingPower = 2.f});
         };
         for (int i = 0; i < 3; i++) {
             const CBox b  = button(i);
@@ -215,7 +252,7 @@ class CTesseraControls : public IHyprWindowDecoration {
             CBox       c  = b;
             c.translate(-mon->m_position).scale(s).round();
             if (hot)
-                g_pHyprOpenGL->renderRect(c, i == 0 ? CHyprColor{0.86, 0.15, 0.15, da} : ink(0.14), {.round = (int)(c.w / 2), .roundingPower = 2.f});
+                g_pHyprOpenGL->renderRect(TG_C_ c, i == 0 ? CHyprColor{0.86, 0.15, 0.15, da} : ink(0.14), {.round = (int)(c.w / 2), .roundingPower = 2.f});
             const CHyprColor col = hot && i == 0 ? CHyprColor{1, 1, 1, da} : ink(1);
             const double     cx = b.x + b.w / 2, cy = b.y + b.h / 2, t = 1.6;
             if (i == 1) {
@@ -236,7 +273,7 @@ class CTesseraControls : public IHyprWindowDecoration {
 
     bool visible() {
         auto w = m_window.lock();
-        return g_enabled && w && w->m_isMapped && !Fullscreen::controller()->isFullscreen(w, Fullscreen::FSMODE_FULLSCREEN);
+        return g_enabled && w && tgMapped(w) && !Fullscreen::controller()->isFullscreen(w, Fullscreen::FSMODE_FULLSCREEN);
     }
 
   private:
@@ -321,11 +358,20 @@ class CTesseraControls : public IHyprWindowDecoration {
         const auto addr = std::format("address:0x{:x}", (uintptr_t)w.get());
         if (i == 0)
             w->sendClose();
-        else if (i == 1)
+        else if (i == 1) {
+#if TG_057
+            (void)addr;
+            (void)Config::Actions::moveToWorkspace("special:minimized", true, w);
+#else
             g_pKeybindManager->m_dispatchers["movetoworkspacesilent"]("special:minimized," + addr);
-        else {
+#endif
+        } else {
             Desktop::focusState()->fullWindowFocus(w, Desktop::FOCUS_REASON_CLICK);
+#if TG_057
+            (void)Config::Actions::fullscreenWindow(Fullscreen::FSMODE_MAXIMIZED, true, w);
+#else
             g_pKeybindManager->m_dispatchers["fullscreen"]("1");
+#endif
         }
     }
 
@@ -345,27 +391,37 @@ class CTesseraControls : public IHyprWindowDecoration {
         if (!w || m_hot != 2)
             return;
         auto b = button(2);
-        g_pEventManager->postEvent(SHyprIPCEvent{"tessera-controls", std::format("tile,0x{:x},{},{}", (uintptr_t)w.get(), (int)(b.x + b.w / 2), (int)(b.y + b.h))});
+        tgPostEvent("tessera-controls", std::format("tile,0x{:x},{},{}", (uintptr_t)w.get(), (int)(b.x + b.w / 2), (int)(b.y + b.h)));
     }
 };
 
-std::vector<UP<IPassElement>> CControlsPass::draw() {
-    m_deco->renderPass(m_a);
+std::vector<UP<IPassElement>> CControlsPass::draw(TG_CTX) {
+    m_deco->renderPass(TG_C_ m_a);
     return {};
 }
-std::optional<CBox> CControlsPass::boundingBox() {
+std::optional<CBox> CControlsPass::boundingBox(TG_CTX) {
+#if TG_057
+    auto mon = ctx.m_data.pMonitor.lock();
+#else
     auto mon = g_pHyprRenderer->m_renderData.pMonitor.lock();
+#endif
     if (!mon)
         return std::nullopt;
     return m_deco->zone().translate(-mon->m_position).expand(4);
 }
 
 static void addTo(PHLWINDOW w) {
-    if (!w || w->m_X11DoesntWantBorders)
+    if (!w || tgNoBorders(w))
         return;
+#if TG_057
+    if (std::ranges::any_of(w->presentation().decorations(), [](const auto& d) { return d->getDisplayName() == "TesseraControls"; }))
+        return;
+    HyprlandAPI::addWindowDecoration(g_ctlHandle, w, makeShared<CTesseraControls>(w));
+#else
     if (std::ranges::any_of(w->m_windowDecorations, [](const auto& d) { return d->getDisplayName() == "TesseraControls"; }))
         return;
     HyprlandAPI::addWindowDecoration(g_ctlHandle, w, makeUnique<CTesseraControls>(w));
+#endif
 }
 
 static void setEnabled(bool on) {
@@ -375,7 +431,7 @@ static void setEnabled(bool on) {
     if (on) {
         // Every mapped window, also ones on other spaces or minimized
         for (auto& w : Desktop::windowState()->windows())
-            if (w->m_isMapped)
+            if (tgMapped(w))
                 addTo(w);
     } else {
         for (auto* d : std::vector<CTesseraControls*>(g_decos))
@@ -398,9 +454,24 @@ void controlsInit(HANDLE handle) {
 // or a listener left behind would call into the unloaded plugin)
 void controlsExit() {
     g_enabled = false;
+#if TG_057
+    g_pHyprRenderer->context().m_pass.removeAllOfType("CTesseraControlsPass");
+#else
     g_pHyprRenderer->m_renderPass.removeAllOfType("CTesseraControlsPass");
+#endif
     for (auto* d : g_decos)
         d->shutdown();
+#if TG_057
+    // (removeDecoration takes it off the window at once, uncached)
+    for (auto& w : Desktop::windowState()->windows()) {
+        std::vector<IHyprWindowDecoration*> ours;
+        for (auto& d : w->presentation().decorations())
+            if (d && d->getDisplayName() == "TesseraControls")
+                ours.push_back(d.get());
+        for (auto* d : ours)
+            w->presentation().removeDecoration(d);
+    }
+#else
     for (auto& w : Desktop::windowState()->windows()) {
         auto& decos = w->m_windowDecorations;
         for (auto& d : decos)
@@ -408,6 +479,7 @@ void controlsExit() {
                 g_pDecorationPositioner->uncacheDecoration(d.get());
         std::erase_if(decos, [](const auto& d) { return d && d->getDisplayName() == "TesseraControls"; });
     }
+#endif
     g_decos.clear();
 }
 

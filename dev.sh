@@ -29,11 +29,14 @@ box() {
         distrobox enter "$BOX"
     fi
 }
-# Runs a command inside the box, pointed at the nested compositor.
+# Runs a command inside the box, pointed at the nested compositor (another
+# Hyprland's, TESSERA_HYPRLAND: its own hyprctl first in PATH)
 nested() {
     local wl; wl="$(cd "$RT" && ls -d wayland-[0-9] 2>/dev/null | head -1)"
+    local path=()
+    [[ -n "${TESSERA_HYPRLAND:-}" ]] && path=(PATH="$(dirname "$TESSERA_HYPRLAND"):/usr/local/sbin:/usr/local/bin:/usr/bin")
     box env -u QT_QPA_PLATFORMTHEME -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN -u GEMINI_API_KEY -u OPENAI_API_KEY -u OPENROUTER_API_KEY \
-        XDG_RUNTIME_DIR="$RT" WAYLAND_DISPLAY="$wl" SHELL=/bin/bash LANG=C.UTF-8 LC_ALL=C.UTF-8 \
+        "${path[@]}" XDG_RUNTIME_DIR="$RT" WAYLAND_DISPLAY="$wl" SHELL=/bin/bash LANG=C.UTF-8 LC_ALL=C.UTF-8 \
         DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/host/run/dbus/system_bus_socket \
         DBUS_SESSION_BUS_ADDRESS="$(cat "$RT/session-bus" 2>/dev/null)" \
         HYPRLAND_INSTANCE_SIGNATURE="$(ls "$RT/hypr" 2>/dev/null | head -1)" "$@"
@@ -84,7 +87,7 @@ case "${1:-help}" in
                 fd=${fd##*/}
                 ((fd > 2)) && eval "exec $fd>&-"
             done
-            exec setsid -f distrobox enter "$BOX" -- env HOME="$TESSERA_HOME" TESSERA_ARENA="$TESSERA_ARENA" TESSERA_HOST_WAYLAND="${WAYLAND_DISPLAY:-}" \
+            exec setsid -f distrobox enter "$BOX" -- env HOME="$TESSERA_HOME" TESSERA_ARENA="$TESSERA_ARENA" TESSERA_HOST_WAYLAND="${WAYLAND_DISPLAY:-}" TESSERA_HYPRLAND="${TESSERA_HYPRLAND:-}" \
                 TESSERA_VISIBLE="${TESSERA_VISIBLE:-${IRICE_VISIBLE:-0}}" TESSERA_HOST_AUDIO="${TESSERA_HOST_AUDIO:-${IRICE_HOST_AUDIO:-0}}" \
                 "$ROOT/sandbox/inner.sh" >/dev/null 2>&1
         )

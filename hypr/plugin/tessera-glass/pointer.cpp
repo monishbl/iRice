@@ -10,8 +10,7 @@
 #include <hyprland/src/event/EventBus.hpp>
 #include <hyprland/src/desktop/state/FocusState.hpp>
 #include <hyprland/src/desktop/state/WindowState.hpp>
-#include <hyprland/src/desktop/view/Window.hpp>
-#include <hyprland/src/desktop/Workspace.hpp>
+#include "compat.hpp"
 #include <hyprland/src/managers/eventLoop/EventLoopManager.hpp>
 #include "pointer-policy.hpp"
 #include "focus-policy.hpp"
@@ -73,7 +72,11 @@ static bool inBox(const CBox& b, const Vector2D& p) {
     return p.x >= b.x && p.y >= b.y && p.x < b.x + b.w && p.y < b.y + b.h;
 }
 static bool shows(const PHLWINDOW& w) {
+#if TG_057
+    return w && w->mapped() && !w->isHidden() && w->m_workspace && w->m_workspace->visible();
+#else
     return w && w->m_isMapped && !w->isHidden() && w->m_workspace && w->m_workspace->isVisible();
+#endif
 }
 static void onFocus(PHLWINDOW w, Desktop::eFocusReason reason) {
     if (!followFocus || !shows(w) || !FocusPolicy::broughtForward((int)reason))

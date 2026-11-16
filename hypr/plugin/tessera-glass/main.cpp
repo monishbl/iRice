@@ -46,12 +46,10 @@
 #include <hyprland/src/output/Monitor.hpp>
 #include <hyprland/src/state/MonitorState.hpp>
 #include <hyprland/src/desktop/state/WindowState.hpp>
-#include <hyprland/src/desktop/Workspace.hpp>
 #include <hyprland/src/event/EventBus.hpp>
 #include <hyprland/src/layout/LayoutManager.hpp>
 #include <hyprland/src/desktop/view/Group.hpp>
-#include <hyprland/src/desktop/view/Window.hpp>
-#include <hyprland/src/managers/EventManager.hpp>
+#include "compat.hpp"
 #include <hyprland/src/managers/input/InputManager.hpp>
 #include <hyprland/src/devices/IPointer.hpp>
 #include <format>
@@ -79,8 +77,13 @@ std::string controlsStyleCommand(const std::string& style, const std::string& bg
 
 static HANDLE        g_handle = nullptr;
 static CFunctionHook* g_hook  = nullptr;
-static SP<SHyprCtlCommand> g_cmd;
-static SP<SHyprCtlCommand> g_oldCmd; // (irice-glass)
+#if TG_057
+using SCtlCommand = IPC::Socket1::SCommand;
+#else
+using SCtlCommand = SHyprCtlCommand;
+#endif
+static SP<SCtlCommand> g_cmd;
+static SP<SCtlCommand> g_oldCmd; // (irice-glass)
 
 constexpr int kFloats = 21; // the 19th (gloss) is optional, and the last two (shadow, margin)
 constexpr int kBase   = 19; // (a shape without a shadow)
@@ -518,10 +521,18 @@ struct SOrient {
             r.transform(tr, tw, th);
     }
 };
-static SOrient orientOf(PHLMONITOR mon) {
+static SOrient orientOf(PHLMONITOR mon, const SRenderData& rd) {
     SOrient o;
+#if TG_057
+    // (0.57 draws the monitor upright and turns it at the end; only a
+    // framebuffer drawn for the output as is, RPT_FB, is turned)
+    if (mon->m_transform == WL_OUTPUT_TRANSFORM_NORMAL || rd.projectionType != RPT_FB)
+        return o;
+#else
+    (void)rd;
     if (mon->m_transform == WL_OUTPUT_TRANSFORM_NORMAL || !g_pHyprRenderer->monitorTransformEnabled())
         return o;
+#endif
     o.turned = true;
     o.tr     = Math::wlTransformToHyprutils(Math::invertTransform(mon->m_transform));
     o.tw     = mon->m_transformedSize.x;
@@ -543,8 +554,7 @@ static SOrient orientOf(PHLMONITOR mon) {
 
 static bool          g_lastBlur = false;
 static unsigned long g_blits = 0, g_blitPx = 0;
-static void drawGlass(const std::vector<SShape>& shapes, const CBox& box, const CHyprOpenGLImpl::STextureRenderData& data, PHLMONITOR mon, float fade) {
-    auto& rd = g_pHyprRenderer->m_renderData;
+static void drawGlass(const SRenderData& rd, const std::vector<SShape>& shapes, const CBox& box, const CHyprOpenGLImpl::STextureRenderData& data, PHLMONITOR mon, float fade) {
     if (!rd.currentFB || !ensureProgram())
         return;
     auto* fb = GLFB(rd.currentFB);
@@ -554,7 +564,7 @@ static void drawGlass(const std::vector<SShape>& shapes, const CBox& box, const 
     const float scale = mon->m_scale;
     if (fbW <= 0 || fbH <= 0)
         return;
-    const SOrient orient = orientOf(mon);
+    const SOrient orient = orientOf(mon, rd);
 
     SGLState st;
     st.save();
@@ -746,7 +756,19 @@ static void drawGlass(const std::vector<SShape>& shapes, const CBox& box, const 
     st.restore();
 }
 
+// Hyprland's draw of a texture with blur behind it (0.57 passes the render
+// context, 0.56 kept it in the renderer)
+#if TG_057
+typedef void (*origRenderTextureWithBlur)(void*, CRenderContext&, SP<ITexture>, const CBox&, const CHyprOpenGLImpl::STextureRenderData&);
+#define TG_CTX_PARAM CRenderContext &ctx,
+#define TG_CTX_ARG ctx,
+#define TG_RENDER_DATA ctx.m_data
+#else
 typedef void (*origRenderTextureWithBlur)(void*, SP<ITexture>, const CBox&, const CHyprOpenGLImpl::STextureRenderData&);
+#define TG_CTX_PARAM
+#define TG_CTX_ARG
+#define TG_RENDER_DATA g_pHyprRenderer->m_renderData
+#endif
 
 // Diagnostics for `hyprctl tessera-glass stats` (frames: per monitor, for
 // ./dev.sh perf to see what keeps redrawing)
@@ -765,14 +787,15 @@ struct SPacing {
 static std::map<std::string, SPacing> g_pacing;
 static std::string   g_lastNs, g_lastBox;
 
-static void hkRenderTextureWithBlur(void* thisptr, SP<ITexture> tex, const CBox& box, const CHyprOpenGLImpl::STextureRenderData& data) {
+static void hkRenderTextureWithBlur(void* thisptr, TG_CTX_PARAM SP<ITexture> tex, const CBox& box, const CHyprOpenGLImpl::STextureRenderData& data) {
+    const SRenderData& rd = TG_RENDER_DATA;
     auto ls  = data.currentLS.lock();
     g_calls++;
     if (ls) {
         g_lastNs  = ls->m_namespace;
         g_lastBox = std::to_string((int)box.x) + "," + std::to_string((int)box.y) + " " + std::to_string((int)box.w) + "x" + std::to_string((int)box.h);
     }
-    auto mon = g_pHyprRenderer->m_renderData.pMonitor.lock();
+    auto mon = rd.pMonitor.lock();
     if (ls && mon) {
         auto it = g_shapes.find(mon->m_name + "\n" + ls->m_namespace);
         // The layer's own fade (Hyprland draws a Top layer under a fullscreen
@@ -780,16 +803,16 @@ static void hkRenderTextureWithBlur(void* thisptr, SP<ITexture> tex, const CBox&
         // leaves an empty glass shape over the fullscreen app
         const float fade = std::clamp(data.a, 0.f, 1.f);
         if (it != g_shapes.end() && !it->second.empty() && fade > 0.004f) {
-            drawGlass(it->second, box, data, mon, fade);
+            drawGlass(rd, it->second, box, data, mon, fade);
             g_drawn++;
             // Hyprland's own blur fill would cover the glass: draw it fully transparent
             auto d2  = data;
             d2.blurA = 0.f;
-            ((origRenderTextureWithBlur)g_hook->m_original)(thisptr, tex, box, d2);
+            ((origRenderTextureWithBlur)g_hook->m_original)(thisptr, TG_CTX_ARG tex, box, d2);
             return;
         }
     }
-    ((origRenderTextureWithBlur)g_hook->m_original)(thisptr, tex, box, data);
+    ((origRenderTextureWithBlur)g_hook->m_original)(thisptr, TG_CTX_ARG tex, box, data);
 }
 
 // ── Drag to an edge to tile (macOS Sequoia) ─────────────────────────────────
@@ -846,7 +869,7 @@ static void dragUpdate() {
         g_dragZone = zone;
         g_dragMon  = mn;
         g_dragWin  = win;
-        g_pEventManager->postEvent(SHyprIPCEvent{"tessera-drag", "zone," + mn + "," + zone + "," + win});
+        tgPostEvent("tessera-drag", "zone," + mn + "," + zone + "," + win);
     }
     g_dragging = true;
 }
@@ -857,13 +880,13 @@ static void dragInit(HANDLE) {
         if (e.state != WL_POINTER_BUTTON_STATE_RELEASED || !g_dragging)
             return;
         g_dragging = false;
-        g_pEventManager->postEvent(SHyprIPCEvent{"tessera-drag", "drop," + g_dragMon + "," + g_dragZone + "," + g_dragWin});
+        tgPostEvent("tessera-drag", "drop," + g_dragMon + "," + g_dragZone + "," + g_dragWin);
         g_dragZone = "none";
     });
 }
 
 // hyprctl tessera-glass ...
-static std::string onCommand(eHyprCtlOutputFormat, std::string request) {
+static std::string onCommand(std::string request) {
     std::istringstream in(request);
     std::string        name, verb;
     in >> name >> verb;
@@ -974,7 +997,7 @@ static std::string onCommand(eHyprCtlOutputFormat, std::string request) {
             PHLLS layer;
             for (auto& level : m->m_layerSurfaceLayers)
                 for (auto& ref : level)
-                    if (auto ls = ref.lock(); ls && ls->m_mapped && ls->m_namespace == ns)
+                    if (auto ls = ref.lock(); ls && TG_LS_MAPPED(ls) && ls->m_namespace == ns)
                         layer = ls;
             // (not yet arranged: no size; position unknown)
             if (!layer || layer->m_geometry.w <= 0 || layer->m_geometry.h <= 0) {
@@ -1050,8 +1073,16 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
         }
         p.last = now;
     });
-    g_cmd    = HyprlandAPI::registerHyprCtlCommand(handle, SHyprCtlCommand{.name = "tessera-glass", .exact = false, .fn = onCommand});
-    g_oldCmd = HyprlandAPI::registerHyprCtlCommand(handle, SHyprCtlCommand{.name = "irice-glass", .exact = false, .fn = onCommand});
+#if TG_057
+    // (prefix commands: the handler gets the whole request, flags taken off)
+    auto cmd = [](const char* name) {
+        return SCtlCommand{.name = name, .match = IPC::Socket1::COMMAND_MATCH_PREFIX, .handler = [](const IPC::Socket1::SRequest& r) { return IPC::Socket1::SResponse{onCommand(r.command)}; }};
+    };
+#else
+    auto cmd = [](const char* name) { return SCtlCommand{.name = name, .exact = false, .fn = [](eHyprCtlOutputFormat, std::string request) { return onCommand(std::move(request)); }}; };
+#endif
+    g_cmd    = HyprlandAPI::registerHyprCtlCommand(handle, cmd("tessera-glass"));
+    g_oldCmd = HyprlandAPI::registerHyprCtlCommand(handle, cmd("irice-glass"));
     return {"tessera-glass", "Glass for the Tessera shell", "Tessera", "1.0"};
 }
 

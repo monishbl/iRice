@@ -40,6 +40,10 @@ pub fn request(cmd: &str) -> std::io::Result<String> {
 
 #[derive(Deserialize, Default, Clone, Debug, PartialEq)]
 pub struct Workspace {
+    /// its number; 0 for a special or named one (Hyprland 0.57 gives those no
+    /// id at all, where 0.56 gave them a negative one: without the default
+    /// one minimized window, on special:minimized, made the whole list fail)
+    #[serde(default)]
     pub id: i32,
     #[serde(default)]
     pub monitor: String,
@@ -576,5 +580,23 @@ mod tests {
         // (as Hyprland's JSON says it)
         let w: Workspace = serde_json::from_str(r#"{"id":3,"monitor":"DP-1","windows":1,"hasfullscreen":true}"#).unwrap();
         assert!(w.fullscreen);
+    }
+
+    #[test]
+    fn workspaces_without_an_id() {
+        use super::{Client, Workspace};
+        // Hyprland 0.57: a special (or named) workspace has an address and a
+        // type but no id; numbered ones keep theirs
+        let list: Vec<Workspace> = serde_json::from_str(
+            r#"[{"address":"1","id":1,"type":"normal","name":"1","monitor":"DP-1","monitorID":0,"windows":2,"hasfullscreen":false},
+                {"address":"special:minimized","type":"special","name":"special:minimized","monitor":"DP-1","monitorID":0,"windows":1,"hasfullscreen":false}]"#,
+        )
+        .unwrap();
+        assert_eq!(list.iter().map(|w| w.id).collect::<Vec<_>>(), vec![1, 0]);
+        // (0.56: special workspaces had a negative id)
+        let old: Workspace = serde_json::from_str(r#"{"id":-99,"name":"special:minimized","monitor":"DP-1","windows":1,"hasfullscreen":false}"#).unwrap();
+        assert_eq!(old.id, -99);
+        let c: Client = serde_json::from_str(r#"{"address":"0x1","class":"foot","workspace":{"address":"special:minimized","type":"special","name":"special:minimized"}}"#).unwrap();
+        assert_eq!(c.workspace.id, 0);
     }
 }

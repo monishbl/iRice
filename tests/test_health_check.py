@@ -166,10 +166,11 @@ class HealthCheck(unittest.TestCase):
         self.assertEqual(rows["pipewire"]["status"], "ok")
 
     def test_versions(self):
-        rows = self.rows(FAKE_PLUGIN="2", FAKE_HYPR="v0.57.0")
+        rows = self.rows(FAKE_PLUGIN="2", FAKE_HYPR="v0.58.0")
         self.assertEqual(rows["plugin"]["status"], "warn")
         self.assertEqual(rows["hyprland"]["status"], "warn")
         self.assertEqual(self.rows(FAKE_HYPR="v0.56.9")["hyprland"]["status"], "ok")
+        self.assertEqual(self.rows(FAKE_HYPR="v0.57.2")["hyprland"]["status"], "ok")
 
     def test_quickshell_versions_and_a_fix_that_is_true(self):
         self.assertEqual(self.rows(FAKE_QS="0.3.3")["quickshell"]["status"], "ok")  # newer than the minimum
@@ -188,9 +189,9 @@ class HealthCheck(unittest.TestCase):
         self.assertEqual(self.rows()["quickshell"]["detail"], "0.3.2 (Tessera's own build)")
 
     def test_a_hyprland_newer_than_tested_says_so(self):
-        r = self.rows(FAKE_HYPR="v0.57.0")["hyprland"]
+        r = self.rows(FAKE_HYPR="v0.58.0")["hyprland"]
         self.assertEqual(r["status"], "warn")
-        self.assertIn("newer than Tessera is tested with (0.56.x)", r["detail"])
+        self.assertIn("newer than Tessera is tested with (0.57.x)", r["detail"])
         self.assertIn("older than", self.rows(FAKE_HYPR="v0.55.1")["hyprland"]["detail"])
 
     def test_an_installed_shell_reads_compat_from_the_recorded_source(self):
@@ -203,7 +204,7 @@ class HealthCheck(unittest.TestCase):
         (self.home / ".local/share/tessera").mkdir(parents=True)
         (self.home / ".local/share/tessera/source").write_text(str(ROOT) + "\n")
         out = subprocess.run([sys.executable, "-I", str(shell / "health-check.py"), "--shell-pid", "4242"],
-                             env=dict(self.env, FAKE_HYPR="v0.57.0"), capture_output=True, text=True, timeout=20)
+                             env=dict(self.env, FAKE_HYPR="v0.58.0"), capture_output=True, text=True, timeout=20)
         rows = {r["id"]: r for r in json.loads(out.stdout)}
         self.assertEqual(rows["hyprland"]["status"], "warn")
 

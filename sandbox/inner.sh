@@ -103,5 +103,16 @@ wireplumber.profiles = {
 CONF
     AUDIO="XDG_CONFIG_HOME=$cfg pipewire & XDG_CONFIG_HOME=$cfg wireplumber & XDG_CONFIG_HOME=$cfg pipewire-pulse & sleep 0.5;"
 fi
-dbus-run-session -- bash -c "$AUDIO"' echo $$ > "$0/hyprland.pid"; echo "$DBUS_SESSION_BUS_ADDRESS" > "$0/session-bus"; exec start-hyprland -- --config "$1"' \
-    "$RT" "$ROOT/sandbox/hypr/hyprland.lua" >"$LOG" 2>&1
+# Another Hyprland than the box's (TESSERA_HYPRLAND=/prefix/usr/bin/Hyprland:
+# a version unpacked beside it, to try one before it's installed). Its own
+# start-hyprland and hyprctl come first in PATH and its own libraries (../lib)
+# first in LD_LIBRARY_PATH.
+if [[ -n "${TESSERA_HYPRLAND:-}" ]]; then
+    [[ -x "$TESSERA_HYPRLAND" ]] || { echo "inner.sh: TESSERA_HYPRLAND=$TESSERA_HYPRLAND is not a program" >&2; exit 1; }
+    hbin="$(cd "$(dirname "$TESSERA_HYPRLAND")" && pwd)"
+    export PATH="$hbin:$PATH"
+    [[ -d "$hbin/../lib" ]] && export LD_LIBRARY_PATH="$(cd "$hbin/../lib" && pwd)${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+    echo "Tessera sandbox: Hyprland from $TESSERA_HYPRLAND ($("$TESSERA_HYPRLAND" --version | head -1))"
+fi
+dbus-run-session -- bash -c "$AUDIO"' echo $$ > "$0/hyprland.pid"; echo "$DBUS_SESSION_BUS_ADDRESS" > "$0/session-bus"; exec start-hyprland ${2:+--path "$2"} -- --config "$1"' \
+    "$RT" "$ROOT/sandbox/hypr/hyprland.lua" "${TESSERA_HYPRLAND:-}" >"$LOG" 2>&1

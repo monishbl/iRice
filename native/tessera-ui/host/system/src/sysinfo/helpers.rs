@@ -231,6 +231,9 @@ mod tests {
         assert_eq!(cmp(&parts("0.56.9-1"), &parts("0.56.x")), 0);
         assert_eq!(cmp(&parts("0.57.0-1"), &parts("0.56.x")), 1);
         assert_eq!(cmp(&parts("0.55.0-1"), &parts("0.56.0")), -1);
+        // (compat.json's "0.57.x": 0.57.1 and 0.57.2 are tested, 0.58 is held back)
+        assert_eq!(cmp(&parts("0.57.2-1"), &parts("0.57.x")), 0);
+        assert_eq!(cmp(&parts("0.58.0-1"), &parts("0.57.x")), 1);
     }
 }
 

@@ -54,6 +54,9 @@ class InstallerFunctions(Fakes):
         out = self.bash('HYPR_MAX=0.56.x; for v in 0.56.0 0.56.2 0.57.0 0.60.1 1.0.0; do hypr_tested $v && echo "$v ok" || echo "$v newer"; done; '
                         'HYPR_MAX=0.57.1; hypr_tested 0.57.1 && echo exact-ok; hypr_tested 0.57.2 || echo exact-newer')
         self.assertEqual(out.split("\n"), ["0.56.0 ok", "0.56.2 ok", "0.57.0 newer", "0.60.1 newer", "1.0.0 newer", "exact-ok", "exact-newer"])
+        # (compat.json's range since 0.57 support: both 0.56 and 0.57 releases)
+        out = self.bash('HYPR_MAX=0.57.x; for v in 0.56.2 0.57.1 0.57.2 0.58.0; do hypr_tested $v && echo "$v ok" || echo "$v newer"; done')
+        self.assertEqual(out.split("\n"), ["0.56.2 ok", "0.57.1 ok", "0.57.2 ok", "0.58.0 newer"])
 
     def test_tty_autostart_goes_where_your_login_shell_looks(self):
         def profile(shell, *existing):
