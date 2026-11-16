@@ -2,7 +2,7 @@
     "_doc": "Budgets for tools/gate/compare.py. A metric fails when candidate > baseline + max(abs, rel * baseline). Calibrated from five A/A runs of 41539ac on server1, 16 Nov 2026 (docs/gate.md): each tolerance is above the largest A/A difference seen, for the default two rounds with swapped arenas averaged.",
     "idle_cpu_pct": {"abs": 0.5, "rel": 0.25},
     "rss_mb": {"abs": 10.0},
-    "idle_rss_mb": {"abs": 15.0},
+    "idle_rss_mb": {"abs": 10.0},
     "end_rss_mb": {"abs": 10.0, "gate": false},
     "stall_count": {"abs": 15, "rel": 0.4},
     "stall_total_ms": {"abs": 800.0, "rel": 0.4},

@@ -3,14 +3,13 @@
 and log.tsv (gate.sh, sampler.py) and prints run.json.
   analyze.py <run dir>
 
-The shell's timing log (on while $XDG_RUNTIME_DIR/tessera-wakes exists):
-  wakes: {"why": n, …} drew {"surface": n, …} animating {…} msgs {…} ms [(…)]
-      once a second (core/src/wayland.rs Wakes::note): the loop's turns by
-      reason, and the frames each surface drew
-  debug: stall 42.1 ms: msg host > host Panels
-      a piece of a loop turn longer than 16 ms (core/src/perf.rs); nested
-      pieces each log, innermost first, so one stall is a chain of lines whose
-      paths are prefixes of the first: counted once, as its longest (outer) time
+The shell's timing log (on while $XDG_RUNTIME_DIR/tessera-wakes exists) is
+read by timinglog.py (its doc has both formats, old and new):
+  wakes: {…} [sleeps N cpu MS] drew {…} animating …    the loop's turns and
+      the frames each surface drew, about once a second
+  debug: stall 42.1 ms: msg host > host Panels [(own 3.0 ms)]
+      a piece of a loop turn over 16 ms (old) / a step over 8 ms (the
+      tripwire): grouped into one stall per outermost piece, over 16 ms
   debug: frame callback lost on <surface>: drawing on        (wayland.rs)
   first-frame <surface> at <ms> drew <ms> ms                 (a show's first frame)
   tessera-ui: first-frame wall=… since-main-ms=<ms>          (start-up)
@@ -21,6 +20,9 @@ import os
 import re
 import statistics
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import timinglog as TL  # noqa: E402
 
 run = sys.argv[1]
 HZ = os.sysconf("SC_CLK_TCK")
@@ -36,6 +38,7 @@ def events():
 
 
 LOADS = []  # (t, the machine's 1-minute load average)
+SWAP = []  # (t, VmSwap kB) when the sampler recorded it
 
 
 def samples():
@@ -50,8 +53,15 @@ def samples():
             if not p[1]:
                 out.append((t, None, None, None, None, None, None))
                 continue
-            out.append((t, int(p[1]), int(p[2]), int(p[3]), int(p[4]) if p[4] else None, int(p[5]) if p[5] else None,
-                        int(p[8]) if len(p) > 8 and p[8] else None))
+            # (the shell's anonymous memory: RssAnon plus what of it is in swap,
+            # VmSwap, when recorded: under memory pressure from builds the
+            # kernel swaps an idle shell's pages out, and RssAnon alone fell by
+            # 54 MB at idle in one run)
+            anon = int(p[8]) if len(p) > 8 and p[8] else None
+            if anon is not None and len(p) > 9 and p[9]:
+                SWAP.append((t, int(p[9])))
+                anon += int(p[9])
+            out.append((t, int(p[1]), int(p[2]), int(p[3]), int(p[4]) if p[4] else None, int(p[5]) if p[5] else None, anon))
     return out
 
 
@@ -90,43 +100,18 @@ if M0 is None or M1 is None:
     sys.exit("no measure-start/measure-end in events.tsv: the run didn't finish")
 
 # ── the log, parsed ──
-STALL = re.compile(r"^debug: stall ([0-9.]+) ms: (.*)$")
 FCB = re.compile(r"^debug: frame callback lost on (.+?): drawing")
 FIRST = re.compile(r"^first-frame (\S+) at \d+ drew ([0-9.]+) ms")
 START = re.compile(r"first-frame wall=\S+ since-main-ms=([0-9.]+)")
-NUM = re.compile(r'"[^"]*": (\d+)')
-
-
-def wake_counts(msg):
-    """(turns, frames) of one wakes line"""
-    m = re.match(r"^wakes: (\{.*?\}) drew (\{.*?\}) animating ", msg)
-    if not m:
-        return None
-    return sum(map(int, NUM.findall(m.group(1)))), sum(map(int, NUM.findall(m.group(2))))
+# (the stall lines' format, from the whole log: a window alone may hold none
+# under 16 ms)
+TRIP = TL.is_tripwire_log(m for _, m in LG)
 
 
 def stall_events(lines):
-    """[(t, ms, innermost path, outermost path)]: one per stall. An outer
-    piece (its path a strict prefix of inner ones logged just before, within
-    its own duration) closes them into one stall of the outer's time."""
-    done = []
-    for t, msg in lines:
-        m = STALL.match(msg)
-        if not m:
-            continue
-        # (a stdin line's JSON in the path: just "line", so paths group)
-        ms, path = float(m.group(1)), re.sub(r"\bline \{.*?(?= > |$)", "line", m.group(2).strip())
-        lo = t - ms / 1000.0 - 0.25
-        # (open chains only: one already closed by its outermost piece isn't
-        # taken again by the next stall's outer piece)
-        inner = [c for c in done if c[0] >= lo and len(c[3]) > len(path) and c[3].startswith(path + " > ")]
-        if inner:
-            for c in inner:
-                done.remove(c)
-            done.append([inner[0][0], max(ms, max(c[1] for c in inner)), inner[0][2], path])
-        else:
-            done.append([t, ms, path, path])
-    return [tuple(c) for c in sorted(done)]
+    """[(t, ms, innermost path, outermost path)]: one per outermost piece
+    logged (timinglog.chains), over 16 ms or not"""
+    return TL.chains(lines, TRIP)
 
 
 def in_win(t, a, b):
@@ -159,8 +144,9 @@ def vmrss_at(t, after=True, field=3):
 
 
 def anon_at(t, after=True):
-    """RssAnon MB: the budgets' memory (RssFile, the binary's and the GPU
-    driver's mapped pages, differs by tens of MB between runs of one binary)"""
+    """RssAnon (+ VmSwap) MB: the budgets' memory (RssFile, the binary's and
+    the GPU driver's mapped pages, differs by tens of MB between runs of one
+    binary)"""
     return vmrss_at(t, after, 6)
 
 
@@ -174,24 +160,31 @@ def rollup_near(t):
 
 def window_stats(a, b):
     turns = frames = n = 0
+    sleeps = None
     for t, msg in LG:
         if a < t <= b + 0.3:
-            w = wake_counts(msg)
+            w = TL.wake(msg)
             if w:
-                turns += w[0]
-                frames += w[1]
+                turns += w["turns"]
+                frames += w["frames"]
                 n += 1
-    st = [s for s in stall_events([(t, m) for t, m in LG if in_win(t, a, b)])]
+                if w["sleeps"] is not None:
+                    sleeps = (sleeps or 0) + w["sleeps"]
+    ch = stall_events([(t, m) for t, m in LG if in_win(t, a, b)])
+    st = TL.stalls(ch)
     fcb = sum(1 for t, m in LG if in_win(t, a, b) and FCB.match(m))
     span = b - a
     return {
         "seconds": round(span, 2),
         "cpu_pct": round(cpu_pct(a, b), 3),
         "wakeups_per_s": round(turns / span, 2) if span else 0,
+        # (the UI thread's real sleeps and wakes: new logs only)
+        "sleeps_per_s": round(sleeps / span, 2) if span and sleeps is not None else None,
         "frames": frames,
         "frames_per_s": round(frames / span, 2) if span else 0,
         "stalls": len(st),
         "stall_ms": round(sum(s[1] for s in st), 1),
+        "steps": len(ch) - len(st),
         "fcb_lost": fcb,
     }
 
@@ -238,7 +231,9 @@ trend_pts = [(r["rep"], r[trend_key]) for r in rep_rows if r["rep"] >= 2]
 
 # ── whole measured span ──
 mlines = [(t, m) for t, m in LG if in_win(t, M0, M1)]
-stalls = stall_events(mlines)
+chains = stall_events(mlines)
+stalls = TL.stalls(chains)
+steps = TL.steps(chains)
 by_path = {}
 for _, ms, inner, outer in stalls:
     key = inner if len(inner) <= 140 else inner[:137] + "..."
@@ -279,7 +274,9 @@ rss_idle = [x for x in rss_idle if x is not None]
 anon_idle = [x for x in (anon_at(b, after=False) for _, _, b in idle) if x is not None]
 r_end, p_end = rollup_near(M1)
 r_idle, p_idle = rollup_near(idle_end)
-total_frames = sum(w[1] for t, m in mlines for w in [wake_counts(m)] if w)
+wl = [w for w in (TL.wake(m) for _, m in mlines) if w]
+total_frames = sum(w["frames"] for w in wl)
+pres = [w for w in wl if w["presented"] is not None]
 
 load = [l for t, l, _ in LOADS if M0 <= t <= M1]
 running = [r for t, _, r in LOADS if M0 <= t <= M1 and r is not None]
@@ -297,6 +294,8 @@ out = {
         "cpu_pct": [w["cpu_pct"] for w in idle_ws],
         "cpu_pct_median": round(med([w["cpu_pct"] for w in idle_ws]), 3),
         "wakeups_per_s_median": round(med([w["wakeups_per_s"] for w in idle_ws]), 2),
+        "sleeps_per_s_median": (round(med([w["sleeps_per_s"] for w in idle_ws]), 2)
+                                if idle_ws and all(w["sleeps_per_s"] is not None for w in idle_ws) else None),
         "frames_per_s_median": round(med([w["frames_per_s"] for w in idle_ws]), 3),
     },
     "script": script,
@@ -311,6 +310,9 @@ out = {
         # (None: samples from before RssAnon was recorded)
         "idle_anon_mb": round(med(anon_idle), 2) if anon_idle else None,
         "end_anon_mb": round(anon_at(M1, after=False), 2) if anon_idle else None,
+        # (the most of the shell that was in swap while measuring: the anon
+        # numbers include it; None: not recorded)
+        "swap_mb_max": round(max(kb for t, kb in SWAP if M0 <= t <= M1) / 1024.0, 2) if any(M0 <= t <= M1 for t, _ in SWAP) else None,
         "rss_by_rep_mb": [r["rss_mb_end"] for r in rep_rows],
         "anon_by_rep_mb": [r["anon_mb_end"] for r in rep_rows],
         # (the script's memory: the median at the ends of reps 2..N, settled;
@@ -325,12 +327,18 @@ out = {
         "worst_ms": round(max((s[1] for s in stalls), default=0.0), 1),
         # (over two 60 Hz frames: a hitch anyone sees. Steadier than the
         # 16-33 ms ones, which on the build machine are mostly GPU jitter)
-        "long_count": sum(1 for s in stalls if s[1] > 33.4),
-        "long_total_ms": round(sum(s[1] for s in stalls if s[1] > 33.4), 1),
+        "long_count": sum(1 for s in stalls if s[1] > TL.LONG_MS),
+        "long_total_ms": round(sum(s[1] for s in stalls if s[1] > TL.LONG_MS), 1),
+        # (which log: "tripwire" logs steps over 8 ms; the stalls above are
+        # still the outermost pieces over 16 ms, the 8-16 ms ones are here)
+        "log_format": "tripwire" if TRIP else "old",
+        "steps_8_16": {"count": len(steps), "total_ms": round(sum(s[1] for s in steps), 1)} if TRIP else None,
         "by_path": dict(sorted(by_path.items(), key=lambda kv: -kv[1]["ms"])[:25]),
         "by_top": dict(sorted(by_top.items(), key=lambda kv: -kv[1]["ms"])),
     },
     "frames": total_frames,
+    # (wp_presentation: animation frames on screen and missed refreshes, new logs only)
+    "presented": {"frames": sum(w["presented"] for w in pres), "missed": sum(w["missed"] for w in pres)} if pres else None,
     "fcb_lost": {"count": sum(fcb.values()), "by_surface": fcb},
     "panics": {"count": len(panics), "lines": panics[:10]},
     "errors": {"count": len(errors), "lines": errors[:10]},

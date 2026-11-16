@@ -4,34 +4,37 @@
 The same lines the gate reads (analyze.py's docstring), without timestamps:
 the wakes lines (one a second while the timing log is on) give the seconds
 covered, the loop's turns and the frames; stalls are grouped per chain as in
-analyze.py (an outer piece closes the inner ones logged just before it).
+analyze.py (timinglog.py: both log formats; stalls are the outermost pieces
+over 16 ms, a tripwire log's 8-16 ms steps are counted apart). A new log's
+wakes line can cover more than a second (the loop sleeps to its deadline):
+wake_seconds counts lines, so it is a lower bound there.
 Prints JSON, for docs/gate.md's real-session comparison.
 """
 import json
+import os
 import re
 import statistics
 import sys
 
-STALL = re.compile(r"^debug: stall ([0-9.]+) ms: (.*)$")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import timinglog as TL  # noqa: E402
+
 FCB = re.compile(r"^debug: frame callback lost on (.+?): drawing")
 FIRST = re.compile(r"^first-frame (\S+) at \d+ drew ([0-9.]+) ms")
 START = re.compile(r"first-frame wall=\S+ since-main-ms=([0-9.]+)")
-WAKES = re.compile(r"^wakes: (\{.*?\}) drew (\{.*?\}) animating ")
-NUM = re.compile(r'"[^"]*": (\d+)')
 
 
 def summarize(path):
     lines = open(path, "rb").read().decode("utf-8", "replace").splitlines()
     secs = turns = frames = quiet = 0
     fps = []
-    chains = []  # [index, ms, inner, outer]
+    stall_lines = []  # (index, line)
     fcb, first, starts, panics = {}, {}, [], []
     for i, ln in enumerate(lines):
-        m = WAKES.match(ln)
-        if m:
+        w = TL.wake(ln)
+        if w:
             secs += 1
-            t = sum(map(int, NUM.findall(m.group(1))))
-            f = sum(map(int, NUM.findall(m.group(2))))
+            t, f = w["turns"], w["frames"]
             turns += t
             frames += f
             if f == 0:
@@ -39,16 +42,8 @@ def summarize(path):
             else:
                 fps.append(f)
             continue
-        m = STALL.match(ln)
-        if m:
-            ms, p = float(m.group(1)), re.sub(r"\bline \{.*?(?= > |$)", "line", m.group(2).strip())
-            inner = [c for c in chains[-12:] if i - c[0] < 40 and len(c[3]) > len(p) and c[3].startswith(p + " > ")]
-            if inner:
-                for c in inner:
-                    chains.remove(c)
-                chains.append([inner[0][0], max(ms, max(c[1] for c in inner)), inner[0][2], p])
-            else:
-                chains.append([i, ms, p, p])
+        if TL.stall_line(ln):
+            stall_lines.append((i, ln))
             continue
         m = FCB.match(ln)
         if m:
@@ -63,6 +58,8 @@ def summarize(path):
             starts.append(float(m.group(1)))
         if "panicked at" in ln:
             panics.append(ln[:200])
+    all_chains = TL.chains(stall_lines, timed=False)
+    chains = TL.stalls(all_chains)
     by = {}
     for _, ms, inner, outer in chains:
         e = by.setdefault(inner[:140], {"count": 0, "ms": 0.0, "worst": 0.0})
@@ -79,6 +76,7 @@ def summarize(path):
         "frames": frames,
         "frames_per_busy_s_median": statistics.median(fps) if fps else None,
         "stalls": len(chains),
+        "steps_8_16": len(all_chains) - len(chains),
         "stall_total_ms": round(sum(big), 1),
         "stall_ms_p50": statistics.median(big) if big else None,
         "stall_worst_ms": big[-1] if big else None,

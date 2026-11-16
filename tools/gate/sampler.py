@@ -5,7 +5,7 @@
 
 - samples.tsv: every 0.5 s the arena's shell process (tessera-ui --standalone
   whose XDG_RUNTIME_DIR is this arena's): wall time, pid, CPU ticks
-  (utime+stime, /proc/<pid>/stat), VmRSS and RssAnon kB (/proc/<pid>/status), and every
+  (utime+stime, /proc/<pid>/stat), VmRSS, RssAnon and VmSwap kB (/proc/<pid>/status), and every
   3 s Pss/Rss kB from /proc/<pid>/smaps_rollup (that walks the page tables,
   so not every sample). A pid change is a restart.
 - log.tsv: the shell's log, every line with the wall time it was read
@@ -66,17 +66,22 @@ def ticks(pid):
 
 
 def vmrss(pid):
-    """(VmRSS, RssAnon) kB. RssAnon is what the budgets use: RssFile (the
-    180 MB binary's pages, libraries, the GPU driver's mappings) differs by
-    tens of MB between two runs of the same binary"""
-    rss = anon = 0
+    """(VmRSS, RssAnon, VmSwap) kB. RssAnon (+ VmSwap) is what the budgets
+    use: RssFile (the 180 MB binary's pages, libraries, the GPU driver's
+    mappings) differs by tens of MB between two runs of the same binary.
+    VmSwap: an idle shell's pages are the first the kernel swaps out when
+    builds press on memory (17 Nov: 54 MB of a 69 MB RssAnon gone to swap at
+    idle), and swapped pages leave RssAnon"""
+    rss = anon = swap = 0
     with open(f"/proc/{pid}/status") as f:
         for line in f:
             if line.startswith("VmRSS:"):
                 rss = int(line.split()[1])
             elif line.startswith("RssAnon:"):
                 anon = int(line.split()[1])
-    return rss, anon
+            elif line.startswith("VmSwap:"):
+                swap = int(line.split()[1])
+    return rss, anon, swap
 
 
 def rollup(pid):
@@ -146,7 +151,7 @@ class Follower:
 
 
 samples = open(os.path.join(out, "samples.tsv"), "w", buffering=1)
-samples.write("t\tpid\tticks\tvmrss_kb\trss_kb\tpss_kb\tload1\trunning\tanon_kb\n")
+samples.write("t\tpid\tticks\tvmrss_kb\trss_kb\tpss_kb\tload1\trunning\tanon_kb\tswap_kb\n")
 logsink = open(os.path.join(out, "log.tsv"), "wb", buffering=0)
 fol = Follower(logpath, logsink)
 pid, next_sample, next_rollup, next_scan = None, 0.0, 0.0, 0.0
@@ -164,15 +169,15 @@ while not stop:
                 pid = find_shell()
         if pid is not None:
             try:
-                tk, (vr, an) = ticks(pid), vmrss(pid)
+                tk, (vr, an, sw) = ticks(pid), vmrss(pid)
                 rr = pp = ""
                 if now >= next_rollup:
                     next_rollup = now + 3.0
                     rr, pp = rollup(pid)
-                samples.write(f"{now:.3f}\t{pid}\t{tk}\t{vr}\t{rr}\t{pp}\t{load1()}\t{an}\n")
+                samples.write(f"{now:.3f}\t{pid}\t{tk}\t{vr}\t{rr}\t{pp}\t{load1()}\t{an}\t{sw}\n")
             except (OSError, ValueError, IndexError):
                 pid = None
         else:
-            samples.write(f"{now:.3f}\t\t\t\t\t\t{load1()}\t\n")
+            samples.write(f"{now:.3f}\t\t\t\t\t\t{load1()}\t\t\n")
     time.sleep(0.1)
 fol.poll(time.time())

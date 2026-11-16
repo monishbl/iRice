@@ -76,9 +76,9 @@ check("idle_cpu_pct", B["idle"]["cpu_pct_median"], C["idle"]["cpu_pct_median"], 
 # (memory: RssAnon, the heap and GPU buffers the shell made. VmRSS adds
 # RssFile, which differs by tens of MB between two runs of one binary: shown, not budgeted)
 mem = lambda R, k: R["mem"][k] if R["mem"].get(k.replace("rss", "anon")) is None else R["mem"][k.replace("rss", "anon")]
-check("idle_rss_mb", mem(B, "idle_rss_mb"), mem(C, "idle_rss_mb"), "MB", "idle_rss_mb", note="RssAnon; 10 MB + 5 MB of measured noise")
+check("idle_rss_mb", mem(B, "idle_rss_mb"), mem(C, "idle_rss_mb"), "MB", "idle_rss_mb", note="RssAnon (+ swap)")
 if B["mem"].get("script_anon_mb") is not None and C["mem"].get("script_anon_mb") is not None:
-    check("script_rss_mb", B["mem"]["script_anon_mb"], C["mem"]["script_anon_mb"], "MB", "rss_mb", note="RssAnon, median at the ends of reps 2..N")
+    check("script_rss_mb", B["mem"]["script_anon_mb"], C["mem"]["script_anon_mb"], "MB", "rss_mb", note="RssAnon (+ swap), median at the ends of reps 2..N")
 check("end_rss_mb", mem(B, "end_rss_mb"), mem(C, "end_rss_mb"), "MB", "end_rss_mb", note="RssAnon, after the lock: noisy, not gating")
 check("stall_count", B["stalls"]["count"], C["stalls"]["count"], "stalls")
 check("stall_total_ms", B["stalls"]["total_ms"], C["stalls"]["total_ms"], "ms")
@@ -153,6 +153,11 @@ for lab, R in ((labels[0], B), (labels[1], C)):
     md.append(f"**{lab}**: idle CPU {R['idle']['cpu_pct']} %, wakeups/s {R['idle']['wakeups_per_s_median']}, "
               f"idle frames/s {R['idle']['frames_per_s_median']}; script CPU {R['script']['cpu_pct']} %, "
               f"frames {R['frames']}; stalls {R['stalls']['count']} ({R['stalls']['total_ms']} ms, worst {R['stalls']['worst_ms']} ms); "
+              + (f"8-16 ms steps {R['stalls']['steps_8_16']['count']} ({R['stalls']['steps_8_16']['total_ms']} ms; the tripwire's, not budgeted); "
+                 if R["stalls"].get("steps_8_16") else "")
+              + (f"idle sleeps/s {R['idle']['sleeps_per_s_median']}; " if R["idle"].get("sleeps_per_s_median") is not None else "")
+              + (f"presented frames {R['presented']['frames']}, missed {R['presented']['missed']}; " if R.get("presented") else "")
+              + f"log {R['stalls'].get('log_format', 'old')}; "
               f"RssAnon idle {R['mem'].get('idle_anon_mb')} MB, end {R['mem'].get('end_anon_mb')} MB; VmRSS idle {R['mem']['idle_rss_mb']} MB, end {R['mem']['end_rss_mb']} MB, PSS end {R['mem']['end_pss_mb']} MB; "
               f"start-up {R['startup_ms']} ms")
     md.append("")

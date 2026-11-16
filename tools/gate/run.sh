@@ -15,7 +15,7 @@
 # at nice 10.
 # Env: GATE_ROUNDS (2: the second with the arenas swapped, each side's
 # rounds averaged), GATE_PARALLEL (1: both arenas at once; 0: one after the
-# other, the order swapped too), GATE_REPS, GATE_IDLE, GATE_MALLOC_ARENAS
+# other, the order swapped too), GATE_REPS, GATE_IDLE, GATE_MALLOC_ARENAS, GATE_MALLOC_MMAP
 # (gate.sh), GATE_TB (~/tessera-build), GATE_OUT (report dir), GATE_MAX_LOAD
 # (8), GATE_WAIT (60 s, inside the hold, for a quiet machine), GATE_RETRIES (1), GATE_HOLD_MAX
 # (600 s: the longest the builds are held; each hold is followed by a pause

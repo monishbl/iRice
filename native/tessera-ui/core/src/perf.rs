@@ -8,7 +8,10 @@
 //!   `debug: stall 42.1 ms: msg host > part host > host Wm > tick feed.send`
 //!   Only the piece that holds the time logs: the innermost one over the
 //!   tripwire, and an outer one only when its own code beyond that took
-//!   long too (`… (own 12.0 ms)`).
+//!   long too (`… (own 12.0 ms)`), or when it is the loop's outermost piece
+//!   and a stall (over `STALL_MS`, its pieces logged): that line closes the
+//!   chain, so a turn spent in several 8-16 ms steps still reads as one
+//!   stall of its whole time (tools/gate/timinglog.py).
 //!   Also on (without TESSERA_DEBUG) while $XDG_RUNTIME_DIR/tessera-wakes exists.
 //! - **Reloads**: a surface that hands a list a new model (every element
 //!   made again) or makes a window again says so:
@@ -54,8 +57,8 @@ thread_local! {
 /// the innermost one over the tripwire, and an outer one only for what its
 /// own code took beyond its logged pieces (so one slow call is one line, not
 /// one per level it ran under)
-fn worth_logging(ms: f64, inner_ms: f64, inner_logged: bool) -> bool {
-    ms > STEP_MS && (!inner_logged || ms - inner_ms > STEP_MS)
+fn worth_logging(ms: f64, inner_ms: f64, inner_logged: bool, outermost: bool) -> bool {
+    ms > STEP_MS && (!inner_logged || ms - inner_ms > STEP_MS || (outermost && ms > STALL_MS))
 }
 
 /// Run `f` as the named piece of work; logged when it holds the UI thread
@@ -75,7 +78,7 @@ pub fn time<R>(what: impl FnOnce() -> String, f: impl FnOnce() -> R) -> R {
     let path = WHAT.with(|w| {
         let mut w = w.borrow_mut();
         let Some(top) = w.last() else { return None };
-        let log = worth_logging(ms, top.inner_ms, top.inner_logged);
+        let log = worth_logging(ms, top.inner_ms, top.inner_logged, w.len() == 1);
         let own = ms - top.inner_ms;
         let p = log.then(|| {
             let p = w.iter().map(|s| s.label.as_str()).collect::<Vec<_>>().join(" > ");
@@ -161,12 +164,16 @@ mod tests {
     #[test]
     fn only_the_step_that_holds_the_time_is_logged() {
         // quick: never
-        assert!(!worth_logging(5.0, 0.0, false));
+        assert!(!worth_logging(5.0, 0.0, false, false));
         // slow, nothing inside it logged: it is the culprit
-        assert!(worth_logging(30.0, 2.0, false));
+        assert!(worth_logging(30.0, 2.0, false, false));
         // slow because a piece inside was (logged already): not again
-        assert!(!worth_logging(31.0, 30.0, true));
+        assert!(!worth_logging(31.0, 30.0, true, false));
         // slow beyond its logged piece: its own code is slow too
-        assert!(worth_logging(60.0, 30.0, true));
+        assert!(worth_logging(60.0, 30.0, true, false));
+        // the loop's outermost piece over a frame closes the chain (the stall's whole time)
+        assert!(worth_logging(20.0, 19.5, true, true));
+        // …but not under a frame
+        assert!(!worth_logging(15.0, 14.5, true, true));
     }
 }

@@ -16,8 +16,15 @@ REPS=${GATE_REPS:-4} IDLE=${GATE_IDLE:-20:3}
 # which ones get touched varies run to run: RssAnon of one binary differed
 # by up to 40 MB between runs. GATE_MALLOC_ARENAS (2) caps them for both
 # sides alike, so the memory budget measures the change, not the luck;
-# 0 leaves glibc's default. It reaches the shell through dev.sh reload's env)
-if [[ ${GATE_MALLOC_ARENAS:-2} != 0 ]]; then export MALLOC_ARENA_MAX=${GATE_MALLOC_ARENAS:-2}; fi
+# 0 leaves glibc's default. It reaches the shell through dev.sh reload's env.
+# Two arenas still left it to luck: which threads share the second one
+# (17 Nov, one binary: 2.5-32 MB there, script RssAnon 78-108 MB). One arena
+# (GATE_MALLOC_ARENAS=1) and a fixed mmap threshold (GATE_MALLOC_MMAP,
+# 64 KiB: big buffers, decoded images, go back to the system when freed,
+# instead of glibc's threshold growing with each free and keeping them in
+# the heap) measure what the shell holds, within ~1 MB run to run)
+if [[ ${GATE_MALLOC_ARENAS:-1} != 0 ]]; then export MALLOC_ARENA_MAX=${GATE_MALLOC_ARENAS:-1}; fi
+if [[ ${GATE_MALLOC_MMAP:-65536} != 0 ]]; then export MALLOC_MMAP_THRESHOLD_=${GATE_MALLOC_MMAP:-65536}; fi
 . "$GATE/../../site/film/tessera/capture/lib.sh"   # (dev, inbox, setup, HOMEDIR, WALLS)
 . "$ROOT/sandbox/lib.sh"                            # (TESSERA_RT)
 RT=$TESSERA_RT
