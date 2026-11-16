@@ -1165,8 +1165,10 @@ mod tests {
             assert_eq!(s.mode, 0);
             assert!(s.tiled);
         }
-        // an old file (Config.qml renames it "look" as it loads): each look's own
-        assert_eq!(style(serde_json::json!({"appearance": {"iconStyle": "default"}}), false).mode, 2);
+        // an old file: the shell renames its "default" to "look" as it loads
+        // (host/shell common.rs, as Config.qml), so the dock sees "look":
+        // each look's own
+        assert_eq!(style(serde_json::json!({"appearance": {"iconStyle": "look"}}), false).mode, 2);
         assert_eq!(style(serde_json::json!({"defaultsVersion": 3, "appearance": {"iconStyle": "look"}}), true).mode, 4);
     }
 

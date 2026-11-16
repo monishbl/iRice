@@ -995,11 +995,12 @@ mod tests {
         assert_eq!(r[0].run, Run::App("firefox".into()));
         assert_eq!(r[0].subtitle, "Web Browser");
         assert_eq!(w.answer.as_deref(), Some("fire"));
-        // apps found by their generic name (a tie: the first listed leads), the AI row and the web search after
+        // apps found by their generic name (a tie: by name, so the order
+        // doesn't change from run to run), the AI row and the web search after
         let (r, _) = query("browser", &k);
         let t = titles(&r);
-        assert_eq!(t[0], ("Top Hit".into(), "Firefox".into()));
-        assert_eq!(t[1], ("Applications".into(), "Chromium".into()));
+        assert_eq!(t[0], ("Top Hit".into(), "Chromium".into()));
+        assert_eq!(t[1], ("Applications".into(), "Firefox".into()));
         assert_eq!(t[t.len() - 2], ("Ask AI".into(), "Set up AI…".into()));
         assert_eq!(t[t.len() - 1], ("Web".into(), "Search the web for “browser”".into()));
         // an action named for it beats an app found only by keywords
