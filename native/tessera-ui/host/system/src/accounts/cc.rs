@@ -328,7 +328,7 @@ impl ControlCenter {
         let pw = g("Power");
         let focus = g("focus");
         let sharing = hs(h, "sharing");
-        let mirr = g("mirroring");
+        let mirr = hs(h, "mirroring");
         let net = g("network");
         let wifi = h.st.shell.get::<Wifi>().cloned().unwrap_or_default();
         let bt = h.st.shell.get::<Bluetooth>().cloned().unwrap_or_default();
@@ -541,7 +541,7 @@ impl ControlCenter {
                 }
             }
         }
-        let cast = g("cast");
+        let cast = hs(h, "cast");
         let account = g("account");
         let profiles: Value = if self.page == "sound" {
             let ap = g("AudioProfiles");
@@ -578,7 +578,7 @@ impl ControlCenter {
             "focus" => self.focus_page(h),
             "caffeine" => self.caffeine_page(),
             "sharing" => self.sharing_page(h),
-            "mirroring" => self.mirroring_page(),
+            "mirroring" => self.mirroring_page(h),
             "cast" => self.cast_page(h),
             "resources" => self.resources_page(),
             _ => json!({"name": name, "title": name, "blocks": []}),
@@ -884,8 +884,8 @@ impl ControlCenter {
         json!({"name": "sharing", "title": "Sharing", "switch": true, "switchOn": level != "off", "switchLabel": "Visible to nearby devices", "blocks": blocks})
     }
 
-    fn mirroring_page(&self) -> Value {
-        let m = g("mirroring");
+    fn mirroring_page(&self, h: &Host) -> Value {
+        let m = hs(h, "mirroring");
         let needs = g("needs");
         let displays = m["displays"].as_array().cloned().unwrap_or_default();
         let mut blocks = vec![];
@@ -924,7 +924,7 @@ impl ControlCenter {
     }
 
     fn cast_page(&self, h: &Host) -> Value {
-        let c = g("cast");
+        let c = hs(h, "cast");
         let needs = g("needs");
         let health = g("health");
         let p = h.st.shell.get::<Players>().and_then(|ps| ps.chosen().cloned());
@@ -1424,7 +1424,7 @@ impl ControlCenter {
             }
             ("sharing", _) => self.sharing_block(h, id, what, text),
             ("mirroring", _) => {
-                let sh = g("mirroring");
+                let sh = hs(h, "mirroring");
                 if let Some(u) = id.strip_prefix("m:") {
                     if ss(&sh, "target") == u {
                         h.ask("mirroring.stop", json!([]));
@@ -1434,7 +1434,7 @@ impl ControlCenter {
                 }
             }
             ("cast", _) => {
-                let c = g("cast");
+                let c = hs(h, "cast");
                 if id == "avahi" {
                     h.ask("needs.turnOnAvahi", json!([]));
                 } else if let Some(tid) = id.strip_prefix("t:") {
