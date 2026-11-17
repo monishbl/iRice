@@ -194,6 +194,7 @@ pub fn presented(interval_ns: u64, refresh_ns: u64, gpu_bound: bool) {
         return;
     }
     let missed = missed_in(interval_ns, refresh_ns);
+    crate::health::frames(1, missed);
     LAST_ANIM.with(|l| l.set(Some(Instant::now())));
     STATS.with(|s| s.borrow_mut().add(interval_ns, refresh_ns, missed));
     TOTAL.with(|s| s.borrow_mut().add(interval_ns, refresh_ns, missed));
@@ -204,6 +205,7 @@ pub fn presented(interval_ns: u64, refresh_ns: u64, gpu_bound: bool) {
 
 /// An animation frame never reached the screen (a newer one replaced it)
 pub fn discarded() {
+    crate::health::frames(0, 1);
     STATS.with(|s| s.borrow_mut().discarded += 1);
     TOTAL.with(|s| s.borrow_mut().discarded += 1);
     SLOW.with(|s| s.borrow_mut().frame(0, 1));

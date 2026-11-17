@@ -212,6 +212,9 @@ case "${1:-start}" in
                 misses=0
             elif (( ++misses >= limit )); then
                 notify-send -a Tessera "Restarting the shell" "It stopped responding." 2>/dev/null
+                # (Settings → Health: the next start reads why; tessera-ui's core/src/health.rs)
+                h="${XDG_STATE_HOME:-$HOME/.local/state}/tessera/health.jsonl"
+                [[ -d "${h%/*}" ]] && printf '{"t":%s,"ev":"watchdog","why":"not responding"}\n' "$(date +%s)" >>"$h"
                 stop; start
                 misses=0
                 sleep 10

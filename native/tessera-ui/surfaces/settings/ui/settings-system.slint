@@ -199,6 +199,121 @@ component FpSheet inherits Rectangle {
     }
 }
 
+// ── Health's bar chart (a whole row) ────────────────────────────────────
+// r.label the title, r.value what it is now (a hovered bar says its own),
+// r.text the scale's top, r.low / r.high the time at each end, r.detail
+// the chart in words (for screen readers); r.data one bar a slot: num its
+// height (0..1), detail what it says, style 0 the accent, 1 a warning (a
+// slot with long stalls), 3 no record. r.from / r.to: Material's tile
+// rounds at the group's ends.
+component HealthChart {
+    in property <SetRow> r;
+    property <int> hovered: -1;
+    property <length> pad: Theme.material ? 20px : 14px;
+    property <color> ink: Theme.material ? Theme.m3-primary : Theme.accent;
+    min-height: body.preferred-height;
+    if Theme.material: Rectangle {
+        border-top-left-radius: r.from > 0 ? 24px : 4px;
+        border-top-right-radius: r.from > 0 ? 24px : 4px;
+        border-bottom-left-radius: r.to > 0 ? 24px : 4px;
+        border-bottom-right-radius: r.to > 0 ? 24px : 4px;
+        background: Theme.m3-surface-container-high;
+    }
+    body := VerticalLayout {
+        padding-left: pad;
+        padding-right: pad;
+        padding-top: 12px;
+        padding-bottom: 12px;
+        spacing: 8px;
+        HorizontalLayout {
+            spacing: 12px;
+            Text {
+                text: r.label;
+                color: Theme.label;
+                font-size: Theme.material ? 14px : Theme.body;
+                font-weight: 500;
+                vertical-alignment: center;
+            }
+            Text {
+                horizontal-stretch: 1;
+                horizontal-alignment: right;
+                vertical-alignment: center;
+                overflow: elide;
+                text: root.hovered >= 0 && root.hovered < r.data.length ? r.data[root.hovered].detail : r.value;
+                color: Theme.secondary;
+                font-size: Theme.small;
+            }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            Rectangle {
+                height: 72px;
+                horizontal-stretch: 1;
+                accessible-role: AccessibleRole.image;
+                accessible-label: r.detail;
+                // (the scale's top and the baseline)
+                Rectangle {
+                    y: 0;
+                    height: 1px;
+                    background: Theme.separator;
+                }
+                Rectangle {
+                    y: parent.height - 1px;
+                    height: 1px;
+                    background: Theme.separator;
+                }
+                HorizontalLayout {
+                    spacing: r.data.length > 26 ? 2px : 3px;
+                    for o[i] in r.data: Rectangle {
+                        horizontal-stretch: 1;
+                        min-width: 2px;
+                        property <length> h: o.style == 3 ? 0px : max(2px, self.height * o.num);
+                        Rectangle {
+                            y: parent.height - parent.h;
+                            height: parent.h;
+                            border-top-left-radius: min(2px, self.width / 2);
+                            border-top-right-radius: min(2px, self.width / 2);
+                            background: o.style == 1 ? Theme.warning : root.ink;
+                            opacity: root.hovered < 0 || root.hovered == i ? 1 : 0.45;
+                            animate opacity { duration: SM.hover; }
+                        }
+                        TouchArea {
+                            changed has-hover => {
+                                if self.has-hover {
+                                    root.hovered = i;
+                                } else if root.hovered == i {
+                                    root.hovered = -1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Text {
+                text: r.text;
+                font-size: Theme.caption;
+                color: Theme.tertiary;
+                vertical-alignment: top;
+                min-width: 40px;
+            }
+        }
+        HorizontalLayout {
+            padding-right: 48px;
+            Text {
+                text: r.low;
+                font-size: Theme.caption;
+                color: Theme.tertiary;
+            }
+            Rectangle { horizontal-stretch: 1; }
+            Text {
+                text: r.high;
+                font-size: Theme.caption;
+                color: Theme.tertiary;
+            }
+        }
+    }
+}
+
 // A custom block (`b.kind == "custom" && b.group == "system"`)
 export component SystemBlock inherits VerticalLayout {
     in property <SBlock> b;
@@ -209,6 +324,8 @@ export component SystemBlock inherits VerticalLayout {
 export component SystemCtl inherits VerticalLayout {
     in property <SetRow> r;
     alignment: center;
+    // Health's charts
+    if r.sub == "chart": HealthChart { r: r; }
     // A finger to add: its Dropdown, and Add
     if r.sub == "pick-add": HorizontalLayout {
         spacing: 8px;

@@ -216,6 +216,29 @@ pub fn save_bundle() -> std::io::Result<PathBuf> {
     Ok(path)
 }
 
+/// Is a report (by its file name, "20261116-140233-dock.txt") still kept?
+pub fn exists(name: &str) -> bool {
+    !name.is_empty() && !name.contains('/') && dir().join(name).is_file()
+}
+
+/// Save one report (by its file name) to Downloads: the file
+pub fn save_one(name: &str) -> std::io::Result<PathBuf> {
+    if !exists(name) {
+        return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "the report was deleted"));
+    }
+    let dl = crate::util::user_dir("DOWNLOAD", "Downloads");
+    std::fs::create_dir_all(&dl)?;
+    let stem = format!("tessera-crash-{}", name.trim_end_matches(".txt"));
+    let mut path = dl.join(format!("{stem}.txt"));
+    let mut i = 2;
+    while path.exists() {
+        path = dl.join(format!("{stem}-{i}.txt"));
+        i += 1;
+    }
+    std::fs::copy(dir().join(name), &path)?;
+    Ok(path)
+}
+
 /// Where deleted reports wait for an Undo (emptied at the next delete)
 fn trash() -> PathBuf {
     dir().join(".deleted")

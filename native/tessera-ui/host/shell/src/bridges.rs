@@ -899,6 +899,7 @@ impl Service for Bridges {
         // died" screen until a restart (16 Nov)
         if locked_mark().exists() {
             eprintln!("tessera-ui: lock: the shell before ended while locked: locking again");
+            tessera_core::health::event("lock", json!({}));
             self.set_locked(h, true);
         }
         h.set_state("menubar.resources", json!(cfg_bool(h.cfg(), "menubar.resources", false)));

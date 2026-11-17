@@ -1,13 +1,15 @@
 //! The "system" page group: Privacy & Security (with Fingerprint and Face),
-//! Battery & Power (and its Cool-down subpage), Accessibility. Its own
-//! views: ui/settings-system.slint (the add-a-finger sheet, the Add finger
-//! row, the apps' energy bars). What only the QML shell knows comes from
+//! Battery & Power (and its Cool-down subpage), Accessibility, and Health
+//! (Rust only: health.rs, the shell's own record). Its own views:
+//! ui/settings-system.slint (the add-a-finger sheet, the Add finger row, the
+//! apps' energy bars, Health's charts). What only the QML shell knows comes from
 //! shell/modules/settings/RustBridgeSystem.qml (`cx.feed["system"]`); what
 //! only it does (anything that needs root, the power daemon, installs)
 //! goes there (`cx.ask("system", …)`).
 
 pub mod access;
 pub mod art;
+pub mod health;
 pub mod power;
 pub mod security;
 
@@ -22,6 +24,7 @@ pub fn build(page: &str, cx: &mut Ctx, p: &mut Page) -> bool {
         "power" => power::power(cx, p),
         "power/cooldown" => power::cooldown(cx, p),
         "accessibility" => access::accessibility(cx, p),
+        "health" => health::page(cx, p),
         _ => return false,
     }
     true

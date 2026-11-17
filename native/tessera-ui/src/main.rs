@@ -366,6 +366,12 @@ fn main() {
     let mut prewarm: Option<usize> = Some(0);
     let mut first_frame_at: Option<Instant> = None;
     let mut wakes = tessera_core::wayland::Wakes::default();
+    // (the health record, Settings → Health: the loop's turns timed from
+    // the poll's return, a sample each 5 minutes; the whole shell only)
+    if standalone {
+        let _ = lh.insert_source(tessera_core::health::Woke, |_, _, _| {});
+        tessera_core::health::start();
+    }
     while !state.exit {
         if first_frame_at.is_none() && state.first_frame_logged {
             first_frame_at = Some(Instant::now());
@@ -433,9 +439,11 @@ fn main() {
             let i = prewarm.unwrap();
             prewarm = state.prewarm_part(i).then_some(i + 1);
         }
+        tessera_core::health::turn_end();
     }
     tessera_core::work::set_leaving();
     state.each_part(|p, st| p.quit(st));
+    tessera_core::health::stop();
     // (settings and state queued from the loop: written before we go; and
     // Hyprland's dispatches asked last)
     tessera_core::cfgfile::flush();

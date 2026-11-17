@@ -26,6 +26,7 @@ pub mod egl;
 pub mod gpu;
 pub mod inhibit;
 pub mod env;
+pub mod health; // (the health record Settings → Health shows: health.rs)
 pub mod global_shortcuts; // (Hyprland's global shortcuts, as Quickshell's GlobalShortcut: standalone)
 pub mod host; // (wave 4: the QML shell's side, in Rust; standalone only)
 pub mod icon_theme;

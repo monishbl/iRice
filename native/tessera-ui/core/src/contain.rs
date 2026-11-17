@@ -112,7 +112,11 @@ pub fn install(make: Factory) {
                     let _ = WRITING.try_with(|w| w.borrow_mut().drain(..).for_each(|h| drop(h.join())));
                 }
                 let path = crate::crash::write(&p);
-                eprintln!("tessera-ui: crash report: {}", path.map_or("(not written)".into(), |p| p.display().to_string()));
+                eprintln!("tessera-ui: crash report: {}", path.as_ref().map_or("(not written)".into(), |p| p.display().to_string()));
+                // (the health record: the shell's own end, read by the next start)
+                if main && crate::health::on() {
+                    crate::health::event_now("crash", serde_json::json!({"part": p.part, "fatal": true, "report": report_name(path.as_deref())}));
+                }
                 default(info);
             }
         }
@@ -174,7 +178,11 @@ fn failed(name: &'static str, payload: Box<dyn Any + Send>) {
         WRITING.with(|w| {
             let mut w = w.borrow_mut();
             w.retain(|h| !h.is_finished());
-            w.push(crate::crash::write_later(p));
+            w.push(std::thread::spawn(move || {
+                let path = crate::crash::write(&p);
+                crate::health::event("crash", serde_json::json!({"part": p.part, "report": report_name(path.as_deref())}));
+                path
+            }));
         });
     }
     // (dropping the panic's payload can panic too: not here)
@@ -186,6 +194,12 @@ fn failed(name: &'static str, payload: Box<dyn Any + Send>) {
         }
     });
     ANY_FAILED.with(|a| a.set(true));
+    crate::health::part_crashed();
+}
+
+/// A report's file name for the health record ("" when none was written)
+fn report_name(path: Option<&std::path::Path>) -> String {
+    path.and_then(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
 }
 
 /// What a failed part handed over (`Part::hand_over`), for the new one
@@ -301,6 +315,7 @@ impl State {
             if !is_off(name) {
                 OFF.with(|o| o.borrow_mut().push(name));
                 eprintln!("tessera-ui: {name} is off until the next login");
+                crate::health::event("off", serde_json::json!({"part": name}));
                 tell_off(name);
             }
             return;
@@ -331,6 +346,9 @@ impl State {
             if count >= LOCK_LIMIT {
                 eprintln!("tessera-ui: the lock failed {count} times in 2 minutes: the shell ends (the session stays locked)");
                 WRITING.with(|w| w.borrow_mut().drain(..).for_each(|h| drop(h.join())));
+                if crate::health::on() {
+                    crate::health::event_now("crash", serde_json::json!({"part": LOCK, "fatal": true, "report": ""}));
+                }
                 std::process::exit(1);
             }
             // (at once: a locked session is never without its screen)
@@ -340,6 +358,7 @@ impl State {
         if count >= LIMIT {
             OFF.with(|o| o.borrow_mut().push(name));
             eprintln!("tessera-ui: {name} failed {count} times in 2 minutes: off until the next login");
+            crate::health::event("off", serde_json::json!({"part": name}));
             tell_off(name);
             return;
         }

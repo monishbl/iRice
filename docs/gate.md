@@ -293,6 +293,29 @@ What it says:
   the lock) are far longer than anything the script provokes; those are
   one-offs a 5-minute script can't promise to catch.
 
+### Real sessions over days: the health record
+
+The timing log is a debug switch; the shell also keeps a small record of
+itself all the time (17 Nov, Rust only: `native/tessera-ui/core/src/health.rs`,
+shown in Settings → System → Health): `~/.local/state/tessera/health.jsonl`,
+one JSON object a line, at most 200 KB and 8 days, never sent anywhere.
+
+- A sample each 5 minutes on the wall clock: `t` (the bucket's start), `d`
+  (seconds covered), `rss`/`pss` (KiB, smaps_rollup), `cpu` (ms of processor
+  time, every thread), and only when not zero `s16`/`s33` (loop turns over
+  16 / 33 ms, from the poll's return to the turn's end: the gate's "stall",
+  counted whether the timing log is on or not), `w` (the worst, ms), `fr`/`mf`
+  (animation frames shown / missed, only while wp_presentation is asked:
+  the wake log or the slow-GPU watch), `c` (parts that panicked).
+- Events: `start` (`why`: normal, crash, stopped, watchdog, retry; `gpu`;
+  `s` the Hyprland session), `stop`, `crash` (`part`, `report`, `fatal`),
+  `off`, `lock`, `gpu-slow`, and from the scripts `watchdog` and `fallback`.
+
+`jq -c 'select(.s16)' ~/.local/state/tessera/health.jsonl` lists the
+buckets that stalled. Its own cost is two clock reads a loop turn and one
+small write every 5 minutes on the work pool (no timer of its own); the
+gate's overhead check (base `round`, candidate `health`) is in RUST-ONLY.md.
+
 ## Limits and what's left
 
 - The sandbox draws through a hidden KWin on server1's NVIDIA GPU, not the

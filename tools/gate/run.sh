@@ -19,7 +19,9 @@
 # (gate.sh), GATE_TB (~/tessera-build), GATE_OUT (report dir), GATE_MAX_LOAD
 # (8), GATE_WAIT (60 s, inside the hold, for a quiet machine), GATE_RETRIES (1), GATE_HOLD_MAX
 # (600 s: the longest the builds are held; each hold is followed by a pause
-# as long before the next).
+# as long before the next), GATE_ARENAS ("13 14": the two arenas; another
+# pair lets two gates run at once), GATE_COPY ("": a suffix for the build
+# copies, ~/tb-gate-base<suffix>, so two gates don't share a checkout).
 # The sandbox (dev.sh, hypr config, glass plugin, the script) is this
 # checkout's for both sides: only the tessera-ui binary differs.
 set -uo pipefail
@@ -46,7 +48,7 @@ fi
 
 # ── Build a ref (once per commit) → the binary's path on stdout ──
 build() { # side ref
-    local side=$1 ref=$2 dir=$HOME/tb-gate-$1 sha
+    local side=$1 ref=$2 dir=$HOME/tb-gate-$1${GATE_COPY:-} sha
     if [[ ! -d $dir/.git ]]; then
         say "[$side] cloning $TB"
         git clone -q --shared "$TB" "$dir" || return 1
@@ -82,7 +84,7 @@ build() { # side ref
 
 BASE_BIN=$(build base "$BASE_REF") || exit 2
 # (the same commit both sides: one build, the A/A run that measures the noise)
-CAND_SHA=$(git -C "$HOME/tb-gate-base" rev-parse -q --verify "$CAND_REF^{commit}" 2>/dev/null || git -C "$HOME/tb-gate-base" rev-parse -q --verify "tb/$CAND_REF^{commit}" 2>/dev/null || true)
+CAND_SHA=$(git -C "$HOME/tb-gate-base${GATE_COPY:-}" rev-parse -q --verify "$CAND_REF^{commit}" 2>/dev/null || git -C "$HOME/tb-gate-base${GATE_COPY:-}" rev-parse -q --verify "tb/$CAND_REF^{commit}" 2>/dev/null || true)
 if [[ -n $CAND_SHA && -x $BINS/$CAND_SHA/tessera-ui ]]; then
     CAND_BIN=$BINS/$CAND_SHA/tessera-ui
 else
@@ -195,6 +197,7 @@ round() { # base-arena cand-arena n
 # when both run at once, and a later run differing from an earlier one;
 # each side's rounds are averaged (compare.py)
 ROUNDS=${GATE_ROUNDS:-2}
+read -r A1 A2 <<<"${GATE_ARENAS:-13 14}"
 for attempt in $(seq $((1 + ${GATE_RETRIES:-1}))); do
     say "measuring (attempt $attempt, $ROUNDS rounds) → $OUT"
     bl=() cl=()
@@ -202,7 +205,7 @@ for attempt in $(seq $((1 + ${GATE_RETRIES:-1}))); do
         # (a hold per round, ~5.5 min; the builds get as long again between)
         hold
         quiet
-        if ((n % 2)); then round 13 14 "$n"; else round 14 13 "$n"; fi || { release; exit 2; }
+        if ((n % 2)); then round "$A1" "$A2" "$n"; else round "$A2" "$A1" "$n"; fi || { release; exit 2; }
         [[ -f $HOLD ]] || say "round $n outlasted the ${HOLD_MAX} s hold: builds may have run at its end"
         release
         bl+=("$OUT/base$n/run.json") cl+=("$OUT/cand$n/run.json")
