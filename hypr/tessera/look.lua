@@ -118,10 +118,10 @@ hl.config({
         -- If the shell restarts while the screen is locked, its new copy takes
         -- the lock back (instead of Hyprland's "lockscreen app died" screen)
         allow_session_lock_restore = true,
-        -- ...and gets 8 s to do it (the watchers notice within 2-5 s, a start
-        -- takes 1-3 s): the screen stays black meanwhile, not the
-        -- "lockscreen app died" screen after 1 s
-        lockdead_screen_delay = 8000,
+        -- ...and gets 5 s to do it (Hyprland's maximum; the watchers notice
+        -- within 2-5 s, a start takes 1-3 s): the screen stays black
+        -- meanwhile, not the "lockscreen app died" screen after 1 s
+        lockdead_screen_delay = 5000,
         -- Hyprland's "not responding" dialog after 15 missed pings (~15 s),
         -- not 5: a laptop busy for a few seconds isn't a frozen app
         anr_missed_pings = 15
