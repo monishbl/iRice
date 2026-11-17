@@ -121,6 +121,56 @@ pub fn finger_message(m: &str) -> Finger {
     }
 }
 
+/// The island round Glass's password field (Material's pill): which reader
+/// it holds, in which phase, and its one hint line. kind "" = no reader to
+/// show (only the field: the island has no glass of its own then);
+/// "finger" or "face" = grown to hold that reader's big glyph. `finger` is
+/// the reader's state, `face` the camera's ("" | waiting | reading | match
+/// | miss); typing or a password being checked shrinks it back (a reader's
+/// match stays on the way out).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Island {
+    pub kind: &'static str,
+    pub phase: &'static str,
+    pub hint: &'static str,
+}
+
+pub const ISLAND_NONE: Island = Island { kind: "", phase: "", hint: "" };
+
+pub fn island(finger: &str, face: &str, typing: bool, busy: bool, leaving: bool) -> Island {
+    let known = |p: &str| -> Option<&'static str> { ["waiting", "reading", "match", "miss"].into_iter().find(|q| *q == p) };
+    let (f, c) = (known(finger), known(face));
+    let make = |kind: &'static str, phase: &'static str| Island {
+        kind,
+        phase,
+        hint: match (kind, phase) {
+            (_, "match") => "Unlocked",
+            (_, "miss") => "Not recognised. Try again",
+            ("face", _) => "Look at the camera",
+            _ => "Touch the fingerprint reader",
+        },
+    };
+    if f == Some("match") {
+        return make("finger", "match");
+    }
+    if c == Some("match") {
+        return make("face", "match");
+    }
+    if leaving || typing || busy {
+        return ISLAND_NONE;
+    }
+    for phase in ["miss", "reading", "waiting"] {
+        // (the camera first while it looks: it gives up after a few tries)
+        let order = if phase == "waiting" { [("finger", f), ("face", c)] } else { [("face", c), ("finger", f)] };
+        for (kind, p) in order {
+            if p == Some(phase) {
+                return make(kind, phase);
+            }
+        }
+    }
+    ISLAND_NONE
+}
+
 /// A new spot for Bedside Mode's content, up or down (-1 .. 1 of the room it
 /// has), well away from the last one so no pixel holds a colour for long
 pub fn next_drift(prev: f64, mut rnd: impl FnMut() -> f64) -> f64 {
@@ -330,6 +380,36 @@ mod tests {
         assert_eq!(finger_message("No match"), Finger::Miss);
         assert_eq!(finger_message("Fingerprint not recognised"), Finger::Miss);
         assert_eq!(finger_message("Verification timed out"), Finger::Other);
+    }
+
+    #[test]
+    fn island_states() {
+        // nothing on: no island, only the field
+        assert_eq!(island("", "", false, false, false), ISLAND_NONE);
+        let i = island("waiting", "", false, false, false);
+        assert_eq!((i.kind, i.phase, i.hint), ("finger", "waiting", "Touch the fingerprint reader"));
+        assert_eq!(island("reading", "", false, false, false).hint, "Touch the fingerprint reader");
+        let i = island("miss", "", false, false, false);
+        assert_eq!((i.kind, i.phase, i.hint), ("finger", "miss", "Not recognised. Try again"));
+        let i = island("", "reading", false, false, false);
+        assert_eq!((i.kind, i.phase, i.hint), ("face", "reading", "Look at the camera"));
+        assert_eq!(island("", "waiting", false, false, false).hint, "Look at the camera");
+        assert_eq!(island("", "miss", false, false, false).kind, "face");
+        // typing, or a password being checked: back to the field
+        assert_eq!(island("waiting", "reading", true, false, false), ISLAND_NONE);
+        assert_eq!(island("waiting", "", false, true, false), ISLAND_NONE);
+        // a password unlock: none; a reader's match stays on the way out
+        assert_eq!(island("waiting", "", false, false, true), ISLAND_NONE);
+        let i = island("match", "", true, false, true);
+        assert_eq!((i.kind, i.phase, i.hint), ("finger", "match", "Unlocked"));
+        assert_eq!(island("waiting", "match", false, false, true).kind, "face");
+        // both on: a miss first, then the camera while it looks, else the reader
+        assert_eq!(island("miss", "reading", false, false, false).kind, "finger");
+        assert_eq!(island("waiting", "reading", false, false, false).kind, "face");
+        assert_eq!(island("waiting", "waiting", false, false, false).kind, "finger");
+        assert_eq!(island("waiting", "miss", false, false, false).phase, "miss");
+        // anything else: none
+        assert_eq!(island("busy", "", false, false, false), ISLAND_NONE);
     }
 
     #[test]
