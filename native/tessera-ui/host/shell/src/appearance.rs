@@ -112,7 +112,9 @@ impl Appearance {
             "On battery"
         };
         let pause = active && cfg_bool(c, "cooling.pauseLiveWallpaper", true);
-        let state = json!({"active": active, "why": why, "glass": self.cool.glass(c), "motionScale": self.cool.motion_scale(c), "pauseLive": pause, "hot": self.cool.hot});
+        // (savedRates: the rates before cool-down lowered them, CoolDown.savedRates: host-system's
+        // Displays keeps those in what it saves, and shows a lowered screen as lowered)
+        let state = json!({"active": active, "why": why, "glass": self.cool.glass(c), "motionScale": self.cool.motion_scale(c), "pauseLive": pause, "hot": self.cool.hot, "savedRates": self.saved_rates});
         h.set_state("cooldown", state);
         // what the Settings pages and the lock read of the wallpaper and the look
         h.set_state("wallpaper.tone", json!(self.tone.clone().unwrap_or_default()));

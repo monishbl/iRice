@@ -471,6 +471,15 @@ impl Service for Probes {
     fn start(&mut self, h: &mut Host) {
         h.st.shell.want("hypr");
         self.polkit = if sandboxed() { "off".into() } else { "no".into() };
+        // Watchers an earlier shell left behind (it crashed, or was killed
+        // outright, so its watch.sh wrappers never ended them): ended before
+        // this one's start, as Tools.qml did at every start. Only groups whose
+        // wrapper is gone, by their records (process-identity.py). 17 Nov:
+        // standalone nothing ran it, so a crash's watchers could pile up
+        let reap = script("reap-watchers.sh");
+        if reap.is_file() {
+            tessera_core::services::bridge::run(&["bash", &reap.to_string_lossy()]);
+        }
         self.health = json!([]);
         self.recheck(h);
         self.publish_tools(h);

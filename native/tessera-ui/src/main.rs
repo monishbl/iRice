@@ -223,6 +223,8 @@ fn main() {
         if said != "fine" {
             eprintln!("tessera-ui: settings: {said}");
         }
+        // (where its scripts, fonts and pictures come from: tessera_core::env::root)
+        eprintln!("tessera-ui: files from {}", tessera_core::env::root().display());
     }
     let surfaces = surfaces::from_args(&args);
     if surfaces.on.is_empty() {

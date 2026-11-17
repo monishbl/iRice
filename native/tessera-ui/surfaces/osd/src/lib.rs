@@ -390,8 +390,8 @@ impl Osd {
             pictures
                 .entry(kind.to_string())
                 .or_insert_with(|| {
-                    let root = crate::env::var("ROOT").filter(|r| !r.is_empty()).unwrap_or_else(|| concat!(env!("CARGO_MANIFEST_DIR"), "/../../../..").into());
-                    slint::Image::load_from_path(std::path::Path::new(&format!("{root}/shell/assets/devices/{kind}.svg"))).unwrap_or_default()
+                    let root = crate::env::root();
+                    slint::Image::load_from_path(&root.join(format!("shell/assets/devices/{kind}.svg"))).unwrap_or_default()
                 })
                 .clone()
         };

@@ -407,8 +407,7 @@ fn answered(answer: &str, family: &str) {
 /// The shell starts again (repair-shell.sh: it outlives this process,
 /// replaces it, and apps keep running)
 fn restart_shell() {
-    let root = crate::env::var("ROOT").filter(|r| !r.is_empty()).map(std::path::PathBuf::from).unwrap_or_else(|| std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../..")));
-    let script = root.join("shell/assets/scripts/repair-shell.sh");
+    let script = crate::env::root().join("shell/assets/scripts/repair-shell.sh");
     crate::services::bridge::run(&["setsid", "-f", &script.to_string_lossy()]);
 }
 

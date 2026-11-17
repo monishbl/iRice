@@ -134,10 +134,8 @@ pub fn drain_deferred(state: &mut State, budget: std::time::Duration) {
 /// Slint's font collection at run time (not compiled in)
 pub fn register_fonts() {
     use slint::fontique_011::fontique;
-    let roots = [
-        std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../..")),
-        std::path::PathBuf::from(crate::env::var("ROOT").unwrap_or_default()),
-    ];
+    // (the checkout the shell runs from first: crate::env::root, 17 Nov)
+    let roots = [crate::env::root(), std::path::PathBuf::from(crate::env::BUILT_ROOT)];
     let mut collection = slint::fontique_011::shared_collection();
     for f in ["shell/assets/fonts/Phosphor.ttf", "shell/assets/fonts/Phosphor-Fill.ttf", "shell/assets/fonts/Phosphor-Bold.ttf", "material/assets/fonts/GoogleSansFlex.ttf", "material/assets/fonts/MaterialSymbolsRounded.ttf", "material/assets/fonts/MaterialSymbolsRounded-Fill.ttf"] {
         let Some(file) = roots.iter().find_map(|r| std::fs::File::open(r.join(f)).ok()) else {

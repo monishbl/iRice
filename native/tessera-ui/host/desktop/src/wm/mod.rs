@@ -197,6 +197,13 @@ impl Wm {
         if name == "activewindowv2" {
             self.io.arm("apps.recent", 300);
         }
+        // A window is being moved (the glass plugin's drag line): the drop
+        // shelf stops following the held button (Shelf.qml heard this itself;
+        // 17 Nov: standalone nothing told host-sharing, so the pointer follower
+        // ran through every window drag and its probes went up)
+        if (name == "tessera-drag" || name == "irice-drag") && !data.starts_with("drop") {
+            h.ask("shelf.windowMove", serde_json::json!([]));
+        }
     }
 
     fn tick(&mut self, h: &mut Host, key: &'static str) {

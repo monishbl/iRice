@@ -203,8 +203,12 @@ impl Mouse {
     fn locked(h: &Host) -> bool {
         h.state("locked").as_bool().unwrap_or(false)
     }
-    fn selecting() -> String {
-        crate::bus::get("screentools")["selecting"].as_str().unwrap_or("").to_string()
+    /// ScreenTools.selecting: host-desktop's shell state "screentools" (17 Nov:
+    /// read from this crate's bus, which nothing filled standalone, so a
+    /// screenshot's selection never held the pointer to its screen and hover
+    /// focus went on during it)
+    fn selecting(h: &Host) -> String {
+        h.state("screentools")["selecting"].as_str().unwrap_or("").to_string()
     }
     fn publish(&self) {
         crate::bus::put("mouse", json!({"mice": self.mice, "touchpads": self.touchpads, "boundaryAvailable": self.boundary_available()}));
@@ -264,8 +268,8 @@ impl Mouse {
             return;
         }
         let off = text(&h.cfg()["mouse"], "boundaryMode", "corners") == "off";
-        let sel = Self::selecting();
-        let name = if !off && !Self::locked(h) && !sel.is_empty() { crate::bus::get("screentools")["selectingScreen"].as_str().unwrap_or("").to_string() } else { String::new() };
+        let sel = Self::selecting(h);
+        let name = if !off && !Self::locked(h) && !sel.is_empty() { h.state("screentools")["selectingScreen"].as_str().unwrap_or("").to_string() } else { String::new() };
         self.plugin(&["pointer-confine", if name.is_empty() { "-" } else { &name }]);
         // A short lease releases confinement if the shell exits during selection
         if !off && !sel.is_empty() {
@@ -486,7 +490,7 @@ impl Service for Mouse {
                 }
                 let act = after_events(&self.pending);
                 self.pending.clear();
-                if act == Act::None || h.cfg().is_null() || !Self::hover(h) || Self::locked(h) || !h.state("open").as_str().unwrap_or("").is_empty() || !Self::selecting().is_empty() {
+                if act == Act::None || h.cfg().is_null() || !Self::hover(h) || Self::locked(h) || !h.state("open").as_str().unwrap_or("").is_empty() || !Self::selecting(h).is_empty() {
                     return;
                 }
                 if act == Act::Refocus && self.boundary_available() {

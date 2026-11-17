@@ -32,7 +32,20 @@ static TX: OnceLock<std::sync::Mutex<calloop::channel::Sender<Msg>>> = OnceLock:
 
 /// No QML shell: tessera-ui is the whole shell (set once, at start)
 pub fn standalone() -> bool {
-    *STANDALONE.get_or_init(|| crate::env::is_set("STANDALONE"))
+    // (=1 only: launch-shell.sh and tessera-ui's QML fallback set
+    // TESSERA_STANDALONE=0 to mean "the QML shell", and the tessera-ui that
+    // shell starts inherits it; any value counted, so that one routed its
+    // calls to a host it doesn't have and took the standalone-only roles,
+    // as the polkit agent beside the QML's own. 17 Nov)
+    *STANDALONE.get_or_init(|| crate::env::var("STANDALONE").as_deref() == Some("1"))
+}
+
+/// This process is the whole shell (`--standalone`: the host is made), not
+/// only one that inherited TESSERA_STANDALONE=1 (a tessera-ui run by hand
+/// from a terminal the shell opened): the session-wide roles, such as the
+/// polkit agent, are the whole shell's
+pub fn whole_shell() -> bool {
+    TX.get().is_some()
 }
 
 /// Called by the binary for `--standalone`, before anything asks

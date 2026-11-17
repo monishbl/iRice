@@ -558,7 +558,9 @@ impl Sharing {
             "ports": {"error": self.ports.error, "failedWith": self.ports.failed_with, "busy": self.ports.running}});
         h.set_state("sharing", sharing);
         h.set_state("quickshare", json!({"available": self.quick_available(), "error": self.quick.error, "name": self.my_name(), "trusted": self.quick.trusted, "trustBusy": self.quick.trust_busy,
-            "trustError": self.quick.trust_error, "bluetoothAvailable": self.bluetooth_available(h), "bluetoothOn": self.bluetooth_on(h), "bluetoothNeeded": self.bluetooth_needed(h), "bluetoothEngine": self.quick.bluetooth_engine}));
+            "trustError": self.quick.trust_error, "bluetoothAvailable": self.bluetooth_available(h), "bluetoothOn": self.bluetooth_on(h), "bluetoothNeeded": self.bluetooth_needed(h), "bluetoothEngine": self.quick.bluetooth_engine,
+            // (host-system's device alerts stay quiet about phones while it runs: QuickShare.running)
+            "running": self.quick.helper.running}));
         h.set_state("localsend", json!({"available": self.local_available(), "error": self.local.error}));
         h.set_state("cast", self.cast_state(h));
         h.set_state("mirroring", self.mirror_state_json());
@@ -568,7 +570,8 @@ impl Sharing {
         for a in self.fast.levels.keys() {
             levels.insert(a.clone(), self.fast_levels_for(a));
         }
-        h.set_state("fastpair", json!({"levels": levels}));
+        // (busy: host-system's device alerts don't say earbuds dropped while Fast Pair connects them)
+        h.set_state("fastpair", json!({"levels": levels, "busy": self.fast.busy}));
         h.set_state("shelf", json!({"on": self.cfg_bool("shelf.menubar", true), "count": self.shelf.items.len(), "opened": self.shelf.opened, "zone": self.shelf.zone, "probing": self.shelf.probing,
             "probe": self.shelf.probe.as_ref().map(|p| json!({"x": p.0, "y": p.1, "screen": p.2}))}));
         h.set_state("transfers", self.transfers_state());

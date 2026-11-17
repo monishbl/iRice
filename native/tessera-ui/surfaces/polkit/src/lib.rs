@@ -373,7 +373,9 @@ impl Part for Polkit {
         // neither, so the session had no agent at all and everything that
         // needs an administrator's password said "Not allowed" without asking)
         let named = explicitly_asked(&std::env::args().collect::<Vec<_>>(), NAME) && stdin_is_pipe();
-        if self.real && !(tessera_core::host::standalone() || named) {
+        // (the whole shell: `--standalone` made the host, not TESSERA_STANDALONE
+        // alone, which a tessera-ui run by hand from the shell's terminal inherits)
+        if self.real && !(tessera_core::host::whole_shell() || named) {
             self.real = false;
         }
         let test = !self.real && crate::env::var("POLKIT_TEST").as_deref() == Some("1") && Self::fake_helper().is_some();

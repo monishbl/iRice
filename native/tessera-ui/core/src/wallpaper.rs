@@ -204,8 +204,9 @@ pub fn is_picture_any_case(name: &str) -> bool {
 /// from (as the fonts), else the installed one
 pub fn shell_dir() -> PathBuf {
     let candidates = [
-        crate::env::var("ROOT").map(|r| PathBuf::from(r).join("shell")),
-        Some(PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../../shell"))),
+        // ($TESSERA_ROOT, else the checkout the shell was started from: crate::env::root, 17 Nov)
+        Some(crate::env::root().join("shell")),
+        Some(PathBuf::from(crate::env::BUILT_ROOT).join("shell")),
         Some(PathBuf::from("/usr/share/tessera/shell")),
     ];
     candidates.into_iter().flatten().find(|d| d.join("shell.qml").exists()).unwrap_or_else(|| PathBuf::from("/usr/share/tessera/shell"))

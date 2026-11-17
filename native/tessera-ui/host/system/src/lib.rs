@@ -43,6 +43,26 @@ struct Mirror {
     /// the bus's generation as last mirrored (after a turn that changed
     /// nothing there, there's nothing to mirror: it ran after every turn)
     seen: Option<u64>,
+    /// INBOUND's values as last put on the bus
+    inbound: [Value; INBOUND.len()],
+}
+
+use serde_json::Value;
+
+/// What the other host crates keep in the shell's state that this crate's
+/// services read from its bus, by the names the QML services had (the QML
+/// read the singletons themselves: QuickShare.running and FastPair.busy /
+/// levelsFor for the Bluetooth alerts, CoolDown.motionScale / savedRates for
+/// Displays): (bus name, shell state key). 17 Nov: nothing put them, so the
+/// phone's Bluetooth alerts weren't quiet during a Quick Share transfer, nor
+/// earbuds' during Fast Pair, a connected pair showed no left/right/case
+/// levels, and Displays could save a cool-down's lowered refresh rate as yours
+const INBOUND: [(&str, &str); 3] = [("quickshare", "quickshare"), ("fastpair", "fastpair"), ("cooldown", "cooldown")];
+
+/// INBOUND's values from the shell's state, where they changed
+/// (compared in place: nothing is copied in a turn that changed none of them)
+fn inbound_changes<'a>(state: impl Fn(&str) -> &'a Value, last: &[Value]) -> Vec<(usize, &'a Value)> {
+    INBOUND.iter().enumerate().map(|(i, (_, key))| (i, state(key))).filter(|(i, v)| last.get(*i) != Some(*v)).collect()
 }
 
 fn hm(secs: i64) -> String {
@@ -140,6 +160,10 @@ impl Service for Mirror {
         "SystemMirror"
     }
     fn settled(&mut self, h: &mut tessera_core::host::Host) {
+        for (i, v) in inbound_changes(|k| h.state(k), &self.inbound) {
+            bus::put(INBOUND[i].0, v.clone());
+            self.inbound[i] = v.clone();
+        }
         let g = bus::generation();
         if self.seen == Some(g) {
             return;
@@ -166,3 +190,28 @@ impl Service for Mirror {
 
 /// The About card's logo, found off the UI thread: its name and file
 struct Logo(String, String);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn the_other_hosts_state_reaches_this_crates_bus() {
+        let state = json!({"quickshare": {"running": true}, "fastpair": {"busy": false, "levels": {}}, "cooldown": {"motionScale": 1.5, "savedRates": {"eDP-1": 120.0}}});
+        let none: [Value; 3] = Default::default();
+        let changed = inbound_changes(|k| &state[k], &none);
+        assert_eq!(changed.iter().map(|(i, _)| INBOUND[*i].0).collect::<Vec<_>>(), ["quickshare", "fastpair", "cooldown"]);
+        // (one the state doesn't have yet: Null, as the bus had, so not a change)
+        let partial = json!({"quickshare": {"running": false}});
+        assert_eq!(inbound_changes(|k| &partial[k], &none).len(), 1);
+        let mut last = none.clone();
+        for (i, v) in changed {
+            last[i] = v.clone();
+        }
+        // nothing changed: nothing put
+        assert!(inbound_changes(|k| &state[k], &last).is_empty());
+        // the names this crate's services read
+        assert_eq!(INBOUND.map(|(b, _)| b), ["quickshare", "fastpair", "cooldown"]);
+    }
+}
