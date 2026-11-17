@@ -21,7 +21,7 @@ export component IconButton inherits Rectangle {
     background: Theme.material ? (touch.pressed ? Theme.m3-on-surface-variant.with-alpha(0.1) : touch.has-hover ? Theme.m3-on-surface-variant.with-alpha(0.08) : transparent)
         : touch.pressed ? Theme.fill-pressed : touch.has-hover ? Theme.fill : transparent;
     animate background { duration: 150ms; }
-    animate border-radius { duration: 150ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+    animate border-radius { duration: 150ms; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
     accessible-role: button;
     accessible-label: label;
     accessible-action-default => { clicked(); }

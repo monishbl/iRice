@@ -309,6 +309,7 @@ impl Surface {
         }
         let took = t.elapsed();
         self.stats.borrow_mut().rendered(took);
+        framelog("frame", &self.namespace);
         if wakes_on() {
             drew_after_press(&self.namespace, took.as_secs_f64() * 1000.0);
         }
@@ -366,6 +367,7 @@ impl Surface {
         } else if crate::env::is_set("DEBUG") {
             eprintln!("debug: hide on a lock surface: kept its buffer");
         }
+        framelog("hide", &self.namespace);
         self.configured.set(false);
         self.frame_pending.set(false);
         self.mapped.set(false);
@@ -1734,6 +1736,18 @@ fn drew_after_press(ns: &str, render_ms: f64) {
         seen.push(ns.to_string());
         eprintln!("click {on} -> {ns} drew {ms:.0} ms after, render {render_ms:.1} ms, at {}", crate::util::now_ms());
     });
+}
+
+/// TESSERA_FRAMELOG=1: every frame a surface draws and every hide, with the
+/// wall time (`framelog frame <namespace> <unix s>`): which surface drew the
+/// frames a compositor frame log (tools/gate/framelog.py) counts, and when a
+/// panel's close animation really ended. Off: one cached bool test.
+pub fn framelog(what: &str, ns: &str) {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    if *ON.get_or_init(|| crate::env::is_set("FRAMELOG")) {
+        let t = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0.0, |d| d.as_secs_f64());
+        eprintln!("framelog {what} {ns} {t:.6}");
+    }
 }
 
 /// TESSERA_WAKES=1: once a second, why the loop turned and which surfaces

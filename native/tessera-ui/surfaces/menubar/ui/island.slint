@@ -357,11 +357,11 @@ export component Spaces inherits Rectangle {
         height: 18px;
         visible: c.fall > 0.01;
         opacity: (c.elsewhere && !c.shown-there ? 0.55 : 1) * (c.fall >= 0.99 ? 1 : c.fall >= 0.69 ? 0.6 : 0.3);
-        animate x, width { duration: Theme.material ? 222ms : Theme.popover; easing: Theme.material ? spring(0.4) : cubic-bezier(0.33, 1, 0.68, 1); }
+        animate x, width { duration: Theme.material ? 222ms : Theme.popover; easing: Theme.material ? spring(0.4) : cubic-bezier(0.3333, 1, 0.6667, 1); }
         animate opacity { duration: Theme.popover; }
         // (past the window's ends, dynamic overflow: the whole chip smaller, Workspaces' scale)
         transform-scale-y: c.fall;
-        animate transform-scale-y { duration: Theme.popover; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+        animate transform-scale-y { duration: Theme.popover; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
         accessible-role: tab;
         accessible-label: "Space " + Math.mod(c.id, 100) + (c.occupied ? ", has windows" : ", empty") + (c.elsewhere ? ", on another display" : "");
         accessible-item-selectable: true;
@@ -634,7 +634,7 @@ component CallButton inherits VerticalLayout {
             background: t.pressed ? fill-color.darker(0.2) : t.has-hover ? fill-color.brighter(0.1) : fill-color;
             animate background { duration: Theme.hover; }
             transform-scale: !Theme.material && t.pressed ? 0.94 : 1;
-            animate transform-scale { duration: 100ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+            animate transform-scale { duration: 100ms; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
             accessible-role: button;
             accessible-label: label + " call";
             accessible-action-default => { root.clicked(); }
@@ -748,7 +748,14 @@ component AlertView inherits Rectangle {
                 width: parent.width * max(0, min(1, a.hud-value));
                 border-radius: parent.border-radius;
                 background: Theme.material ? Theme.m3-primary : ink;
-                animate width { duration: 260ms; easing: spring(0.3); }
+                // (IslandEvent.qml's hudBar: SpringAnimation spring 5, damping
+                // 0.4, epsilon 0.5 px. A key's 5% step (under 25 px) stops at
+                // 256 ms; this cubic follows Qt's 16 ms steps to within 0.5% of
+                // the step. Material's Slider has no animation on its value.)
+                animate width {
+                    duration: Theme.material ? 0ms : 256ms;
+                    easing: cubic-bezier(0.192, 0.156, 0.334, 1.15);
+                }
             }
             level := TouchArea {
                 pointer-event(e) => {
@@ -844,9 +851,9 @@ component AlertView inherits Rectangle {
         property <float> p1: go ? 1 : 0;
         property <float> p2: go ? 1 : 0;
         property <float> p3: go ? 1 : 0;
-        animate p1 { duration: 315ms; delay: 70ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
-        animate p2 { duration: 315ms; delay: 105ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
-        animate p3 { duration: 315ms; delay: 210ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+        animate p1 { duration: 315ms; delay: 70ms; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
+        animate p2 { duration: 315ms; delay: 105ms; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
+        animate p3 { duration: 315ms; delay: 210ms; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
         photo := Rectangle {
             transform-scale: 0.7 + 0.3 * parent.p1;
             x: 4px;
@@ -1117,7 +1124,7 @@ component AlertView inherits Rectangle {
             height: 20px;
             border-radius: 10px;
             opacity: !a.leaving && a.kind != "ringing" && (row.has-hover || ct.has-hover) ? 1 : 0;
-            animate opacity { duration: Theme.hover; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+            animate opacity { duration: Theme.hover; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
             visible: self.opacity > 0.01;
             background: Theme.material ? Theme.m3-secondary-container.mix(Theme.m3-on-secondary-container, ct.pressed ? 0.9 : ct.has-hover ? 0.92 : 1) : ct.pressed ? #5A5A5E : ct.has-hover ? #48484A : #3A3A3C;
             border-width: Theme.material ? 0 : 1px;
@@ -1261,7 +1268,7 @@ component AlertView inherits Rectangle {
         height: 20px;
         border-radius: 10px;
         opacity: !a.leaving && (card-hover.has-hover || cx.has-hover) ? 1 : 0;
-        animate opacity { duration: Theme.hover; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+        animate opacity { duration: Theme.hover; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
         visible: self.opacity > 0.01;
         background: Theme.material ? Theme.m3-secondary-container.mix(Theme.m3-on-secondary-container, cx.pressed ? 0.9 : cx.has-hover ? 0.92 : 1) : cx.pressed ? #5A5A5E : cx.has-hover ? #48484A : #3A3A3C;
         border-width: Theme.material ? 0 : 1px;
@@ -1349,7 +1356,7 @@ component PlayMorph inherits Rectangle {
     animate border-radius { duration: 350ms; easing: spring(0.35); }
     background: t.pressed ? Theme.m3-primary.mix(Theme.m3-on-primary, 0.9) : t.has-hover ? Theme.m3-primary.mix(Theme.m3-on-primary, 0.92) : Theme.m3-primary;
     transform-scale: t.pressed ? 0.94 : 1;
-    animate transform-scale { duration: 100ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+    animate transform-scale { duration: 100ms; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
     accessible-role: button;
     accessible-label: playing ? "Pause" : "Play";
     accessible-action-default => { root.clicked(); }
@@ -1548,7 +1555,7 @@ component RecentList inherits VerticalLayout {
                 property <length> dx;
                 property <bool> leaving;
                 property <length> off: leaving ? (dx < 0 ? -1 : 1) * self.width : dx;
-                animate off { duration: leaving ? 150ms : 0ms; easing: cubic-bezier(0.32, 0, 0.67, 0); }
+                animate off { duration: leaving ? 150ms : 0ms; easing: cubic-bezier(0.3333, 0, 0.6667, 0); }
                 lt := TouchArea {
                     property <bool> dragged;
                     property <length> last-x;
@@ -1962,7 +1969,15 @@ export component Island inherits Rectangle {
         y: 3px;
         width: target-w;
         height: target-h;
-        animate width, height { duration: Theme.material ? 300ms : 320ms; easing: spring(0.2); }
+        // (IslandView.qml: SpringAnimation spring Theme.motion.spring + 1.2,
+        // damping + 0.04, Qt's 16 ms steps; the same spring in Slint's terms,
+        // from the poles of Qt's step: Subtle 5.0/0.36 → 318 ms, bounce 0.29;
+        // Expressive 4.2/0.26 → 359 ms, 0.46; Material and Snappy 7.28/0.54
+        // → 244 ms, 0.06)
+        animate width, height {
+            duration: Theme.material || Theme.snappy ? 244ms : Theme.expressive ? 359ms : 318ms;
+            easing: Theme.material || Theme.snappy ? spring(0.06) : Theme.expressive ? spring(0.46) : spring(0.29);
+        }
         property <float> open-fade: filled ? 1 : 0;
         animate open-fade { duration: Theme.hover; }
         property <float> fade: filled ? open-fade : max(0, min(1, (self.height - 26px) / max(1px, close-from - 26px)));
@@ -1994,7 +2009,7 @@ export component Island inherits Rectangle {
         // up top and melting into the glass below like the black (faded in Rust)
         if !Theme.material && island-art: artbox := Rectangle {
             opacity: expanded && !event-inside && !recent-over ? 0.82 : 0;
-            animate opacity { duration: Theme.popover; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+            animate opacity { duration: Theme.popover; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
             // (clipped to the glass's own squircle, row by row at the corners:
             // a round-cornered clip left the plugin's squircle showing past
             // it, a second, lighter rounding at the corners. n = 4, reaching
@@ -2383,7 +2398,7 @@ export component Island inherits Rectangle {
                                 y: (parent.height - self.height) / 2;
                                 property <bool> open: volt.has-hover || vols.pressed;
                                 width: open ? 104px : 36px;
-                                animate width { duration: Theme.hover; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+                                animate width { duration: Theme.hover; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
                                 height: 36px;
                                 border-radius: 18px;
                                 background: ink.with-alpha(open ? 0.12 : 0);
@@ -2465,7 +2480,7 @@ export component Island inherits Rectangle {
                             oa := Rectangle {
                                 property <bool> open: oat.has-hover && card.app-name != "";
                                 width: open ? min(140px, oa-name.preferred-width + 42px) : 36px;
-                                animate width { duration: Theme.hover; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+                                animate width { duration: Theme.hover; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
                                 x: parent.width - self.width;
                                 y: (parent.height - self.height) / 2;
                                 height: 36px;
@@ -2604,7 +2619,7 @@ export component Island inherits Rectangle {
         property <bool> on: alerts-below && alerts.length > 0;
         x: (root.width - self.width) / 2;
         y: shape.y + shape.height + 8px + (on ? 0 : -8px);
-        animate y { duration: 300ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+        animate y { duration: 300ms; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
         width: 392px;
         height: on ? bl.preferred-height + 28px + (alerts.length > 1 ? 10px : 0) : 0;
         opacity: on ? 1 : 0;

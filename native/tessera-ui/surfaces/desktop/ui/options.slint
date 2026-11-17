@@ -100,7 +100,7 @@ component Toggle inherits Rectangle {
         x: checked ? parent.width - d - (parent.height - d) / 2 : (parent.height - d) / 2;
         border-radius: d / 2;
         background: Theme.material ? (checked ? Theme.m3-on-primary : Theme.m3-outline) : #ffffff;
-        animate x, width, height { duration: 180ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+        animate x, width, height { duration: 180ms; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
     }
     TouchArea {
         mouse-cursor: pointer;

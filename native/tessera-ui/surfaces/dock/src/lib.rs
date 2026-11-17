@@ -705,9 +705,12 @@ impl Dock {
         if let Some(mw) = &mut self.menu {
             if mw.open {
                 mw.open = false;
-                mw.ui.set_shown(false); // the close animation, then MenuClosed hides it
+                mw.ui.set_shown(false);
             }
         }
+        // (gone at once, as the QML's: ContextMenu.qml has no exit animation,
+        // its Loader drops it on `dismissed`)
+        self.menu_closed(st);
         self.update(st);
     }
 

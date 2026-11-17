@@ -349,9 +349,11 @@ export component Center inherits Window {
     title: "Notification Center";
     default-font-family: Theme.font;
 
+    // (Popover.qml: closes in Theme.motion.popover × 0.7 on the look's exit
+    // curve, as Control Center and the status menus)
     animate openness {
-        duration: shown ? 420ms : 196ms;
-        easing: shown ? spring(0.3) : cubic-bezier(0.3, 0, 0.8, 0.15);
+        duration: shown ? 420ms : Theme.popover * 0.7;
+        easing: shown ? spring(0.3) : Theme.material ? cubic-bezier(0.3, 0, 0.8, 0.15) : cubic-bezier(0.4, 0, 1, 1);
     }
     changed openness => {
         if !shown && openness <= 0.001 { closed(); }
@@ -635,7 +637,7 @@ export component Center inherits Window {
                                 in-out property <length> off: 0;
                                 property <length> dx: swipe.swiping ? live : off;
                                 // (back on the default spring; off in 150 ms, InCubic)
-                                animate dx { duration: swipe.swiping ? 0ms : off != 0 ? 150ms : 322ms; easing: off != 0 ? cubic-bezier(0.32, 0, 0.67, 0) : spring(0.5); }
+                                animate dx { duration: swipe.swiping ? 0ms : off != 0 ? 150ms : 322ms; easing: off != 0 ? cubic-bezier(0.3333, 0, 0.6667, 0) : spring(0.5); }
                                 // the pointer's speed (px per ms), for a fling
                                 property <length> last-x;
                                 property <duration> last-t;
@@ -654,7 +656,7 @@ export component Center inherits Window {
                                 border-top-right-radius: self.border-top-left-radius;
                                 border-bottom-left-radius: loose || r.last ? 24px : 6px;
                                 border-bottom-right-radius: self.border-bottom-left-radius;
-                                animate border-top-left-radius, border-bottom-left-radius { duration: 150ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+                                animate border-top-left-radius, border-bottom-left-radius { duration: 150ms; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
                                 fly := Timer {
                                     interval: 150ms;
                                     running: false;
@@ -755,7 +757,7 @@ export component Center inherits Window {
                     width: manage-l.preferred-width + 24px;
                     height: 40px;
                     border-radius: manage-t.pressed ? 12px : 20px;
-                    animate border-radius { duration: 100ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+                    animate border-radius { duration: 100ms; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
                     background: manage-t.pressed ? Theme.m3-primary.with-alpha(0.1) : manage-t.has-hover ? Theme.m3-primary.with-alpha(0.08) : transparent;
                     animate background { duration: 150ms; }
                     transform-scale: manage-t.pressed ? 0.97 : 1;
@@ -781,7 +783,7 @@ export component Center inherits Window {
                     width: mclear-l.preferred-width + 40px;
                     height: 40px;
                     border-radius: mclear-t.pressed ? 12px : 20px;
-                    animate border-radius { duration: 100ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+                    animate border-radius { duration: 100ms; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
                     background: Theme.m3-secondary-container.mix(Theme.m3-on-secondary-container, mclear-t.pressed ? 0.9 : mclear-t.has-hover ? 0.92 : 1);
                     animate background { duration: 150ms; }
                     transform-scale: mclear-t.pressed ? 0.97 : 1;

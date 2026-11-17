@@ -30,9 +30,9 @@ export component SnapPreview inherits Window {
     property <float> ph: th;
     property <float> o: active ? 1 : 0;
     property <float> s: active ? 1 : 0.96;
-    animate px, py, pw, ph { duration: 200ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+    animate px, py, pw, ph { duration: 200ms; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
     animate o { duration: active ? 150ms : 100ms; }
-    animate s { duration: 150ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+    animate s { duration: 150ms; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
     changed o => {
         if !active && o <= 0.01 { faded(); }
     }

@@ -206,7 +206,7 @@ component AsIconButton inherits FocusScope {
     }
     bg := Rectangle {
         border-radius: Theme.material ? (touch.pressed ? min(8px, self.height / 2) : self.height / 2) : Theme.radius-control - 2px;
-        animate border-radius { duration: Theme.hover; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+        animate border-radius { duration: Theme.hover; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
         background: Theme.material ? (touch.pressed ? Theme.m3-on-surface-variant.with-alpha(0.1) : touch.has-hover ? Theme.m3-on-surface-variant.with-alpha(0.08) : transparent)
             : touch.pressed ? Theme.fill-pressed : touch.has-hover ? Theme.fill : transparent;
         animate background { duration: Theme.hover; }
@@ -420,7 +420,7 @@ component FilterChip inherits FocusScope {
     width: label.preferred-width + (Theme.material ? (on ? 16px + 18px + 8px : 32px) : 24px);
     height: Theme.material ? 32px : 28px;
     horizontal-stretch: 0;
-    animate width { duration: Theme.material ? Theme.hover : 0ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+    animate width { duration: Theme.material ? Theme.hover : 0ms; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
     accessible-role: radio-button;
     accessible-label: text;
     accessible-checkable: true;
@@ -701,7 +701,7 @@ component SplitButton inherits Rectangle {
                 font-size: 18px;
                 color: Theme.m3-on-primary;
                 transform-rotation: open ? 180deg : 0deg;
-                animate transform-rotation { duration: Theme.popover; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+                animate transform-rotation { duration: Theme.popover; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
             }
             if trail.has-focus: AsRing { pw: parent.width; ph: parent.height; r: parent.height / 2 + 4px; }
             tt := TouchArea {

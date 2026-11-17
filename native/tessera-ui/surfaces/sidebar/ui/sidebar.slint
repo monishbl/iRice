@@ -199,7 +199,7 @@ component GhostButton inherits FocusScope {
         transform-scale: t.pressed ? (Theme.material ? (Theme.press-bounce ? 1 + min(0.06, 10px / max(self.width, self.height)) : 1) : Press.squish) : 1;
         animate transform-scale { duration: Theme.material ? 420ms : 180ms; easing: Theme.material ? spring(0.3) : spring(0.5); }
         border-radius: Theme.material ? (t.pressed ? min(8px, self.height / 2) : self.height / 2) : Theme.radius-control - 2px;
-        animate border-radius { duration: 150ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+        animate border-radius { duration: 150ms; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
         background: Theme.material ? Theme.m3-on-surface-variant.with-alpha(t.pressed ? 0.1 : t.has-hover ? 0.08 : 0) : t.pressed ? Theme.fill-pressed : t.has-hover ? Theme.fill : transparent;
         animate background { duration: M.hover; }
         SIcon {
@@ -850,13 +850,13 @@ component UndoBar inherits Rectangle {
     height: max(Theme.material ? 48px : 44px, lt.preferred-height + 24px);
     background: transparent;
     opacity: shown ? 1 : 0;
-    animate opacity { duration: shown ? 200ms : 140ms; easing: shown ? cubic-bezier(0.33, 1, 0.68, 1) : cubic-bezier(0.32, 0, 0.67, 0); }
+    animate opacity { duration: shown ? 200ms : 140ms; easing: shown ? cubic-bezier(0.3333, 1, 0.6667, 1) : cubic-bezier(0.3333, 0, 0.6667, 0); }
     visible: self.opacity > 0;
     accessible-role: text;
     accessible-label: message;
     bar := Rectangle {
         y: shown ? 0px : 8px;
-        animate y { duration: 200ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+        animate y { duration: 200ms; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
         border-radius: Theme.material ? 4px : 14px;
         background: Theme.material ? Theme.m3-inverse-surface : Theme.dark ? #3A3A40 : #18181B;
         border-width: Theme.dark && !Theme.material ? 1px : 0px;

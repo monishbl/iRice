@@ -69,7 +69,7 @@ component FpSheet inherits Rectangle {
     property <bool> closing: has-meta && b.data[11].on;
     init => { progress = 1; keys.focus(); }
     changed closing => { progress = closing ? 0 : 1; }
-    animate progress { duration: closing ? 200ms : 300ms; easing: closing ? cubic-bezier(0.32, 0, 0.67, 0) : cubic-bezier(0.33, 1, 0.68, 1); }
+    animate progress { duration: closing ? 200ms : 300ms; easing: closing ? cubic-bezier(0.3333, 0, 0.6667, 0) : cubic-bezier(0.3333, 1, 0.6667, 1); }
     background: (Theme.dark ? #000000 : #000000).with-alpha((Theme.dark ? 0.5 : 0.3) * progress);
     TouchArea {}
     // Esc: Cancel (or Done), the sheet's last button (FingerprintSheet.qml 118–122)

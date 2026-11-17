@@ -127,7 +127,7 @@ export component LaunchpadPanel inherits Window {
     // damping + 0.08 (expressive 3.4/0.30, standard 4.2/0.40, snappy 6.48/0.58)
     out property <float> progress: shown ? 1 : 0;
     animate progress {
-        duration: shown ? (Theme.material ? 230ms : motion-kind == 1 ? 345ms : motion-kind == 2 ? 240ms : 285ms) : 192ms * pace;
+        duration: shown ? (Theme.material ? 230ms : motion-kind == 1 ? 345ms : motion-kind == 2 ? 240ms : 285ms) : Theme.motion-panel * 0.6;
         easing: shown ? (Theme.material ? spring(0.01) : motion-kind == 1 ? spring(0.25) : motion-kind == 2 ? spring(0.0) : spring(0.02)) : (Theme.material ? cubic-bezier(0.3, 0, 0.8, 0.15) : cubic-bezier(0.4, 0, 1, 1));
     }
     changed progress => {
@@ -283,7 +283,7 @@ export component LaunchpadPanel inherits Window {
                         // (IconButton: radius 150 ms OutCubic, colour Theme.motion.hover,
                         // ElasticControl's swell on springPress)
                         border-radius: mb.pressed ? 8px : 20px;
-                        animate border-radius { duration: 150ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+                        animate border-radius { duration: 150ms; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
                         background: mb.pressed ? Theme.m3-on-surface-variant.with-alpha(0.1) : mb.has-hover ? Theme.m3-on-surface-variant.with-alpha(0.08) : transparent;
                         animate background { duration: 150ms; }
                         transform-scale: mb.pressed && Theme.press-bounce ? 1.06 : 1;
@@ -340,7 +340,7 @@ export component LaunchpadPanel inherits Window {
                         width: 40px;
                         height: 40px;
                         border-radius: cb.pressed ? 8px : 20px;
-                        animate border-radius { duration: 150ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+                        animate border-radius { duration: 150ms; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
                         background: cb.pressed ? Theme.m3-on-surface-variant.with-alpha(0.1) : cb.has-hover ? Theme.m3-on-surface-variant.with-alpha(0.08) : transparent;
                         animate background { duration: 150ms; }
                         transform-scale: cb.pressed && Theme.press-bounce ? 1.06 : 1;

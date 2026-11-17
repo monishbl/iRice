@@ -2175,6 +2175,13 @@ impl Part for Menubar {
         self.apply_theme(st);
     }
 
+    fn urgent_data(&self, what: TypeId) -> bool {
+        // (an item's highlight is Panels' open panel: it fades as the panel
+        // starts closing, as MenuBarItem's `active` binding does, not two
+        // frames later, which ran it ~35 ms past the panel's close)
+        what == TypeId::of::<ShellState>()
+    }
+
     fn data(&mut self, st: &mut State, what: TypeId) {
         // The icon index arrived (or the theme changed): icons looked up before
         // it may be wrong or missing: look them up again

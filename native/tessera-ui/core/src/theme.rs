@@ -620,6 +620,9 @@ macro_rules! __theme_tokens {
             snappy / set_snappy: bool,
             press_bounce / set_press_bounce: bool,
             still / set_still: bool,
+            hover / set_hover: i64,
+            popover / set_popover: i64,
+            motion_panel / set_motion_panel: i64,
         }
     };
 }
@@ -696,6 +699,12 @@ pub fn tokens(look: &Look, plugin: bool) -> Tokens {
     let snappy = !look.material && look.motion == "snappy";
     t.set_expressive(expressive);
     t.set_snappy(snappy);
+    // (Theme.motion.pace: Snappy's durations are 0.85 of the others',
+    // rounded as the QML's Math.round(150 * pace))
+    let pace = if snappy { 0.85 } else { 1.0 };
+    t.set_hover((150.0_f64 * pace).round() as i64);
+    t.set_popover((220.0_f64 * pace).round() as i64);
+    t.set_motion_panel((320.0_f64 * pace).round() as i64);
     t.set_press_bounce(look.material && !look.reduce_motion);
     t.set_still(look.reduce_motion);
     if look.material {

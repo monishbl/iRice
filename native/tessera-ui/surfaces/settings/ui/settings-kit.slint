@@ -666,7 +666,7 @@ export component SChoice {
         color: Theme.secondary;
         // (Material: the caret turns over while the list is open)
         transform-rotation: Theme.material && root.open ? 180deg : 0deg;
-        animate transform-rotation { duration: Theme.material ? 200ms : 0ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+        animate transform-rotation { duration: Theme.material ? 200ms : 0ms; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
     }
     ta := TouchArea {
         enabled: root.enabled;

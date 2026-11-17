@@ -91,6 +91,8 @@ enum M {
     Press(i32, bool),
     Key(String, bool),
     Dismissed,
+    /// the close animation ended (Dialog.qml: unmapped once progress is 0)
+    Closed,
     Frame,
 }
 
@@ -181,6 +183,7 @@ impl Session {
         on!(on_choose, |i| M::Choose(i));
         on!(on_pressing, |i, p| M::Press(i, p));
         on!(on_dismissed, | | M::Dismissed);
+        on!(on_closed, | | M::Closed);
         let opts = tessera_core::rows::Rows::new();
         ui.set_options(opts.model());
         let rows = tessera_core::rows::Rows::new();
@@ -282,8 +285,10 @@ impl Session {
                 crate::shell::closed(NAME);
             }
         }
+        // (unmapped when the close animation ends, M::Closed, as Dialog.qml's
+        // `visible: progress > 0`; this is CloseGuard's cap, should frames stall)
         let to = Self::send(st);
-        self.hide.start(slint::TimerMode::SingleShot, Duration::from_millis(260), move || to(Box::new(M::Dismissed)));
+        self.hide.start(slint::TimerMode::SingleShot, Duration::from_millis(700), move || to(Box::new(M::Closed)));
     }
 
     fn choose(&mut self, st: &State, i: usize) {
@@ -424,11 +429,17 @@ impl Part for Session {
                 }
             }
             M::Dismissed => {
-                // a click on the scrim closes; after closing, the window goes
+                // a click on the scrim closes
                 if !self.open.is_empty() {
                     self.close(st, true);
+                }
+            }
+            M::Closed => {
+                // after closing, the window goes (not if it opened again)
+                if !self.open.is_empty() {
                     return;
                 }
+                self.hide.stop();
                 if let Some(w) = &mut self.win {
                     w.surface.hide();
                     st.shell.glass.set(&w.output, NS, &[]);

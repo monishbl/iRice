@@ -435,6 +435,20 @@ fn main() {
             eprintln!("tessera-ui: event loop: {e}");
             break;
         }
+        // (what this turn's events sent on — a panel closing tells Panels,
+        // Panels says the shell's state — handled before the frame is drawn,
+        // as the QML's bindings follow at once, not a frame or two later:
+        // the menu bar's highlight ran ~35 ms past a panel's close. At most
+        // two quick passes, only on a turn that draws.)
+        for _ in 0..2 {
+            if !state.wants_frame_soon() {
+                break;
+            }
+            if let Err(e) = event_loop.dispatch(Some(Duration::ZERO), &mut state) {
+                eprintln!("tessera-ui: event loop: {e}");
+                break;
+            }
+        }
         state.tend_parts();
         tessera_core::perf::time(|| "slint timers".into(), slint::platform::update_timers_and_animations);
         // (what parts animate by hand moves on once per frame, before the frame is drawn)

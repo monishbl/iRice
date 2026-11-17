@@ -79,7 +79,7 @@ component IconBtn inherits Rectangle {
     height: self.width;
     // (Material: the corners square off as it's pressed, 150 ms)
     border-radius: Theme.material ? (ta.pressed ? 8px : self.height / 2) : Theme.radius-control - 2px;
-    animate border-radius { duration: 150ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+    animate border-radius { duration: 150ms; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
     background: Theme.material ? Theme.m3-on-surface-variant.with-alpha(ta.pressed ? 0.1 : ta.has-hover ? 0.08 : 0)
         : ta.pressed ? Theme.fill-pressed : ta.has-hover ? Theme.fill : transparent;
     animate background { duration: SM.hover; }

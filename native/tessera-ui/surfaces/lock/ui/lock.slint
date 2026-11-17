@@ -2712,12 +2712,12 @@ export component LockScreen inherits Window {
     property <length> H: self.height;
     // Unlock: the content lifts away (LockData.leaving, 220 ms)
     property <float> exit: LockData.leaving ? 1 : 0;
-    animate exit { duration: 220ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+    animate exit { duration: 220ms; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
     // Lock: the entrance, once the first frame has shown
     property <float> reveal: LockData.lock-fx == "none" || LockData.revealed ? 1 : 0;
     animate reveal { duration: LockData.lock-fx == "none" ? 0ms : 450ms; easing: Theme.material ? cubic-bezier(0.05, 0.7, 0.1, 1.0) : cubic-bezier(0.2, 0.9, 0.1, 1.0); }
     property <float> enter: LockData.lock-fx == "zoom" && !LockData.revealed ? 1 : 0;
-    animate enter { duration: 450ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+    animate enter { duration: 450ms; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
     // Lock → Bedside Mode: `sb` runs 0 → 1
     property <float> sb: LockData.standby ? 1 : 0;
     animate sb { duration: LockData.sb-mode == "none" ? 0ms : LockData.sb-mode == "morph" ? 650ms : 400ms; easing: cubic-bezier(0.65, 0, 0.35, 1); }

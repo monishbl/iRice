@@ -772,7 +772,7 @@ export component Bar inherits Window {
         y: tip-top + (tip-open ? 0 : -4px);
         opacity: tip-open && revealed ? 1 : 0;
         visible: self.opacity > 0.01;
-        animate opacity, y { duration: tip-open ? Theme.popover : 0ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+        animate opacity, y { duration: tip-open ? Theme.popover : 0ms; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
         border-radius: Theme.material ? 4px : Theme.radius-control;
         background: Theme.material ? Theme.m3-inverse-surface : Theme.panel;
         tip-label := Text {

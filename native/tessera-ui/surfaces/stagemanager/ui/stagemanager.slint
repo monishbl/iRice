@@ -39,7 +39,7 @@ export component StageStrip inherits Window {
             width: 140px;
             height: 104px;
             transform-scale: ta.pressed ? 0.96 : ta.has-hover ? 1.04 : 1;
-            animate transform-scale { duration: Theme.hover; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+            animate transform-scale { duration: Theme.hover; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
             transform-origin: { x: self.width / 2, y: self.height / 2 };
             accessible-role: button;
             accessible-label: s.label;

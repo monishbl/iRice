@@ -133,7 +133,7 @@ component DialogButton inherits FocusScope {
         transform-scale: Theme.press-bounce && touch.pressed ? 1 + min(0.06, 10px / self.width) : 1;
         animate transform-scale { duration: 420ms; easing: spring(0.3); }
         border-radius: touch.pressed ? 12px : self.height / 2;
-        animate border-radius { duration: 150ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+        animate border-radius { duration: 150ms; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
         background: (filled ? Theme.m3-primary : Theme.m3-primary.with-alpha(0)).mix(content, touch.pressed ? 0.9 : touch.has-hover ? 0.92 : 1);
         animate background { duration: 150ms; }
         label := Text {

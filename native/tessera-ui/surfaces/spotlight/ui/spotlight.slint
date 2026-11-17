@@ -91,7 +91,7 @@ component SButton inherits Rectangle {
     border-width: focused && !Theme.material ? 2px : 0;
     border-color: Theme.accent;
     animate background { duration: 150ms; }
-    animate border-radius { duration: 150ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+    animate border-radius { duration: 150ms; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
     accessible-role: button;
     accessible-label: label;
     accessible-action-default => { clicked(); }

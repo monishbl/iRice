@@ -340,7 +340,7 @@ export component StackMaterial inherits Window {
                     transform-scale: eye.pressed && Theme.press-bounce ? 1.06 : 1;
                     animate transform-scale { duration: 290ms; easing: spring(0.57); }
                     border-radius: eye.pressed ? 8px : 14px;
-                    animate border-radius { duration: 150ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+                    animate border-radius { duration: 150ms; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
                     background: Theme.m3-secondary-container.mix(Theme.m3-on-secondary-container, eye.pressed ? 0.9 : eye.has-hover ? 0.92 : 1);
                     accessible-role: button;
                     accessible-label: "Quick Preview";

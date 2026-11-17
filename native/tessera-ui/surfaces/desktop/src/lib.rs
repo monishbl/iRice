@@ -1494,15 +1494,16 @@ impl Desktop {
         mw.ui.invoke_open();
     }
 
-    /// Close the menu: its exit animation (120 ms), then unmapped (a timer
-    /// here: the overlay must never stay up over the desktop, taking clicks)
+    /// Close the menu: gone at once (ContextMenu.qml has no exit animation),
+    /// then click-through on the loop's next turn (M::MenuClosed: the overlay
+    /// must never stay up over the desktop, taking clicks)
     fn close_menu(&mut self, st: &State) {
         if let Some(mw) = &mut self.menu {
             if mw.open {
                 mw.open = false;
                 mw.ui.set_shown(false);
                 let to = st.shell.sender(NAME);
-                self.menu_timer.start(slint::TimerMode::SingleShot, Duration::from_millis(180), move || to(Box::new(M::MenuClosed)));
+                self.menu_timer.start(slint::TimerMode::SingleShot, Duration::ZERO, move || to(Box::new(M::MenuClosed)));
             }
         }
     }

@@ -137,7 +137,7 @@ export component Dock inherits Window {
     animate slide {
         duration: Theme.material ? 320ms : (hidden ? 250ms : 350ms);
         // (Easing.OutBack, overshoot 1.2, as a bezier: within 0.5% of it)
-        easing: Theme.material ? spring(0.2) : (hidden ? cubic-bezier(0.32, 0, 0.67, 0) : cubic-bezier(0.35, 1.45, 0.7, 0.975));
+        easing: Theme.material ? spring(0.2) : (hidden ? cubic-bezier(0.3333, 0, 0.6667, 0) : cubic-bezier(0.35, 1.45, 0.7, 0.975));
     }
     out property <length> pill-x: pill.x;
     out property <length> pill-y: pill.y;
@@ -327,7 +327,7 @@ export component Dock inherits Window {
                         transform-scale: s.pressed && Theme.press-bounce ? 1 + min(0.06, 10px / self.width) : 1;
                         animate transform-scale { duration: 290ms; easing: spring(0.57); }
                         border-radius: s.pressed ? 16px : self.width / 2;
-                        animate border-radius { duration: 150ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+                        animate border-radius { duration: 150ms; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
                         background: Theme.m3-on-secondary-container.mix(Theme.m3-secondary-container, s.pressed ? 0.1 : s.hot ? 0.08 : 0);
                         animate background { duration: 150ms; }
                         // squares-four, as Material draws it (Icon.qml: a Material
@@ -452,11 +452,11 @@ export component DockMenu inherits Window {
     in property <bool> glass-plugin;
     in-out property <int> current: -1;
     in-out property <int> armed: -1; // a row waiting for confirmation
-    // (spring 5 / damping 0.36 in QML)
+    // (spring 5 / damping 0.36 in QML; no exit animation there: it goes at once)
     out property <float> progress: shown ? 1 : 0;
     animate progress {
-        duration: shown ? 350ms : 120ms;
-        easing: shown ? spring(0.36) : ease-in;
+        duration: shown ? 350ms : 0ms;
+        easing: spring(0.36);
     }
     out property <length> panel-x: panel.x;
     out property <length> panel-y: panel.y;

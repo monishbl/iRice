@@ -364,7 +364,7 @@ export component ShareSheet inherits Window {
 
     animate progress {
         duration: shown ? 220ms : 150ms;
-        easing: shown ? cubic-bezier(0.33, 1, 0.68, 1) : cubic-bezier(0.32, 0, 0.67, 0);
+        easing: shown ? cubic-bezier(0.3333, 1, 0.6667, 1) : cubic-bezier(0.3333, 0, 0.6667, 0);
     }
     changed progress => {
         if !shown && progress <= 0.001 { closed(); }
@@ -911,7 +911,7 @@ export component LinkCard inherits Window {
 
     animate shown {
         duration: up ? 300ms * motion : 0ms;
-        easing: cubic-bezier(0.33, 1, 0.68, 1);
+        easing: cubic-bezier(0.3333, 1, 0.6667, 1);
     }
 
     public function enter() {

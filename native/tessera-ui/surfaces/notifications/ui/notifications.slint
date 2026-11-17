@@ -166,11 +166,11 @@ export component MaterialPill inherits Rectangle {
     width: row.preferred-width + 32px;
     height: h;
     border-radius: touch.pressed ? 8px : self.height / 2;
-    animate border-radius { duration: 100ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+    animate border-radius { duration: 100ms; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
     background: touch.pressed ? Theme.m3-secondary-container.mix(Theme.m3-on-secondary-container, 0.9) : touch.has-hover ? Theme.m3-secondary-container.mix(Theme.m3-on-secondary-container, 0.92) : Theme.m3-secondary-container;
     animate background { duration: 150ms; }
     transform-scale: touch.pressed ? 0.97 : 1;
-    animate transform-scale { duration: 100ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+    animate transform-scale { duration: 100ms; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
     accessible-role: button;
     accessible-label: text;
     accessible-action-default => { clicked(); }
@@ -646,7 +646,7 @@ export component MaterialCard {
                     width: 32px;
                     height: 32px;
                     border-radius: send-touch.pressed && ready ? 8px : 16px;
-                    animate border-radius { duration: 100ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+                    animate border-radius { duration: 100ms; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
                     background: !ready ? transparent : send-touch.pressed ? Theme.m3-primary.mix(Theme.m3-on-primary, 0.9) : send-touch.has-hover ? Theme.m3-primary.mix(Theme.m3-on-primary, 0.92) : Theme.m3-primary;
                     accessible-role: button;
                     accessible-label: "Send reply";
@@ -717,13 +717,13 @@ export component Banners inherits Window {
             property <float> enter: b.entered && !b.leaving ? 1 : 0;
             animate enter {
                 duration: b.leaving ? (Theme.material ? 160ms : 200ms) : (Theme.material ? 520ms : 420ms);
-                easing: b.leaving ? (Theme.material ? cubic-bezier(0.3, 0, 0.8, 0.15) : cubic-bezier(0.32, 0, 0.67, 0)) : (Theme.material ? spring(0.5) : cubic-bezier(0.3, 1.35, 0.6, 1));
+                easing: b.leaving ? (Theme.material ? cubic-bezier(0.3, 0, 0.8, 0.15) : cubic-bezier(0.3333, 0, 0.6667, 0)) : (Theme.material ? spring(0.5) : cubic-bezier(0.3333, 1.3, 0.6667, 1));
             }
             // Material: a fade of its own, quicker than the slide
             property <float> fade: b.entered && !b.leaving ? 1 : 0;
             animate fade {
                 duration: b.leaving ? 160ms : 220ms;
-                easing: b.leaving ? cubic-bezier(0.3, 0, 0.8, 0.15) : cubic-bezier(0.33, 1, 0.68, 1);
+                easing: b.leaving ? cubic-bezier(0.3, 0, 0.8, 0.15) : cubic-bezier(0.3333, 1, 0.6667, 1);
             }
             property <float> place-y: b.ty / 1px;
             animate place-y { duration: 420ms; easing: (Theme.material ? spring(0.5) : spring(0.32)); }
