@@ -7,7 +7,7 @@
 #
 # Secrets: GITLAB_TOKEN, a GitLab project access token with write_repository
 # and api; GITLAB_PROJECT (or the repository variable of that name), the
-# project's path, monishbl/iRice when unset. Without GITLAB_TOKEN the job
+# project's path, monishbl/tessera when unset. Without GITLAB_TOKEN the job
 # says so and stops, successfully. One-time setup: docs/releases.md
 # ("Mirrors").
 name: gitlab-mirror
@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
-      GITLAB_PROJECT: ${{ secrets.GITLAB_PROJECT || vars.GITLAB_PROJECT || 'monishbl/iRice' }}
+      GITLAB_PROJECT: ${{ secrets.GITLAB_PROJECT || vars.GITLAB_PROJECT || 'monishbl/tessera' }}
       GITLAB_HOST: gitlab.com
     steps:
       - name: Is there a GitLab token?

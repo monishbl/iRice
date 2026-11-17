@@ -26,11 +26,13 @@ pieces until you run the two setup steps below, and on the new ones after.
 | `IRICE_*` environment names | `TESSERA_*` |
 | `hypr/irice`, layer namespaces `irice:*`, polkit, drop-ins, file names | `tessera` |
 
-Not renamed: the GitHub repository (`monishbl/iRice`), the website and its
-domains (`site/`, `irice.monishbl.in`), your checkout folder (`~/iRice`),
-and the dev sandbox's machine-wide names (the `irice` distrobox,
-`/tmp/irice-rt*`, the `IRICE-TEST` output), which every checkout from
-before and after the rename shares.
+On 17 Nov 2026 the rest followed: the GitHub repository `monishbl/iRice` →
+`monishbl/tessera` (GitHub redirects the old address; installs that still have
+it as their origin count it as the same repository) and the website
+`irice.monishbl.in` → `tessera.monishbl.in` (the old address serves the same
+files, for installs and links made before). The remaining old names (the bug
+report service, the checkout folder, the dev sandbox's machine-wide names) are
+renamed with a migration that keeps older installs working.
 
 ## What happens by itself
 

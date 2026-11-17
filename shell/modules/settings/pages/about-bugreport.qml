@@ -212,7 +212,7 @@ Column {
 
     Group {
         width: parent.width
-        footer: "Sent to Tessera's report server, which files it as an issue on github.com/monishbl/iRice. Your IP address is used only to limit how many reports come from one network and isn't stored with the report."
+        footer: "Sent to Tessera's report server, which files it as an issue on github.com/monishbl/tessera. Your IP address is used only to limit how many reports come from one network and isn't stored with the report."
         Row {
             label: BugReport.state_ === "sending" ? "Sending…"
                 : BugReport.state_ === "sent" ? "Report sent. Thank you!"

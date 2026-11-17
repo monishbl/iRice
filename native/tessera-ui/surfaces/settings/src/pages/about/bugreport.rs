@@ -147,7 +147,7 @@ pub fn page(cx: &mut Ctx, p: &mut Page) {
         }
     });
     p.group("")
-        .footer("Sent to Tessera's report server, which files it as an issue on github.com/monishbl/iRice. Your IP address is used only to limit how many reports come from one network and isn't stored with the report.")
+        .footer("Sent to Tessera's report server, which files it as an issue on github.com/monishbl/tessera. Your IP address is used only to limit how many reports come from one network and isn't stored with the report.")
         .row(Row::new(send_label(&state, &s(&r["error"]), wait))
             .tone(if state == "error" { 2 } else { 1 })
             .detail(if state == "sent" { url } else { String::new() })

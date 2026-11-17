@@ -1,4 +1,4 @@
-# Deploys irice.monishbl.in (site/) when it changes on main.
+# Deploys tessera.monishbl.in (site/) when it changes on main.
 # Needs the repository secret CLOUDFLARE_API_TOKEN (Cloudflare → My Profile →
 # API Tokens → "Edit Cloudflare Workers" template, account and zone monishbl.in).
 name: Site

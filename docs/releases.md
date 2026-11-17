@@ -229,7 +229,7 @@ releases signed with the old key.
 
 ```sh
 tree=$(git rev-parse HEAD:native)
-base=https://github.com/monishbl/iRice/releases/download/tessera-ui-latest   # or …/download/v1.2.3
+base=https://github.com/monishbl/tessera/releases/download/tessera-ui-latest   # or …/download/v1.2.3
 curl -LO "$base/tessera-ui-$tree.manifest.json" -LO "$base/tessera-ui-$tree.manifest.json.minisig"
 curl -LO "$base/tessera-ui-$tree-x86-64-v3.tar.zst" -LO "$base/tessera-ui-$tree-x86-64-v3.tar.zst.minisig"
 
@@ -257,9 +257,9 @@ for one run, and `setup.sh` carries a copy, kept the same by
 
 | Order | Source | Used for |
 |---|---|---|
-| 1 | `https://github.com/monishbl/iRice.git` | everything (today's only source) |
-| 2 | `https://gitlab.com/monishbl/iRice.git` | the code (git), and the builds from its generic package registry: `https://gitlab.com/api/v4/projects/monishbl%2FiRice/packages/generic/tessera-ui/<tag>/<file>` |
-| 3 | `https://codeload.github.com/monishbl/iRice/tar.gz/refs/heads/<branch>` | a fresh install only: the files without git history (Software Update can't update such a copy until `setup.sh` is run again) |
+| 1 | `https://github.com/monishbl/tessera.git` | everything (today's only source) |
+| 2 | `https://gitlab.com/monishbl/tessera.git` | the code (git), and the builds from its generic package registry: `https://gitlab.com/api/v4/projects/monishbl%2FiRice/packages/generic/tessera-ui/<tag>/<file>` |
+| 3 | `https://codeload.github.com/monishbl/tessera/tar.gz/refs/heads/<branch>` | a fresh install only: the files without git history (Software Update can't update such a copy until `setup.sh` is run again) |
 
 - **setup.sh** clones from the first that works; a source is looked at first
   (5 seconds to connect, `info/refs`), so a dead one, or a GitLab project that
@@ -303,7 +303,7 @@ https://github.com/archlinux/aur.git`), built with `makepkg -si`.
 Until this is done, every source after GitHub is passed over quietly, and the
 CI jobs below say they skipped (a notice, never a failed build).
 
-1. On gitlab.com, create the project **monishbl/iRice** (empty, without a
+1. On gitlab.com, create the project **monishbl/tessera** (empty, without a
    README), **public**, so installs need no login. (Another path: change it in
    `tools/sources.txt`, `setup.sh` and the README, and set the repository
    variable or secret `GITLAB_PROJECT` to it.)

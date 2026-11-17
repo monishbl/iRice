@@ -240,7 +240,7 @@ jobs:
         continue-on-error: true
         env:
           GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
-          GITLAB_PROJECT: ${{ secrets.GITLAB_PROJECT || vars.GITLAB_PROJECT || 'monishbl/iRice' }}
+          GITLAB_PROJECT: ${{ secrets.GITLAB_PROJECT || vars.GITLAB_PROJECT || 'monishbl/tessera' }}
           TREE: ${{ steps.manifest.outputs.tree }}
           TAG: ${{ steps.manifest.outputs.tag }}
           CHANNEL: ${{ steps.manifest.outputs.channel }}

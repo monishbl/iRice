@@ -17,8 +17,8 @@ import subprocess
 HERE = os.path.dirname(os.path.abspath(__file__))
 LIST = os.path.join(HERE, "sources.txt")
 # (only when sources.txt is missing: a copy cut down by hand)
-DEFAULT = ["https://github.com/monishbl/iRice.git", "https://gitlab.com/monishbl/iRice.git",
-           "https://codeload.github.com/monishbl/iRice/tar.gz/refs/heads/{branch}"]
+DEFAULT = ["https://github.com/monishbl/tessera.git", "https://gitlab.com/monishbl/tessera.git",
+           "https://codeload.github.com/monishbl/tessera/tar.gz/refs/heads/{branch}"]
 GITHUB = re.compile(r"^(?:https://github\.com/|git@github\.com:|ssh://git@github\.com/)([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?/?$")
 GITLAB = re.compile(r"^(?:https://(gitlab\.[A-Za-z0-9.-]+)/|git@(gitlab\.[A-Za-z0-9.-]+):)([A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+?)(?:\.git)?/?$")
 # git never asks for a password here: a mirror that doesn't exist yet (GitLab
@@ -53,7 +53,12 @@ def canonical(url):
         u = "https://" + m[1] + "/" + m[2]
     if u.startswith("file://"):
         u = u[len("file://"):]
-    return u.lower() if "://" in u else os.path.normpath(u)
+    if "://" not in u:
+        return os.path.normpath(u)
+    u = u.lower()
+    # (the repository was monishbl/iRice until 17 Nov 2026: an install made
+    # before keeps that origin, and GitHub redirects it; it's the same repo)
+    return re.sub(r"^(https://(?:github|gitlab)\.com/monishbl)/irice$", r"\1/tessera", u)
 
 
 def same_repo(a, b):
