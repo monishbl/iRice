@@ -128,6 +128,9 @@ pub struct Surface {
     frame_asked: Cell<Option<Instant>>,
     /// frame callbacks lost in a row (LOST_FRAME's back-off)
     lost_streak: Cell<u32>,
+    /// battery saver held its last frame back (at most 60 a second): the
+    /// one drawn when it may is still an animation's next frame
+    held: Cell<bool>,
     /// the drawing turn (RENDER_TURN) before its last frame callback came: a
     /// frame drawn in the turn right after one is an animation's next frame
     /// (pacing.rs)
@@ -260,8 +263,20 @@ impl Surface {
         self.needs_redraw.set(true);
         self.renderer.damage.all();
     }
+    /// Battery saver: when this surface may draw again, if not yet (at most
+    /// 60 frames a second, saver.rs; a little early is fine: the frame waits
+    /// for the display's next refresh anyway)
+    fn held_until(&self) -> Option<Instant> {
+        let gap = crate::saver::min_frame()?;
+        let at = self.frame_asked.get()? + gap - gap / 8;
+        (Instant::now() < at).then_some(at)
+    }
     fn render(&self, qh: &QueueHandle<State>, presentation: Option<&WpPresentation>) {
         if !self.configured.get() || self.frame_pending.get() || !self.needs_redraw.get() {
+            return;
+        }
+        if self.held_until().is_some() {
+            self.held.set(true);
             return;
         }
         self.needs_redraw.set(false);
@@ -270,7 +285,7 @@ impl Surface {
         // (drawn as soon as its frame callback let it: the next frame of an
         // animation, timed on screen by wp_presentation; pacing.rs)
         let refresh = crate::pacing::refresh_of(&self.output);
-        let chained = self.last_done.get().is_some_and(|d| d + 1 == RENDER_TURN.get());
+        let chained = self.last_done.get().is_some_and(|d| d + 1 == RENDER_TURN.get()) | self.held.replace(false);
         let cpu = thread_cpu();
         let feedback = presentation.filter(|_| chained && (wakes_on() || crate::gpu::watching())).map(|p| p.feedback(&self.wl, qh, Fb { surface: WlProxy::id(&self.wl), frame: self.rendered.get() }));
         // (the first two frames after `show` are drawn whole: the first can
@@ -830,6 +845,7 @@ impl State {
             frame_pending: Cell::new(false),
             frame_asked: Cell::new(None),
             lost_streak: Cell::new(0),
+            held: Cell::new(false),
             last_done: Cell::new(None),
             last_present_ns: Cell::new(0),
             cpu_slow: Cell::new(None),
@@ -997,7 +1013,13 @@ impl State {
     }
 
     pub fn wants_frame_soon(&self) -> bool {
-        self.surfaces.iter().any(|s| s.needs_redraw.get() && s.configured.get() && !s.frame_pending.get())
+        self.surfaces.iter().any(|s| s.needs_redraw.get() && s.configured.get() && !s.frame_pending.get() && s.held_until().is_none())
+    }
+
+    /// Battery saver holds a frame back (60 a second at most): when the
+    /// first surface held may draw (the loop's deadline for it)
+    pub fn held_frame_deadline(&self) -> Option<Instant> {
+        self.surfaces.iter().filter(|s| s.needs_redraw.get() && s.configured.get() && !s.frame_pending.get()).filter_map(|s| s.held_until()).min()
     }
 
     /// An animation runs but no frame callback will wake the loop: tick anyway

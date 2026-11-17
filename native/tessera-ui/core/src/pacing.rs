@@ -31,6 +31,8 @@ const DEFAULT_REFRESH_NS: u64 = 16_666_667;
 
 /// Idle: the timers' grid
 const GRID_MS: u64 = 250;
+/// …while battery saver is on (saver.rs): half as many idle wakeups
+const SAVER_GRID_MS: u64 = 500;
 /// Idle: no input for this long…
 const QUIET_INPUT: Duration = Duration::from_secs(2);
 /// …and no animation frame for this long
@@ -83,6 +85,13 @@ pub fn refresh() -> Duration {
     Duration::from_nanos(OUTPUTS.with(|o| o.borrow().iter().map(|(_, p)| *p).min()).unwrap_or(DEFAULT_REFRESH_NS))
 }
 
+/// What animations driven from here step by: the refresh, but never faster
+/// than battery saver's 60 Hz while it is on (saver.rs)
+pub fn frame_period() -> Duration {
+    let r = refresh();
+    crate::saver::min_frame().map_or(r, |m| r.max(m))
+}
+
 /// Input came (pointer, keys, touch) or a window was shown (a panel opened
 /// by a shortcut is no input to us): the timers' grid is off for a while
 pub fn input() {
@@ -101,14 +110,20 @@ pub fn quiet(now: Instant) -> bool {
 pub fn coalesce(d: Duration) -> Duration {
     let now_ms = epoch().elapsed().as_millis() as u64;
     let target = now_ms + d.as_millis() as u64;
-    Duration::from_millis(grid(target) - now_ms)
+    let step = if crate::saver::on() { SAVER_GRID_MS } else { GRID_MS };
+    Duration::from_millis(grid_of(target, step) - now_ms)
 }
 
 /// The grid point at or after `target` (ms): within 2 ms after a grid point
 /// counts as on it (Slint's ms and ours can differ by one), never earlier
 /// than the target itself
+#[cfg(test)]
 fn grid(target: u64) -> u64 {
-    let g = target.saturating_sub(2).div_ceil(GRID_MS) * GRID_MS;
+    grid_of(target, GRID_MS)
+}
+
+fn grid_of(target: u64, step: u64) -> u64 {
+    let g = target.saturating_sub(2).div_ceil(step) * step;
     g.max(target)
 }
 
@@ -171,6 +186,9 @@ pub fn missed_in(interval_ns: u64, refresh_ns: u64) -> u32 {
 /// took the processor little, so if it was late the GPU was slow)
 pub fn presented(interval_ns: u64, refresh_ns: u64, gpu_bound: bool) {
     let refresh_ns = if refresh_ns > 0 { refresh_ns } else { refresh().as_nanos() as u64 };
+    // (battery saver's 60 Hz on a faster display: every other refresh is the
+    // pace asked for, not a missed frame)
+    let refresh_ns = crate::saver::min_frame().map_or(refresh_ns, |m| refresh_ns.max(m.as_nanos() as u64 * 15 / 16));
     // (an interval of many refreshes: the animation paused, not missed frames)
     if interval_ns > refresh_ns * 8 {
         return;
@@ -311,7 +329,7 @@ pub fn frame_timers() -> bool {
 pub fn frame_timer_deadline(frame_coming: bool) -> Option<Instant> {
     TIMERS.with(|t| {
         let t = t.borrow();
-        (!t.list.is_empty()).then(|| t.last.map_or_else(Instant::now, |l| l + refresh() * if frame_coming { 2 } else { 1 }))
+        (!t.list.is_empty()).then(|| t.last.map_or_else(Instant::now, |l| l + frame_period() * if frame_coming { 2 } else { 1 }))
     })
 }
 
@@ -322,7 +340,7 @@ pub fn run_frame_timers() {
     let now = Instant::now();
     let due: Vec<(u64, Tick)> = TIMERS.with(|t| {
         let mut t = t.borrow_mut();
-        if t.list.is_empty() || t.last.is_some_and(|l| now.duration_since(l) < refresh() * 3 / 4) {
+        if t.list.is_empty() || t.last.is_some_and(|l| now.duration_since(l) < frame_period() * 3 / 4) {
             return Vec::new();
         }
         t.last = Some(now);
@@ -365,6 +383,9 @@ mod tests {
         assert_eq!(grid(5250 + 1000), 6250);
         // a 400 ms one moves to the next point
         assert_eq!(grid(5250 + 400), 5750);
+        // battery saver's coarser grid
+        assert_eq!(grid_of(5250 + 400, SAVER_GRID_MS), 6000);
+        assert_eq!(grid_of(6000 + 1000, SAVER_GRID_MS), 7000);
     }
 
     #[test]

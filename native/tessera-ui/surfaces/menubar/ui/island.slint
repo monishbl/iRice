@@ -2330,7 +2330,7 @@ export component Island inherits Rectangle {
                             if Theme.material: WavySeek {
                                 horizontal-stretch: 1;
                                 value: seeking ? seek-drag : card.progress;
-                                paused: !card.playing;
+                                paused: !card.playing || root.reduce-motion;
                                 TouchArea {
                                     y: -4px;
                                     height: parent.height + 8px;

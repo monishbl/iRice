@@ -108,7 +108,7 @@ fn def(label: &str, icon: &str, on: bool, status: &str) -> Def {
 
 /// Every module id, in ModuleDefs.all's order
 const IDS: &[&str] = &[
-    "wifi", "bluetooth", "focus", "nightLight", "darkMode", "sharing", "mirroring", "captions", "keepAwake", "stageManager", "mic", "lowPower", "coolDown",
+    "wifi", "bluetooth", "focus", "nightLight", "darkMode", "sharing", "mirroring", "captions", "keepAwake", "stageManager", "mic", "lowPower", "batterySaver", "coolDown",
     "gameMode", "antiFlashbang", "record", "easyEffects", "warp", "keyboard", "screenshot", "colorPicker", "musicRecognition", "clipboard", "calculator",
     "timer", "tileWindows", "appLibrary", "display", "sound", "micLevel", "nowPlaying", "battery", "resources", "weather",
 ];
@@ -292,7 +292,7 @@ impl ControlCenter {
         let sys = g("system");
         let be = g("backends");
         let audio = g("audio");
-        let pw = g("power");
+        let pw = g("Power");
         let focus = g("focus");
         let sharing = g("sharing");
         let mirr = g("mirroring");
@@ -371,6 +371,15 @@ impl ControlCenter {
                     let mut d = def("Low Power", "leaf", ss(&pw, "profile") == "power-saver", "");
                     d.available = be["ppd"].as_bool().unwrap_or(true);
                     d.reason = ss(&be, "powerShort").into();
+                    d
+                }
+                "batterySaver" => {
+                    let sv = &pw["saver"];
+                    let on = bs(sv, "on");
+                    let on_battery = bs(&pw, "onBattery");
+                    let mut d = def("Battery saver", "battery-low", on, if on { "Until you plug in" } else if on_battery { "" } else { "On battery only" });
+                    d.available = bs(&pw, "hasBattery");
+                    d.reason = "This computer has no battery".into();
                     d
                 }
                 "coolDown" => {
@@ -1287,6 +1296,7 @@ impl ControlCenter {
             "stageManager" => crate::util::config_set("stageManager.enabled", json!(!on)),
             "mic" => ask(h, "audio.toggleMic", json!([true])),
             "lowPower" => ask(h, "power.setMode", json!([if on { "balanced" } else { "power-saver" }])),
+            "batterySaver" => ask(h, "power.saverToggle", json!([])),
             "coolDown" => ask(h, "cooldown.toggle", json!([])),
             "gameMode" => ask(h, "system.set", json!(["gameMode", !on])),
             "antiFlashbang" => ask(h, "system.set", json!(["antiFlashbang", !on])),

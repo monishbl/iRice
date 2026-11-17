@@ -65,7 +65,7 @@ pub struct Shell {
 
 impl Shell {
     pub fn new(tx: Sender<Msg>, glass: Glass, surfaces: crate::surfaces::Surfaces) -> Self {
-        Self { look: theme::read(), cfg: theme::read_json(), glass, plugin: false, tx, surfaces, data: HashMap::new(), started: HashSet::new(), defer_data: false, deferred: Default::default() }
+        Self { look: theme::read(), cfg: crate::saver::overlay(theme::read_json()), glass, plugin: false, tx, surfaces, data: HashMap::new(), started: HashSet::new(), defer_data: false, deferred: Default::default() }
     }
 
     /// The newest reading of a service's type, if one came yet
@@ -322,9 +322,10 @@ impl State {
         self.outputs_now().into_iter().find(|(_, n)| n == name).map(|(o, _)| o)
     }
 
-    /// config.json changed: read it, tell every part
+    /// config.json changed (or battery saver came or went, saver.rs: the
+    /// settings shown with Reduce motion on): read it, tell every part
     pub fn config_changed(&mut self) {
-        self.shell.cfg = theme::read_json();
+        self.shell.cfg = crate::saver::overlay(theme::read_json());
         let look = theme::read();
         let changed = look != self.shell.look;
         // (Material draws no glass: what Glass left on screen goes first)

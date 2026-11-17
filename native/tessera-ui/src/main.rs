@@ -392,7 +392,9 @@ fn main() {
             let quiet = pacing::quiet(now) && !state.surfaces.iter().any(|s| s.window().has_active_animations());
             due(slint::platform::duration_until_next_timer_update().map(|d| now + if quiet { pacing::coalesce(d) } else { d }), "timers");
             // (an animation no frame callback will wake: at the display's refresh)
-            due(state.animating_unpaced().then(|| now + pacing::refresh()), "animating");
+            due(state.animating_unpaced().then(|| now + pacing::frame_period()), "animating");
+            // (battery saver: a surface held back to 60 frames a second draws when it may)
+            due(state.held_frame_deadline(), "saver");
             // (what a part animates by hand: each frame, or by the refresh when no frame comes)
             due(pacing::frame_timer_deadline(state.surfaces.iter().any(|s| s.frame_pending())), "frame-timers");
             // (glass shapes waiting for their frame go at the latest after Glass's MAX_HOLD)

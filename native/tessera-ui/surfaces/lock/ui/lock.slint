@@ -1726,11 +1726,11 @@ component MaterialLock inherits Rectangle {
                 // The timeline: wavy while it plays, flat when paused
                 if LockData.has-timeline: Rectangle {
                     height: 18px;
-                    if LockData.playing: Wavy {
+                    if LockData.playing && !LockData.reduce-motion: Wavy {
                         y: 4px;
                         value: LockData.progress;
                     }
-                    if !LockData.playing: Rectangle {
+                    if !LockData.playing || LockData.reduce-motion: Rectangle {
                         y: 7px;
                         height: 4px;
                         border-radius: 2px;

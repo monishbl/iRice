@@ -187,7 +187,8 @@ pub fn spawn(tx: Sender<Msg>) {
                 return;
             }
             // every 30 minutes, or at once when asked (settings changed)
-            match prx.recv_timeout(Duration::from_secs(30 * 60)) {
+            // (battery saver: every 2 hours, saver.rs)
+            match prx.recv_timeout(crate::saver::stretch(Duration::from_secs(30 * 60))) {
                 Ok(()) | Err(mpsc::RecvTimeoutError::Timeout) => {}
                 Err(mpsc::RecvTimeoutError::Disconnected) => return,
             }

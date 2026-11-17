@@ -650,8 +650,10 @@ impl Google {
         if self.was_locked && !lk {
             self.freshen(2 * 60_000); // unlocked, or woke up (sleep locks first)
         }
+        // (15 minutes; an hour while battery saver is on)
+        let every = tessera_core::saver::stretch_ticks(15 * 60_000) as i64;
         if self.was_idle && !id {
-            self.freshen(15 * 60_000);
+            self.freshen(every);
         }
         let nc = h.state("open").as_str() == Some("notificationCenter");
         if nc && !self.was_nc {
@@ -661,7 +663,7 @@ impl Google {
         self.ticks += 1;
         // looks every minute; syncs when 15 have passed
         if self.ticks % 60 == 0 && self.connected() && !lk && !id {
-            self.freshen(15 * 60_000);
+            self.freshen(every);
         }
     }
 }

@@ -241,6 +241,7 @@ impl SystemBridge {
                 "guardError": get(&pw, "guardError", &json!("")), "ownHypridle": b(&pw["ownHypridle"]), "userHypridle": b(&pw["userHypridle"]),
                 "energyMinutes": get(&pw, "energyMinutes", &json!(0)), "energyApps": apps,
                 "keepAwake": b(&sys["keepAwake"]), "keepAwakeStatus": s(&sys["keepAwakeStatus"]),
+                "onBattery": b(&pw["onBattery"]), "saver": get(&pw, "saver", &json!({})),
                 "priority": {"available": b(&pr["available"]), "on": b(&pr["on"]), "busy": b(&pr["busy"]), "error": get(&pr, "error", &json!(""))},
             },
             "cooldown": {"active": b(&cd["active"]), "why": get(&cd, "why", &json!(""))},
@@ -370,6 +371,7 @@ impl SystemBridge {
                 }
             }
             "coolDownToggle" => ask("cooldown.toggle", json!([])),
+            "saverToggle" => ask("power.saverToggle", json!([])),
             // Live captions
             "captionsInstall" => ask("captions", json!(["install"])),
             "captionsDownload" => ask("captions", json!(["download"])),

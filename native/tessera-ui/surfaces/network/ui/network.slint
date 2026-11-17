@@ -158,13 +158,13 @@ component WaveBar inherits Rectangle {
             width: parent.end;
             height: parent.height;
             clip: true;
-            if root.flat: Rectangle {
+            if root.flat || Theme.still: Rectangle {
                 y: 3px;
                 width: parent.width;
                 height: 4px;
                 background: Theme.m3-primary;
             }
-            if !root.flat: Path {
+            if !root.flat && !Theme.still: Path {
                 x: (wb.phase - 1) * 40px;
                 y: 0;
                 width: root.width + 40px;
