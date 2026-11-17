@@ -932,6 +932,11 @@ impl State {
         self.surfaces.iter().find(|s| &s.wl == wl).cloned()
     }
 
+    /// Whether any surface drew in this turn (after render_all)
+    pub fn drew_this_turn(&self) -> bool {
+        self.surfaces.iter().any(|s| s.drew.get())
+    }
+
     /// After each event loop turn: draw what changed
     pub fn render_all(&mut self) {
         RENDER_TURN.set(RENDER_TURN.get() + 1);

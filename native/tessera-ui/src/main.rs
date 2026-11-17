@@ -145,6 +145,8 @@ fn build_info() -> tessera_core::build_info::BuildInfo {
 
 fn main() {
     let started = Instant::now();
+    // (malloc: two arenas, a fixed mmap threshold; before any thread: tessera_core::memory)
+    tessera_core::memory::tune_allocator();
     // (an XDG folder set but empty or relative means "the default" by the
     // spec: taken out before anything reads it, so Mesa's shader cache, the
     // shell's children and every crate here use ~/.cache and the rest, not
@@ -248,6 +250,8 @@ fn main() {
                 let (reloads, stalls) = tessera_core::perf::counts();
                 eprintln!("{{\"reloads\":{reloads},\"stalls\":{stalls}}}");
                 eprintln!("tessera-ui: {}", tessera_core::pacing::report());
+                let (used, held) = tessera_core::memory::malloc_use();
+                eprintln!("tessera-ui: malloc in use {:.1} of {:.1} MB, RssAnon {:.1} MB", used as f64 / 1048576.0, held as f64 / 1048576.0, tessera_core::memory::rss_anon_kb() as f64 / 1024.0);
             }
             _ => state.exit = true,
         })
@@ -372,6 +376,8 @@ fn main() {
         let _ = lh.insert_source(tessera_core::health::Woke, |_, _, _| {});
         tessera_core::health::start();
     }
+    // (freed memory given back once the shell is quiet after drawing: memory.rs)
+    let mut idle_trim = tessera_core::memory::IdleTrim::new(Instant::now());
     while !state.exit {
         if first_frame_at.is_none() && state.first_frame_logged {
             first_frame_at = Some(Instant::now());
@@ -409,6 +415,8 @@ fn main() {
             due(state.lost_frame_deadline(), "frame-wait");
             // (the windows made ahead: from 2 s after the first frame, one per quiet turn)
             due(first_frame_at.filter(|_| prewarm.is_some()).map(|t| (t + Duration::from_secs(2)).max(now + Duration::from_millis(50))), "prewarm");
+            // (memory given back after a quiet spell)
+            due(idle_trim.deadline(), "trim");
             match next {
                 Some((at, why)) => (why, Some(at.saturating_duration_since(now))),
                 None => ("idle", None),
@@ -426,6 +434,11 @@ fn main() {
         // (what parts animate by hand moves on once per frame, before the frame is drawn)
         tessera_core::perf::time(|| "frame timers".into(), pacing::run_frame_timers);
         tessera_core::perf::time(|| "render".into(), || state.render_all());
+        let now = Instant::now();
+        idle_trim.turn(now, state.drew_this_turn());
+        if idle_trim.due(now) {
+            tessera_core::memory::trim_in_background();
+        }
         tessera_core::perf::time(|| "after_frame".into(), || state.each_part(|p, st| {
             let n = p.name();
             tessera_core::perf::time(|| format!("after_frame {n}"), || p.after_frame(st))

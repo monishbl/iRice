@@ -25,6 +25,7 @@ pub mod skia;
 pub mod egl;
 pub mod gpu;
 pub mod inhibit;
+pub mod memory; // (malloc's arenas and threshold, freed memory given back when quiet: memory.rs)
 pub mod env;
 pub mod health; // (the health record Settings → Health shows: health.rs)
 pub mod global_shortcuts; // (Hyprland's global shortcuts, as Quickshell's GlobalShortcut: standalone)

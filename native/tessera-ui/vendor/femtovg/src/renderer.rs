@@ -10,8 +10,10 @@ use crate::{
 
 mod opengl;
 pub use opengl::OpenGl;
-// (tessera-ui's one change: renderer/opengl.rs SCREEN_CLIP)
+// (tessera-ui's changes: renderer/opengl.rs SCREEN_CLIP)
 pub use opengl::set_screen_clip;
+// (and its shader programs shared between renderers on one GL context: SHARE_KEY)
+pub use opengl::{share_programs, shared_program_sets};
 
 #[cfg(feature = "wgpu")]
 mod wgpu;

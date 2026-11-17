@@ -38,6 +38,32 @@ pub fn set_screen_clip(clip: Option<[i32; 4]>) {
     SCREEN_CLIP.with(|c| c.set(clip));
 }
 
+// tessera-ui: renderers made on one GL context share their shader programs.
+// Every window gets a renderer of its own, and each compiled the same 15
+// programs (tessera-ui: ~40 windows over a session); on Mesa's iris each
+// linked program keeps its NIR and compiled code in the heap, so the shell
+// held tens of MB of identical programs. `share_programs(Some(key))` (the
+// GL context's handle, set by the caller while that context is current)
+// makes the next renderers reuse the programs of a live renderer made with
+// the same key; None (the default) compiles their own, as upstream. A
+// program's uniforms are state of the program, so a renderer sets its own
+// (view size, samplers) whenever it binds one, also at the start of render.
+type Programs = ([Option<MainProgram>; 11], [Option<MainProgram>; 11]);
+thread_local! {
+    static SHARE_KEY: std::cell::Cell<Option<usize>> = const { std::cell::Cell::new(None) };
+    static SHARED: std::cell::RefCell<Vec<(usize, std::rc::Weak<Programs>)>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// See SHARE_KEY
+pub fn share_programs(key: Option<usize>) {
+    SHARE_KEY.with(|k| k.set(key));
+}
+
+/// How many program sets are alive for sharing (tests, logs)
+pub fn shared_program_sets() -> usize {
+    SHARED.with(|s| s.borrow().iter().filter(|(_, w)| w.strong_count() > 0).count())
+}
+
 mod gl_texture;
 use gl_texture::GlTexture;
 
@@ -56,10 +82,10 @@ pub struct OpenGl {
     is_opengles_2_0: bool,
     view: [f32; 2],
     screen_view: [f32; 2],
-    // All types of the vertex/fragment shader, indexed by shader_type when has_glyph_texture is true
-    main_programs_with_glyph_texture: [Option<MainProgram>; 11],
-    // Same shader programs but with has_glyph_texture being false
-    main_programs_without_glyph_texture: [Option<MainProgram>; 11],
+    // All types of the vertex/fragment shader, indexed by shader_type: .0 when
+    // has_glyph_texture is true, .1 the same programs without (tessera-ui:
+    // shared, see SHARE_KEY)
+    programs: Rc<Programs>,
     current_program: u8,
     current_program_needs_glyph_texture: bool,
     vert_arr: Option<<glow::Context as glow::HasContext>::VertexArray>,
@@ -212,8 +238,24 @@ impl OpenGl {
             ])
         };
 
-        let main_programs_with_glyph_texture = generate_shader_program_variants(true)?;
-        let main_programs_without_glyph_texture = generate_shader_program_variants(false)?;
+        let key = SHARE_KEY.with(|k| k.get());
+        let live = key.and_then(|key| {
+            SHARED.with(|s| {
+                let mut s = s.borrow_mut();
+                s.retain(|(_, w)| w.strong_count() > 0);
+                s.iter().find(|(k, _)| *k == key).and_then(|(_, w)| w.upgrade())
+            })
+        });
+        let programs = match live {
+            Some(p) => p,
+            None => {
+                let p = Rc::new((generate_shader_program_variants(true)?, generate_shader_program_variants(false)?));
+                if let Some(key) = key {
+                    SHARED.with(|s| s.borrow_mut().push((key, Rc::downgrade(&p))));
+                }
+                p
+            }
+        };
 
         let mut opengl = Self {
             debug,
@@ -221,8 +263,7 @@ impl OpenGl {
             is_opengles_2_0: false,
             view: [0.0, 0.0],
             screen_view: [0.0, 0.0],
-            main_programs_with_glyph_texture,
-            main_programs_without_glyph_texture,
+            programs,
             current_program: 0,
             current_program_needs_glyph_texture: true,
             vert_arr: None,
@@ -498,6 +539,15 @@ impl OpenGl {
         glyph_tex: GlyphTexture,
     ) {
         self.select_main_program(paint);
+        // (tessera-ui: a shared program's samplers and view size may be another
+        // renderer's, set by it since this one last bound the program: set
+        // with every draw, three uniforms)
+        if Rc::strong_count(&self.programs) > 1 {
+            let program = self.main_program();
+            program.set_tex(0);
+            program.set_glyphtex(1);
+            program.set_view(self.view);
+        }
         let arr = UniformArray::from(paint);
         self.main_program().set_config(arr.as_slice());
         self.check_error("set_uniforms uniforms");
@@ -771,9 +821,9 @@ impl OpenGl {
 
     fn main_program(&self) -> &MainProgram {
         let programs = if self.current_program_needs_glyph_texture {
-            &self.main_programs_with_glyph_texture
+            &self.programs.0
         } else {
-            &self.main_programs_without_glyph_texture
+            &self.programs.1
         };
         programs[self.current_program as usize]
             .as_ref()
@@ -837,6 +887,10 @@ impl Renderer for OpenGl {
     ) {
         self.current_program = 0;
         self.main_program().bind();
+        // (tessera-ui: the program may be shared, its uniforms another renderer's)
+        self.main_program().set_tex(0);
+        self.main_program().set_glyphtex(1);
+        self.main_program().set_view(self.view);
 
         unsafe {
             self.context.enable(glow::CULL_FACE);
