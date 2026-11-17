@@ -300,6 +300,12 @@ impl Power {
         if !self.cfg["batterySaver"].as_bool().unwrap_or(true) || self.saver_dismissed || self.requests.contains_key("battery") || self.mode() == "power-saver" || !self.ppd {
             return;
         }
+        // One alert at the low mark, not two: while the shell's own battery
+        // saver comes on by itself (its notice says so, and its "Also use Low
+        // Power" setting covers the profile), this offer stays quiet
+        if policy::SaverMode::from_cfg(&self.cfg) != policy::SaverMode::Off && !self.cfg["batterySaverAuto"].as_bool().unwrap_or(false) {
+            return;
+        }
         self.saver_dismissed = true;
         let p = format!("{}%", self.percent().round());
         if self.cfg["batterySaverAuto"].as_bool().unwrap_or(false) {
