@@ -175,6 +175,18 @@ impl CaptionsSvc {
             self.last = Some(state.clone());
             h.tell("captions", json!({"state": state}));
         }
+        // In the island (placement "island"): its live activity (Island.activities' captions,
+        // LiveInfo's title/detail, the open card's last four lines)
+        let mut lines: Vec<String> = self.lines.clone();
+        if !self.partial.is_empty() {
+            lines.push(self.partial.clone());
+        }
+        let n = lines.len();
+        let lines: Vec<String> = if n > 4 { lines[n - 4..].to_vec() } else { lines };
+        h.set_state(
+            "livecaptions",
+            json!({"on": Self::enabled(h) && Self::placement(h) == "island", "ready": ready, "error": self.error, "latest": self.latest(), "previous": self.previous(), "lines": lines, "hint": lines_hint}),
+        );
     }
 }
 
@@ -258,8 +270,9 @@ impl Service for CaptionsSvc {
                     if !f.is_empty() {
                         self.lines.push(f.into());
                         let n = self.lines.len();
-                        if n > 2 {
-                            self.lines.drain(..n - 2);
+                        // (four kept: the island's card shows the last four, the bar two)
+                        if n > 4 {
+                            self.lines.drain(..n - 4);
                         }
                     }
                     self.quiet = false;

@@ -12,20 +12,20 @@ time: lib.rs doesn't yet set `all-mode` / `act-rows` (settings.rs reads
 
 | behaviour | QML line | Rust place | status |
 |---|---|---|---|
-| Height: progress 42, else 36 (music 52/60, captions its lines) | 21 | island.slint:895 | same (music isn't a row: IslandView 721); captions not special |
+| Height: progress 42, else 36 (music 52/60, captions its lines) | 21 | island.slint `ActivityRow` height (captions: 20 + 18 per line) | same (music isn't a row: IslandView 721; captions sized 17 Nov) |
 | Position poll Timer (music rows) | 24-29 | — | n/a (no music row) |
-| Appear: after `delay`, 280 ms OutCubic; rises 8 px; no delay going out | 31-39 | island.slint:896-901 (cubic-bezier(.33,1,.68,1)) | same |
-| Lead: 30 px circle, activity colour 0.22; Material IslandInk.tint (error if red) | 42-49 | island.slint:902-908 | same |
-| Icon 15 px filled, Glass activity colour, Material onTint | 59-66 | island.slint:909-914 | same |
+| Appear: after `delay`, 280 ms OutCubic; rises 8 px; no delay going out | 31-39 | island.slint `ActivityRow` `appear` | same |
+| Lead: 30 px circle, activity colour 0.22; Material IslandInk.tint (error if red) | 42-49 | island.slint `lead` | same |
+| Icon 15 px filled, Glass activity colour, Material onTint | 59-66 | island.slint `lead` SymIcon | same |
 | Music lead 48 px radius 10 with art | 44-58 | — | n/a |
-| Title body, Medium (Material) / DemiBold; captions "Live captions" | 73-79 | island.slint:939-945 | same (captions' title is whatever the owner pushed) |
-| Captions: last 3 lines (CaptionLines) | 81-88 | — | missing |
-| Detail: small, dim 0.6, tabular | 89-96 | island.slint:946-951 | same (no tabular figures) |
+| Title body, Medium (Material) / DemiBold; captions "Live captions" | 73-79 | island.slint `ActivityRow` title (captions: "Live captions") | same (17 Nov: the captions title) |
+| Captions: last 3 lines (CaptionLines) | 81-88 | island.slint `for l in r.lines`; lib.rs `act_rows` (the last three of the activity's `lines`, from captions.rs via host island_live.rs) | same (17 Nov) |
+| Detail: small, dim 0.6, tabular | 89-96 | island.slint detail Text | same (no tabular figures) |
 | Music seek line 3→5 px on hover, click seeks; Material wavy | 97-142 | — | n/a |
-| Progress: 3 px, white 0.16, fill activity colour, width 900 ms | 144-158 | island.slint:952-963 | same |
-| Material progress: WavyProgress in IslandInk.tint | 159-167 | island.slint:955-960 | different: flat bar (secondary-container / primary or error) |
-| Controls: every control but "reset", 32 px, icon 16, danger red, 0.4 when off, click runs `act` | 170-189 | island.slint:916-933, `control(kind, j, true)` → host island.rs:926-934 (`all`) | same once lib.rs wires it |
-| Controls' a11y name | IconButton | island.slint:930 (`label: c.icon`, a glyph code point) | different: screen readers hear the glyph |
+| Progress: 3 px, white 0.16, fill activity colour, width 900 ms | 144-158 | island.slint Glass bar | same |
+| Material progress: WavyProgress in IslandInk.tint | 159-167 | island.slint `WavySeek` (primary / error) | same (17 Nov) |
+| Controls: every control but "reset", 32 px, icon 16, danger red, 0.4 when off, click runs `act` | 170-189 | island.slint controls → `control(kind, j, true)`; lib.rs `act_rows` (`all` minus reset) | same |
+| Controls' a11y name | IconButton | island.slint `label: c.name`; host island.rs `ctl_name` (each control's own name, else from its piece: Pause, Skip, Lap, Stop…) | same (17 Nov; was the glyph's code point) |
 
 ## Summary
 
@@ -52,3 +52,7 @@ See shell_modules_menubar_IslandView.qml.md steps 3-4 and shell_services_Island.
 - Record the island opening with a timer and a stopwatch: rows fade/rise in 45 ms apart.
 
 ## Test results (batch 4)
+
+## Re-check 17 Nov (B4)
+
+Before: 1 missing, 2 different; after: all same (or n/a). The rows now also exist for kinds that never showed standalone (mirroring, casting, dictation, captions, a call, sharing, an update, transfers: host island_live.rs).

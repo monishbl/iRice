@@ -28,6 +28,7 @@ pub mod glassbuild;
 pub mod intents;
 pub mod ipc;
 pub mod island;
+pub mod island_live;
 pub mod panels;
 pub mod probes;
 pub mod shortcuts;

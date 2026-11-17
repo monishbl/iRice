@@ -12,16 +12,16 @@ the menu bar from MPRIS (`surfaces/menubar/src/lib.rs` 301-310, 363-401).
 | behaviour | QML line | Rust place | status |
 |---|---|---|---|
 | Seconds clock while something counts (recording, call, share, dictation) | 14-21 | host island.rs:568-576 (1 s Tick::Live, re-derives) | same |
-| icon(): recording pause-circle / record, timer timer / coffee, stopwatch, transfer by kind, call camera / phone, share window / screen, sysupdate, dictation, casting / captions, mirroring | 23-50 | derive_live 475, 491, 509; others from owners | same for derived kinds |
-| title(): music track or "Playing", Focus / Break, Stopwatch, Recording (paused), transfer "+ N more", call name, sharing, Updating · step, dictation, casting, captions, mirroring | 52-82 | derive_live 477, 492, 509; lib.rs:386 (music: title or identity) | same for derived; music falls back to identity, not "Playing" |
-| detail(): artist, "m:ss left", stopwatch, recording time, transfer what · amount · speed (· PIN), call since · Muted, share target · since, captions error / setup / previous, mirroring, casting, dictation, sysupdate | 84-122 | derive_live 478, 493, 510; src/island.rs:64-89 | same for derived; others from owners |
+| icon(): recording pause-circle / record, timer timer / coffee, stopwatch, transfer by kind, call camera / phone, share window / screen, sysupdate, dictation, casting / captions, mirroring | 23-50 | derive_live (recording, timer, stopwatch); island_live.rs `derive` (the other eight, from their owners' states) | same (17 Nov: every kind) |
+| title(): music track or "Playing", Focus / Break, Stopwatch, Recording (paused), transfer "+ N more", call name, sharing, Updating · step, dictation, casting, captions, mirroring | 52-82 | derive_live; island_live.rs; lib.rs (music: title, else "Playing") | same (17 Nov: every kind; music fixed batch 5) |
+| detail(): artist, "m:ss left", stopwatch, recording time, transfer what · amount · speed (· PIN), call since · Muted, share target · since, captions error / setup / previous, mirroring, casting, dictation, sysupdate | 84-122 | derive_live; island_live.rs (transfer what · amount · speed · PIN, call since · Muted, sharing target · since / still sharing, captions error / setup / previous, mirroring, casting, dictation, update text · package) | same (17 Nov: every kind) |
 | time(): short pill text per kind | 125-147 | derive_live 478, 493, 510 | same |
-| progress(): timer, transfer, sysupdate, casting; −1 otherwise | 150-154 | derive_live 494 (timer), −1 recording / stopwatch | same for derived |
+| progress(): timer, transfer, sysupdate, casting; −1 otherwise | 150-154 | derive_live (timer); island_live.rs (transfer, update, casting) | same (17 Nov: every kind) |
 | controls(music): prev (canGoPrevious) / play-pause / next (canGoNext) | 161-166 | lib.rs:371-380, `island_control` 1122-1139 | same |
 | controls(timer): reset / play-pause / skip | 167-172 | derive_live 495-499 (`nc` calls) | same |
 | controls(stopwatch): reset (on when stopped) / lap (on when running) / play | 173-178 | derive_live 511-515 | same |
 | controls(recording): discard, mic (with a mic; on when the node exists), pause (canPause), stop (danger) | 179-186 | derive_live 465-473 | same (mic always on: no micNode check) |
-| controls(transfer / screenShare / captions / mirroring / casting / dictation / sysupdate / call) | 187-221 | owners via `island.activity`; run by host island.rs:926-934 | same where the owner sends them |
+| controls(transfer / screenShare / captions / mirroring / casting / dictation / sysupdate / call) | 187-221 | island_live.rs (transfer cancel / open Downloads, sharing stop, captions off, mirroring stop, casting play / stop, dictation cancel / stop, update details / cancel, call mute / open / leave) → `island.live` runs their acts | same (17 Nov: every kind; nobody sent them before) |
 | Pill shows controls filtered by pieces; rows drop reset; the card shows all | 156-157 | push_live 541 (`controls`), 547 (`all`); `live` call `all` flag 929 | same (menu bar side in progress) |
 
 ## Summary
@@ -40,3 +40,7 @@ the menu bar from MPRIS (`surfaces/menubar/src/lib.rs` 301-310, 363-401).
 - FAKEPLAYER_TRACK="|Artist" fakeplayer: the pill and rows say "Playing".
 
 ## Test results (batch 5)
+
+## Re-check 17 Nov (B4)
+
+Summary point 3 was the real gap: standalone, no owner ever called `island.activity`, so only recording, the timer, the stopwatch and music ever showed. host/shell/src/island_live.rs now derives mirroring, casting, dictation, captions (in the island), a call, screen sharing, a system update and transfers from the states their services publish (new: `livecaptions`, `privacy.screen`, `sysupdate`), with LiveInfo's icon, title, time, detail, progress and controls, each control's accessible name, a call's app icon and the captions' lines.

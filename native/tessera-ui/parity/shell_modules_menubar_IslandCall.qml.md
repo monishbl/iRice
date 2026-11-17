@@ -10,20 +10,20 @@ but draws it as a generic `AlertView` row: bell glyph, name, app, no buttons.
 
 | behaviour | QML line | Rust place | status |
 |---|---|---|---|
-| Height 68 | 27 | island.slint:545 (row 52) | different |
-| Stagger: photo scale 0.7→1 at 0.1, name fades / slides 12 px at 0.15, buttons fade / scale 0.8→1 at 0.3 | 29-34, 43, 121-122, 156-157 | — | missing |
-| Pulse: two rings swell to 1.45× and fade (0.55→0), 1.6 s a beat, half a beat apart, 30 fps Ticker; held when unseen or reduce motion | 47-66 | — | missing |
-| Reduce motion: one still ring at 0.6 | 67-76 | — | missing |
-| Photo 52 px round (crop), else initials 19 DemiBold on #636366 (Material tertiaryContainer), else a person icon | 78-107 | island.slint:659-664 (bell icon) | different: no photo, no initials |
-| App badge 22 px on the photo | 109-114 | — | missing |
-| Name 17 DemiBold | 123-129 | island.slint:692-698 (title 15) | different size |
-| App icon 14 + "App · incoming call" / "· on your phone" (body, ink2) | 130-148 | island.slint:699-704 (subtitle = app name only) | different |
-| Decline: 44 px red circle, phone-disconnect, label under; Calls.decline() | 158-164 | — | missing |
-| Answer / Open (openOnly): 44 px green (Material primary), phone / arrow-square-out; Calls.answer() | 165-171 | — | missing |
-| Button states: Glass darker 1.2 pressed, lighter 1.1 hovered, scale 0.94 pressed (100 ms OutCubic); Material state layer + ElasticControl | 182-199 | — | missing |
-| 52 px hit target (margins −4), pointer cursor; a11y "Decline call" / "Answer call" | 207-215 | — | missing |
-| Not dismissable by drag or wheel (IslandEvent 133, 149) | — | island.slint:770-776 | different: a wheel up removes it (no Decline sent) |
-| Esc declines (IslandView Keys / ipc dismissNewest) | Island.qml 705-707 | host island.rs:1004-1012 (ipc only) | different: no Esc key in the Rust island |
+| Height 68 | 27 | island.slint AlertView `a.kind == "ringing" ? 68px` | same (fixed batch 2; re-checked 17 Nov) |
+| Stagger: photo scale 0.7→1 at 0.1, name fades / slides 12 px at 0.15, buttons fade / scale 0.8→1 at 0.3 | 29-34, 43, 121-122, 156-157 | AlertView ringing `p1`/`p2`/`p3` (315 ms OutCubic after 70 / 105 / 210 ms); buttons `CallButton.grow` 0.8 + 0.2·p3 | same (fixed batch 3 + 17 Nov: the buttons' 0.8→1 scale) |
+| Pulse: two rings swell to 1.45× and fade (0.55→0), 1.6 s a beat, half a beat apart, 30 fps Ticker; held when unseen or reduce motion | 47-66 | AlertView ringing `for i in reduce-motion ? 0 : 2` (animation-tick, 1.6 s, +0.5) | same (17 Nov: fade from 0.55, was 0.5); runs on the frame clock while shown |
+| Reduce motion: one still ring at 0.6 | 67-76 | AlertView ringing `if reduce-motion` (60 px, alpha 0.6) | same (fixed 17 Nov; was a swollen ring at 0.27) |
+| Photo 52 px round (crop), else initials 19 DemiBold on #636366 (Material tertiaryContainer), else a person icon | 78-107 | AlertView ringing photo | same (17 Nov: 19 px on #636366, was 20 on #8E8E93; the person icon added) |
+| App badge 22 px on the photo | 109-114 | AlertView ringing `a.has-app-icon` Image 22 | same (fixed batch 2) |
+| Name 17 DemiBold | 123-129 | AlertView ringing Text 17/600 | same (fixed batch 2) |
+| App icon 14 + "App · incoming call" / "· on your phone" (body, ink2) | 130-148 | AlertView ringing subtitle row | same (17 Nov: the 14 px app icon before the text) |
+| Decline: 44 px red circle, phone-disconnect, label under; Calls.decline() | 158-164 | `CallButton` Decline → `calls decline` | same (fixed batch 2) |
+| Answer / Open (openOnly): 44 px green (Material primary), phone / arrow-square-out; Calls.answer() | 165-171 | `CallButton` Answer/Open → `calls answer` | same (fixed batch 2) |
+| Button states: Glass darker 1.2 pressed, lighter 1.1 hovered, scale 0.94 pressed (100 ms OutCubic); Material state layer + ElasticControl | 182-199 | `CallButton` | same (Glass); Material: grows 6 % pressed (ElasticControl's press, 17 Nov), tonal state colours as Glass's |
+| 52 px hit target (margins −4), pointer cursor; a11y "Decline call" / "Answer call" | 207-215 | `CallButton` TouchArea −4, `accessible-label: label + " call"` | same (fixed batch 2) |
+| Not dismissable by drag or wheel (IslandEvent 133, 149) | — | the ringing card has no wheel area | same (fixed batch 2) |
+| Esc declines (IslandView Keys / ipc dismissNewest) | Island.qml 705-707 | island.slint `keys` FocusScope → lib.rs `M::IslandEscape` → `calls decline` | same (fixed batch 2) |
 
 ## Summary
 
@@ -70,3 +70,7 @@ Retest the FAIL steps above.
 - Set `appearance.reduceMotion: true`, ring again: one still ring around the photo.
 
 ## Test results (batch 4)
+
+## Re-check 17 Nov (B4)
+
+Every row re-read against `surfaces/menubar/ui/island.slint` at 18628a5: the table above still said "missing" for what batch 2/3 had fixed. Ported now: the buttons' scale-in, the 0.55 ring fade, reduce motion's still ring, initials 19 on #636366, the person icon, the subtitle's app icon, Material's press growth. Before: 8 missing, 6 different; after: 14 same.

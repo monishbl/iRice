@@ -1,0 +1,99 @@
+# IslandCardsB4: the island-card re-check of 17 Nov (B4). Screen IRICE-TEST 1920x1080 scale 1;
+# the island is centred at x 960 (closed y ~14, open ~392 wide); the bar is 30 px tall.
+# Runs in both looks (no look lines). One activity at a time, so the focus card shows.
+setup python3 -c 'import json, os;p = os.path.expanduser("~/.config/tessera/config.json"); c = json.load(open(p)); c.setdefault("island", {})["activityMode"] = "one"; json.dump(c, open(p, "w"), indent=4)'
+wait 2
+
+# ── The timer's and the stopwatch's cards
+ipc timer toggle
+wait 1
+ipc timer stopwatch
+wait 2
+ptr move 1500 600
+ptr glide 960 14 300
+wait 1.2
+shot stopwatch-card
+note stopwatch card (newest takes the focus): a 44 px badge (Material: a cookie in primary), "Stopwatch" over a big m:ss.cc that counts hundredths, reset / lap / pause on the right; two page dots under it
+rec swap 1.5 ipc island next
+note the focus moves to the timer: the card fades and slides in from its side (QML also fades the old one out first)
+shot timer-card
+note timer card: "Focus" over the big time left, reset / pause / skip on the right, a progress line along the bottom (Material: wavy)
+ptr glide 960 700 300
+wait 0.5
+rec phase-end 3 ipc timer skip
+note the phase ends: an island alert "Focus session done · Take a break" with the coffee icon turning in (no desktop notification)
+wait 4
+ipc timer reset
+ipc timer stopwatchReset
+wait 1
+
+# ── The glyphs' motions (each recorded from the post)
+rec glyph-wifi 2.2 ipc island demo wifi
+note Wi-Fi: the arcs fill in none → low → medium → high (~260/430/600 ms), then the icon swells 1.15 and back
+ipc island dismissNewest
+wait 0.6
+rec glyph-battery 2.2 ipc island demo battery
+note low battery: the ring fills to 10 % (900 ms after 180), the disc glows twice, the glyph shakes ±3 px three times
+ipc island dismissNewest
+wait 0.6
+rec glyph-charging 2.2 ipc island demo charging
+note charging: the ring fills to 64 %, the bolt pulses to 1.25 twice after 400 ms
+ipc island dismissNewest
+wait 0.6
+rec glyph-device 2.2 ipc island demo device
+note device: the earbuds' drawing pops in, two ripples spread from it (140 + 260 ms apart)
+ipc island dismissNewest
+wait 0.6
+rec glyph-audio 2.4 ipc island demo audio
+note audio: three sound-wave arcs pulse beside the headphones (three times each), then stay
+ipc island dismissNewest
+wait 0.6
+rec glyph-usb 2 ipc island demo usb
+note USB: the drive icon drops 14 px and bounces in
+ipc island dismissNewest
+wait 0.6
+rec glyph-temp 3.2 ipc island demo temperature
+note temperature: the ring fills and (Glass) warms from orange to red; after 900 ms the thermometer swells with a red glow, twice
+ipc island hot false
+ipc island dismissNewest
+wait 0.6
+
+# ── Focus on / off
+rec focus-on 2 ipc focus toggle dnd
+note a Focus alert (the mode's icon and name, its status)
+ipc island dismissNewest
+wait 0.6
+ipc focus toggle dnd
+wait 1.5
+shot focus-off
+note "Focus off"
+ipc island dismissNewest
+wait 0.6
+
+# ── The volume row's list (IslandLevels)
+ipc island demo output
+wait 0.5
+ptr glide 1124 36 250
+ptr click
+wait 0.8
+shot levels-list
+note the outputs (a tick on the one in use), "App volumes ›" when something plays, "Sound settings"
+ptr glide 960 700 300
+wait 3
+ipc island dismissNewest
+wait 1
+
+# ── Captions in the island
+setup python3 -c 'import json, os;p = os.path.expanduser("~/.config/tessera/config.json"); c = json.load(open(p)); c.setdefault("captions", {}).update({"enabled": True, "placement": "island"}); json.dump(c, open(p, "w"), indent=4)'
+wait 2
+ipc captions demo "The quick brown fox jumps" "over the lazy dog"
+wait 1
+shot captions-pill
+note the pill: closed-captioning icon and the latest words (or "Live captions")
+ptr glide 960 14 300
+wait 1.2
+shot captions-card
+note the open card: "Live captions", the last lines (or the set-up hint without whisper), an × that turns them off
+ptr glide 960 700 300
+setup python3 -c 'import json, os;p = os.path.expanduser("~/.config/tessera/config.json"); c = json.load(open(p)); c.setdefault("captions", {})["enabled"] = False; json.dump(c, open(p, "w"), indent=4)'
+wait 2

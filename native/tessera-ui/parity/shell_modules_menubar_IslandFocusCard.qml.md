@@ -11,38 +11,38 @@ lib.rs wiring not yet there.
 
 | behaviour | QML line | Rust place | status |
 |---|---|---|---|
-| Height: music 200 (overlay) / 132 (side), captions its lines, others 80 | 36 | island.slint:1325-1393 | different: one compact layout for all |
-| Timer: asks MPRIS for the position each second while visible and playing | 39-44 | — | missing (no seek bar) |
-| fineClock: asks Timers for the hundredths tick while a running stopwatch shows | 32-35 | — | missing |
-| openCast(): Control Center on the focused screen, Cast page | 53-56 | — | missing |
-| openPlayer(): raise, else focus the app's window, close panels | 57-70 | — | missing |
-| Volume model: the player's own volume if supported, else system; mute remembers the level | 71-100 | — | missing |
-| SeekWave (Material wavy progress, click seeks) | 103-117 | — | missing |
-| Ctl: 36×36 round, icon 18 | 119-126 | island.slint:1369-1379 (36×32, icon 20, spacing 18) | different sizes |
-| Volume: speaker (Mute/Unmute tooltip); hover widens 36→104 (150 ms OutCubic) to a slider (drag); wheel ±0.05 | 131-185 | — | missing |
-| OpenApp: hover widens left to the app's name, tap opens the player, tooltip "Open …" | 188-230 | — | missing |
-| Transport: prev (dim when !canGoPrevious) / play 44 px icon 24 / next, spacing 10 | 233-256 | island.slint:1366-1380, lib.rs:371-380 | different: buttons built from the pill's pieces (`cfg.shows("music", …)`): hiding prev in the pill hides it here; play not larger |
-| Material PlayButton (morphing shape) | 245-254 | — | missing (see PlayButton.qml.md) |
-| Cast button (when devices exist or casting; filled while casting; tooltip) | 261 | — | missing |
-| Overlay "faded": art behind everything with edges faded (edgefade shader) | 272-292 | — | missing (no shaders); "island" art style as the island's background also missing (lib.rs:14) |
-| Material overlay: art under a 72 % surfaceContainerHigh wash, radius tile−12 | 295-314 | — | missing |
-| No art: music-notes 40 px | 315-322 | island.slint:1341-1346 (20 px icon on a tinted circle) | different |
-| Title: Marquee 16 DemiBold, "Not Playing" fallback, scrolls with the `music.scroll` piece | 330-336 | island.slint:1351-1357 (15 / 600, elide) | different: no scroll, identity as fallback |
-| Artist · album, dim 0.75 | 337-344 | island.slint:1358-1363 | different: artist only |
-| Seek row: position and −remaining (caption, tabular), track 4 px → 6 on hover (150 ms), click seeks if canSeek | 346-397 | — | missing |
-| Side layout: 72 px art in a squircle mask (radius tile−12); Material cookie9 while playing, square paused | 405-463 | island.slint:1329-1340 (64 px, radius 12 / Material 16) | different |
-| Side layout: title 16, artist · album, player identity (dim 0.4, caption) | 464-490 | island.slint:1351-1363 | different: no album, no identity |
-| Captions: "Live captions" + last 4 lines + Off button (turns captions off) | 553-580 | — | missing (shown as a generic icon / title / time) |
-| Badge 44 px circle, activity colour 0.22; Material cookie9 in IslandInk.tint (error when red) | 587-601 | island.slint:1329-1334 (40 px, 0.24; Material always primary) | different: size; red kinds not error; no cookie |
-| Call: the app's icon (28 px) in the badge | 603-609 | — | missing |
-| Badge icon 22 (Material 20), onTint | 610-617 | island.slint:1341-1346 (20, on-primary) | different |
-| Text: transfer / call / screenShare / sysupdate: title (body DemiBold) over detail; timer "Focus · paused", stopwatch "· N laps", recording "· mic off" over a 24 px tabular number (recording red, grey paused) | 619-639 | island.slint:1351-1363 (title 15 + time small) | different: no big number, no detail (host now sends `detail`, src/island.rs:64-89, the card doesn't show it), no suffixes |
-| Buttons: every LiveInfo control (reset, discard, mic, pause, stop…), danger red, 0.4 when off | 640-655 | island.slint:1369-1379 `control(kind, i, true)` | same once lib.rs fills `card.controls` with `all` (today: the pill's pieces, lib.rs:404-417) |
-| Recording mic meter (√level, grey muted, 80 ms width; counts meter users) | 656-677 | — | missing |
-| Progress bar 4 px (white 0.16, activity colour, width 900 ms); Material wavy | 678-700 | — | missing here (ActivityRow has one, island.slint:952-963) |
-| Page dots (IslandView 676-697): clickable, focus that one | IslandView 690-693 | island.slint:1382-1392 | different: not clickable |
-| Swap animation when cycling (opacity + 16 px slide by direction) | IslandView 667-668 | — | missing |
-| Wheel over the card cycles activities | IslandView 669-673 | island.slint:1201-1207 | same |
+| Height: music 200 (overlay) / 132 (side), captions its lines, others 80 | 36 | island.slint `cardl`: music overlay (art band 64 + title + seek + transport), side row 72 + seek + transport, captions its lines, others a fixed 80 px Rectangle | same (17 Nov: others 80, captions by lines, the side player; overlay measured by its parts, not a fixed 200) |
+| Timer: asks MPRIS for the position each second while visible and playing | 39-44 | lib.rs `follow_position` (1 s `pos_timer` while open with music) → `read_position` | same (fixed after batch 1) |
+| fineClock: asks Timers for the hundredths tick while a running stopwatch shows | 32-35 | host island.rs stopwatch `fine` {ms, running} → Live `fine-ms`/`fine-running`; island.slint `sw-text` counts on `animation-tick()` from each push while open | same (17 Nov; m:ss.cc as Timers.formatMs) |
+| openCast(): Control Center on the focused screen, Cast page | 53-56 | lib.rs `M::OpenCast` → `rustui act page "cast <output>"` | same (17 Nov) |
+| openPlayer(): raise, else focus the app's window, close panels | 57-70 | lib.rs `open_player` (mpris raise, focus by class, `panels close`) | same (fixed earlier) |
+| Volume model: the player's own volume if supported, else system; mute remembers the level | 71-100 | lib.rs `volume_now` / `muted_now` / `toggle_mute` (`saved_volume`) | same (fixed earlier) |
+| SeekWave (Material wavy progress, click seeks) | 103-117 | island.slint `WavySeek` + TouchArea → `seek` | same (fixed earlier) |
+| Ctl: 36×36 round, icon 18 | 119-126 | island.slint card controls (music 36×36 / 18; others 36×36 / 18) | same (17 Nov: the other kinds' were 36×32 / 20) |
+| Volume: speaker (Mute/Unmute tooltip); hover widens 36→104 (150 ms OutCubic) to a slider (drag); wheel ±0.05 | 131-185 | island.slint `vol` | same (fixed earlier; a11y name instead of a tooltip) |
+| OpenApp: hover widens left to the app's name, tap opens the player, tooltip "Open …" | 188-230 | island.slint `oa` | same (fixed earlier; a11y name "Open …") |
+| Transport: prev (dim when !canGoPrevious) / play 44 px icon 24 / next, spacing 10 | 233-256 | island.slint music controls (`card.controls` = every control, `all`) | same (fixed earlier; Glass play icon 18 in a 44 px button) |
+| Material PlayButton (morphing shape) | 245-254 | island.slint `PlayMorph` | same (fixed earlier) |
+| Cast button (when devices exist or casting; filled while casting; tooltip) | 261 | island.slint `card.cast-shown` IconButton left of OpenApp; lib.rs reads state `cast` (devices / active / device) | same (17 Nov; a11y name "Cast to a TV" / "Casting to …" for the tooltip) |
+| Overlay "faded": art behind everything with edges faded (edgefade shader) | 272-292 | lib.rs `background_art(_, 2)`: cropped to the card, alpha by edgefade.frag's smoothsteps (0.28/0.22/0.28/0.6); island.slint `card.faded` Image | same (17 Nov; the fade baked into the picture, no shader) |
+| Material overlay: art under a 72 % surfaceContainerHigh wash, radius tile−12 | 295-314 | island.slint `Theme.material && card.has-bg-art` block | same (fixed earlier; wash on surfaceContainerHighest, the island's own surface when open) |
+| No art: music-notes 40 px | 315-322 | island.slint music `!card.has-art` SymIcon 40 | same (fixed earlier) |
+| Title: Marquee 16 DemiBold, "Not Playing" fallback, scrolls with the `music.scroll` piece | 330-336 | island.slint `Marquee` 16/600, `scroll: card.show-scroll` | same (fixed earlier) |
+| Artist · album, dim 0.75 | 337-344 | lib.rs artist = "artist · album"; island.slint 0.75 white / on-surface-variant | same (fixed earlier) |
+| Seek row: position and −remaining (caption, tabular), track 4 px → 6 on hover (150 ms), click seeks if canSeek | 346-397 | island.slint seek row (`card.seekable`, 4→6 px hover, press/drag/release seeks) | same (fixed earlier; no tabular figures: Slint) |
+| Side layout: 72 px art in a squircle mask (radius tile−12); Material cookie9 while playing, square paused | 405-463 | island.slint `card.side` row: 72 px, radius tile−12 (Glass); Material round while playing, square paused (spring) | different: rounded rectangle, not a squircle; Material a circle for the cookie (Slint can't clip a picture to a path) |
+| Side layout: title 16, artist · album, player identity (dim 0.4, caption) | 464-490 | island.slint `card.side` column (title 16/600, artist · album, `app-name` at 0.4) | same (17 Nov) |
+| Captions: "Live captions" + last 4 lines + Off button (turns captions off) | 553-580 | island.slint `card.kind == "captions"`; host island_live.rs captions (state `livecaptions`, lines from captions.rs, Off → `captions off`) | same (17 Nov; captions in the island were never an activity standalone before) |
+| Badge 44 px circle, activity colour 0.22; Material cookie9 in IslandInk.tint (error when red) | 587-601 | island.slint `badge` 44, tint 0.22; Material `Path` cookie9 (shapes.rs) in primary / error | same (17 Nov) |
+| Call: the app's icon (28 px) in the badge | 603-609 | island.slint badge `card.kind == "call" && card.has-app-icon` Image 28 | same (17 Nov) |
+| Badge icon 22 (Material 20), onTint | 610-617 | island.slint badge SymIcon 22 / 20, on-primary / on-error | same (17 Nov) |
+| Text: transfer / call / screenShare / sysupdate: title (body DemiBold) over detail; timer "Focus · paused", stopwatch "· N laps", recording "· mic off" over a 24 px tabular number (recording red, grey paused) | 619-639 | island.slint `wordy`; host island_live.rs `caption` (timer paused, laps from timers.rs `sw.laps`, mic off) | same (17 Nov; no tabular figures: Slint). Mirroring / casting / dictation say their own title over the time; the QML's fall-through said "Recording" (RUST-ONLY) |
+| Buttons: every LiveInfo control (reset, discard, mic, pause, stop…), danger red, 0.4 when off | 640-655 | island.slint `card-ctls` (`card.controls` = `all`) | same |
+| Recording mic meter (√level, grey muted, 80 ms width; counts meter users) | 656-677 | lib.rs `follow_meter` (parec 8 kHz mono, peak each 80 ms, only while the recording card shows and the mic isn't muted) → `mic-level`; island.slint meter | same (17 Nov; parec in place of PwNodePeakMonitor) |
+| Progress bar 4 px (white 0.16, activity colour, width 900 ms); Material wavy | 678-700 | island.slint card progress (Glass bar, Material `WavySeek` in primary / error) | same (17 Nov) |
+| Page dots (IslandView 676-697): clickable, focus that one | IslandView 690-693 | island.slint dots TouchArea (−4 px) → `focus-at(i)` → lib.rs `M::IslandFocusAt` → island.rs `focus_at` | same (17 Nov) |
+| Swap animation when cycling (opacity + 16 px slide by direction) | IslandView 667-668 | island.slint `swap` / `swap-dir` (on the shown kind changing): card opacity + 16 px side padding, pill opacity + 10 px | different: only the swap's in-half (260 ms OutBack 1.6; OutCubic with reduce motion) — the old one doesn't fade out first (the data has already changed); the pill doesn't shrink to 85 % (a layout can't scale) |
+| Wheel over the card cycles activities | IslandView 669-673 | island.slint `over` scroll-event | same |
 
 ## Summary
 
@@ -106,3 +106,7 @@ Retest the FAIL steps above.
 - Glass: as the island opens and closes, the art's fade stays relative to its height (no hard edge mid-way).
 
 ## Test results (batch 4)
+
+## Re-check 17 Nov (B4)
+
+Re-read against 18628a5: the music player had been finished after batch 1 (seek, volume, open-the-player, PlayMorph, WavySeek, Marquee, the Material wash) but the rows still said "missing". The other kinds' card was still the batch-1 stand-in (a small icon, title, the time, controls centred under it). Ported: QML's card for timer / stopwatch / recording / transfer / call / sharing / update (badge 44 on a cookie, caption over a 24 px number or title over detail, controls on the right, the progress bar or wavy line, the mic meter), the captions card, the stopwatch's hundredths, Cast, the side player, the faded art, clickable page dots and the swap. Before: 18 missing, 12 different, 2 same; after: 30 same, 2 different.

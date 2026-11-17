@@ -114,6 +114,33 @@ pub struct Island {
     sweep: Option<slint::Timer>,
     live_timer: Option<slint::Timer>,
     scroll: Option<Value>,
+    /// Focus as last seen (its on/off alert) and the track playing (the new-song alert)
+    focus_was: Option<bool>,
+    track_was: String,
+}
+
+/// A device's drawing (shell/assets/devices/<kind>.svg: Devices.pictureFor's files)
+fn device_picture(kind: &str) -> String {
+    tessera_core::env::root().join("shell/assets/devices").join(format!("{kind}.svg")).to_string_lossy().into_owned()
+}
+
+/// A live control's accessible name: its own, else from its piece ("Pause", "Skip"…)
+fn ctl_name(b: &Value) -> String {
+    if let Some(n) = b["name"].as_str().filter(|n| !n.is_empty()) {
+        return n.to_string();
+    }
+    let icon = b["icon"].as_str().unwrap_or("");
+    match b["piece"].as_str().unwrap_or("") {
+        "play" | "pause" => if icon == "pause" { "Pause" } else { "Play" },
+        "reset" => "Reset",
+        "skip" => "Skip",
+        "lap" => "Lap",
+        "discard" => "Discard the recording",
+        "mute" => if icon.ends_with("slash") { "Unmute the microphone" } else { "Mute the microphone" },
+        "stop" => "Stop",
+        p => p,
+    }
+    .to_string()
 }
 
 /// Seconds-resolution milliseconds
@@ -595,6 +622,8 @@ impl Island {
             want.push(("stopwatch", Some(json!({
                 "icon": "timer", "color": accent("green"), "title": "Stopwatch",
                 "time": fmt(secs), "detail": fmt(secs), "progress": -1.0,
+                // (the open card counts hundredths on its own clock from here: IslandFocusCard's fineClock)
+                "fine": {"ms": sw["elapsed"].as_i64().unwrap_or(0), "running": on},
                 "controls": [
                     ctl("reset", "arrow-counter-clockwise", false, !on, false, nc("sw.reset")),
                     ctl("lap", "flag", false, on, false, nc("sw.lap")),
@@ -603,6 +632,11 @@ impl Island {
             }))));
         } else {
             want.push(("stopwatch", None));
+        }
+        // the kinds other services own (island_live.rs: LiveInfo's mirroring … transfer)
+        for (kind, a) in crate::island_live::derive(h, now_ms()) {
+            let a = if kind == "sysupdate" && !self.wants(h, "sysupdate") { None } else { a };
+            want.push((kind, a));
         }
         for (kind, a) in want {
             match a {
@@ -625,13 +659,13 @@ impl Island {
             let controls: Vec<Value> = if music {
                 vec![]
             } else {
-                a["controls"].as_array().map(|l| l.iter().filter(|b| self.shows(h, kind, b["piece"].as_str().unwrap_or(""))).map(|b| json!({"icon": b["icon"], "fill": b["fill"].as_bool().unwrap_or(false), "on": b["on"].as_bool().unwrap_or(true), "danger": b["danger"].as_bool().unwrap_or(false)})).collect()).unwrap_or_default()
+                a["controls"].as_array().map(|l| l.iter().filter(|b| self.shows(h, kind, b["piece"].as_str().unwrap_or(""))).map(|b| json!({"icon": b["icon"], "fill": b["fill"].as_bool().unwrap_or(false), "on": b["on"].as_bool().unwrap_or(true), "danger": b["danger"].as_bool().unwrap_or(false), "name": ctl_name(b)})).collect()).unwrap_or_default()
             };
             // (every control, for the stacked rows and the open card: LiveInfo.controls)
             let all: Vec<Value> = if music {
                 vec![]
             } else {
-                a["controls"].as_array().map(|l| l.iter().map(|b| json!({"piece": b["piece"], "icon": b["icon"], "fill": b["fill"].as_bool().unwrap_or(false), "on": b["on"].as_bool().unwrap_or(true), "danger": b["danger"].as_bool().unwrap_or(false)})).collect()).unwrap_or_default()
+                a["controls"].as_array().map(|l| l.iter().map(|b| json!({"piece": b["piece"], "icon": b["icon"], "fill": b["fill"].as_bool().unwrap_or(false), "on": b["on"].as_bool().unwrap_or(true), "danger": b["danger"].as_bool().unwrap_or(false), "name": ctl_name(b)})).collect()).unwrap_or_default()
             };
             acts.push(json!({
                 "kind": kind, "icon": a["icon"], "color": a["color"].as_str().unwrap_or(""),
@@ -639,6 +673,11 @@ impl Island {
                 "time": if music { json!("") } else { a["time"].clone() },
                 "detail": a["detail"].as_str().unwrap_or(""),
                 "progress": a["progress"].as_f64().unwrap_or(-1.0),
+                // (the open card: the caption over the big number, a call's app, the captions' lines, the stopwatch's hundredths)
+                "caption": if music { String::new() } else { crate::island_live::caption(kind, a, h) },
+                "appIcon": a["appIcon"].as_str().unwrap_or(""),
+                "lines": a["lines"].clone(),
+                "fine": a["fine"].clone(),
                 "all": all,
                 "lead": self.shows(h, kind, if music { "art" } else { "icon" }),
                 "name": self.shows(h, kind, if music { "title" } else if *kind == "timer" { "label" } else { "name" }),
@@ -664,6 +703,39 @@ impl Island {
     }
 
     // ── The watches: charger, battery, heat ─────────────────────────────
+
+    /// Focus turned on or off (Island.qml's Connections on Focus): its mode's
+    /// icon and name with its status, or "Focus off"
+    fn watch_focus(&mut self, h: &mut Host) {
+        let on = h.state("focus.on").as_bool();
+        let Some(on) = on else { return };
+        let was = self.focus_was.replace(on);
+        if was.is_none() || was == Some(on) {
+            return;
+        }
+        let e = if on {
+            json!({"kind": "focus", "gate": "focus", "icon": h.state("focus.icon").as_str().unwrap_or("moon"), "title": h.state("focus.name").as_str().unwrap_or("Focus"), "subtitle": h.state("focus.status").as_str().unwrap_or(""), "color": tessera_core::theme::accent_hex("purple", h.st.shell.look.dark)})
+        } else {
+            json!({"kind": "focus", "gate": "focus", "icon": h.state("focus.icon").as_str().unwrap_or("moon"), "title": "Focus off", "subtitle": "", "color": tessera_core::theme::accent_hex("purple", h.st.shell.look.dark)})
+        };
+        self.post(h, e, 3000);
+    }
+
+    /// A new song while it plays (Island.qml's onTrackChanged): 3.5 s, with its art
+    fn watch_track(&mut self, h: &mut Host) {
+        let Some(p) = h.st.shell.get::<tessera_core::services::mpris::Players>().and_then(|p| p.chosen().cloned()) else { return };
+        if p.track.title.is_empty() {
+            return;
+        }
+        let track = format!("{}\n{}", p.track.title, p.track.artist);
+        if track == self.track_was {
+            return;
+        }
+        self.track_was = track;
+        if p.playing && self.wants(h, "music") {
+            self.post(h, json!({"kind": "music", "icon": "music-notes", "title": p.track.title, "subtitle": p.track.artist, "art": p.track.art_url, "color": ""}), 3500);
+        }
+    }
 
     fn level_pct(l: f64) -> i64 {
         (l * 100.0).round() as i64
@@ -847,6 +919,10 @@ impl Island {
         if let Some(a) = act {
             if let Some(call) = a["call"].as_str() {
                 h.ask(call, a["args"].clone());
+                // (a second step: a live control's "Details" shows them, then opens Settings)
+                if a["then"].is_object() {
+                    self.run(h, &Some(a["then"].clone()));
+                }
             } else if let Some(ipc) = a["ipc"].as_array() {
                 let args: Vec<String> = ipc.iter().map(|x| x.as_str().unwrap_or("").to_string()).collect();
                 tessera_core::host::route_ipc(&args, None);
@@ -884,8 +960,23 @@ impl Island {
                 self.hud(h, "volume", "Maya's earbuds");
                 return;
             }
+            // every device drawing, one after another (Devices.pictureFor's kinds)
+            "pictures" => {
+                let was = self.started_at;
+                self.started_at = 0;
+                for (pic, name) in [("headphones", "WH-CH720N"), ("speaker", "Speaker"), ("soundbar", "Samsung Soundbar"), ("controller", "Wireless Controller"), ("keyboard", "Keyboard"), ("mouse", "MX Master"), ("phone", "Pixel"), ("watch", "Galaxy Watch"), ("laptop", "Laptop"), ("bluetooth", "Tag")] {
+                    self.post(h, json!({"kind": "device", "icon": "bluetooth", "picture": device_picture(pic), "title": name, "subtitle": "Connected", "color": "#0A84FF"}), 8000);
+                }
+                self.started_at = was;
+                return;
+            }
             _ => json!({"kind": "custom", "icon": "bell", "title": "Hello", "subtitle": "A custom alert", "color": "#0A84FF"}),
         };
+        // (the earbuds' drawing, as Devices.pictureFor gives it)
+        let mut d = d;
+        if ["device", "connect", "linked", "parts", "lowbuds", "connected"].contains(&kind) {
+            d["picture"] = json!(device_picture("earbuds"));
+        }
         let ms = if kind == "battery" || kind == "temperature" { UNTIL_OVER } else if ["usb", "download", "connect"].contains(&kind) { LONG_MS } else { 5000 };
         // (the demo posts whatever the arming time: it shows at once)
         let was = self.started_at;
@@ -918,6 +1009,7 @@ impl Service for Island {
         self.next_hid = 1;
         h.st.shell.want("status");
         h.st.shell.want("hypr");
+        h.st.shell.want("mpris");
         self.publish(h);
         self.ask_resources(h);
         // (the battery now comes as data: Service::data below, no 3 s look)
@@ -925,10 +1017,14 @@ impl Service for Island {
     fn settled(&mut self, h: &mut Host) {
         self.derive_live(h);
         self.push_live(h);
+        self.watch_focus(h);
     }
     fn data(&mut self, h: &mut Host, what: std::any::TypeId) {
         if what == std::any::TypeId::of::<tessera_core::services::status::Battery>() {
             self.watch_battery(h);
+        }
+        if what == std::any::TypeId::of::<tessera_core::services::mpris::Players>() {
+            self.watch_track(h);
         }
     }
     fn config_changed(&mut self, h: &mut Host) {

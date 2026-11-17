@@ -428,6 +428,7 @@ export component Bar inherits Window {
     in property <bool> alerts-below;
     callback level-pick(string);
     callback level-set(string, float);
+    callback level-mute(string);
     out property <length> below-x: island.x + island.below-x;
     out property <length> below-y: island.y + island.below-y;
     out property <length> below-w: island.below-w;
@@ -440,7 +441,11 @@ export component Bar inherits Window {
     callback music-volume(float);
     callback music-mute();
     callback open-player();
+    callback open-cast();
     callback island-escape();
+    callback focus-at(int);
+    in property <string> cookie;
+    in property <float> mic-level;
     // ResourceHover: the popover under a figure (its key) opens or closes, at x (centre), y (top)
     callback res-popover(string, bool, length, length);
 
@@ -451,9 +456,11 @@ export component Bar inherits Window {
 
     // the dancing bars' clock (12 frames a second, only while music plays)
     property <int> tick;
+    in property <bool> bars-hold;
     Timer {
         interval: 83ms;
-        running: (playing && island-on && island-mode == 1 && live.kind == "music" && live.show-bars) || (island-on && island-mode == 1 && live.kind == "recording");
+        // (held on battery under 30 %: IslandLive's barClock)
+        running: !bars-hold && ((playing && island-on && island-mode == 1 && live.kind == "music" && live.show-bars) || (island-on && island-mode == 1 && live.kind == "recording"));
         triggered => { tick += 1; }
     }
 
@@ -715,6 +722,7 @@ export component Bar inherits Window {
         alerts-below: root.alerts-below;
         level-pick(id) => { root.level-pick(id); }
         level-set(id, v) => { root.level-set(id, v); }
+        level-mute(id) => { root.level-mute(id); }
         act-rows: root.act-rows;
         recent: root.recent;
         recent-n: root.recent-n;
@@ -725,7 +733,11 @@ export component Bar inherits Window {
         set-volume(v) => { root.music-volume(v); }
         mute => { root.music-mute(); }
         open-player => { root.open-player(); }
+        open-cast => { root.open-cast(); }
         escape => { root.island-escape(); }
+        focus-at(i) => { root.focus-at(i); }
+        cookie: root.cookie;
+        mic-level: root.mic-level;
         live-index: root.live-index;
         alerts: root.alerts;
         pill-text: root.pill-text;

@@ -66,6 +66,16 @@ pub struct Activity {
     pub progress: f32,
     /// every control (the rows and the open card): (piece, icon, fill, on, danger)
     pub all: Vec<(String, String, bool, bool, bool)>,
+    /// the controls' accessible names (pill's, then every one's)
+    pub names: Vec<String>,
+    pub all_names: Vec<String>,
+    /// the open card: the caption over its big number ("Focus · paused"), a
+    /// call's app icon, the captions' last lines, the stopwatch's elapsed ms
+    /// at this push and whether it runs (it counts hundredths on its own)
+    pub caption: String,
+    pub app_icon: String,
+    pub lines: Vec<String>,
+    pub fine: Option<(i64, bool)>,
 }
 
 impl Activity {
@@ -90,6 +100,12 @@ impl Activity {
                 .as_array()
                 .map(|a| a.iter().map(|c| (c["piece"].as_str().unwrap_or("").to_string(), c["icon"].as_str().unwrap_or("").to_string(), c["fill"].as_bool().unwrap_or(false), c["on"].as_bool().unwrap_or(true), c["danger"].as_bool().unwrap_or(false))).collect())
                 .unwrap_or_default(),
+            names: v["controls"].as_array().map(|a| a.iter().map(|c| c["name"].as_str().unwrap_or("").to_string()).collect()).unwrap_or_default(),
+            all_names: v["all"].as_array().map(|a| a.iter().map(|c| c["name"].as_str().unwrap_or("").to_string()).collect()).unwrap_or_default(),
+            caption: s("caption"),
+            app_icon: s("appIcon"),
+            lines: v["lines"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default(),
+            fine: v["fine"].is_object().then(|| (v["fine"]["ms"].as_i64().unwrap_or(0), v["fine"]["running"].as_bool().unwrap_or(false))),
         }
     }
 }
@@ -300,6 +316,16 @@ impl Island {
         }
         let i = (self.focus_index() as i32 + step + n).rem_euclid(n);
         self.focus_kind = self.activities[i as usize].kind.clone();
+    }
+    /// A page dot: that one shows (IslandView's pageDots: Island.focusKind = its kind)
+    pub fn focus_at(&mut self, i: usize) -> bool {
+        match self.activities.get(i) {
+            Some(a) if a.kind != self.focus_kind => {
+                self.focus_kind = a.kind.clone();
+                true
+            }
+            _ => false,
+        }
     }
     /// A wheel or swipe over it; the step taken (for the swap's direction)
     pub fn scroll(&mut self, dx: f64, dy: f64, now: f64) -> i32 {

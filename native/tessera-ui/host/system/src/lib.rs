@@ -152,6 +152,16 @@ impl Mirror {
         bus::put("idle", json!({"isIdle": i.is(idle::SCREEN_TIME), "isIdleLong": i.is(idle::LONG)}));
         // Updates: the count of pending packages
         h.set_state("updates", json!(bus::field("updates", "count").as_i64().unwrap_or(0)));
+        // The displays, each with its level (the island's brightness list: IslandLevels)
+        h.set_state("displays", bus::field("Brightness", "displays"));
+        // (and one running: the island's activity)
+        let running = bus::field("updates", "running");
+        if running.as_bool().unwrap_or(false) {
+            let job = bus::field("updates", "job");
+            h.set_state("sysupdate", json!({"running": running, "job": {"phase": job["phase"], "text": job["text"], "package": job["package"]}, "progress": bus::field("updates", "progress"), "cancellable": bus::field("updates", "cancellable"), "step": bus::field("updates", "step")}));
+        } else {
+            h.set_state("sysupdate", json!({"running": false}));
+        }
     }
 }
 
