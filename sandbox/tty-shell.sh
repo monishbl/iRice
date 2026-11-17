@@ -75,9 +75,10 @@ shell_pids() {
 # loop, so a frozen one doesn't; the QML one over Quickshell's IPC)
 answers() {
     # (a computer that's swapping or busy with disk, a big build, takes
-    # longer just to start the asking process: 12 s then, 4 otherwise)
-    local t=4
-    busy && t=12
+    # longer just to start the asking process: 20 s then, 10 otherwise.
+    # 17 Nov: 4 s took slow moments for freezes)
+    local t=10
+    busy && t=20
     if is_standalone "$1"; then
         [[ "$(timeout "$t" "/proc/$1/exe" ipc call shell ready 2>/dev/null)" == yes ]]
     else
@@ -85,13 +86,14 @@ answers() {
     fi
 }
 
-# Is the computer under memory or disk pressure right now (PSI: tasks
-# stalled more than 10% of the last 10 s)?
+# Is the computer under pressure right now (PSI: tasks stalled on memory or
+# disk more than 10% of the last 10 s, or waiting for a CPU more than 40%)?
 busy() {
-    local f v
-    for f in /proc/pressure/memory /proc/pressure/io; do
+    local f v lim
+    for f in /proc/pressure/memory:10 /proc/pressure/io:10 /proc/pressure/cpu:40; do
+        lim=${f##*:} f=${f%:*}
         v=$(sed -n 's/^some avg10=\([0-9.]*\).*/\1/p' "$f" 2>/dev/null)
-        [[ -n $v ]] && awk -v v="$v" 'BEGIN { exit !(v > 10) }' && return 0
+        [[ -n $v ]] && awk -v v="$v" -v l="$lim" 'BEGIN { exit !(v > l) }' && return 0
     done
     return 1
 }
@@ -162,10 +164,20 @@ case "${1:-start}" in
         echo $$ >"$LOCKDIR/tessera-watchdog.names"
         reap
         sleep 20 # let it start
-        misses=0 gone=0
-        # (every 30 s: each look starts hyprctl and a qs client, a cost
-        # paid all day, and a frozen shell is still back within a minute)
-        while sleep 30; do
+        misses=0 gone=0 tick=0 last=""
+        # (the full look every 30 s: each starts hyprctl and a qs client, a
+        # cost paid all day, and a frozen shell is still back within a minute.
+        # Between them, every 2 s, only "is the shell's process still there"
+        # (kill -0, no process started): a shell that died is started again
+        # within ~2 s, before Hyprland's "lockscreen app died" screen
+        # (lockdead_screen_delay 5 s) if the screen was locked)
+        while sleep 2; do
+            if [[ -n $last ]] && ! kill -0 "$last" 2>/dev/null; then
+                last=""
+                tick=30
+            fi
+            (( (tick += 2) < 30 )) && continue
+            tick=0
             # The session ended: don't outlive it. One slow answer isn't an
             # ending (a busy compositor can take over 3 s): only a missing
             # socket, or three missed checks in a row
@@ -189,10 +201,13 @@ case "${1:-start}" in
             if (( ${#pids[@]} > 1 )); then
                 kill "${pids[@]:1}" 2>/dev/null # keep the oldest
             fi
-            # (a frozen shell: two missed checks in a row; while the computer
-            # is under pressure, four, so a slow moment isn't taken for one)
-            limit=2
-            busy && limit=4
+            last=${pids[0]}
+            # (a frozen shell: three missed checks in a row, ~1.5 minutes;
+            # while the computer is under pressure, six, ~3 minutes, so a
+            # slow moment isn't taken for one. 17 Nov: two and four restarted
+            # shells that were only slow on a laptop busy with builds)
+            limit=3
+            busy && limit=6
             if answers "${pids[0]}"; then
                 misses=0
             elif (( ++misses >= limit )); then
