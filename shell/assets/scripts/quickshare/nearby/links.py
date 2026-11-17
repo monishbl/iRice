@@ -88,8 +88,8 @@ class LinkMemory:
         self._save()
 
     def order(self, peer, items, key=lambda item: item):
-        """`items` (fastest first) without the links to skip for this phone
-        (`key`: an item's link name); when every one would be skipped, all
-        of them (better a try than nothing)."""
-        kept = [i for i in items if not self.skip(peer, key(i))]
-        return kept or list(items)
+        """`items` (fastest first), the links that keep failing with this
+        phone moved last (`key`: an item's link name). 17 Nov: they used to
+        be left out for a day, so one bad transfer kept the next ones on
+        Bluetooth; now every link is still tried, the ones that work first."""
+        return [i for i in items if not self.skip(peer, key(i))] + [i for i in items if self.skip(peer, key(i))]

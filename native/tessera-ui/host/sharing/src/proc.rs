@@ -100,7 +100,13 @@ pub fn spawn(send: impl Fn(Box<dyn std::any::Any + Send>) + Send + Clone + 'stat
             std::thread::spawn(move || {
                 let mut last = Vec::new();
                 for l in BufReader::new(e).split(b'\n').flatten() {
-                    tail(&mut last, String::from_utf8_lossy(&l).into_owned());
+                    let line = String::from_utf8_lossy(&l).into_owned();
+                    // (the sharing helpers' own words reach the shell's log: their
+                    // failures were invisible, 17 Nov; they say no file names)
+                    if matches!(name, "quickshare" | "localsend") && !line.trim().is_empty() {
+                        eprintln!("tessera-ui: {name} helper: {}", line.chars().take(300).collect::<String>());
+                    }
+                    tail(&mut last, line);
                 }
                 last
             })
@@ -112,6 +118,9 @@ pub fn spawn(send: impl Fn(Box<dyn std::any::Any + Send>) + Send + Clone + 'stat
         }
         let code = child.wait().ok().and_then(|s| s.code()).unwrap_or(-1);
         let last = errs.and_then(|j| j.join().ok()).unwrap_or_default();
+        if matches!(name, "quickshare" | "localsend") {
+            eprintln!("tessera-ui: {name} helper exited with code {code}");
+        }
         s2(Box::new(M::Exit(name, gen, code, last.join("\n"))));
     });
     Some(Kept { gen, pid, stdin, running: true })

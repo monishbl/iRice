@@ -276,7 +276,7 @@ class ReceivingOverBluetooth(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.svc.memory.peers["Pixel 9"]["lan"]["fails"], 1)
         self.assertEqual(self.svc.memory.peers["Pixel 9"]["direct"]["fails"], 0)
 
-    async def test_a_link_that_keeps_failing_is_skipped_for_that_phone(self):
+    async def test_a_link_that_keeps_failing_goes_last_for_that_phone(self):
         self.net = net(shared=True)
         self.svc.memory.failed("Pixel 9", "lan")
         self.svc.memory.failed("Pixel 9", "lan")  # (two transfers in a row)

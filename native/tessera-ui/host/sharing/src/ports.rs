@@ -3,8 +3,9 @@
 //! Needed while you're visible to others (Quick Share: its ports, DHCP for
 //! its hotspot, mDNS; LocalSend receiving: 53317), while the share sheet
 //! looks for devices (their answers come in: LocalSend's 53317, mDNS), and
-//! while a QR-code share or a cast serves a file (53319-53320). Sending
-//! itself needs nothing open: the connection goes out.
+//! while a QR-code share or a cast serves a file (53319-53320), and while a
+//! send is going (17 Nov: the connection goes out, but LocalSend's answers
+//! and a phone's faster Wi-Fi link come back in), then closed again.
 //!
 //! This only runs the same helper script the QML runs (sharing-check.py
 //! `ports`, which asks Tessera's root helper); it never touches a firewall
@@ -66,7 +67,14 @@ impl Sharing {
             add(&names, "visible to Everyone");
         }
         if self.looking() {
-            add(&["localsend", "mdns"], "looking for devices");
+            // (Quick Share's too: a phone found over Bluetooth answers on its
+            // ports, and its devices' mDNS answers come in through mdns)
+            add(&["localsend", "mdns", "quickshare"], "looking for devices");
+        }
+        if self.sending_now() {
+            // a send that outlives the sheet: the phone's link upgrade
+            // (Wi-Fi Direct, hotspot) and LocalSend's answers come back in
+            add(&["localsend", "mdns", "quickshare"], "sending");
         }
         if self.link.stage == "loading" || self.link.stage == "ready" {
             add(&["links"], "sharing with a QR code");
@@ -76,6 +84,12 @@ impl Sharing {
         }
         sets.sort();
         (sets.join(","), why.join(", "))
+    }
+
+    /// A send asked for or going, by either protocol
+    pub fn sending_now(&self) -> bool {
+        let out = |v: &Vec<serde_json::Value>| v.iter().any(|it| it["kind"] == "send");
+        self.quick.send_pending || self.local.send_pending || out(&self.quick.active.values()) || out(&self.local.active.values())
     }
 
     /// onNeedChanged (called each turn: acts only when the need changed)

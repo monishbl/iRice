@@ -72,10 +72,14 @@ def _clip(name):
     return raw.decode("utf-8", "ignore").encode("utf-8")  # (not mid-character)
 
 
-def endpoint_info(name, device_type=LAPTOP, visible=True):
+def endpoint_info(name, device_type=LAPTOP, visible=True, salt=None):
+    """`salt`: the 16 bytes after the first, kept with the identity
+    (identity.py) so the phone sees the same device each time; random
+    when not given."""
     first = ((0 if visible else 1) << 4) | ((device_type & 7) << 1)
     raw = _clip(name)
-    return bytes([first]) + os.urandom(16) + bytes([len(raw)]) + raw
+    salt = salt if salt is not None and len(salt) == 16 else os.urandom(16)
+    return bytes([first]) + salt + bytes([len(raw)]) + raw
 
 
 def parse_endpoint_info(info):

@@ -102,6 +102,27 @@ struct Def {
     menu: Vec<Item>,
 }
 
+/// The one sharing level and its words: host-sharing's state when it's
+/// there, else config.json's `sharing.quickShare` (the one key)
+fn sharing_level(sh: &Value, cfg: &Value) -> (String, String) {
+    let level = match sh["level"].as_str() {
+        Some(l @ ("off" | "10min" | "everyone")) => l.to_string(),
+        _ => match cfg["sharing"]["quickShare"].as_str().or(cfg["sharing"]["receiving"].as_str()) {
+            Some(l @ ("10min" | "everyone")) => l.to_string(),
+            _ => "off".to_string(),
+        },
+    };
+    let status = match sh["levelText"].as_str().filter(|t| !t.is_empty() && sh["level"].as_str() == Some(level.as_str())) {
+        Some(t) => t.to_string(),
+        None => match level.as_str() {
+            "off" => "No one".into(),
+            "10min" => "Everyone · 10 min".into(),
+            _ => "Everyone".into(),
+        },
+    };
+    (level, status)
+}
+
 fn def(label: &str, icon: &str, on: bool, status: &str) -> Def {
     Def { label: label.into(), icon: icon.into(), on, status: status.into(), available: true, reason: String::new(), needs: "", menu: vec![] }
 }
@@ -115,6 +136,18 @@ const IDS: &[&str] = &[
 
 fn g(name: &str) -> Value {
     crate::bus::get(name)
+}
+/// host-sharing's state ("sharing", "quickshare", "localsend"): it's kept in
+/// the shell's state (Host::set_state), which this crate's bus never had.
+/// 17 Nov: the tile read Null, so it said "Everyone" (an empty level) and
+/// was never drawn on
+fn hs(h: &Host, name: &str) -> Value {
+    let v = g(name);
+    if v.is_null() {
+        h.state(name).clone()
+    } else {
+        v
+    }
 }
 fn bs(v: &Value, k: &str) -> bool {
     v[k].as_bool().unwrap_or(false)
@@ -294,7 +327,7 @@ impl ControlCenter {
         let audio = g("audio");
         let pw = g("Power");
         let focus = g("focus");
-        let sharing = g("sharing");
+        let sharing = hs(h, "sharing");
         let mirr = g("mirroring");
         let net = g("network");
         let wifi = h.st.shell.get::<Wifi>().cloned().unwrap_or_default();
@@ -331,19 +364,17 @@ impl ControlCenter {
                     d
                 }
                 "darkMode" => def(if look.dark { "Dark Mode" } else { "Light Mode" }, "circle-half", look.dark, if cfg["appearance"]["mode"] == "auto" { "Auto" } else { "" }),
-                // Visible to nearby devices, LocalSend and Quick Share together; on = for 10 minutes
+                // Visible to: phones (Quick Share) and LocalSend together, one
+                // level; on whenever it isn't No one; "10 min" counts down
                 "sharing" => {
-                    let level = ss(&sharing, "level").to_string();
-                    let on = bs(&sharing, "on");
-                    let mixed = bs(&sharing, "mixed");
-                    let status = if mixed && on { "Custom" } else if level == "off" { "No one" } else if level == "10min" { "Everyone · 10 min" } else { "Everyone" };
-                    let mut d = def("Sharing", "share-network", on, status);
+                    let (level, status) = sharing_level(&sharing, cfg);
+                    let mut d = def("Sharing", "share-network", level != "off", &status);
                     d.menu = vec![
                         Item::new("Send files…", Do::Ask("panels.pickShare", json!([]))),
                         Item::sep(),
                         Item::new("No one", Do::Ask("sharing.setLevel", json!(["off"]))).checked(level == "off"),
-                        Item::new("Everyone for 10 minutes", Do::Ask("sharing.setLevel", json!(["10min"]))).checked(level == "10min" && !mixed),
-                        Item::new("Everyone", Do::Ask("sharing.setLevel", json!(["everyone"]))).checked(level == "everyone" && !mixed),
+                        Item::new("Everyone for 10 minutes", Do::Ask("sharing.setLevel", json!(["10min"]))).checked(level == "10min"),
+                        Item::new("Everyone", Do::Ask("sharing.setLevel", json!(["everyone"]))).checked(level == "everyone"),
                         Item::sep(),
                         Item::new("Sharing settings…", Do::Page("sharing".into())),
                     ];
@@ -793,20 +824,27 @@ impl ControlCenter {
 
     fn sharing_page(&self, h: &Host) -> Value {
         const LEVELS: [&str; 3] = ["off", "10min", "everyone"];
-        let sh = g("sharing");
+        let sh = hs(h, "sharing");
         let cfg = h.cfg();
         let seg = |id: &str, cur: &str| json!({"t": "seg", "id": id, "options": ["No one", "10 minutes", "Everyone"], "cur": LEVELS.iter().position(|l| *l == cur).unwrap_or(0)});
-        let qs = g("quickshare");
-        let ls = g("localsend");
-        let mut blocks = vec![seg("all", ss(&sh, "level"))];
-        blocks.push(head("LocalSend", true));
-        blocks.push(seg("localsend", cfg["sharing"]["receiving"].as_str().unwrap_or("off")));
-        blocks.push(note("Computers and phones with the LocalSend app", "tertiary", false));
-        blocks.push(head("Quick Share", true));
-        blocks.push(seg("quickshare", cfg["sharing"]["quickShare"].as_str().unwrap_or("off")));
+        let qs = hs(h, "quickshare");
+        let ls = hs(h, "localsend");
+        // one level for Android phones (Quick Share) and LocalSend together
+        let (level, status) = sharing_level(&sh, cfg);
+        let mut blocks = vec![head("Visible to", true), seg("all", &level)];
         let needs = bs(&qs, "bluetoothNeeded");
         let bt_on = qs["bluetoothOn"].as_bool().unwrap_or(true);
-        blocks.push(note(if needs && !bt_on { "Turn on Bluetooth so Android phones can find this computer." } else { "Android phones nearby" }, if needs && !bt_on { "danger" } else { "tertiary" }, false));
+        blocks.push(note(
+            &if needs && !bt_on {
+                "Turn on Bluetooth so Android phones can find this computer.".to_string()
+            } else if level == "10min" {
+                format!("{status}: Android phones (Quick Share) and devices with LocalSend")
+            } else {
+                "Android phones (Quick Share) and devices with LocalSend".to_string()
+            },
+            if needs && !bt_on { "danger" } else { "tertiary" },
+            false,
+        ));
         blocks.push(head("Your name", true));
         let user = std::env::var("USER").unwrap_or_else(|_| "Tessera".into());
         blocks.push(json!({"t": "field", "id": "name", "title": cfg["sharing"]["name"].as_str().unwrap_or(""), "status": format!("{user}'s computer")}));
@@ -843,7 +881,7 @@ impl ControlCenter {
         if !errors.is_empty() {
             blocks.push(note(&errors.join(" "), "danger", false));
         }
-        json!({"name": "sharing", "title": "Sharing", "switch": true, "switchOn": bs(&sh, "on"), "switchLabel": "Visible to nearby devices", "blocks": blocks})
+        json!({"name": "sharing", "title": "Sharing", "switch": true, "switchOn": level != "off", "switchLabel": "Visible to nearby devices", "blocks": blocks})
     }
 
     fn mirroring_page(&self) -> Value {
@@ -1345,7 +1383,10 @@ impl ControlCenter {
             }
             ("bluetooth", "refresh") => spawn_cmd(strs(&["bluetoothctl", "--timeout", "8", "scan", "on"])),
             ("caffeine", "switch") => h.ask("system.setKeepAwake", json!([!bs(&g("system"), "keepAwake"), 0])),
-            ("sharing", "switch") => h.ask("sharing.setLevel", json!([if bs(&g("sharing"), "on") { "off" } else { "10min" }])),
+            ("sharing", "switch") => {
+                let on = sharing_level(&hs(h, "sharing"), h.cfg()).0 != "off";
+                h.ask("sharing.setLevel", json!([if on { "off" } else { "10min" }]))
+            }
             ("wifi", _) => self.wifi_block(h, id, what, text),
             ("bluetooth", _) => {
                 if id == "fix" {
@@ -1460,13 +1501,13 @@ impl ControlCenter {
         let seg = what.strip_prefix("seg:").and_then(|s| s.parse::<usize>().ok()).and_then(|i| LEVELS.get(i).copied());
         match (id, seg) {
             ("all", Some(l)) => h.ask("sharing.setLevel", json!([l])),
-            ("localsend", Some(l)) => crate::util::config_set("sharing.receiving", json!(l)),
-            ("quickshare", Some(l)) => crate::util::config_set("sharing.quickShare", json!(l)),
+            // (one level since 17 Nov: the old per-protocol rows set it too)
+            ("localsend" | "quickshare", Some(l)) => h.ask("sharing.setLevel", json!([l])),
             ("name", _) if what == "commit" || what == "enter" => crate::util::config_set("sharing.name", json!(text.trim())),
             ("send", _) => h.ask("panels.pickShare", json!([])),
             _ => {
                 if let Some(n) = id.strip_prefix("s:") {
-                    let sh = g("sharing");
+                    let sh = hs(h, "sharing");
                     if let Some(d) = sh["devices"].as_array().and_then(|a| a.iter().find(|d| ss(d, "name") == n)) {
                         if !d["progress"].is_object() {
                             h.ask("sharing.pickFor", json!([d]));
@@ -1725,6 +1766,18 @@ impl Service for ControlCenter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn the_sharing_tile_says_and_shows_one_level() {
+        // host-sharing's state there: its words (the countdown)
+        let st = json!({"level": "10min", "levelText": "Everyone · 7 min", "on": true});
+        assert_eq!(sharing_level(&st, &json!({})), ("10min".into(), "Everyone · 7 min".into()));
+        // not there (the bug of 17 Nov: Null read as "Everyone", drawn off): the config's one key
+        let cfg = json!({"sharing": {"quickShare": "everyone", "quickShareHotspot": true}});
+        assert_eq!(sharing_level(&Value::Null, &cfg), ("everyone".into(), "Everyone".into()));
+        assert_eq!(sharing_level(&Value::Null, &json!({})), ("off".into(), "No one".into()));
+        // (an old config with only LocalSend's key)
+        assert_eq!(sharing_level(&Value::Null, &json!({"sharing": {"receiving": "10min"}})).0, "10min");
+    }
     #[test]
     fn wifi_passwords() {
         assert!(psk_ok("12345678") && psk_ok("abcde") && psk_ok(&"x".repeat(63)));

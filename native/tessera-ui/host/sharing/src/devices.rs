@@ -160,6 +160,26 @@ mod tests {
     }
 
     #[test]
+    fn phones_and_computers_show_together_in_one_list() {
+        // what the send window gets: LocalSend's computers, Quick Share's
+        // phones, and one phone that runs both (shown once, sent to over Quick Share)
+        let ls = [t("Ada's laptop", "laptop", "fp1"), t("Studio desktop", "desktop", "fp2"), t("Kai's Pixel", "mobile", "fp3")];
+        let qs = [t("Kai's Pixel", "phone", "Q1"), t("Ines's tablet", "tablet", "Q2")];
+        let m = merge(&ls, &qs);
+        let names: Vec<(&str, &str)> = m.iter().map(|d| (d.name.as_str(), d.prefer.as_str())).collect();
+        assert_eq!(names, [("Ada's laptop", "localsend"), ("Studio desktop", "localsend"), ("Kai's Pixel", "quickshare"), ("Ines's tablet", "quickshare")]);
+        assert_eq!(m[2].localsend.as_deref(), Some("fp3"));
+        assert_eq!(m[2].quickshare.as_deref(), Some("Q1"));
+        // a device found later is added live, the others keep their place
+        let more = merge(&ls, &[t("Kai's Pixel", "phone", "Q1"), t("Ines's tablet", "tablet", "Q2"), t("Moto edge", "phone", "Q3")]);
+        assert_eq!(more.len(), 5);
+        assert_eq!(more[4].name, "Moto edge");
+        assert_eq!(more[4].kind, "mobile");
+        // (JSON for the pages keeps both ways to reach each)
+        assert_eq!(to_json(&m)[2]["ids"]["quickshare"], "Q1");
+    }
+
+    #[test]
     fn levels_combine_to_the_more_open() {
         assert_eq!(combine("off", "off"), "off");
         assert_eq!(combine("10min", "everyone"), "everyone");

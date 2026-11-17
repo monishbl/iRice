@@ -40,6 +40,7 @@ pub mod sharing;
 pub mod sse;
 pub mod transfers;
 pub mod updates;
+pub mod visibility;
 
 use proc::Sched;
 
@@ -477,36 +478,53 @@ impl Sharing {
     }
 
     // ── The change handlers of the QML's bindings, and the feeds ─────────
-    /// "Everyone for 10 minutes" turns itself off; a changed hotspot setting
-    /// is told to Quick Share
+    /// "Everyone for 10 minutes" turns itself off (its end kept on disk); a
+    /// changed hotspot setting is told to Quick Share. One level for both
+    /// protocols (visibility.rs): the old LocalSend key follows it.
     fn modes_check(&mut self) {
-        let (r, q) = (self.cfg_str("sharing.receiving", "off"), self.cfg_str("sharing.quickShare", "off"));
+        let q = self.level();
         let now = tessera_core::util::now_ms();
-        if r != self.last_modes.0 {
-            if r == "10min" {
-                self.local.everyone_until = now + 10 * 60_000;
-            }
-            self.last_modes.0 = r.clone();
-        }
         if q != self.last_modes.1 {
             if q == "10min" {
-                self.quick.everyone_until = now + 10 * 60_000;
+                self.quick.everyone_until = now + visibility::TEN_MIN;
+                visibility::write_until(&visibility::until_file(), Some(self.quick.everyone_until));
+            } else {
+                visibility::write_until(&visibility::until_file(), None);
             }
+            eprintln!("tessera-ui: sharing: visible to {q} (was {})", if self.last_modes.1.is_empty() { "-" } else { self.last_modes.1.as_str() });
             self.last_modes.1 = q.clone();
         }
-        for (mode, until, name) in [(&r, self.local.everyone_until, "ls10"), (&q, self.quick.everyone_until, "qs10")] {
-            if mode == "10min" {
-                if !self.sched.has(name) {
-                    self.sched.set(name, ((until - now).max(1000)) as u64);
-                }
+        if q == "10min" {
+            let left = self.quick.everyone_until - now;
+            if left <= 0 {
+                self.sched.set("qs10", 1);
             } else {
-                self.sched.cancel(name);
+                // (the status counts down: a turn at each minute's end, then the end)
+                let to_minute = ((left - 1) % 60_000) + 1;
+                self.sched.set("qs10", to_minute.max(500) as u64);
             }
+        } else {
+            self.sched.cancel("qs10");
         }
         let hotspot = self.cfg_bool("sharing.quickShareHotspot", true);
         if hotspot != self.last_hotspot {
             self.last_hotspot = hotspot;
             self.quick_configure();
+        }
+    }
+
+    /// Both keys say the one level (the old LocalSend key is a copy, for the
+    /// QML fallback); written only when they don't
+    fn migrate_keys(&mut self) {
+        for (k, v) in visibility::migration(&self.cfg["sharing"]) {
+            eprintln!("tessera-ui: sharing: {k} set to {v} (one visibility for phones and LocalSend)");
+            self.set_config(k, json!(v));
+            if !self.cfg.is_object() {
+                self.cfg = json!({});
+            }
+            if let Some(m) = self.cfg.as_object_mut() {
+                tessera_core::cfgfile::put_path(m, k, json!(v));
+            }
         }
     }
 
@@ -553,7 +571,7 @@ impl Sharing {
         }
         // the shell state the other hosts read (Control Center, Settings, the island, the dock)
         let devs = self.devices();
-        let sharing = json!({"level": self.level(), "mixed": self.mixed(), "on": self.level() != "off", "levelText": self.level_text(), "looking": self.looking(),
+        let sharing = json!({"level": self.level(), "mixed": self.mixed(), "on": self.level() != "off", "levelText": self.level_text(), "minutesLeft": self.minutes_left(), "looking": self.looking(),
             "devices": devs.iter().map(|d| json!({"key": d.key, "name": d.name, "type": d.kind, "prefer": d.prefer, "sending": self.progress_for(d), "ended": self.outcome_for(&d.name)})).collect::<Vec<_>>(),
             "ports": {"error": self.ports.error, "failedWith": self.ports.failed_with, "busy": self.ports.running}});
         h.set_state("sharing", sharing);
@@ -581,19 +599,29 @@ impl Sharing {
     fn due(&mut self, h: &mut Host, name: &'static str) {
         match name {
             "ports" => self.ports_ask(h),
-            "ls10" => {
-                if self.cfg_str("sharing.receiving", "off") == "10min" {
-                    self.set_config("sharing.receiving", json!("off"));
-                }
-            }
             "qs10" => {
-                if self.cfg_str("sharing.quickShare", "off") == "10min" {
-                    self.set_config("sharing.quickShare", json!("off"));
+                if self.level() == "10min" && !visibility::visible("10min", self.quick.everyone_until, tessera_core::util::now_ms()) {
+                    self.set_level("off");
                 }
             }
             "ls_scan" => self.local_scan(),
-            "ls_pending" => self.local.send_pending = false,
-            "qs_pending" => self.quick.send_pending = false,
+            // (nothing answered, or the device was never found: the send is dropped, and said so)
+            "ls_pending" => {
+                self.local.send_pending = false;
+                if !self.local.queued.is_empty() {
+                    self.local.queued.clear();
+                    eprintln!("tessera-ui: localsend: queued send dropped (device not found)");
+                    self.island(h, json!({"kind": "custom", "icon": "warning-circle", "title": "Not sent", "subtitle": "The device wasn't found. Check it's nearby with LocalSend open, then try again.", "color": ORANGE}), 5000);
+                }
+            }
+            "qs_pending" => {
+                self.quick.send_pending = false;
+                if !self.quick.queued.is_empty() {
+                    self.quick.queued.clear();
+                    eprintln!("tessera-ui: quickshare: queued send dropped (device not found)");
+                    self.island(h, json!({"kind": "custom", "icon": "warning-circle", "title": "Not sent", "subtitle": "The phone wasn't found. Check its Quick Share is open and visible to Everyone, then try again.", "color": ORANGE}), 5000);
+                }
+            }
             "qs_retry" => self.quick_retry(h),
             "link_gather" => self.link_gathered(h),
             "upd_poll" => self.update_poll(h),
@@ -716,7 +744,13 @@ impl Service for Sharing {
         h.st.shell.want("hypr");
         h.st.shell.want("mpris");
         h.st.shell.want("bluez");
-        self.last_modes = (self.cfg_str("sharing.receiving", "off"), self.cfg_str("sharing.quickShare", "off"));
+        self.migrate_keys();
+        let level = self.level();
+        if level == "10min" {
+            // (a restart keeps the end it had: neither longer nor lost)
+            self.quick.everyone_until = visibility::deadline(visibility::read_until(&visibility::until_file()), tessera_core::util::now_ms());
+        }
+        self.last_modes = (level.clone(), level);
         self.last_hotspot = self.cfg_bool("sharing.quickShareHotspot", true);
         self.quick.last_mode = self.last_modes.1.clone();
         self.shelf_load();
@@ -771,6 +805,7 @@ impl Service for Sharing {
 
     fn config_changed(&mut self, h: &mut Host) {
         self.cfg = h.cfg().clone();
+        self.migrate_keys();
         // (the surfaces get everything again: one may have started since)
         self.last_share = Value::Null;
         self.last_shelf = Value::Null;

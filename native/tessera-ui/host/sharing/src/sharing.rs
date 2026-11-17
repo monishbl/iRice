@@ -30,28 +30,39 @@ pub struct Share {
 }
 
 impl Sharing {
+    /// The one visibility (visibility.rs): `sharing.quickShare`
     pub fn level(&self) -> String {
-        devices::combine(&self.cfg_str("sharing.receiving", "off"), &self.cfg_str("sharing.quickShare", "off"))
+        crate::visibility::level_of(&self.cfg["sharing"]).to_string()
     }
-    /// The two differ (set separately on the page): the module says so
+    /// (there's one level since 17 Nov: never "Custom")
     pub fn mixed(&self) -> bool {
-        self.cfg_str("sharing.receiving", "off") != self.cfg_str("sharing.quickShare", "off")
+        false
     }
+    /// "No one", "Everyone", "Everyone · 7 min"
     pub fn level_text(&self) -> String {
-        let l = self.level();
-        if l == "off" {
-            "Off".into()
-        } else if self.mixed() {
-            "Custom".into()
-        } else if l == "10min" {
-            "Everyone for 10 min".into()
+        crate::visibility::status(&self.level(), self.quick.everyone_until, tessera_core::util::now_ms())
+    }
+    /// Visible to anyone now (the tile is drawn on while so)
+    pub fn visible_now(&self) -> bool {
+        crate::visibility::visible(&self.level(), self.quick.everyone_until, tessera_core::util::now_ms())
+    }
+    /// Minutes left of "Everyone for 10 min" (0 otherwise)
+    pub fn minutes_left(&self) -> i64 {
+        if self.level() == "10min" {
+            crate::visibility::minutes_left(self.quick.everyone_until, tessera_core::util::now_ms())
         } else {
-            "Everyone".into()
+            0
         }
     }
     pub fn set_level(&mut self, l: &str) {
-        self.set_config("sharing.receiving", json!(l));
-        self.set_config("sharing.quickShare", json!(l));
+        let l = crate::visibility::norm(l);
+        // (the old LocalSend key too: the QML fallback reads it)
+        for k in [crate::visibility::KEY, crate::visibility::OLD_KEY] {
+            self.set_config(k, json!(l));
+            if let Some(m) = self.cfg.as_object_mut() {
+                tessera_core::cfgfile::put_path(m, k, json!(l));
+            }
+        }
     }
 
     // ── Nearby devices ──────────────────────────────────────────────────
@@ -316,5 +327,57 @@ impl Sharing {
             _ => {}
         }
         let _ = h;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn with(sharing: Value) -> Sharing {
+        let mut s = Sharing::default();
+        s.cfg = json!({"sharing": sharing});
+        s
+    }
+
+    #[test]
+    fn one_level_drives_both_protocols() {
+        // the user's config of 17 Nov: the tile's key says everyone, no LocalSend key
+        let s = with(json!({"quickShare": "everyone", "quickShareHotspot": true, "quickShareFolder": ""}));
+        assert_eq!(s.level(), "everyone");
+        assert!(s.quick_visible() && s.local_receiving());
+        assert_eq!(s.level_text(), "Everyone");
+        assert!(!s.mixed());
+        // an old LocalSend "everyone" no longer opens LocalSend alone
+        let s = with(json!({"quickShare": "off", "receiving": "everyone"}));
+        assert!(!s.quick_visible() && !s.local_receiving());
+        assert_eq!(s.level_text(), "No one");
+    }
+
+    #[test]
+    fn ten_minutes_end_for_both() {
+        let mut s = with(json!({"quickShare": "10min"}));
+        let now = tessera_core::util::now_ms();
+        s.quick.everyone_until = now + 3 * 60_000 - 10;
+        assert!(s.quick_visible() && s.local_receiving());
+        assert_eq!(s.minutes_left(), 3);
+        assert_eq!(s.level_text(), "Everyone · 3 min");
+        s.quick.everyone_until = now - 1;
+        assert!(!s.quick_visible() && !s.local_receiving());
+    }
+
+    #[test]
+    fn a_send_before_the_device_is_known_waits_for_it() {
+        let mut s = with(json!({"quickShare": "off"}));
+        s.quick_send("Q1", &["/tmp/a b.jpg".to_string()]);
+        assert_eq!(s.quick.queued.len(), 1);
+        // (the helper is wanted for it, and looks for the device)
+        assert_eq!(s.quick_needed(), s.quick_available());
+        assert!(s.sending_now());
+        s.local_send("fp1", &["/tmp/c.pdf".to_string(), "/tmp/d.pdf".to_string()]);
+        assert_eq!(s.local.queued, vec![("fp1".to_string(), vec!["/tmp/c.pdf".to_string(), "/tmp/d.pdf".to_string()])]);
+        assert_eq!(s.local.sending_name, "c.pdf and 1 more");
+        // the firewall opens for sending, Quick Share's ports too
+        assert!(s.ports_need().0.contains("quickshare") && s.ports_need().0.contains("localsend"));
     }
 }

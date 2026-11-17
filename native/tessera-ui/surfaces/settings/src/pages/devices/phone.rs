@@ -206,8 +206,17 @@ pub fn sharing(cx: &mut Ctx, p: &mut Page) {
     let lerr = s(&sh["localSendError"]);
     let send = cx.on(|cx, _| ask(cx, "sendFiles", Value::Null));
     let rv = ["off", "10min", "everyone"];
-    let receiving = cx.s("sharing.receiving");
-    let rp = cx.pick("sharing.receiving", &rv);
+    // One visibility for Android phones (Quick Share) and LocalSend
+    // together (17 Nov): the one key is sharing.quickShare, the Control
+    // Center tile's; the old LocalSend key is kept a copy (the QML fallback)
+    let level = visibility_of(&cx.get("sharing"));
+    let rp = cx.on(move |cx, a| {
+        if let Some(v) = ["off", "10min", "everyone"].get(a.i.max(0) as usize) {
+            cx.set("sharing.quickShare", *v);
+            cx.set("sharing.receiving", *v);
+        }
+    });
+    let left = sh["minutesLeft"].as_i64().unwrap_or(0);
     let ports = s(&sh["portsError"]);
     let show = cx.on(|cx, _| cx.go("security", "Firewall"));
     let name = cx.s("sharing.name");
@@ -228,21 +237,23 @@ pub fn sharing(cx: &mut Ctx, p: &mut Page) {
                 if lerr.is_empty() { String::new() } else { format!(" {lerr}") }
             )
         })
-        .row(Row::new("Send files")
-            .detail("Choose files, then a nearby device: one running LocalSend, or an Android phone with Quick Share. Receiving can stay off.")
-            .buttons(icon_button("Send files…", "paper-plane-tilt", false, false, local && !b("pickerBusy")), send))
-        .row(Row::new("Receive files from")
-            .detail(if receiving == "off" { "You can still send; nobody can see you" } else { "You're asked before anything is saved" })
-            .segmented(&["No one", "Everyone for 10 min", "Everyone"], rv.iter().position(|v| *v == receiving).unwrap_or(0) as i32, rp)
+        .row(Row::new("Visible to")
+            .detail(match level {
+                "off" => "You can still send; phones and computers nearby can't see this computer".to_string(),
+                "10min" if left > 0 => format!("Android phones and LocalSend devices nearby, for {left} more min; you're asked before anything is saved"),
+                _ => "Android phones and LocalSend devices nearby; you're asked before anything is saved".to_string(),
+            })
+            .segmented(&["No one", "Everyone for 10 min", "Everyone"], rv.iter().position(|v| *v == level).unwrap_or(0) as i32, rp)
             .width(320.0))
+        .row(Row::new("Send files")
+            .detail("Choose files, then a phone or computer nearby: Android phones with Quick Share and devices with LocalSend show together. Visibility can stay off.")
+            .buttons(icon_button("Send files…", "paper-plane-tilt", false, false, local && !b("pickerBusy")), send))
         .row(Row::new("Firewall").visible(!ports.is_empty()).detail(ports.clone()).button("Show", show))
         .row(Row::new("Your name").detail("How you appear on other devices").field(name, format!("{}'s computer", s(&sh["user"])), nf).width(220.0));
 
     // Android phones (Quick Share)
     let qs = b("quickShare");
     let qerr = s(&sh["quickShareError"]);
-    let qv = cx.s("sharing.quickShare");
-    let qp = cx.pick("sharing.quickShare", &rv);
     let bt_available = b("btAvailable");
     let bt_on = b("btOn");
     let bt = cx.on(|cx, _| ask(cx, "quickShareBluetooth", Value::Null));
@@ -261,14 +272,10 @@ pub fn sharing(cx: &mut Ctx, p: &mut Page) {
             if !qs {
                 "Quick Share needs Python 3 with python-cryptography and python-protobuf.".to_string()
             } else {
-                format!("Phones nearby find this computer in their Quick Share sheet as “{}” (over the same Wi-Fi, or Bluetooth), and you're asked before anything is saved, with the PIN the phone shows. To send, use Share on a file and pick the phone (its Quick Share open, visible to Everyone).", s(&sh["quickShareName"]))
+                format!("While visible, phones nearby find this computer in their Quick Share sheet as “{}” (over the same Wi-Fi, or Bluetooth), and you're asked before anything is saved, with the PIN the phone shows. To send, use Share on a file and pick the phone (its Quick Share open, visible to Everyone).", s(&sh["quickShareName"]))
             },
             if qerr.is_empty() { String::new() } else { format!(" {qerr}") }
         ))
-        .row(Row::new("Visible to phones")
-            .detail(if qv == "off" { "You can still send; phones can't see this computer" } else { "Phones nearby can offer you files, links and Wi-Fi networks" })
-            .segmented(&["No one", "Everyone for 10 min", "Everyone"], rv.iter().position(|v| *v == qv).unwrap_or(0) as i32, qp)
-            .width(320.0))
         .row({
             let r = Row::new("Bluetooth").detail(if !bt_available {
                 "No Bluetooth adapter: phones find this computer only on the same network"
@@ -331,9 +338,33 @@ pub fn sharing(cx: &mut Ctx, p: &mut Page) {
     }
 }
 
+/// The one visibility level from config.json's `sharing` (host-sharing's
+/// visibility.rs: quickShare is the truth; a config with only LocalSend's
+/// old key has its value)
+fn visibility_of(sharing: &Value) -> &'static str {
+    let pick = |v: Option<&str>| match v {
+        Some("10min") => "10min",
+        Some("everyone") => "everyone",
+        _ => "off",
+    };
+    match sharing["quickShare"].as_str() {
+        Some(q) => pick(Some(q)),
+        None => pick(sharing["receiving"].as_str()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn one_visibility_from_the_tiles_key() {
+        // the user's config of 17 Nov: shown as Everyone (it said No one)
+        assert_eq!(visibility_of(&json!({"quickShare": "everyone", "quickShareHotspot": true, "quickShareFolder": ""})), "everyone");
+        assert_eq!(visibility_of(&json!({"quickShare": "off", "receiving": "everyone"})), "off");
+        assert_eq!(visibility_of(&json!({"receiving": "10min"})), "10min");
+        assert_eq!(visibility_of(&Value::Null), "off");
+    }
 
     #[test]
     fn the_phone_is_described_as_phone_qml_does() {
