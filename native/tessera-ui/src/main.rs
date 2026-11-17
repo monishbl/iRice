@@ -178,6 +178,10 @@ fn main() {
     if args.get(1).map(String::as_str) == Some("--pam-helper") {
         std::process::exit(tessera_lock::auth::helper_main(&args));
     }
+    // (pam_exec's program in tessera-face-rgb: the blink check, core/face.rs)
+    if args.get(1).map(String::as_str) == Some("--face-live") {
+        std::process::exit(tessera_core::face::live_main());
+    }
     if args.get(1).map(String::as_str) == Some("--version") {
         let b = tessera_core::build_info::current();
         if args.iter().skip(2).any(|a| a == "--json") {

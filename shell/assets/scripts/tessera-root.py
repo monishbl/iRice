@@ -44,11 +44,20 @@ With the password:
       screen needs none of this (its PAM file is in the shell).
   face setup <camera> | add | clear | list
       face unlock for Tessera's lock screen, with Howdy (howdy-next): setup
-      downloads Howdy's face models (once) and sets the infrared camera
-      (a /dev/v4l/by-path, /dev/v4l/by-id or /dev/videoN path that exists) in
-      /etc/howdy/config.ini; add, clear and list the faces of the person who
-      asked (never anyone else's). Tessera's lock screen uses its own PAM file;
-      no system PAM file is touched.
+      downloads Howdy's face models (once) and sets the camera, infrared or
+      regular (a /dev/v4l/by-path, /dev/v4l/by-id or /dev/videoN path that
+      exists) in /etc/howdy/config.ini; add, clear and list the faces of the
+      person who asked (never anyone else's; clear also ends admin below).
+      Tessera's lock screen uses its own PAM file; no system PAM file is
+      touched.
+  face admin on <camera> ir|rgb | face admin off
+      opt-in: your face approves administrator prompts too. A drop-in for
+      polkit's helper service (polkit-agent-helper@.service.d/50-tessera-
+      face.conf) gives it the camera and shows it a copy of its PAM file with
+      the face first (a regular camera: Howdy, then the blink check, run as
+      root from root's copies in /var/lib/tessera/face of your face and the
+      eye model, SHA-256 checked). polkit's own PAM file isn't changed; off
+      removes the drop-in when nobody's face is left.
   phonecam on|off
       a virtual camera for an Android phone's camera (Settings → Phone): the
       v4l2loopback module with one device, /dev/video42 "Phone camera",
@@ -114,6 +123,7 @@ root: a symlink in your home can't make root read anything you can't.
 """
 import contextlib
 import glob
+import hashlib
 import importlib.util
 import json
 import os
@@ -151,6 +161,8 @@ PREFIX = "/"  # where FILES go (tests: a folder)
 FILES = [
     ("assets/scripts/tessera-root.py", LIB + "/tessera-root", 0o755),
     ("assets/scripts/quickshare/qs-wifi-helper.py", LIB + "/qs-wifi-helper.py", 0o644),
+    # (the blink check, as root, for administrator prompts: face admin on)
+    ("assets/scripts/face_live.py", LIB + "/face_live.py", 0o644),
     ("assets/polkit/org.tessera.root.policy", "/usr/share/polkit-1/actions/org.tessera.root.policy", 0o644),
     ("assets/polkit/49-tessera.rules", "/etc/polkit-1/rules.d/49-tessera.rules", 0o644),
 ]
@@ -434,10 +446,135 @@ def face(args, uid, run=subprocess.run, config=HOWDY_CONFIG, exists=os.path.exis
     if args == ["add"]:
         return run([howdy, "-U", user, "--plain", "-y", "add", "Tessera " + time.strftime("%Y-%m-%d %H.%M")]).returncode
     if args == ["clear"]:
+        with contextlib.suppress(OSError):
+            face_admin_off(uid, run=run)
         return run([howdy, "-U", user, "-y", "clear"]).returncode
     if args == ["list"]:
         return run([howdy, "-U", user, "--plain", "list"]).returncode
-    raise Refused("face: setup <camera> | add | clear | list")
+    if args[:2] == ["admin", "on"] and len(args) == 4:
+        for d in face_admin_on(uid, args[2], args[3], exists=exists, which=which):
+            print("changed", d)
+        return 0
+    if args == ["admin", "off"]:
+        for d in face_admin_off(uid):
+            print("changed", d)
+        return 0
+    raise Refused("face: setup <camera> | add | clear | list | admin on <camera> ir|rgb | admin off")
+
+
+# ── face for administrator prompts (opt-in: Settings → Face) ───────────
+# polkit's PAM file isn't changed. polkit asks through its helper, a
+# systemd service started per request (polkit-agent-helper@.service); a
+# drop-in shows that service alone our copy of its PAM file, with the face
+# first and everything else as it was (BindReadOnlyPaths: a view, not an
+# edit; removing the drop-in is the whole undo). The blink check then runs
+# as root, from root's copies of your face and the eye model, kept here:
+FACE_ADMIN_DIR = "/var/lib/tessera/face"
+FACE_DROPIN = "/etc/systemd/system/polkit-agent-helper@.service.d/50-tessera-face.conf"
+POLKIT_HELPER_UNITS = ("/usr/lib/systemd/system/polkit-agent-helper@.service", "/etc/systemd/system/polkit-agent-helper@.service")
+POLKIT_PAM = ("/etc/pam.d/polkit-1", "/usr/lib/pam.d/polkit-1")  # (PAM's own order)
+FACE_MARK = "# Tessera face"
+# face_live.py's eye model (EYE_MODEL_SHA256 there: the same, tested)
+EYE_MODEL_SHA256 = "70dd8b1657c42d1595d6bd13d97d932877b3bed54a95d3c4733a0f740d1fd66b"
+EYE_MODEL_MAX = 64 * 1024 * 1024
+
+
+def polkit_face_lines(kind):
+    """The face's lines in polkit's PAM file: infrared, Howdy alone; a
+    regular camera, Howdy and then the blink. Either way, no face in time
+    and the password is asked as before."""
+    if kind == "ir":
+        return [f"auth       sufficient                       pam_howdy.so   {FACE_MARK}"]
+    return [f"auth       [success=ok default=1]           pam_howdy.so   {FACE_MARK}",
+            f"auth       [success=done default=ignore]    pam_exec.so quiet stdout type=auth /usr/bin/python3 -I {LIB}/face_live.py check --admin   {FACE_MARK}"]
+
+
+def polkit_with_face(text, kind):
+    """polkit's PAM file with the face first (before its first auth line),
+    any face lines of ours from before taken out"""
+    lines = [l for l in text.splitlines() if FACE_MARK not in l]
+    at = next((i for i, l in enumerate(lines) if re.match(r"^\s*-?auth\b", l)), len(lines))
+    return "\n".join(lines[:at] + polkit_face_lines(kind) + lines[at:]) + "\n"
+
+
+def face_dropin(overlay, target):
+    return ("# Tessera: face unlock for administrator prompts (Settings → Face). The camera,\n"
+            "# and polkit's PAM file with the face first; delete this file to undo.\n"
+            "[Service]\nPrivateDevices=no\nDeviceAllow=char-video4linux rw\n"
+            f"BindReadOnlyPaths={overlay}:{target}\n")
+
+
+def check_features(data):
+    """me.json as face_live.py writes it: SFace features, 128 numbers each"""
+    try:
+        v = json.loads(data)
+        feats = v["features"]
+    except (ValueError, KeyError, TypeError):
+        raise Refused("your face for the blink check isn't readable: add your face again")
+    if not isinstance(feats, list) or not 0 < len(feats) <= 100 or not all(
+            isinstance(f, list) and len(f) == 128 and all(isinstance(x, (int, float)) for x in f) for f in feats):
+        raise Refused("your face for the blink check isn't readable: add your face again")
+    return feats
+
+
+def face_admin_on(uid, device, kind, exists=os.path.exists, which=shutil.which, prefix="/", run=subprocess.run):
+    if not CAMERA_PATH.match(device) or not exists(device):
+        raise Refused(f"not a camera: {device}")
+    if kind not in ("ir", "rgb"):
+        raise Refused("face admin on: ir or rgb")
+    root = lambda p: os.path.join(prefix, p.lstrip("/"))
+    if not which("howdy"):
+        raise Refused("Howdy isn't installed (howdy-next)")
+    if not any(os.path.exists(root(u)) for u in POLKIT_HELPER_UNITS):
+        raise Refused("this polkit asks with its setuid helper, which can't be given a camera: administrator prompts keep asking for your password")
+    target = next((p for p in POLKIT_PAM if os.path.exists(root(p))), "")
+    if not target:
+        raise Refused("polkit has no PAM file (polkit-1)")
+    pw = pwd.getpwuid(uid)
+    changed = []
+    os.makedirs(root(FACE_ADMIN_DIR), mode=0o755, exist_ok=True)
+    if kind == "rgb":
+        if not os.path.exists(root(LIB + "/face_live.py")):
+            raise Refused("Tessera's helper is out of date: update Tessera, then try again")
+        data_home = os.path.join(pw.pw_dir, ".local/share/tessera/face")
+        feats = check_features(read_as(uid, os.path.join(data_home, "me.json"), MAX_SOURCE))
+        model = read_as(uid, os.path.join(data_home, "lbfmodel.yaml"), EYE_MODEL_MAX)
+        if hashlib.sha256(model).hexdigest() != EYE_MODEL_SHA256:
+            raise Refused("the eye model isn't the one Tessera downloads: set face unlock up again")
+        dest = root(f"{FACE_ADMIN_DIR}/lbfmodel.yaml")
+        write_root(dest, model, 0o644)
+        changed.append(dest)
+        dest = root(f"{FACE_ADMIN_DIR}/{pw.pw_name}.json")
+        write_root(dest, json.dumps({"device": device, "features": feats}).encode(), 0o600)
+        changed.append(dest)
+    with open(root(target)) as f:
+        text = f.read()
+    overlay = f"{FACE_ADMIN_DIR}/polkit-1"
+    write_root(root(overlay), polkit_with_face(text, kind).encode(), 0o644)
+    write_root(root(FACE_DROPIN), face_dropin(overlay, target).encode(), 0o644)
+    changed += [root(overlay), root(FACE_DROPIN)]
+    if prefix == "/":
+        run(["systemctl", "daemon-reload"], timeout=30, check=False)
+    return changed
+
+
+def face_admin_off(uid, prefix="/", run=subprocess.run):
+    """Your face no longer approves administrator prompts; with nobody's
+    left, the drop-in goes too (polkit sees its own PAM file again)"""
+    root = lambda p: os.path.join(prefix, p.lstrip("/"))
+    gone = []
+    mine = root(f"{FACE_ADMIN_DIR}/{pwd.getpwuid(uid).pw_name}.json")
+    if os.path.exists(mine):
+        os.unlink(mine)
+        gone.append(mine)
+    if not glob.glob(root(FACE_ADMIN_DIR + "/*.json")):
+        for p in (FACE_DROPIN, FACE_ADMIN_DIR + "/polkit-1", FACE_ADMIN_DIR + "/lbfmodel.yaml"):
+            if os.path.exists(root(p)):
+                os.unlink(root(p))
+                gone.append(root(p))
+        if prefix == "/" and gone:
+            run(["systemctl", "daemon-reload"], timeout=30, check=False)
+    return gone
 
 
 # ── phonecam (Settings → Phone → Use as webcam) ─────────────────────────

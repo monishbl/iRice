@@ -444,7 +444,9 @@ impl Bridges {
 
     fn tell_lock(&self, h: &mut Host) {
         let (finger, face) = (h.state("fingerprint.lockScreen").as_bool().unwrap_or(false), h.state("face.lockScreen").as_bool().unwrap_or(false));
-        h.tell("lock", json!({"held": self.held && self.rust_lock, "leaving": self.leaving, "finger": finger, "face": face}));
+        // (faceKind: a regular camera's PAM file asks for a blink too)
+        let (kind, device) = (h.state("face.kind").as_str().unwrap_or("ir").to_string(), h.state("face.device").as_str().unwrap_or("").to_string());
+        h.tell("lock", json!({"held": self.held && self.rust_lock, "leaving": self.leaving, "finger": finger, "face": face, "faceKind": kind, "faceDevice": device}));
     }
 
     /// What the lock screen (Rust) says: secure, unlocked, sound, refused

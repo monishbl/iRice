@@ -227,8 +227,14 @@ impl SystemBridge {
             "sheet": {"takes": self.takes, "misses": self.misses, "retry": self.retry, "flash": self.flash},
             "face": {
                 "hasCamera": b(&face["hasCamera"]), "installed": b(&face["installed"]), "setUp": b(&face["setUp"]),
-                "faces": get(&face, "faces", &json!([])), "busy": b(&face["busy"]), "error": s(&face["error"]),
+                // (busy is the job's name: "setup", "add", …)
+                "faces": get(&face, "faces", &json!([])), "busy": s(&face["busy"]), "error": s(&face["error"]),
                 "installError": s(&face["installError"]), "installing": b(&face["installing"]), "camera": s(&face["camera"]["name"]),
+                "cameraPath": s(&face["camera"]["path"]), "kind": get(&face, "kind", &json!("ir")),
+                "cameras": get(&face, "cameras", &json!([])), "step": get(&face, "step", &json!(0)), "steps": get(&face, "steps", &json!(3)),
+                "progress": get(&face, "progress", &json!(-1)), "tryState": s(&face["tryState"]), "tryText": s(&face["tryText"]),
+                "admin": b(&face["admin"]), "lockScreen": b(&face["lockScreen"]),
+                "cv2": b(&face["info"]["live"]["cv2"]),
             },
             "check": self.check,
             "quickShare": {"trusted": b(&qs["trusted"]), "trustBusy": b(&qs["trustBusy"]), "trustError": s(&qs["trustError"])},
@@ -353,6 +359,13 @@ impl SystemBridge {
             "faceSetUp" => ask("face.setUpCamera", json!([])),
             "faceAdd" => ask("face.addFace", json!([])),
             "faceClear" => ask("face.clearFaces", json!([])),
+            "faceCamera" => {
+                if a0.is_string() {
+                    ask("face.chooseCamera", json!([a0]));
+                }
+            }
+            "faceTry" => ask("face.tryIt", json!([])),
+            "faceAdmin" => ask("face.setAdmin", json!([a0.as_bool().unwrap_or(false)])),
             // Sharing's trust and the firewall's ports
             "quickShareTrust" => ask("quickshare.setTrusted", json!([a0.as_bool().unwrap_or(false)])),
             "portsRetry" => ask("sharingports.retry", json!([])),

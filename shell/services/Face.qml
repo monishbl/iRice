@@ -23,7 +23,10 @@ Singleton {
     readonly property bool setUp: installed && device !== "" && (info.models ?? false)
     // Faces added (kept here: Howdy's own list is root's to read)
     readonly property int faces: Config.options.lock.faceCount ?? 0
-    readonly property bool lockScreen: setUp && faces > 0 && (Config.options.lock.face ?? true)
+    // (compat, 17 Nov: a regular camera set up from the Rust shell's Settings
+    // needs a blink as well, which only its lock asks for; this lock would
+    // take a photo, so it doesn't use that camera)
+    readonly property bool lockScreen: setUp && faces > 0 && (Config.options.lock.face ?? true) && (Config.options.lock.faceKind ?? "ir") !== "rgb"
 
     function refresh() {
         statusProc.running = true;

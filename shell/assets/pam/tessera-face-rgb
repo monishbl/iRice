@@ -1,0 +1,10 @@
+#%PAM-1.0
+# Tessera's lock screen with a regular (colour) camera: Howdy (howdy-next)
+# finds your face, then you blink (shell/assets/scripts/face_live.py, run
+# as you by pam_exec through tessera-ui itself: /proc/self/exe is the lock's
+# own PAM helper here). A photo matches a face but doesn't blink. Used only
+# by the shell's lock and Settings' "Try it", from this folder; the
+# system's PAM files aren't touched. An infrared camera uses tessera-face.
+auth       requisite    pam_howdy.so
+auth       required     pam_exec.so quiet stdout type=auth /proc/self/exe --face-live
+account    required     pam_permit.so

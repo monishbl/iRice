@@ -98,14 +98,35 @@ impl Drop for Conv {
     }
 }
 
+/// The face camera the lock uses: its kind ("ir" | "rgb": config
+/// lock.faceKind, by way of the shell's `faceKind`) and its device (for the
+/// blink check). Set by the lock when the shell tells it.
+static FACE: Mutex<(String, String)> = Mutex::new((String::new(), String::new()));
+
+pub fn set_face_camera(kind: &str, device: &str) {
+    if let Ok(mut f) = FACE.lock() {
+        *f = (kind.to_string(), device.to_string());
+    }
+}
+
+fn face_camera() -> (String, String) {
+    FACE.lock().map(|f| f.clone()).unwrap_or_default()
+}
+
 /// The service and folder a conversation of this kind uses (None: the
 /// mock answers)
 pub fn service(b: &Backend, kind: Kind) -> Option<(String, Option<String>)> {
+    service_for(b, kind, &face_camera().0)
+}
+
+/// `service`, for a face camera of this kind (tessera-face-rgb for a
+/// regular camera: Howdy, then a blink)
+pub fn service_for(b: &Backend, kind: Kind, face_kind: &str) -> Option<(String, Option<String>)> {
     let shell_pam = || crate::util::asset("shell/assets/pam").map(|p| p.to_string_lossy().into_owned());
     match (b, kind) {
         (Backend::System, Kind::Password) => Some(("login".into(), None)),
         (Backend::System, Kind::Finger) => Some(("tessera-fingerprint".into(), shell_pam())),
-        (Backend::System, Kind::Face) => Some(("tessera-face".into(), shell_pam())),
+        (Backend::System, Kind::Face) => Some((tessera_core::face::service(face_kind).into(), shell_pam())),
         (Backend::TestService { dir, service }, Kind::Password) => Some((service.clone(), Some(dir.clone()))),
         _ => None,
     }
@@ -136,6 +157,10 @@ pub fn start(b: &Backend, kind: Kind, id: u64, secret: String, to: impl Fn(Box<d
     cmd.arg("--pam-helper").arg(&service);
     if let Some(d) = &dir {
         cmd.arg(d);
+    }
+    if kind == Kind::Face {
+        // (the blink check's camera: the helper hands it to pam_exec)
+        cmd.env("TESSERA_FACE_DEVICE", face_camera().1);
     }
     let spawned = cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn();
     let mut ch = match spawned {
@@ -232,6 +257,18 @@ extern "C" {
     fn pam_acct_mgmt(pamh: *mut c_void, flags: c_int) -> c_int;
     fn pam_end(pamh: *mut c_void, status: c_int) -> c_int;
     fn pam_strerror(pamh: *mut c_void, errnum: c_int) -> *const c_char;
+    fn pam_putenv(pamh: *mut c_void, name_value: *const c_char) -> c_int;
+}
+
+/// What pam_exec's program (the blink check) gets: PAM's environment only,
+/// so the few it needs are put there (core::face::PAM_ENV)
+fn pass_environment(h: *mut c_void) {
+    for name in tessera_core::face::PAM_ENV {
+        let Ok(v) = std::env::var(name) else { continue };
+        if let Ok(nv) = CString::new(format!("{name}={v}")) {
+            unsafe { pam_putenv(h, nv.as_ptr()) };
+        }
+    }
 }
 
 fn say(word: &str, text: &str) {
@@ -305,6 +342,9 @@ pub fn helper_main(args: &[String]) -> i32 {
         say("RESULT", &format!("{r} pam_start failed"));
         return 1;
     }
+    if service.starts_with("tessera-face") {
+        pass_environment(h);
+    }
     let mut r = unsafe { pam_authenticate(h, 0) };
     if r == PAM_SUCCESS {
         r = unsafe { pam_acct_mgmt(h, 0) };
@@ -340,6 +380,11 @@ mod tests {
         assert_eq!(service(&t, Kind::Password), Some(("tessera-test".into(), Some("/tmp/pam".into()))));
         // (a test never reaches the reader or the camera)
         assert_eq!(service(&t, Kind::Finger), None);
+        assert_eq!(service_for(&t, Kind::Face, "rgb"), None);
+        // the camera's kind picks the face's PAM file: a regular one blinks too
+        assert_eq!(service_for(&Backend::System, Kind::Face, "ir").unwrap().0, "tessera-face");
+        assert_eq!(service_for(&Backend::System, Kind::Face, "rgb").unwrap().0, "tessera-face-rgb");
+        assert_eq!(service_for(&Backend::System, Kind::Face, "").unwrap().0, "tessera-face");
         assert_eq!(service(&Backend::Mock { password: None }, Kind::Password), None);
     }
 

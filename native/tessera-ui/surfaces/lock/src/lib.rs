@@ -240,6 +240,8 @@ struct FaceCam {
     armed: bool,
     stopped_at: i64,
     conv: Option<Conv>,
+    /// the blink check spoke in this conversation (a regular camera)
+    checked: bool,
 }
 
 #[derive(Default)]
@@ -1411,8 +1413,26 @@ impl Lock {
                 }
                 self.rules(st);
             }
+            // The blink check's hints ("Blink to unlock"), shown as the face's
+            // text; Howdy's own lines aren't (core::face::hint)
+            Auth::Info(Kind::Face, id, m) | Auth::Error(Kind::Face, id, m) if self.face.conv.as_ref().is_some_and(|c| c.id == id) => {
+                if let Some(h) = tessera_core::face::hint(&m) {
+                    self.face.text = h.to_string();
+                    self.face.checked = true;
+                    self.field();
+                }
+            }
             Auth::Done(Kind::Face, id, out) if self.face.conv.as_ref().is_some_and(|c| c.id == id) => {
                 self.face.conv = None;
+                // (pam_exec says "system error" for any no from the blink
+                // check; one that spoke looked, so it's a miss, not a broken camera)
+                let out = match out {
+                    Outcome::Error(why) if std::mem::take(&mut self.face.checked) => Outcome::Failure(why),
+                    o => {
+                        self.face.checked = false;
+                        o
+                    }
+                };
                 match out {
                     Outcome::Success => {
                         self.face.tries = 0;
@@ -1997,6 +2017,10 @@ impl Lock {
         }
         if let Some(f) = v["face"].as_bool() {
             self.face_on = f;
+        }
+        // (a regular camera's PAM file asks for a blink too: auth::service)
+        if let Some(k) = v["faceKind"].as_str() {
+            auth::set_face_camera(k, v["faceDevice"].as_str().unwrap_or(""));
         }
         if let Some(l) = v["leaving"].as_bool() {
             // (Material's fingerprint shows the check while it fades: lock.slint)

@@ -24,6 +24,7 @@ sandbox), **done, unchecked** (committed, not yet seen in a screenshot).
 |---|---|---|---|
 | Password field as see-through frosted glass (lock and login), light rim, readable text, focus state | 13 Nov | done on the lock (arena 6, both wallpapers); login unchecked | e23fdef |
 | Fingerprint animation "ridges trace in": ridges glow in turn while waiting, fill to a tick on success, shake red on failure; static under Reduce Motion | 13 Nov | waiting loop and miss checked; match tick, Reduce Motion and login unchecked | e23fdef |
+| Face unlock with a regular camera (17 Nov): Howdy matches, then you blink (`face_live.py`: EAR from OpenCV's 68-point LBF landmarks, open → closed → open within 3 s, the same enrolled face throughout, a face-shape guard against a tilted photo; your own closing measured when you add your face, never looser than 70%). PAM file `tessera-face-rgb` (Howdy, then pam_exec → `tessera-ui --face-live`); infrared keeps `tessera-face`. Settings → Privacy & Security → Face: camera kind (Infrared / Regular choice when both), Step n of 3, eye model (54 MB, SHA-256 pinned) downloaded at Set Up, Try It, privacy line. Lock screen only; "Also approve administrator prompts with your face" is opt-in (a drop-in for polkit's helper service shows it a copy of polkit-1 with the face first: no /etc/pam.d edit). The QML lock doesn't use a regular camera (compat: `lock.faceKind`) | 17 Nov | done, unchecked on a real camera (unit tests; pipeline probed on sample images; Settings in a sandbox arena) | face-rgb |
 
 ## Screen tools
 

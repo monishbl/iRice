@@ -331,6 +331,11 @@ impl Polkit {
                 self.ask.required = true;
                 self.waiting = false;
             }
+            // (face-rgb: the blink check's hints, when face unlock is on for
+            // administrator prompts: shown as said, never taken for a finger)
+            Line::Info(t) | Line::Error(t) if tessera_core::face::hint(&t).is_some() => {
+                self.ask.supplementary = tessera_core::face::hint(&t).unwrap_or_default().to_string();
+            }
             Line::Info(t) | Line::Error(t) => {
                 let l = t.to_lowercase();
                 if ["fail", "no match", "not match"].iter().any(|w| l.contains(w)) {

@@ -671,6 +671,101 @@ class FaceUnlock(unittest.TestCase):
         with self.assertRaises(self.r.Refused):
             self.face(["add"], which=lambda n: None)
 
+    # ── face for administrator prompts (opt-in) ──
+    POLKIT = "#%PAM-1.0\n\nauth       include      system-auth\naccount    include      system-auth\npassword   include      system-auth\nsession    include      system-auth\n"
+
+    def test_polkit_gets_the_face_first(self):
+        t = self.r.polkit_with_face(self.POLKIT, "rgb")
+        lines = t.splitlines()
+        self.assertEqual(lines[0], "#%PAM-1.0")
+        self.assertIn("pam_howdy.so", lines[2])
+        self.assertIn("[success=ok default=1]", lines[2])  # (no face: the blink is skipped)
+        self.assertIn("face_live.py check --admin", lines[3])
+        self.assertIn("[success=done default=ignore]", lines[3])  # (no blink: the password)
+        self.assertEqual(lines[4], "auth       include      system-auth")
+        # again: still one set (ours from before taken out), and back to infrared
+        t2 = self.r.polkit_with_face(t, "ir")
+        self.assertEqual(t2.count(self.r.FACE_MARK), 1)
+        self.assertIn("sufficient", t2.splitlines()[2])
+        # (a fingerprint line of ours stays where it was, after the face)
+        fp = self.r.pam_with_fingerprint(self.POLKIT, self.r.FP_LINES["polkit"])
+        t3 = self.r.polkit_with_face(fp, "rgb").splitlines()
+        self.assertIn("pam_howdy", t3[2])
+        self.assertIn("pam_fprintd", t3[4])
+
+    def test_the_dropin_is_a_view_not_an_edit(self):
+        d = self.r.face_dropin("/var/lib/tessera/face/polkit-1", "/etc/pam.d/polkit-1")
+        self.assertIn("BindReadOnlyPaths=/var/lib/tessera/face/polkit-1:/etc/pam.d/polkit-1", d)
+        self.assertIn("DeviceAllow=char-video4linux rw", d)
+
+    def test_the_eye_model_checksum_matches_face_live(self):
+        fl = load(SCRIPTS / "face_live.py", "face_live_pin")
+        self.assertEqual(self.r.EYE_MODEL_SHA256, fl.EYE_MODEL_SHA256)
+
+    def test_features_are_checked(self):
+        good = json.dumps({"features": [[0.5] * 128]}).encode()
+        self.assertEqual(len(self.r.check_features(good)), 1)
+        for bad in (b"nope", b"{}", json.dumps({"features": []}).encode(), json.dumps({"features": [[0.5] * 3]}).encode(),
+                    json.dumps({"features": [["x"] * 128]}).encode()):
+            with self.assertRaises(self.r.Refused):
+                self.r.check_features(bad)
+
+    def admin_tree(self, unit=True):
+        p = Path(self.dir.name) / "sys"
+        (p / "etc/pam.d").mkdir(parents=True)
+        (p / "etc/pam.d/polkit-1").write_text(self.POLKIT)
+        if unit:
+            (p / "usr/lib/systemd/system").mkdir(parents=True)
+            (p / "usr/lib/systemd/system/polkit-agent-helper@.service").write_text("[Service]\n")
+        (p / "usr/lib/tessera").mkdir(parents=True)
+        (p / "usr/lib/tessera/face_live.py").write_text("")
+        (p / "etc/systemd/system/polkit-agent-helper@.service.d").mkdir(parents=True)
+        home = Path(self.dir.name) / "home/.local/share/tessera/face"
+        home.mkdir(parents=True)
+        (home / "me.json").write_text(json.dumps({"version": 1, "features": [[0.1] * 128]}))
+        (home / "lbfmodel.yaml").write_bytes(b"model")
+        return p, home
+
+    def admin_on(self, prefix, kind="rgb", sha=None):
+        real = self.r.pwd.getpwuid
+        home = str(Path(self.dir.name) / "home")
+        self.r.pwd.getpwuid = lambda uid: type("P", (), {"pw_name": self.me, "pw_dir": home})()
+        self.r.EYE_MODEL_SHA256 = sha or __import__("hashlib").sha256(b"model").hexdigest()
+        try:
+            return self.r.face_admin_on(self.uid, "/dev/video0", kind, exists=lambda p: True, which=lambda n: "/usr/bin/howdy", prefix=str(prefix), run=lambda *a, **k: None)
+        finally:
+            self.r.pwd.getpwuid = real
+
+    def test_admin_on_and_off(self):
+        p, _ = self.admin_tree()
+        self.admin_on(p)
+        self.assertEqual((p / "etc/pam.d/polkit-1").read_text(), self.POLKIT)  # (polkit's own file: untouched)
+        self.assertIn("pam_howdy", (p / "var/lib/tessera/face/polkit-1").read_text())
+        mine = json.loads((p / f"var/lib/tessera/face/{self.me}.json").read_text())
+        self.assertEqual(mine["device"], "/dev/video0")
+        self.assertEqual(len(mine["features"]), 1)
+        self.assertTrue((p / "etc/systemd/system/polkit-agent-helper@.service.d/50-tessera-face.conf").exists())
+        real = self.r.pwd.getpwuid
+        self.r.pwd.getpwuid = lambda uid: type("P", (), {"pw_name": self.me})()
+        try:
+            self.r.face_admin_off(self.uid, prefix=str(p), run=lambda *a, **k: None)
+        finally:
+            self.r.pwd.getpwuid = real
+        self.assertFalse((p / "etc/systemd/system/polkit-agent-helper@.service.d/50-tessera-face.conf").exists())
+        self.assertFalse((p / f"var/lib/tessera/face/{self.me}.json").exists())
+        self.assertFalse((p / "var/lib/tessera/face/lbfmodel.yaml").exists())
+
+    def test_admin_refuses_a_wrong_model_or_no_helper_service(self):
+        p, _ = self.admin_tree()
+        with self.assertRaises(self.r.Refused):
+            self.admin_on(p, sha="0" * 64)
+        q = Path(self.dir.name) / "q"
+        q.mkdir()
+        (q / "etc/pam.d").mkdir(parents=True)
+        (q / "etc/pam.d/polkit-1").write_text(self.POLKIT)
+        with self.assertRaises(self.r.Refused):
+            self.admin_on(q)  # (a setuid-only polkit: no service to give a camera)
+
 
 class SysUpdate(unittest.TestCase):
     """The whole real (not --fake) run: one pkexec, the AUR's pacman through it."""
