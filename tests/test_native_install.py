@@ -590,7 +590,7 @@ class Modes(Fixture):
         self.publish()
         r, calls = self.install("build")
         self.assertEqual((r["source"], r["label"]), ("built", "built here"))
-        self.assertEqual(calls, [("build", False, False)])
+        self.assertEqual(calls, [("build", False, True)])
         r, calls = self.install("buildTuned", ui=True)
         self.assertEqual((r["source"], r["label"]), ("built-tuned", "built here, tuned"))
         self.assertEqual(calls, [("build", True, True)])
@@ -606,7 +606,7 @@ class Modes(Fixture):
         self.publish()
         self.install()
         r, calls = self.install("build")
-        self.assertEqual(calls, [("build", False, False)])  # (tessera-ui is built here only when used)
+        self.assertEqual(calls, [("build", False, True)])  # (tessera-ui is the shell: built too)
         r, calls = self.install()  # auto takes a build made here as it is
         self.assertEqual(calls, [])
 
@@ -614,17 +614,17 @@ class Modes(Fixture):
         r, calls = self.install()
         self.assertTrue(r["ok"], r)
         self.assertEqual(r["source"], "built")
-        self.assertEqual(calls, [("fetch", "x86-64-v3"), ("build", False, False)])
+        self.assertEqual(calls, [("fetch", "x86-64-v3"), ("build", False, True)])
         self.assertIn("no ready-made build", r["fallback"])
 
     def test_fallback_offline_or_with_edits(self):
         self.publish()
         r, calls = self.install(offline=True)
-        self.assertEqual(calls, [("build", False, False)])
+        self.assertEqual(calls, [("build", False, True)])
         self.assertEqual(r["fallback"], "offline")
         (self.repo / "native/tessera-ui/main.rs").write_text("// mine\n")
         r, calls = self.install()
-        self.assertEqual(calls, [("build", False, False)])
+        self.assertEqual(calls, [("build", False, True)])
         self.assertIn("edits of its own", r["fallback"])
         self.assertIsNone(ni.read_info(str(self.dest), "tessera-events")["tree"])  # (never taken for a clean build)
 
@@ -698,7 +698,9 @@ class CommandLine(Fixture):
         (self.repo / "shell/assets/scripts/migrate-names.py").write_text("")
         self.builder = self.d / "builder.sh"
         self.builder.write_text("#!/bin/sh\n# --stage DIR [--tuned] [--ui]\necho \"$@\" > " + str(self.d / "built-with") + "\n"
-                                "printf '#!/bin/sh\\necho tessera-events 0.1.0\\n' > \"$2/tessera-events\"; chmod +x \"$2/tessera-events\"\n")
+                                "printf '#!/bin/sh\\necho tessera-events 0.1.0\\n' > \"$2/tessera-events\"; chmod +x \"$2/tessera-events\"\n"
+                                # (tessera-ui too when asked: it's the shell, built by default)
+                                "case \" $* \" in *' --ui '*) printf '#!/bin/sh\\necho tessera-ui 0.1.0\\n' > \"$2/tessera-ui\"; chmod +x \"$2/tessera-ui\";; esac\n")
         self.builder.chmod(0o755)
         self.run_env = dict(os.environ, TESSERA_RELEASES=self.base, TESSERA_NATIVE_BUILDER=str(self.builder))
         for k in ("WAYLAND_DISPLAY", "WAYLAND_SOCKET", "DISPLAY"):
@@ -828,3 +830,18 @@ class InstallerAdvanced(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class UiInUse(unittest.TestCase):
+    """tessera-ui is the shell unless rust.standalone is false: an install or
+    update must build it (16 Nov: it read only rust.surfaces, so installs and
+    updates left it unbuilt and laptops started the QML shell)"""
+
+    def test_the_rust_shell_is_built_unless_turned_off(self):
+        ui = ni.ui_in_use
+        self.assertTrue(ui({}))
+        self.assertTrue(ui({"rust": {}}))
+        self.assertTrue(ui({"rust": {"standalone": True, "surfaces": []}}))
+        self.assertTrue(ui({"rust": {"surfaces": []}}))
+        self.assertFalse(ui({"rust": {"standalone": False, "surfaces": []}}))
+        self.assertTrue(ui({"rust": {"standalone": False, "surfaces": ["dock"]}}))

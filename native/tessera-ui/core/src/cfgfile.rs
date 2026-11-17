@@ -9,6 +9,13 @@
 //! state-merge.py names it), and for the settings the person is told once.
 //! The settings then go on from the last good copy this process read (a hand
 //! edit with a typo loses only that edit), else from the defaults.
+//!
+//! The UI thread never waits on a write (each one is a whole file synced to
+//! disk under a lock: 30 ms, and longer while another writer holds it):
+//! `set_state`, `set_config` and the `*_later` edits called there go to one
+//! lane (crate::work), in order, and what this process reads meanwhile has
+//! the change laid over the file already. Reads are kept while the file is
+//! unchanged (one stat a read).
 
 use serde_json::{json, Map, Value};
 use std::path::{Path, PathBuf};
@@ -78,12 +85,101 @@ pub fn read_settled(path: &Path) -> Read {
     r
 }
 
-/// The file's object ({} when it's missing or broken: callers that only read)
+/// The file's object ({} when it's missing or broken: callers that only read),
+/// with this process's changes not yet written laid over it
 pub fn read_object(path: &Path) -> Map<String, Value> {
-    match read(path) {
+    let mut m = match read_kept(path) {
         Read::Fine(m) => m,
         _ => Map::new(),
+    };
+    overlay(path, &mut m);
+    m
+}
+
+/// What a file's last read found, while its identity, size and time are the
+/// same (state.json is read every couple of seconds: one stat, no parse)
+type Kept = (PathBuf, (u64, u64, std::time::SystemTime), Map<String, Value>);
+static KEPT: Mutex<Vec<Kept>> = Mutex::new(Vec::new());
+
+fn read_kept(path: &Path) -> Read {
+    use std::os::unix::fs::MetadataExt;
+    let Ok(md) = std::fs::metadata(path) else { return read(path) };
+    let Ok(mtime) = md.modified() else { return read(path) };
+    let id = (md.ino(), md.len(), mtime);
+    if let Ok(k) = KEPT.lock() {
+        if let Some((_, _, m)) = k.iter().find(|(p, i, _)| p == path && *i == id) {
+            return Read::Fine(m.clone());
+        }
     }
+    let r = read(path);
+    if let (Read::Fine(m), Ok(mut k)) = (&r, KEPT.lock()) {
+        k.retain(|(p, _, _)| p != path);
+        k.push((path.to_path_buf(), id, m.clone()));
+    }
+    r
+}
+
+// ── Changes not yet written ────────────────────────────────────────────────
+
+/// A change to a file's object; true when it changed anything
+pub type Change = std::sync::Arc<dyn Fn(&mut Map<String, Value>) -> bool + Send + Sync>;
+
+/// Changes queued on the files lane, laid over reads until they're written
+static PENDING: Mutex<Vec<(u64, PathBuf, Change)>> = Mutex::new(Vec::new());
+static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// The settings' and state's writes, in the order they were asked for
+pub static FILES: crate::work::Lane = crate::work::Lane::new("files");
+
+fn overlay(path: &Path, m: &mut Map<String, Value>) {
+    if let Ok(p) = PENDING.lock() {
+        for (_, at, c) in p.iter() {
+            if at == path {
+                c(m);
+            }
+        }
+    }
+}
+
+fn pending_for(path: &Path) -> bool {
+    PENDING.lock().is_ok_and(|p| p.iter().any(|(_, at, _)| at == path))
+}
+
+fn edit_later(path: &Path, kind: Kind, change: Change, what: String) {
+    let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    if let Ok(mut p) = PENDING.lock() {
+        p.push((seq, path.to_path_buf(), change.clone()));
+    }
+    let path = path.to_path_buf();
+    FILES.run(move || {
+        if let Err(e) = edit(&path, kind, |m| change(m)) {
+            eprintln!("tessera-ui: can't save {what}: {e}");
+        }
+        if let Ok(mut p) = PENDING.lock() {
+            p.retain(|e| e.0 != seq);
+        }
+    });
+}
+
+/// `edit_config` without waiting: on the files lane, after the changes asked
+/// for before it; this process reads the change at once
+pub fn edit_config_later(f: impl Fn(&mut Map<String, Value>) -> bool + Send + Sync + 'static) {
+    edit_later(&crate::theme::config_path(), Kind::Config, std::sync::Arc::new(f), "a setting".into());
+}
+
+/// A file of our own written whole (write_atomic) on the files lane, in order
+/// with the settings and state: focus.json, spaces.lua…
+pub fn write_later(path: PathBuf, bytes: Vec<u8>) {
+    FILES.run(move || {
+        if let Err(e) = crate::util::write_atomic(&path, &bytes) {
+            eprintln!("tessera-ui: can't write {}: {e}", path.display());
+        }
+    });
+}
+
+/// Wait (a moment at most) for the changes queued: on the way out
+pub fn flush() {
+    FILES.flush(Duration::from_secs(3));
 }
 
 // ── The settings ───────────────────────────────────────────────────────────
@@ -112,14 +208,24 @@ pub fn config_value() -> Value {
 }
 
 pub fn config_value_at(path: &Path) -> Value {
-    match read(path) {
+    let v = match read_kept(path) {
         Read::Fine(m) => {
             remember(path, &m);
             Value::Object(m)
         }
         Read::Missing => Value::Null,
         Read::Broken(_) | Read::Unreadable(_) => last_good(path).map_or(Value::Null, Value::Object),
+    };
+    // (changes this process made that aren't written yet)
+    if !pending_for(path) {
+        return v;
     }
+    let mut m = match v {
+        Value::Object(m) => m,
+        _ => Map::new(),
+    };
+    overlay(path, &mut m);
+    Value::Object(m)
 }
 
 /// config.json as Qt writes it (4-space indent, a newline at the end)
@@ -165,9 +271,14 @@ pub fn edit_config_at(path: &Path, f: impl FnOnce(&mut Map<String, Value>) -> bo
     edit(path, Kind::Config, f)
 }
 
-/// `Config.options.<path> = v`, written at once; whether the file has it now
+/// `Config.options.<path> = v`, written at once (from the UI thread: queued,
+/// and read as set at once); whether the file has it now
 pub fn set_config(path: &str, v: Value) -> bool {
     let p = path.to_string();
+    if crate::work::on_ui_thread() {
+        edit_later(&crate::theme::config_path(), Kind::Config, std::sync::Arc::new(move |m| put_path(m, &p, v.clone())), format!("the setting {path}"));
+        return true;
+    }
     match edit_config(move |m| put_path(m, &p, v)) {
         Ok(_) => true,
         Err(e) => {
@@ -251,9 +362,21 @@ pub fn edit_state_at(path: &Path, f: impl FnOnce(&mut Map<String, Value>) -> boo
     edit(path, Kind::State, f)
 }
 
-/// `UiState.data.<key> = v`, written at once
+/// `UiState.data.<key> = v`, written at once (from the UI thread: queued,
+/// and read as set at once)
 pub fn set_state(key: &str, v: Value) {
     let k = key.to_string();
+    if crate::work::on_ui_thread() {
+        let change = move |m: &mut Map<String, Value>| {
+            if m.get(&k) == Some(&v) {
+                return false;
+            }
+            m.insert(k.clone(), v.clone());
+            true
+        };
+        edit_later(&state_path(), Kind::State, std::sync::Arc::new(change), format!("{key} in state.json"));
+        return;
+    }
     if let Err(e) = edit_state(move |m| {
         if m.get(&k) == Some(&v) {
             return false;
@@ -601,6 +724,45 @@ mod tests {
         assert_eq!(asides(&d, "state.json.corrupt-").len(), 1);
         let v: Value = serde_json::from_str(&std::fs::read_to_string(&p).unwrap()).unwrap();
         assert_eq!(v, json!({"screenTime": {}}));
+    }
+
+    #[test]
+    fn a_queued_change_reads_at_once_and_lands_in_order() {
+        let d = tmp("later");
+        let p = d.join("state.json");
+        std::fs::write(&p, r#"{"keep": 1}"#).unwrap();
+        // (held back: the lane's first job waits until the reads are checked)
+        let (go, wait) = std::sync::mpsc::channel::<()>();
+        FILES.run(move || {
+            let _ = wait.recv_timeout(Duration::from_secs(5));
+        });
+        for i in 0..5 {
+            let change = move |m: &mut Map<String, Value>| {
+                m.insert("n".into(), json!(i));
+                true
+            };
+            edit_later(&p, Kind::State, std::sync::Arc::new(change), "n".into());
+        }
+        let m = read_object(&p);
+        assert_eq!((m["keep"].clone(), m["n"].clone()), (json!(1), json!(4)));
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), r#"{"keep": 1}"#);
+        go.send(()).unwrap();
+        flush();
+        let v: Value = serde_json::from_str(&std::fs::read_to_string(&p).unwrap()).unwrap();
+        assert_eq!(v, json!({"keep": 1, "n": 4}));
+        assert!(!pending_for(&p));
+    }
+
+    #[test]
+    fn a_kept_read_follows_the_file() {
+        let d = tmp("kept");
+        let p = d.join("state.json");
+        std::fs::write(&p, r#"{"a": 1}"#).unwrap();
+        assert_eq!(read_object(&p)["a"], json!(1));
+        assert_eq!(read_object(&p)["a"], json!(1));
+        // (another writer: a new file renamed over it)
+        crate::util::write_atomic(&p, br#"{"a": 2}"#).unwrap();
+        assert_eq!(read_object(&p)["a"], json!(2));
     }
 
     #[test]

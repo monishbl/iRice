@@ -41,6 +41,8 @@ pub struct Veil {
     /// when it went up (it lowers itself if no reveal follows)
     prepared: Option<Instant>,
     timer: slint::Timer,
+    /// the reveal, one step a frame
+    frames: tessera_core::pacing::FrameTimer,
 }
 
 /// LockFx's ease (out-cubic, clamped)
@@ -81,7 +83,8 @@ impl Veil {
             "reveal" if self.shown() => {
                 self.reveal = Some((Instant::now(), ms.max(1.0)));
                 let to = st.shell.sender(super::NAME);
-                self.timer.start(slint::TimerMode::Repeated, Duration::from_millis(16), move || to(Box::new(Tick)));
+                self.timer.stop();
+                self.frames.start(move || to(Box::new(Tick)));
             }
             "reveal" => {}
             _ => self.drop_all(st),
@@ -114,6 +117,7 @@ impl Veil {
 
     pub fn drop_all(&mut self, st: &mut State) {
         self.timer.stop();
+        self.frames.stop();
         self.reveal = None;
         self.prepared = None;
         for w in std::mem::take(&mut self.wins) {

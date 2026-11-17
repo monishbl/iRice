@@ -231,7 +231,7 @@ Usage: ./dev.sh <command>
   enter        Open a shell in the container
   logs [n]     Tail the sandbox Hyprland and Quickshell logs
   reset-home   Wipe the sandbox home (.sandbox/home)
-Every command works on another identical sandbox with TESSERA_ARENA=2..9 (or IRICE_ARENA)
+Every command works on another identical sandbox with TESSERA_ARENA=2..19 (or IRICE_ARENA)
 (e.g. TESSERA_ARENA=2 ./dev.sh up): its own compositor, shell and home.
 Sandboxes are hidden and silent: they draw into a private headless display
 (see them with shot) and play into a silent Speakers. TESSERA_VISIBLE=1 up puts

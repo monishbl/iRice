@@ -3,6 +3,19 @@
 # version being installed or updated to, checks it and swaps it in
 # (docs/releases.md).
 #
+# NOT THE RELEASE BUILDER TODAY: the GitHub account's Actions are locked
+# (billing), so releases are made by the release builder instead: server1
+# builds (tools/release-builder/tessera-release), the user's laptop signs and
+# publishes (tools/release-builder/publish-release), each every 10 minutes
+# (docs/releases.md, "The release builder"). They make exactly what this
+# workflow made. So that the two never publish the same tree twice (two
+# builds of one tree differ byte for byte, and a manifest from one with an
+# archive from the other is refused by every install), this workflow only
+# runs by hand now (workflow_dispatch). While Actions are locked even that
+# just fails to start. The push trigger it had is kept below, commented out:
+# turn it back on only after stopping both timers (systemctl --user disable
+# --now tessera-release.timer on server1, tessera-publish.timer on the laptop).
+#
 # When:  a push to main that touches native/ (the Stable channel: the
 #        rolling prerelease tessera-ui-latest), a push to beta that does (the
 #        Beta channel: the rolling prerelease tessera-ui-beta), and every tag
@@ -34,10 +47,10 @@
 #        "Mirrors"). The code itself: gitlab-mirror.yml.
 name: tessera-ui
 on:
-  push:
-    branches: [main, beta]
-    tags: ["v*"]
-    paths: ["native/**", ".github/workflows/tessera-ui.yml"]
+  # push:
+  #   branches: [main, beta]
+  #   tags: ["v*"]
+  #   paths: ["native/**", ".github/workflows/tessera-ui.yml"]
   workflow_dispatch:
 permissions:
   contents: read

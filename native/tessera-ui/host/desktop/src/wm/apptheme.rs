@@ -179,7 +179,7 @@ impl AppTheme {
             return;
         }
         let s = format!("controls-style {}", self.controls_style);
-        std::thread::spawn(move || {
+        tessera_core::work::spawn(move || {
             hx::glass_command(&s);
         });
     }

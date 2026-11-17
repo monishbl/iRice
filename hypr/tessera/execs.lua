@@ -17,8 +17,9 @@ hl.on("hyprland.start", function()
     hl.exec_cmd("python3 -I " .. cfg .. "/quickshell/tessera/assets/scripts/xdg-autostart.py --wait-tray 15")
 end)
 
--- If the shell ever stops (a crash), it comes back within a minute
+-- If the shell ever stops (a crash), it comes back within ~10 s (~5 s
+-- while the screen is locked). A check is two pgreps, nothing more
 do
     local cfg = (os.getenv("XDG_CONFIG_HOME") ~= nil and os.getenv("XDG_CONFIG_HOME") ~= "") and os.getenv("XDG_CONFIG_HOME") or (os.getenv("HOME") .. "/.config")
-    hl.timer(function() hl.exec_cmd(cfg .. "/quickshell/tessera/assets/scripts/keep-shell.sh -c tessera") end, { timeout = 30000, type = "repeat" })
+    hl.timer(function() hl.exec_cmd(cfg .. "/quickshell/tessera/assets/scripts/keep-shell.sh -c tessera") end, { timeout = 5000, type = "repeat" })
 end

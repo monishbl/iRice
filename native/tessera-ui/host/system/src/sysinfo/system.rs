@@ -52,7 +52,8 @@ pub struct System {
     locked: bool,
     lock_secure: bool,
     sleep_pending: bool,
-    inhibit: Option<Child>,
+    /// logind's idle inhibitor while Caffeine is on, held by this process
+    inhibit: Option<zbus::zvariant::OwnedFd>,
     sunset: Option<Child>,
     t_until: Ticker,
     t_sleep: Ticker,
@@ -212,19 +213,13 @@ impl System {
         // dies with the shell, and so does the sleep it holds it for). (The
         // in-use monitor of the tty session isn't ported: notes)
         let hold = self.keep_awake && !(sandboxed() && !tty());
+        // (the fd logind hands back: it closes with this process, so a crash
+        // can't leave the computer unable to idle; systemd-inhibit helpers
+        // outlived crashed shells)
         if hold && self.inhibit.is_none() {
-            self.inhibit = Command::new("setpriv")
-                .args(["--pdeathsig", "TERM", "--", "systemd-inhibit", "--what=idle", "--who=Tessera", "--why=In use (Caffeine, or this console session)", "--mode=block", "setpriv", "--pdeathsig", "TERM", "--", "sleep", "infinity"])
-                .stdin(Stdio::null())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .spawn()
-                .ok();
+            self.inhibit = tessera_core::inhibit::hold("idle", "Caffeine is on");
         } else if !hold {
-            if let Some(mut c) = self.inhibit.take() {
-                let _ = c.kill();
-                let _ = c.wait();
-            }
+            self.inhibit = None;
         }
     }
 
@@ -678,7 +673,8 @@ impl Service for System {
     }
 
     fn quit(&mut self, _h: &mut Host) {
-        for c in [self.inhibit.take(), self.sunset.take()].into_iter().flatten() {
+        self.inhibit = None;
+        for c in [self.sunset.take()].into_iter().flatten() {
             let mut c = c;
             let _ = c.kill();
             let _ = c.wait();

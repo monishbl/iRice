@@ -167,6 +167,12 @@ pub struct Power {
     idle_timer: slint::Timer,
     tick: slint::Timer,
     lid: Vec<Watch>,
+    /// logind's lid inhibitor, held by this process (closes with it)
+    lid_fd: Option<zbus::zvariant::OwnedFd>,
+    /// the lid's state while Tessera handles it, and the closed-lid guard
+    lid_is_closed: bool,
+    lid_sleep_asked: f64,
+    hot_since: f64,
     energy_users: i32,
     energy_apps: Value,
     energy_minutes: i64,
@@ -202,6 +208,10 @@ impl Default for Power {
             idle_timer: Default::default(),
             tick: Default::default(),
             lid: vec![],
+            lid_fd: None,
+            lid_is_closed: false,
+            lid_sleep_asked: 0.0,
+            hot_since: 0.0,
             energy_users: 0,
             energy_apps: json!([]),
             energy_minutes: 0,
@@ -347,12 +357,10 @@ impl Power {
         let mine = !tessera_core::env::sandboxed() && self.has_battery() && policy::lid_needs_inhibit(&self.cfg, Self::caffeine());
         if mine && self.lid.is_empty() {
             let send = h.sender(NAME);
-            self.lid.push(Watch::start(
-                &["setpriv", "--pdeathsig", "TERM", "--", "systemd-inhibit", "--what=handle-lid-switch", "--who=Tessera", "--why=Lid settings (Battery & Power)", "--mode=block", "setpriv", "--pdeathsig", "TERM", "--", "sleep", "infinity"],
-                None,
-                |_| {},
-                |_, _| {},
-            ));
+            // (held by this process: it can't outlive the shell, so logind
+            // handles the lid again the moment Tessera isn't there to)
+            self.lid_fd = tessera_core::inhibit::hold("handle-lid-switch", "Lid settings (Battery & Power)");
+            self.lid_is_closed = tessera_core::inhibit::lid_closed().unwrap_or(false);
             self.lid.push(Watch::start(
                 &["gdbus", "monitor", "--system", "--dest", "org.freedesktop.login1", "--object-path", "/org/freedesktop/login1"],
                 None,
@@ -367,6 +375,8 @@ impl Power {
             ));
         } else if !mine && !self.lid.is_empty() {
             self.lid.drain(..).for_each(|w| w.stop());
+            self.lid_fd = None;
+            self.lid_is_closed = false;
         }
     }
 
@@ -379,16 +389,47 @@ impl Power {
     }
 
     fn lid_closed(&mut self, h: &mut Host) {
+        self.lid_is_closed = true;
         let external = h.st.outputs_now().iter().filter(|(_, n)| !is_built_in(n)).count();
         let act = policy::lid_action(!self.on_battery(), external, &self.cfg, Self::caffeine());
         if act == "sleep" {
+            self.lid_sleep_asked = (tessera_core::util::now_ms() as f64);
             h.ask("system.power", json!(["sleep"]));
             return;
+        }
+        if Self::caffeine() && !self.on_battery() {
+            eprintln!("tessera-ui: lid closed on the charger with Caffeine on: {act}");
         }
         if act == "lock" {
             h.ask("system.power", json!(["lock"]));
         }
         Self::built_in_screens(h, false);
+    }
+
+    /// The lid is shut and Tessera holds it from logind, yet it's awake: on
+    /// battery it sleeps (an unplug after closing, a resume with the lid
+    /// shut, Caffeine, a missed event: none keep it awake in a bag), on the
+    /// charger when it runs hot for a minute and isn't docked. At most once a
+    /// minute.
+    fn closed_lid_guard(&mut self, h: &mut Host, on_battery: bool) {
+        if !self.lid_is_closed || self.lid_fd.is_none() {
+            self.hot_since = 0.0;
+            return;
+        }
+        let now = (tessera_core::util::now_ms() as f64);
+        let hot = cpu_temp_c().is_some_and(|t| t >= 90.0);
+        if hot && self.hot_since == 0.0 {
+            self.hot_since = now;
+        } else if !hot {
+            self.hot_since = 0.0;
+        }
+        let hot_for = if self.hot_since > 0.0 { (now - self.hot_since) / 1000.0 } else { 0.0 };
+        let external = h.st.outputs_now().iter().filter(|(_, n)| !is_built_in(n)).count();
+        if policy::lid_should_sleep_now(!on_battery, external, hot_for) && now - self.lid_sleep_asked > 60_000.0 {
+            eprintln!("tessera-ui: the lid is closed and it's still awake ({}): sleeping", if on_battery { "on battery" } else { "running hot" });
+            self.lid_sleep_asked = now;
+            h.ask("system.power", json!(["sleep"]));
+        }
     }
 
     /// A pass of the one-second tick: the battery, what depends on it
@@ -414,6 +455,7 @@ impl Power {
             self.release("battery");
         }
         self.prev_on_battery = on_battery;
+        self.closed_lid_guard(h, on_battery);
         if percent != self.prev_percent {
             self.prev_percent = percent;
             if self.requests.contains_key("battery") {
@@ -614,7 +656,11 @@ impl Service for Power {
             M::IdleWrite => self.write_idle(h),
             M::IdleDone(t) => self.own_hypridle = t.trim() == "own",
             M::LidClosed => self.lid_closed(h),
-            M::LidOpened => Self::built_in_screens(h, true),
+            M::LidOpened => {
+                self.lid_is_closed = false;
+                self.hot_since = 0.0;
+                Self::built_in_screens(h, true)
+            }
             M::Report(t) => {
                 self.reporting = false;
                 if let Ok(r) = serde_json::from_str::<Value>(&t) {
@@ -629,4 +675,25 @@ impl Service for Power {
         self.tick.stop();
         self.lid.drain(..).for_each(|w| w.stop());
     }
+}
+
+/// The hottest CPU sensor, °C (x86_pkg_temp, k10temp/coretemp-like zones, or
+/// any thermal zone when those aren't named)
+fn cpu_temp_c() -> Option<f64> {
+    let mut best: Option<f64> = None;
+    for e in std::fs::read_dir("/sys/class/thermal").ok()?.flatten() {
+        let d = e.path();
+        let kind = std::fs::read_to_string(d.join("type")).unwrap_or_default();
+        let kind = kind.trim();
+        if !(kind.contains("pkg") || kind.contains("cpu") || kind.contains("x86") || kind.contains("k10") || kind.starts_with("acpitz")) {
+            continue;
+        }
+        if let Some(t) = std::fs::read_to_string(d.join("temp")).ok().and_then(|t| t.trim().parse::<f64>().ok()) {
+            let c = t / 1000.0;
+            if c > 0.0 && c < 150.0 {
+                best = Some(best.map_or(c, |b: f64| b.max(c)));
+            }
+        }
+    }
+    best
 }

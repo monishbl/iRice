@@ -140,13 +140,14 @@ femtovg = { path = "vendor/femtovg" }
 opt-level = 3
 lto = true
 codegen-units = 1
-panic = "abort"
+# (panics unwind: one in a part is caught, the part made again, and the rest
+# of the shell draws on: core/src/contain.rs)
 strip = true
 
-# For testing builds (sandboxes, the build machine): the release build's
-# speed nearly, built in a minute or two, not 10-15 (thin LTO across all
-# cores, and only what changed rebuilt). Releases and updates keep the full
-# one above. cargo build --profile fast → target/fast/tessera-ui
+# For testing builds (sandboxes, the build machine): built in a minute or
+# two, not 10-15 (thin LTO across all cores, only what changed rebuilt).
+# Releases and updates keep the full one above.
+# cargo build --profile fast → target/fast/tessera-ui
 [profile.fast]
 inherits = "release"
 lto = "thin"

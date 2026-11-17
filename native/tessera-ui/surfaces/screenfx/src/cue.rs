@@ -18,7 +18,7 @@
 
 use super::*;
 use slint::ComponentHandle;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use tessera_core::shell::Part;
 
 const NAME: &str = "spaceswitch";
@@ -41,7 +41,7 @@ struct Win {
 #[derive(Default)]
 pub struct SpaceSwitch {
     win: Option<Win>,
-    tick: slint::Timer,
+    tick: tessera_core::pacing::FrameTimer,
 }
 
 /// How strong the cue is `ms` into it: (in ms, held ms, out ms) and whether
@@ -93,7 +93,7 @@ impl SpaceSwitch {
         w.ui.set_glow(0.0);
         w.ui.set_dim(0.0);
         let to = st.shell.sender(NAME);
-        self.tick.start(slint::TimerMode::Repeated, Duration::from_millis(16), move || to(Box::new(Msg::Tick)));
+        self.tick.start(move || to(Box::new(Msg::Tick)));
     }
 
     fn end(&mut self, st: &mut State) {

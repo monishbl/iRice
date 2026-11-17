@@ -98,6 +98,11 @@ impl Shell {
         }
     }
 
+    /// Every kind of reading held now (a part made again gets each: contain.rs)
+    pub fn data_types(&self) -> Vec<TypeId> {
+        self.data.keys().copied().collect()
+    }
+
     pub fn store(&mut self, value: Box<dyn Any + Send>) -> TypeId {
         let id = (*value).type_id();
         self.data.insert(id, value);
@@ -255,16 +260,25 @@ pub trait Part {
     fn stats(&self) {}
     /// On the way out: leave nothing behind (glass shapes)
     fn quit(&mut self, st: &mut State) {}
+    /// It panicked (contain.rs) and is about to be dropped and made again:
+    /// what the new one should carry on with (`contain::take_handed` in its
+    /// `start`). The lock hands over its session lock: dropping one that's
+    /// locked would end the connection, and a locked session is never left
+    /// without its screen
+    fn hand_over(&mut self) -> Option<Box<dyn Any>> {
+        None
+    }
 }
 
 impl State {
     /// Call every part, each with the whole state (parts are taken out while
-    /// they run, so a part can use the platform freely)
+    /// they run, so a part can use the platform freely). One that panics is
+    /// caught, skipped and made again (contain.rs)
     pub fn each_part(&mut self, mut f: impl FnMut(&mut dyn Part, &mut State)) {
         let mut parts = std::mem::take(&mut self.parts);
         for p in parts.iter_mut() {
             let n = p.name();
-            crate::perf::time(|| format!("part {n}"), || f(p.as_mut(), self));
+            crate::perf::time(|| format!("part {n}"), || crate::contain::guard(n, || f(p.as_mut(), self)));
         }
         parts.append(&mut self.parts);
         self.parts = parts;
@@ -292,7 +306,8 @@ impl State {
     pub fn part(&mut self, name: &str, f: impl FnOnce(&mut dyn Part, &mut State)) {
         let mut parts = std::mem::take(&mut self.parts);
         if let Some(p) = parts.iter_mut().find(|p| p.name() == name) {
-            crate::perf::time(|| format!("part {name}"), || f(p.as_mut(), self));
+            let n = p.name();
+            crate::perf::time(|| format!("part {name}"), || crate::contain::guard(n, || f(p.as_mut(), self)));
         }
         parts.append(&mut self.parts);
         self.parts = parts;

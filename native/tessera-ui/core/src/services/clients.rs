@@ -236,11 +236,10 @@ fn sel(address: &str) -> String {
 }
 
 fn dispatch(cmds: Vec<String>) {
-    std::thread::spawn(move || {
-        for c in cmds {
-            let _ = request(&format!("dispatch {c}"));
-        }
-    });
+    // (in order with every other dispatch: hypr::IN_ORDER)
+    for c in cmds {
+        crate::services::hypr::dispatch(c);
+    }
 }
 
 /// Bring a window to the front

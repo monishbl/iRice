@@ -24,7 +24,7 @@
 mod surfaces;
 
 // (the shared crate's modules, by the names they had in one crate)
-use tessera_core::{egl, seed, services, shell, theme, wayland, Msg};
+use tessera_core::{egl, pacing, seed, services, shell, theme, wayland, Msg};
 // (the loop's messages and the fonts: core's, shared with the greeter's own loop)
 use tessera_core::runloop::{handle, register_fonts};
 
@@ -119,6 +119,15 @@ fn host_services() -> Vec<Box<dyn tessera_core::host::Service>> {
     v
 }
 
+/// A part, made again after it panicked (tessera_core::contain): a surface,
+/// or the host
+fn make_part(name: &str) -> Option<Box<dyn shell::Part>> {
+    if name == tessera_core::host::NAME {
+        return Some(Box::new(tessera_core::host::HostPart::new(host_services())));
+    }
+    surfaces::make(name)
+}
+
 fn main() {
     let started = Instant::now();
     // (an XDG folder set but empty or relative means "the default" by the
@@ -197,18 +206,26 @@ fn main() {
         surfaces::announce(&surfaces);
         return;
     }
+    // (a panic in one part is caught, the part made again; crash reports:
+    // tessera_core::contain, crash)
+    tessera_core::contain::install(make_part);
 
+    // (this thread is the UI thread: blocking work goes elsewhere, tessera_core::work)
+    tessera_core::work::mark_ui_thread();
     let mut event_loop: EventLoop<'static, State> = EventLoop::try_new().expect("event loop");
     let lh = event_loop.handle();
     // Signals first: the threads started below inherit the blocked mask, so
     // SIGTERM always reaches this loop (and the bar ends cleanly)
-    let signals = Signals::new(&[Signal::SIGTERM, Signal::SIGINT, Signal::SIGUSR1]).expect("signalfd");
+    let signals = Signals::new(&[Signal::SIGTERM, Signal::SIGINT, Signal::SIGUSR1, Signal::SIGUSR2]).expect("signalfd");
     lh
         .insert_source(signals, |ev, _, state: &mut State| match ev.signal() {
+            // (TESSERA_CRASH_TEST only: a panic in a part, contain.rs)
+            Signal::SIGUSR2 => tessera_core::contain::crash_test_signal(),
             Signal::SIGUSR1 => {
                 state.parts.iter().for_each(|p| p.stats());
                 let (reloads, stalls) = tessera_core::perf::counts();
                 eprintln!("{{\"reloads\":{reloads},\"stalls\":{stalls}}}");
+                eprintln!("tessera-ui: {}", tessera_core::pacing::report());
             }
             _ => state.exit = true,
         })
@@ -261,10 +278,27 @@ fn main() {
             .unwrap();
     }
 
+    // (the low-power GPU, normally the compositor's too: not NVIDIA's beside an Intel one
+    // driving the screen, whose frames it then copied across; core/src/gpu.rs)
+    let vendor_set = tessera_core::gpu::prefer_gpu(&conn);
     let egl = match egl::Egl::new(conn.backend().display_ptr() as *mut _) {
         Ok(egl) => egl,
+        // (a GPU other than the desktop's that can't draw for it: started
+        // again, this time on the desktop's; core/src/gpu.rs fall_back)
+        Err(e) if tessera_core::gpu::fall_back() => {
+            eprintln!("tessera-ui: EGL didn't start ({e})");
+            tessera_core::gpu::restore(vendor_set);
+            use std::os::unix::process::CommandExt;
+            // (as it was started, argv[0] and all: a launcher's name for it stays)
+            let mut args = std::env::args_os();
+            let argv0 = args.next().unwrap_or_default();
+            let exe = if std::path::Path::new(&argv0).components().count() > 1 { argv0.into() } else { std::env::current_exe().unwrap_or_else(|_| argv0.into()) };
+            let err = std::process::Command::new(exe).args(args).exec();
+            no_gl(&format!("couldn't start again: {err}"), standalone)
+        }
         Err(e) => no_gl(&e.to_string(), standalone),
     };
+    tessera_core::gpu::restore(vendor_set);
     slint::platform::set_platform(Box::new(wayland::Platform { tx: tx.clone() })).expect("platform");
     register_fonts();
 
@@ -315,37 +349,52 @@ fn main() {
             first_frame_at = Some(Instant::now());
         }
         let prewarm_due = prewarm.is_some() && first_frame_at.is_some_and(|t| t.elapsed() >= Duration::from_secs(2));
-        let why;
-        let timeout = if state.wants_frame_soon() || !state.shell.deferred.is_empty() {
-            why = if state.shell.deferred.is_empty() { "frame" } else { "deferred" };
-            Some(Duration::ZERO)
-        } else if state.animating_unpaced() {
-            why = "animating";
-            Some(Duration::from_millis(16))
-        } else if state.shell.glass.has_held() {
-            why = "glass";
-            // (glass shapes waiting for their frame: they go at the latest
-            // after Glass's MAX_HOLD, so wake for it)
-            Some(slint::platform::duration_until_next_timer_update().map_or(Duration::from_millis(16), |d| d.min(Duration::from_millis(16))))
-        } else if state.waits_on_frame() {
-            why = "frame-wait";
-            // (a frame callback that never comes is taken as lost after a
-            // while: wayland.rs's LOST_FRAME; wake for it)
-            Some(slint::platform::duration_until_next_timer_update().map_or(Duration::from_millis(50), |d| d.min(Duration::from_millis(50))))
-        } else if prewarm.is_some() && first_frame_at.is_some() {
-            why = "prewarm";
-            // (wake for the next prewarm even when nothing else happens)
-            Some(slint::platform::duration_until_next_timer_update().map_or(Duration::from_millis(100), |d| d.min(Duration::from_millis(100))))
+        // How long the loop may sleep: until the first thing due. Frames are
+        // paced by the compositor's frame callbacks, which wake the loop as
+        // events; the deadlines below are only for what no event brings
+        // (core/src/pacing.rs).
+        let (why, timeout) = if state.wants_frame_soon() || !state.shell.deferred.is_empty() {
+            (if state.shell.deferred.is_empty() { "frame" } else { "deferred" }, Some(Duration::ZERO))
         } else {
-            why = "timers";
-            slint::platform::duration_until_next_timer_update()
+            let now = Instant::now();
+            let mut next: Option<(Instant, &'static str)> = None;
+            let mut due = |at: Option<Instant>, why: &'static str| {
+                if let Some(at) = at {
+                    if next.is_none_or(|(n, _)| at < n) {
+                        next = Some((at, why));
+                    }
+                }
+            };
+            // (Slint's timers; with nothing moving, on the idle grid: every
+            // clock and poll due within the same 250 ms wakes the loop once)
+            let quiet = pacing::quiet(now) && !state.surfaces.iter().any(|s| s.window().has_active_animations());
+            due(slint::platform::duration_until_next_timer_update().map(|d| now + if quiet { pacing::coalesce(d) } else { d }), "timers");
+            // (an animation no frame callback will wake: at the display's refresh)
+            due(state.animating_unpaced().then(|| now + pacing::refresh()), "animating");
+            // (what a part animates by hand: each frame, or by the refresh when no frame comes)
+            due(pacing::frame_timer_deadline(state.surfaces.iter().any(|s| s.frame_pending())), "frame-timers");
+            // (glass shapes waiting for their frame go at the latest after Glass's MAX_HOLD)
+            due(state.shell.glass.held_deadline(), "glass");
+            // (a frame callback that never comes is taken as lost: wayland.rs's LOST_FRAME)
+            due(state.lost_frame_deadline(), "frame-wait");
+            // (the windows made ahead: from 2 s after the first frame, one per quiet turn)
+            due(first_frame_at.filter(|_| prewarm.is_some()).map(|t| (t + Duration::from_secs(2)).max(now + Duration::from_millis(50))), "prewarm");
+            match next {
+                Some((at, why)) => (why, Some(at.saturating_duration_since(now))),
+                None => ("idle", None),
+            }
         };
+        // (a part that panicked is taken down at once, one waiting is made again on time)
+        let timeout = tessera_core::contain::wake_by(timeout);
         wakes.note(why, &state);
         if let Err(e) = event_loop.dispatch(timeout, &mut state) {
             eprintln!("tessera-ui: event loop: {e}");
             break;
         }
+        state.tend_parts();
         tessera_core::perf::time(|| "slint timers".into(), slint::platform::update_timers_and_animations);
+        // (what parts animate by hand moves on once per frame, before the frame is drawn)
+        tessera_core::perf::time(|| "frame timers".into(), pacing::run_frame_timers);
         tessera_core::perf::time(|| "render".into(), || state.render_all());
         tessera_core::perf::time(|| "after_frame".into(), || state.each_part(|p, st| {
             let n = p.name();
@@ -361,7 +410,12 @@ fn main() {
             prewarm = state.prewarm_part(i).then_some(i + 1);
         }
     }
+    tessera_core::work::set_leaving();
     state.each_part(|p, st| p.quit(st));
+    // (settings and state queued from the loop: written before we go; and
+    // Hyprland's dispatches asked last)
+    tessera_core::cfgfile::flush();
+    tessera_core::services::hypr::IN_ORDER.flush(Duration::from_secs(2));
     // (an orderly exit — a look switch, a restart asked for — isn't a failed
     // start: launch-shell.sh's count of them fell back to the QML shell after
     // three look switches within a minute)

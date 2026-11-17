@@ -338,18 +338,63 @@ pub fn cooldown(cx: &mut Ctx, p: &mut Page) {
         }
         let keep = cx.b("performance.keepPanelsLoaded");
         let kt = cx.toggle("performance.keepPanelsLoaded");
-        p.group("Performance").row(
+        let g = p.group("Performance");
+        g.row(
             Row::new("Keep panels loaded")
                 .detail("Search, Quick Settings and Notification Center stay ready after their first open: faster and lighter on the processor, about 50 MB more memory")
                 .switch(keep, kt),
         );
+        // (two or more GPUs, a laptop's Intel or AMD beside an NVIDIA: which
+        // one the shell draws on; tessera_core::gpu)
+        let gpus = tessera_core::gpu::gpus();
+        if gpus.len() > 1 {
+            let mut labels = vec!["Low power (recommended)".to_string(), "Same as the desktop".to_string()];
+            let mut values = vec!["low", "auto"];
+            for (f, _) in &gpus {
+                if !values.contains(f) {
+                    labels.push(tessera_core::gpu::family_label(f).to_string());
+                    values.push(f);
+                }
+            }
+            let v = cx.s("performance.gpu");
+            let index = values.iter().position(|x| *x == v).unwrap_or(0) as i32;
+            let id = cx.pick("performance.gpu", &values);
+            g.row(
+                Row::new("Graphics processor")
+                    .detail(gpu_detail(&v, tessera_core::gpu::desktop_family()))
+                    .choice(&labels, index, id)
+                    .width(240.0),
+            );
+        }
     }
     p.end_more();
+}
+
+/// The Graphics processor row's detail: what the choice does, and a warning
+/// when it isn't the GPU the desktop draws on (`desktop`: its family)
+fn gpu_detail(choice: &str, desktop: Option<&str>) -> String {
+    let base = "Which GPU draws Tessera. Low power uses the built-in graphics, which normally drives the screen too: smooth, and the other GPU can sleep. If animations are too slow there, Tessera offers to switch. Takes effect the next time Tessera starts";
+    match desktop {
+        Some(d) if !matches!(choice, "" | "low" | "auto") && choice != d => format!(
+            "The desktop draws on the {} GPU: on the {} GPU every frame has to be copied across, which costs power and can stutter or leave panels blank. {base}",
+            tessera_core::gpu::family_label(d),
+            tessera_core::gpu::family_label(choice)
+        ),
+        _ => base.to_string(),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn graphics_choice_warns_off_the_desktops_gpu() {
+        assert!(gpu_detail("nvidia", Some("intel")).starts_with("The desktop draws on the Intel GPU: on the NVIDIA GPU"));
+        assert!(gpu_detail("low", Some("intel")).starts_with("Which GPU"));
+        assert!(gpu_detail("intel", Some("intel")).starts_with("Which GPU"));
+        assert!(gpu_detail("nvidia", None).starts_with("Which GPU"));
+    }
 
     #[test]
     fn idle_choices_as_the_qml_lists_them() {

@@ -542,7 +542,8 @@ impl SpeedTest {
     }
 
     fn store(&self) {
-        let _ = crate::util::write_atomic(&state_dir().join("speedtest.json"), &serde_json::to_string_pretty(&json!({"history": self.history})).unwrap_or_default());
+        // (synced to disk: on the files lane, never the loop)
+        tessera_core::cfgfile::write_later(state_dir().join("speedtest.json"), serde_json::to_string_pretty(&json!({"history": self.history})).unwrap_or_default().into_bytes());
     }
 }
 

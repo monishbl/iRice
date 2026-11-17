@@ -69,10 +69,24 @@ fn s<'a>(cfg: &'a Value, k: &str, d: &'a str) -> &'a str {
 
 /// What closing the lid does: "sleep" | "lock" | "nothing". On the charger
 /// with another display connected, its own setting (like a docked laptop).
-/// With Caffeine on, a lid that would sleep does what lidCaffeine says.
+/// With Caffeine on and on the charger, a lid that would sleep does what
+/// lidCaffeine says. On battery a closed lid always sleeps, whatever Caffeine
+/// or the setting say: a laptop awake in a bag overheats and runs flat (16 Nov:
+/// 7 hours, 99% to 8%, hot).
 pub fn lid_action(on_ac: bool, external_displays: usize, cfg: &Value, caffeine: bool) -> String {
-    let act = if on_ac && external_displays > 0 { s(cfg, "lidExternal", "nothing") } else if on_ac { s(cfg, "lidAc", "sleep") } else { s(cfg, "lidBattery", "sleep") };
+    if !on_ac {
+        return "sleep".into();
+    }
+    let act = if external_displays > 0 { s(cfg, "lidExternal", "nothing") } else { s(cfg, "lidAc", "sleep") };
     if caffeine && act == "sleep" { s(cfg, "lidCaffeine", "lock").into() } else { act.into() }
+}
+
+/// A closed lid that's still awake: sleep anyway? On battery always (after a
+/// minute: a resume with the lid shut, an unplug after closing, a missed lid
+/// event); on the charger when it's running hot (over 90 °C for a minute)
+/// unless it's docked to another display.
+pub fn lid_should_sleep_now(on_ac: bool, external_displays: usize, hot_for_s: f64) -> bool {
+    !on_ac || (hot_for_s >= 60.0 && external_displays == 0)
 }
 
 /// Tessera only takes the lid over from logind (an inhibitor) when some
@@ -136,6 +150,13 @@ mod tests {
         assert_eq!(lid_action(false, 0, &cfg, false), "sleep");
         assert_eq!(lid_action(true, 1, &cfg, false), "nothing");
         assert_eq!(lid_action(true, 0, &cfg, true), "lock");
+        // on battery a closed lid sleeps, Caffeine or "lock" or not
+        assert_eq!(lid_action(false, 0, &cfg, true), "sleep");
+        assert_eq!(lid_action(false, 0, &json!({"lidBattery": "lock"}), false), "sleep");
+        assert!(lid_should_sleep_now(false, 0, 0.0));
+        assert!(!lid_should_sleep_now(true, 0, 10.0));
+        assert!(lid_should_sleep_now(true, 0, 61.0));
+        assert!(!lid_should_sleep_now(true, 1, 600.0));
         assert!(!lid_needs_inhibit(&cfg, false) && lid_needs_inhibit(&cfg, true));
         assert!(lid_needs_inhibit(&json!({"lidAc": "lock"}), false));
     }

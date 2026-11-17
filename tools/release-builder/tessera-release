@@ -1,0 +1,539 @@
+#!/usr/bin/env python3
+"""Tessera's release builder (the build half): builds the ready-made
+tessera-ui (and tessera-events) that tools/native-install.py downloads, in
+place of the build job of .github/workflows/tessera-ui.yml (which can't run
+while the account's Actions are locked). Runs on server1 from a systemd user
+timer every 10 minutes. It never signs and never publishes: there's no key
+here. The user's laptop picks up each finished set with
+tools/release-builder/publish-release, checks it, signs it and publishes it
+(docs/releases.md, "The release builder").
+
+    tessera-release                     everything that has no build yet (main, beta, v* tags)
+    tessera-release --branch beta       that branch only (repeatable; no tags)
+    tessera-release --build-only        build and pack; no ready set
+    tessera-release --status            the status JSON
+    tessera-release --list-ready        the sets waiting for the laptop (JSON)
+    tessera-release --mark-published TAG TREE   the laptop published that set
+
+What it builds: main (the Stable channel's rolling release tessera-ui-latest),
+beta (tessera-ui-beta) and every v* tag (its own release), fetched from GitHub
+(https, public) into a clean clone of its own (~/tessera-release/src). A build
+is named by the git tree of native/ (git rev-parse <commit>:native); nothing
+to do when that release already has the tree's manifest (GitHub, asked
+anonymously), or a set for it is ready or published here. A commit without
+tools/tessera-ui.pub is skipped (nothing built from it could be checked).
+Otherwise: both variants exactly like CI (cargo build --release --locked: the
+full release profile, LTO and one codegen unit; RUSTFLAGS
+"-C target-cpu=x86-64-v3" and ""), through ~/bin/tbuild (a cgroup scope with
+low CPU/IO weight: the machine's own work comes first), packed with the
+manifest exactly like CI. The set lands in
+~/tessera-release/out/<release tag>/<tree>/ (both archives and the manifest)
+with a READY file (JSON: what it is, and each file's size and sha256), written
+last. The laptop's --mark-published renames READY to PUBLISHED.
+
+Built variants are kept per tree in ~/tessera-release/built/<tree> (the newest
+six), so a tree promoted from beta to main is only packed again.
+
+Log: ~/.cache/tessera-release.log (cargo's own output: ~/tessera-release/logs).
+Status: ~/.cache/tessera-release.json: state (idle, building, ready, failed),
+target, tree, commit, step, progress, started, finished, checked, error, ready
+(the sets waiting), and per target the last result. One run at a time (flock).
+"""
+import argparse
+import fcntl
+import hashlib
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+
+HOME = os.path.expanduser("~")
+ROOT = os.environ.get("TESSERA_RELEASE_ROOT") or os.path.join(HOME, "tessera-release")
+SRC = os.path.join(ROOT, "src")
+OUT = os.path.join(ROOT, "out")
+BUILT = os.path.join(ROOT, "built")
+TARGETS = os.path.join(ROOT, "target")
+LOGS = os.path.join(ROOT, "logs")
+CACHE = os.path.join(HOME, ".cache")
+LOG = os.path.join(CACHE, "tessera-release.log")
+STATUS = os.path.join(CACHE, "tessera-release.json")
+TBUILD = os.path.join(HOME, "bin", "tbuild")
+
+REPO_URL = os.environ.get("TESSERA_RELEASE_URL") or "https://github.com/monishbl/tessera.git"
+GH_REPO = os.environ.get("TESSERA_RELEASE_GH_REPO") or "monishbl/tessera"
+# branch → (channel, rolling release), as the workflow names them
+BRANCHES = {"main": ("stable", "tessera-ui-latest"), "beta": ("beta", "tessera-ui-beta")}
+VARIANTS = (("x86-64-v3", "-C target-cpu=x86-64-v3"), ("generic", ""))
+KEEP_PUBLISHED = 3  # published sets kept here per release
+KEEP_BUILT = 6  # built trees kept in built/
+TREE_HEX = re.compile(r"^[0-9a-f]{40}$")
+TAG_RE = re.compile(r"^v[0-9A-Za-z._-]+$")
+
+
+class Stop(Exception):
+    """This target can't go on; the message says why and what to do."""
+
+
+# ── Log and status ───────────────────────────────────────────────────────
+
+def now():
+    return time.strftime("%Y-%m-%dT%H:%M:%S%z")
+
+
+def log(msg):
+    line = time.strftime("%Y-%m-%d %H:%M:%S ") + msg
+    print(line, flush=True)
+    os.makedirs(CACHE, exist_ok=True)
+    try:
+        if os.path.getsize(LOG) > 4 << 20:
+            os.replace(LOG, LOG + ".1")
+    except OSError:
+        pass
+    with open(LOG, "a") as f:
+        f.write(line + "\n")
+
+
+def load_status():
+    try:
+        with open(STATUS) as f:
+            s = json.load(f)
+            return s if isinstance(s, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+STATE = load_status()
+
+
+def status(**kw):
+    STATE.update(kw)
+    STATE["updated"] = now()
+    os.makedirs(CACHE, exist_ok=True)
+    tmp = STATUS + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(STATE, f, indent=2)
+        f.write("\n")
+    os.replace(tmp, STATUS)
+
+
+def target_result(name, **kw):
+    STATE.setdefault("targets", {})[name] = dict(kw, at=now())
+    status()
+
+
+# ── Helpers ──────────────────────────────────────────────────────────────
+
+def run(cmd, *, cwd=None, env=None, check=True, timeout=None):
+    r = subprocess.run(cmd, cwd=cwd, env=env, capture_output=True, text=True, timeout=timeout)
+    if check and r.returncode != 0:
+        raise Stop(f"{os.path.basename(cmd[0])} {' '.join(cmd[1:3])} failed: "
+                   + (r.stderr.strip().splitlines() or ["exit " + str(r.returncode)])[-1])
+    return r
+
+
+def git(*args, check=True):
+    r = run(["git", "-C", SRC, *args], check=check, timeout=600)
+    return r.stdout.strip() if r.returncode == 0 else None
+
+
+def sha256_of(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def no_display_env():
+    return {k: v for k, v in os.environ.items()
+            if k not in ("WAYLAND_DISPLAY", "WAYLAND_SOCKET", "DISPLAY", "HYPRLAND_INSTANCE_SIGNATURE")}
+
+
+def published_on_github(tag, tree):
+    """Is the tree's manifest in that release? Asked anonymously (the
+    repository is public): True / False; raises Stop when GitHub can't be
+    reached."""
+    url = f"https://github.com/{GH_REPO}/releases/download/{tag}/tessera-ui-{tree}.manifest.json"
+    req = urllib.request.Request(url, method="HEAD", headers={"User-Agent": "tessera-release"})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return r.status == 200
+    except urllib.error.HTTPError as e:
+        if e.code in (404, 410):
+            return False
+        raise Stop(f"GitHub answered {e.code} for {url}") from None
+    except (urllib.error.URLError, OSError) as e:
+        raise Stop(f"GitHub can't be reached ({e})") from None
+
+
+def write_json(path, obj):
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(obj, f, indent=2)
+        f.write("\n")
+    os.replace(tmp, path)
+
+
+# ── Sources ──────────────────────────────────────────────────────────────
+
+def fetch_sources(branches, tags):
+    os.makedirs(ROOT, exist_ok=True)
+    if not os.path.isdir(os.path.join(SRC, ".git")):
+        shutil.rmtree(SRC, ignore_errors=True)
+        log(f"cloning {REPO_URL} into {SRC}")
+        run(["git", "clone", "--quiet", "--no-checkout", REPO_URL, SRC], timeout=1800)
+    git("remote", "set-url", "origin", REPO_URL)
+    specs = [f"+refs/heads/{b}:refs/remotes/origin/{b}" for b in branches]
+    if tags:
+        specs.append("+refs/tags/v*:refs/tags/v*")
+    git("fetch", "--quiet", "--prune", "--no-tags", "origin", *specs)
+
+
+def targets(branches, tags):
+    """What to build: [{name, kind, tag, channel, commit}], branches first."""
+    out = []
+    for b in branches:
+        commit = git("rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{b}^{{commit}}", check=False)
+        if commit:
+            channel, tag = BRANCHES[b]
+            out.append({"name": b, "kind": "branch", "tag": tag, "channel": channel, "commit": commit})
+    if tags:
+        for t in (git("tag", "--list", "v*") or "").split():
+            if TAG_RE.match(t):
+                commit = git("rev-parse", "--verify", "--quiet", f"refs/tags/{t}^{{commit}}", check=False)
+                if commit:
+                    out.append({"name": t, "kind": "tag", "tag": t, "channel": "release", "commit": commit})
+    return out
+
+
+def checkout(commit):
+    git("checkout", "--quiet", "--force", "--detach", commit)
+    git("clean", "-ffdxq")
+
+
+# ── Build and pack (as the workflow's build job) ─────────────────────────
+
+def load_counts():
+    try:
+        with open(os.path.join(ROOT, "counts.json")) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def cargo(args, variant, rustflags, label, logf):
+    """~/bin/tbuild cargo ARGS for VARIANT, its output to LOGF, the count of
+    crates compiled in the status ("about": the last build's count)."""
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("CARGO_ENCODED_RUSTFLAGS", "RUSTC_WRAPPER", "RUSTC_WORKSPACE_WRAPPER",
+                        "CARGO_BUILD_RUSTFLAGS", "CARGO_PROFILE_RELEASE_LTO")}
+    env.update(RUSTFLAGS=rustflags, CARGO_INCREMENTAL="0", CARGO_TERM_COLOR="never",
+               CARGO_TARGET_DIR=os.path.join(TARGETS, variant), TBUILD_URGENT="")
+    counts = load_counts()
+    key = f"{variant}:{label}"
+    about = counts.get(key)
+    done = 0
+    last_write = 0
+    logf.write(f"\n== {now()} {label} ({variant}) RUSTFLAGS={rustflags!r}\n")
+    logf.flush()
+    p = subprocess.Popen([TBUILD, *args], cwd=SRC, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                         text=True, errors="replace")
+    tail = []
+    for line in p.stdout:
+        logf.write(line)
+        tail = (tail + [line.rstrip()])[-30:]
+        if line.lstrip().startswith("Compiling "):
+            done += 1
+            if time.time() - last_write > 3:
+                last_write = time.time()
+                status(progress={"done": done, "about": about}, step=f"{variant}: {label} ({line.split()[1]})")
+    code = p.wait()
+    logf.flush()
+    if code != 0:
+        for t in tail[-12:]:
+            log("  | " + t)
+        raise Stop(f"the {variant} build of {label} failed (exit {code}); cargo's output: {logf.name}")
+    if done:
+        counts[key] = done
+        write_json(os.path.join(ROOT, "counts.json"), counts)
+    status(progress={"done": done, "about": about}, step=f"{variant}: {label} linked")
+
+
+def variant_ok(outdir, variant):
+    try:
+        with open(os.path.join(outdir, f"variant-{variant}.json")) as f:
+            v = json.load(f)
+        path = os.path.join(outdir, v["file"])
+        return v if os.path.getsize(path) == v["size"] and sha256_of(path) == v["sha256"] else None
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
+def build(t, tree):
+    """Both variants of TREE in built/<tree> (kept from an earlier run when
+    they're there and whole). Returns {variant: variant-json}."""
+    outdir = os.path.join(BUILT, tree)
+    os.makedirs(outdir, exist_ok=True)
+    os.makedirs(LOGS, exist_ok=True)
+    epoch = git("log", "-1", "--format=%ct", t["commit"])
+    got = {}
+    for variant, rustflags in VARIANTS:
+        v = variant_ok(outdir, variant)
+        if v:
+            got[variant] = v
+            continue
+        status(state="building", step=f"{variant}: starting", progress=None)
+        t0 = time.time()
+        with open(os.path.join(LOGS, f"{tree[:12]}-{variant}.log"), "a") as logf:
+            cargo(["build", "--release", "--locked", "--manifest-path", "native/tessera-ui/Cargo.toml", "--bin", "tessera-ui"],
+                  variant, rustflags, "tessera-ui", logf)
+            cargo(["build", "--release", "--locked", "--manifest-path", "native/tessera-events/Cargo.toml"],
+                  variant, rustflags, "tessera-events", logf)
+        status(step=f"{variant}: packing", progress=None)
+        got[variant] = pack(outdir, tree, variant, epoch)
+        log(f"{t['name']}: built {variant} in {int(time.time() - t0)} s ({got[variant]['size']} bytes)")
+    os.utime(outdir)
+    return got
+
+
+def pack(outdir, tree, variant, epoch):
+    """As the workflow's Pack step: both programs in a reproducible
+    tar.zst, and variant-<variant>.json describing it."""
+    rel = os.path.join(TARGETS, variant, "release")
+    stage = os.path.join(outdir, f".stage-{variant}")
+    shutil.rmtree(stage, ignore_errors=True)
+    os.makedirs(stage)
+    versions = {}
+    for name in ("tessera-ui", "tessera-events"):
+        shutil.copy2(os.path.join(rel, name), os.path.join(stage, name))
+        # (--version only, and never with a display)
+        versions[name] = run([os.path.join(stage, name), "--version"], env=no_display_env(), timeout=30).stdout.strip()
+    file = f"tessera-ui-{tree}-{variant}.tar.zst"
+    dest = os.path.join(outdir, file)
+    tmp = dest + ".tmp"
+    tar = subprocess.Popen(["tar", "--sort=name", "--owner=0", "--group=0", "--numeric-owner", f"--mtime=@{epoch}",
+                            "-C", stage, "-cf", "-", "tessera-ui", "tessera-events"], stdout=subprocess.PIPE)
+    z = subprocess.run(["nice", "-n", "10", "zstd", "-q", "-19", "-T0", "-f", "-o", tmp], stdin=tar.stdout)
+    tar.stdout.close()
+    if tar.wait() != 0 or z.returncode != 0:
+        raise Stop(f"packing {file} failed")
+    os.replace(tmp, dest)
+    v = {"file": file, "sha256": sha256_of(dest), "size": os.path.getsize(dest),
+         "programs": {name: {"sha256": sha256_of(os.path.join(stage, name)), "version": versions[name]}
+                      for name in ("tessera-ui", "tessera-events")}}
+    write_json(os.path.join(outdir, f"variant-{variant}.json"), v)
+    shutil.rmtree(stage, ignore_errors=True)
+    return v
+
+
+# ── The set for the laptop (unsigned: the laptop signs) ──────────────────
+
+def make_set(t, tree, variants):
+    """Both archives and the manifest (as the workflow writes it) in
+    out/<tag>/<tree>/, READY written last. Nothing is signed here."""
+    commit, tag = t["commit"], t["tag"]
+    built = os.path.join(BUILT, tree)
+    dest = os.path.join(OUT, tag, tree)
+    shutil.rmtree(dest, ignore_errors=True)
+    os.makedirs(dest)
+    for v in variants.values():
+        os.link(os.path.join(built, v["file"]), os.path.join(dest, v["file"]))
+    with open(os.path.join(SRC, "native", "tessera-ui", "Cargo.toml")) as f:
+        version = next((m[1] for m in (re.match(r'^version = "(.*)"$', l.rstrip("\n")) for l in f) if m), "")
+    manifest = {"format": 1, "name": "tessera-ui", "commit": commit, "tree": tree, "version": version,
+                "channel": t["channel"], "tag": tag, "built": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "variants": {"x86-64-v3": variants["x86-64-v3"], "generic": variants["generic"]}}
+    write_json(os.path.join(dest, f"tessera-ui-{tree}.manifest.json"), manifest)
+    files = {n: {"size": os.path.getsize(os.path.join(dest, n)), "sha256": sha256_of(os.path.join(dest, n))}
+             for n in sorted(os.listdir(dest))}
+    ready = {"name": t["name"], "kind": t["kind"], "tag": tag, "channel": t["channel"], "tree": tree,
+             "commit": commit, "version": version, "ready": now(), "files": files}
+    write_json(os.path.join(dest, "READY"), ready)
+    log(f"{t['name']}: ready for the laptop to sign and publish: {dest}")
+    return ready
+
+
+# ── Sets for the laptop ──────────────────────────────────────────────────
+
+def sets(kind="READY"):
+    """[(tag, tree, path, info)] of the sets with that marker."""
+    out = []
+    try:
+        tags = os.listdir(OUT)
+    except OSError:
+        return out
+    for tag in tags:
+        tdir = os.path.join(OUT, tag)
+        if not os.path.isdir(tdir) or not (TAG_RE.match(tag) or tag in ("tessera-ui-latest", "tessera-ui-beta")):
+            continue
+        for tree in os.listdir(tdir):
+            marker = os.path.join(tdir, tree, kind)
+            if TREE_HEX.match(tree) and os.path.isfile(marker):
+                try:
+                    with open(marker) as f:
+                        info = json.load(f)
+                except (OSError, ValueError):
+                    continue
+                out.append((tag, tree, os.path.join(tdir, tree), info))
+    return out
+
+
+def list_ready():
+    return [dict(info, dir=path) for _, _, path, info in sorted(sets(), key=lambda s: s[3].get("ready", ""))]
+
+
+def mark_published(tag, tree):
+    path = os.path.join(OUT, tag, tree)
+    if not (TREE_HEX.match(tree) and os.path.isfile(os.path.join(path, "READY"))):
+        if os.path.isfile(os.path.join(path, "PUBLISHED")):
+            return 0
+        print(f"tessera-release: there's no ready set {tag}/{tree}", file=sys.stderr)
+        return 1
+    with open(os.path.join(path, "READY")) as f:
+        info = json.load(f)
+    info["published"] = now()
+    write_json(os.path.join(path, "PUBLISHED"), info)
+    os.remove(os.path.join(path, "READY"))
+    log(f"{info.get('name', tag)}: published (tree {tree[:12]} in {tag}), as the laptop says")
+    target_result(info.get("name", tag), result="published", tag=tag, tree=tree, commit=info.get("commit"))
+    waiting = [f"{t}/{tr}" for t, tr, _, _ in sets()]
+    if STATE.get("state") in ("ready", "idle"):
+        status(state="ready" if waiting else "idle", ready=waiting)
+    else:
+        status(ready=waiting)
+    return 0
+
+
+def prune():
+    # (published sets: the newest three per release; built trees: six)
+    by_tag = {}
+    for tag, tree, path, info in sets("PUBLISHED"):
+        by_tag.setdefault(tag, []).append((info.get("published", ""), path))
+    for items in by_tag.values():
+        for _, path in sorted(items, reverse=True)[KEEP_PUBLISHED:]:
+            shutil.rmtree(path, ignore_errors=True)
+    try:
+        trees = sorted((d for d in os.listdir(BUILT) if TREE_HEX.match(d)),
+                       key=lambda d: os.path.getmtime(os.path.join(BUILT, d)), reverse=True)
+    except OSError:
+        return
+    waiting = {tree for _, tree, _, _ in sets()}
+    for d in trees[KEEP_BUILT:]:
+        if d in waiting:
+            continue
+        shutil.rmtree(os.path.join(BUILT, d), ignore_errors=True)
+        for v, _ in VARIANTS:
+            try:
+                os.remove(os.path.join(LOGS, f"{d[:12]}-{v}.log"))
+            except OSError:
+                pass
+
+
+# ── A run ────────────────────────────────────────────────────────────────
+
+def do_target(t, build_only):
+    name, tag, commit = t["name"], t["tag"], t["commit"]
+    tree = git("rev-parse", f"{commit}:native")
+    prev = STATE.get("targets", {}).get(name) or {}
+    status(target=name, commit=commit, tree=tree)
+    if git("cat-file", "-e", f"{commit}:tools/tessera-ui.pub", check=False) is None:
+        why = f"{name} has no tools/tessera-ui.pub, so nothing built from it could be checked"
+        if prev.get("why") != why:
+            log(f"{name}: skipped: {why}")
+            target_result(name, result="skipped", tree=tree, commit=commit, why=why)
+        return
+    here = os.path.join(OUT, tag, tree)
+    if os.path.isfile(os.path.join(here, "READY")):
+        if prev.get("result") != "ready" or prev.get("tree") != tree:
+            target_result(name, result="ready", tag=tag, tree=tree, commit=commit, dir=here)
+        return
+    if os.path.isfile(os.path.join(here, "PUBLISHED")):
+        return
+    if not build_only and published_on_github(tag, tree):
+        if prev.get("tree") != tree or prev.get("result") not in ("published", "up-to-date"):
+            log(f"{name}: tree {tree[:12]} is already published in {tag}")
+            target_result(name, result="up-to-date", tag=tag, tree=tree, commit=commit)
+        return
+    t0 = time.time()
+    status(state="building", started=now(), finished=None, error=None, step="preparing", progress=None)
+    log(f"{name}: tree {tree[:12]} (commit {commit[:12]}) has no build for {tag}: "
+        + ("building (build only)" if build_only else "building"))
+    checkout(commit)
+    variants = build(t, tree)
+    if build_only:
+        target_result(name, result="built", tree=tree, commit=commit, seconds=int(time.time() - t0))
+        return
+    make_set(t, tree, variants)
+    target_result(name, result="ready", tag=tag, tree=tree, commit=commit, dir=here, seconds=int(time.time() - t0))
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--branch", action="append", choices=sorted(BRANCHES), help="only this branch (repeatable; no tags)")
+    ap.add_argument("--build-only", action="store_true", help="build and pack; don't make a ready set")
+    ap.add_argument("--status", action="store_true", help="print the status JSON")
+    ap.add_argument("--list-ready", action="store_true", help="the sets waiting to be signed and published, as JSON")
+    ap.add_argument("--mark-published", nargs=2, metavar=("TAG", "TREE"), help="the laptop published this set")
+    a = ap.parse_args(argv)
+    if a.status:
+        print(json.dumps(load_status(), indent=2))
+        return 0
+    if a.list_ready:
+        print(json.dumps(list_ready(), indent=2))
+        return 0
+    os.makedirs(ROOT, exist_ok=True)
+    if a.mark_published:
+        # (its own short lock: never waits for a build)
+        with open(os.path.join(ROOT, "mark.lock"), "w") as ml:
+            fcntl.flock(ml, fcntl.LOCK_EX)
+            return mark_published(*a.mark_published)
+    lock = open(os.path.join(ROOT, "lock"), "w")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        print("tessera-release: another run is going", file=sys.stderr)
+        return 0
+    branches = a.branch or ["main", "beta"]
+    with_tags = not a.branch
+    status(pid=os.getpid(), state="idle", step="fetching", progress=None, error=None)
+    failed = []
+    try:
+        fetch_sources(branches, with_tags)
+        todo = targets(branches, with_tags)
+    except Stop as e:
+        log(f"failed: {e}")
+        status(state="failed", error=str(e), checked=now(), step=None, pid=None)
+        return 1
+    for t in todo:
+        try:
+            do_target(t, a.build_only)
+        except Stop as e:
+            prev = STATE.get("targets", {}).get(t["name"]) or {}
+            if prev.get("why") != str(e):
+                log(f"failed: {t['name']}: {e}")
+            failed.append(f"{t['name']}: {e}")
+            target_result(t["name"], result="failed", tree=STATE.get("tree"), commit=t["commit"], why=str(e))
+        except Exception as e:  # (an unexpected one: still recorded, never silent)
+            msg = f"{t['name']}: {type(e).__name__}: {e}"
+            log("failed: " + msg)
+            failed.append(msg)
+            target_result(t["name"], result="failed", why=msg)
+    prune()
+    # (finished: when the last build ended; checked: every run)
+    end = {"checked": now(), "step": None, "progress": None, "pid": None, "ready": [f"{t}/{tr}" for t, tr, _, _ in sets()]}
+    if STATE.get("state") != "idle":
+        end["finished"] = end["checked"]
+    if failed:
+        status(state="failed", error="; ".join(failed), **end)
+        return 1
+    status(state="ready" if end["ready"] else "idle", error=None, **end)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

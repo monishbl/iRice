@@ -4,60 +4,29 @@
 //! order), fresh lists of windows and displays, the config file and the
 //! shell's state file (UiState.data, as the QML services write them).
 
-use serde_json::{json, Value};
-use std::sync::mpsc::{channel, Sender};
-use std::sync::{Mutex, OnceLock};
+use serde_json::Value;
 use tessera_core::services::clients::Client;
 use tessera_core::services::hypr;
 
-enum Job {
-    Dispatch(String),
-    Eval(String),
-    Run(Vec<String>),
-}
-
-static QUEUE: OnceLock<Mutex<Sender<Job>>> = OnceLock::new();
-
-fn queue() -> &'static Mutex<Sender<Job>> {
-    QUEUE.get_or_init(|| {
-        let (tx, rx) = channel::<Job>();
-        std::thread::spawn(move || {
-            for j in rx {
-                match j {
-                    Job::Dispatch(c) => {
-                        let _ = hypr::request(&format!("dispatch {c}"));
-                    }
-                    Job::Eval(l) => {
-                        let _ = std::process::Command::new("hyprctl").args(["eval", &l]).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status();
-                    }
-                    Job::Run(a) if !a.is_empty() => {
-                        let _ = std::process::Command::new(&a[0]).args(&a[1..]).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status();
-                    }
-                    Job::Run(_) => {}
-                }
-            }
-        });
-        Mutex::new(tx)
-    })
-}
-
-fn push(j: Job) {
-    if let Ok(q) = queue().lock() {
-        let _ = q.send(j);
+fn quiet(argv: &[String]) {
+    if argv.is_empty() {
+        return;
     }
+    let _ = std::process::Command::new(&argv[0]).args(&argv[1..]).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status();
 }
 
-/// Hyprland.dispatch("hl.dsp…")
+/// Hyprland.dispatch("hl.dsp…"), in order with every other (hypr::IN_ORDER)
 pub fn dispatch(cmd: impl Into<String>) {
-    push(Job::Dispatch(cmd.into()));
+    hypr::dispatch(cmd);
 }
-/// `hyprctl eval <lua>` (Quickshell.execDetached)
+/// `hyprctl eval <lua>` (Quickshell.execDetached), in order with the dispatches
 pub fn eval(lua: impl Into<String>) {
-    push(Job::Eval(lua.into()));
+    let lua = lua.into();
+    hypr::IN_ORDER.run(move || quiet(&["hyprctl".into(), "eval".into(), lua]));
 }
 /// A command, after what was queued before it
 pub fn run(argv: Vec<String>) {
-    push(Job::Run(argv));
+    hypr::IN_ORDER.run(move || quiet(&argv));
 }
 /// A command on a thread of its own (it may take long)
 pub fn spawn(argv: Vec<String>) {
@@ -141,13 +110,17 @@ pub fn config_dir() -> std::path::PathBuf {
 
 /// config.json: `section.key = value` (Config.options.section.key = …)
 pub fn set_cfg(section: &str, key: &str, value: Value) {
+    // (from the loop: queued, never waited on; read as set at once)
     let (s, k) = (section.to_string(), key.to_string());
-    let _ = tessera_core::cfgfile::edit_config(move |m| {
-        let sec = m.entry(s).or_insert_with(|| json!({}));
+    tessera_core::cfgfile::edit_config_later(move |m| {
+        let sec = m.entry(s.clone()).or_insert_with(|| serde_json::json!({}));
         if !sec.is_object() {
-            *sec = json!({});
+            *sec = serde_json::json!({});
         }
-        sec[&k] = value;
+        if sec[&k] == value {
+            return false;
+        }
+        sec[&k] = value.clone();
         true
     });
 }

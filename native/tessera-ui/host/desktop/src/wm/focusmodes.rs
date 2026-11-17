@@ -272,9 +272,8 @@ impl FocusModes {
     pub fn save(&self) {
         let text = serde_json::to_string_pretty(&json!({"modes": self.modes, "active": self.active, "until": self.until, "source": self.source, "restore": self.restore, "skipScheduleUntil": self.skip_until})).unwrap_or_default();
         let path = Self::path();
-        std::thread::spawn(move || {
-            let _ = tessera_core::util::write_atomic(&path, text.as_bytes());
-        });
+        // (on the files lane: in order, waited for on the way out)
+        tessera_core::cfgfile::write_later(path, text.into_bytes());
     }
     /// Read the file again (Settings → About restored it)
     pub fn reload(&mut self, h: &mut Host, io: &mut Io) {

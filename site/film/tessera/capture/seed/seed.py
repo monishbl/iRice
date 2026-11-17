@@ -18,7 +18,10 @@ repo = os.path.abspath(os.path.join(here, "../../../../.."))
 wall = sys.argv[3] if len(sys.argv) > 3 else os.path.join(here, "photos/wall-sunset-lake.jpg")
 assert os.path.isdir(os.path.join(home, ".config")) and "/.sandbox/" in os.path.abspath(home), "not an arena home: " + home
 
-cfg_path = os.path.join(home, ".config/irice/config.json")
+# (Tessera's settings file; iRice's where an older home still has only that)
+cfg_path = os.path.join(home, ".config/tessera/config.json")
+if not os.path.exists(cfg_path):
+    cfg_path = os.path.join(home, ".config/irice/config.json")
 c = json.load(open(cfg_path))
 a = c.setdefault("appearance", {})
 a.update(look=look, mode=os.environ.get("MODE", "dark"), materialSeed="wallpaper", accent=os.environ.get("ACCENT", "wallpaper"), menuIcon="circle")  # (circle: the Badge, the new logo)

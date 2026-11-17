@@ -209,7 +209,8 @@ impl HostPart {
         for s in self.services.iter_mut() {
             let mut h = Host { st, state: &mut self.state, state_dirty: &mut self.state_dirty, pending: &mut self.pending };
             let n = s.name();
-            crate::perf::time(|| format!("host {n}"), || f(s.as_mut(), &mut h));
+            // (each service under its own name: one that panics stays off, the rest go on: contain.rs)
+            crate::perf::time(|| format!("host {n}"), || crate::contain::guard(n, || f(s.as_mut(), &mut h)));
         }
         self.settle(st);
     }
@@ -218,7 +219,7 @@ impl HostPart {
         let Some(s) = self.services.iter_mut().find(|s| pick(s.as_ref())) else { return false };
         let mut h = Host { st, state: &mut self.state, state_dirty: &mut self.state_dirty, pending: &mut self.pending };
         let n = s.name();
-            crate::perf::time(|| format!("host {n}"), || f(s.as_mut(), &mut h));
+        crate::perf::time(|| format!("host {n}"), || crate::contain::guard(n, || f(s.as_mut(), &mut h)));
         true
     }
 
@@ -245,7 +246,7 @@ impl HostPart {
             for s in self.services.iter_mut() {
                 let mut h = Host { st, state: &mut self.state, state_dirty: &mut self.state_dirty, pending: &mut self.pending };
                 let n = s.name();
-                crate::perf::time(|| format!("settled {n}"), || s.settled(&mut h));
+                crate::perf::time(|| format!("settled {n}"), || crate::contain::guard(n, || s.settled(&mut h)));
             }
             if self.pending.is_empty() {
                 break;

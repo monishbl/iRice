@@ -16,7 +16,7 @@
 
 use super::*;
 use slint::ComponentHandle;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use tessera_core::services::hypr::Snapshot;
 use tessera_core::shell::Part;
 
@@ -43,7 +43,7 @@ pub struct FindPointer {
     ring: bool,
     x: f64,
     y: f64,
-    tick: slint::Timer,
+    tick: tessera_core::pacing::FrameTimer,
 }
 
 /// The ring's scale and opacity `ms` into the animation (None: it is over)
@@ -114,7 +114,7 @@ impl FindPointer {
         if self.ring {
             self.ensure(st);
             let to = st.shell.sender(NAME);
-            self.tick.start(slint::TimerMode::Repeated, Duration::from_millis(16), move || to(Box::new(Msg::Tick)));
+            self.tick.start(move || to(Box::new(Msg::Tick)));
         }
     }
 

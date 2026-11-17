@@ -380,6 +380,13 @@ impl Bridges {
         }
         self.locked = locked;
         h.set_state("locked", json!(locked));
+        // (the mark a shell started again while locked finds: `locked_mark`)
+        let mark = locked_mark();
+        if locked {
+            let _ = std::fs::write(&mark, b"");
+        } else {
+            let _ = std::fs::remove_file(&mark);
+        }
         self.cancel("leave");
         if self.intro_shown {
             self.finish_intro(h); // (the lock plays its own)
@@ -879,6 +886,15 @@ impl Service for Bridges {
         self.later(h, "welcome", 2500);
         self.later(h, "initial", 1000);
         h.set_state("locked", json!(false));
+        // The shell before this one ended (a crash, a kill, out of memory)
+        // while the screen was locked: lock again at once. Hyprland keeps the
+        // session locked and lets this copy take it back
+        // (misc:allow_session_lock_restore), instead of its "lockscreen app
+        // died" screen until a restart (16 Nov)
+        if locked_mark().exists() {
+            eprintln!("tessera-ui: lock: the shell before ended while locked: locking again");
+            self.set_locked(h, true);
+        }
         h.set_state("menubar.resources", json!(cfg_bool(h.cfg(), "menubar.resources", false)));
     }
     fn settled(&mut self, h: &mut Host) {
@@ -1152,4 +1168,12 @@ mod tests {
         assert_eq!(m, json!({"a": 1, "b": 3, "c": 4}));
         assert_eq!(merged(json!({"a": 1}), None), json!({"a": 1}));
     }
+}
+
+/// $XDG_RUNTIME_DIR/tessera-locked-<Hyprland instance>: there while this
+/// session's screen is locked (gone at reboot, and another Hyprland session
+/// has another name, so a new login never starts locked)
+fn locked_mark() -> std::path::PathBuf {
+    let sig = std::env::var("HYPRLAND_INSTANCE_SIGNATURE").unwrap_or_else(|_| "none".into());
+    runtime_dir().join(format!("tessera-locked-{sig}"))
 }

@@ -78,22 +78,29 @@ fn handle_now(state: &mut State, msg: Msg) {
         Msg::ConfigChanged => state.config_changed(),
         // (the binary's loop handles the host's lines before this; elsewhere, none come)
         Msg::Line(_) => {}
+        // (each part's own code: contain.rs)
         Msg::A11yActivate(id) => {
             for p in state.parts.iter_mut() {
-                for a in p.a11y() {
-                    if a.id == id {
-                        a.activate();
+                let n = p.name();
+                crate::contain::guard(n, || {
+                    for a in p.a11y() {
+                        if a.id == id {
+                            a.activate();
+                        }
                     }
-                }
+                });
             }
         }
         Msg::A11yAction(id, r) => {
             for p in state.parts.iter_mut() {
-                for a in p.a11y() {
-                    if a.id == id {
-                        a.action(r.clone());
+                let n = p.name();
+                crate::contain::guard(n, || {
+                    for a in p.a11y() {
+                        if a.id == id {
+                            a.action(r.clone());
+                        }
                     }
-                }
+                });
             }
         }
     }

@@ -4,13 +4,14 @@
 # processes (e.g. the real end4 `qs -c ii`) can never match.
 # TESSERA_ARENA=2, 3, … is another identical sandbox beside the first, with its
 # own runtime folder (/tmp/irice-rt-N) and home (.sandbox/arena-N/home), so
-# checks can run side by side. 1 (the default) is the usual sandbox.
+# checks can run side by side. 1 (the default) is the usual sandbox. Two-digit
+# arenas (10-99) are for tools that keep their own (tools/gate: 13 and 14).
 
 # (IRICE_ARENA: its name before iRice became Tessera. The runtime folders,
 # /tmp/irice-rt*, and the headless IRICE-TEST output keep their names: every
 # checkout, from before the rename or after, shares the same arenas safely)
 TESSERA_ARENA="${TESSERA_ARENA:-${IRICE_ARENA:-1}}"
-[[ "$TESSERA_ARENA" =~ ^[1-9]$ ]] || { echo "TESSERA_ARENA must be 1-9" >&2; exit 2; }
+[[ "$TESSERA_ARENA" =~ ^[1-9][0-9]?$ ]] || { echo "TESSERA_ARENA must be 1-99" >&2; exit 2; }
 if [[ "$TESSERA_ARENA" == 1 ]]; then
     TESSERA_RT=/tmp/irice-rt
     TESSERA_HOME="$ROOT/.sandbox/home"

@@ -13,7 +13,7 @@ use slint::platform::Key;
 use slint::{ComponentHandle, SharedString};
 use smithay_client_toolkit::shell::wlr_layer::{Anchor, KeyboardInteractivity, Layer};
 use std::rc::Rc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 const NS_COUNT: &str = "tessera:recordCountdown";
 const NS_TRANSLATION: &str = "tessera:translation";
@@ -40,7 +40,7 @@ struct CWin {
 pub struct Countdown {
     win: Option<CWin>,
     n: i64,
-    tick: slint::Timer,
+    tick: tessera_core::pacing::FrameTimer,
 }
 
 impl Countdown {
@@ -85,7 +85,7 @@ impl Countdown {
         w.surface.show(168, 168);
         let weak = w.ui.as_weak();
         let t0 = Instant::now();
-        self.tick.start(slint::TimerMode::Repeated, Duration::from_millis(16), move || {
+        self.tick.start(move || {
             let ms = t0.elapsed().as_secs_f32() * 1000.0;
             if let Some(ui) = weak.upgrade() {
                 ui.set_pop(pop_at(ms));

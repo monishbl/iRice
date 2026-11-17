@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Keeps the Tessera shell running in this Hyprland session. Hyprland runs it
-# every 30 s (execs.lua); if this session has had no Tessera shell for two
+# every 5 s (execs.lua); if this session has had no Tessera shell for two
 # checks in a row (so not during a restart or a repair), it starts one.
 # Starts, repairs and this check share one lock, so they never race into
 # duplicate bars. A shell that stopped three times in 15 minutes soon after an
@@ -39,8 +39,11 @@ if running; then
     rm -f "$DIR/tessera-shell.missing"
     exit 0
 fi
-# First miss: wait for the next check before acting
-if [[ ! -e "$DIR/tessera-shell.missing" ]]; then
+# First miss: wait for the next check before acting, unless the shell died
+# with the screen locked (its mark, tessera-ui's bridges.rs locked_mark):
+# then at once, so the new copy takes the lock back before Hyprland's
+# "lockscreen app died" screen (lockdead_screen_delay, look.lua)
+if [[ ! -e "$DIR/tessera-shell.missing" && ! -e "$RUN/tessera-locked-$SIG" ]]; then
     : >"$DIR/tessera-shell.missing"
     exit 0
 fi

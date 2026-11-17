@@ -14,11 +14,15 @@ pub mod a11y;
 pub mod appicon;
 pub mod build_progress; // (tools/build-progress.py's file: Software Update, the update screen)
 pub mod cfgfile; // (config.json and state.json read and changed safely)
+pub mod contain; // (a panic in one part never takes the shell down: contain.rs)
+pub mod crash; // (crash reports: crash.rs)
 pub mod damage;
 pub mod dnd;
 #[cfg(feature = "skia")]
 pub mod skia;
 pub mod egl;
+pub mod gpu;
+pub mod inhibit;
 pub mod env;
 pub mod global_shortcuts; // (Hyprland's global shortcuts, as Quickshell's GlobalShortcut: standalone)
 pub mod host; // (wave 4: the QML shell's side, in Rust; standalone only)
@@ -28,6 +32,7 @@ pub mod icons;
 pub mod picture;
 pub mod power_supply; // (/sys/class/power_supply: own batteries, adapters of any name)
 pub mod rank;
+pub mod pacing; // (the display's refresh, frames on screen, frame timers, the idle timer grid)
 pub mod perf; // (debug: loop stalls and list/window reloads, TESSERA_DEBUG: perf.rs)
 pub mod rows; // (lists changed in place, not handed a new model: rows.rs)
 pub mod runloop;
@@ -46,6 +51,7 @@ pub mod util;
 pub mod wallpaper;
 pub mod wayland;
 pub mod wm;
+pub mod work; // (blocking work off the UI thread: a fixed pool and ordered lanes)
 
 pub enum Msg {
     Run(Box<dyn FnOnce() + Send>),

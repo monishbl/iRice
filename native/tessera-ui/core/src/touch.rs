@@ -80,7 +80,7 @@ fn pos(p: (f64, f64)) -> LogicalPosition {
 }
 
 fn send(s: &crate::wayland::Surface, e: WindowEvent) {
-    s.window().dispatch_event(e);
+    s.dispatch(e);
 }
 
 /// What a touch sequence does, from its events (pure: tested below)

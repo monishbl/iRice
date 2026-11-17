@@ -91,15 +91,14 @@ pub fn write(key: &str, value: Value) {
     let key = key.to_string();
     // (the file as it is now, under a lock, written whole; a broken one kept
     // aside, never written over: tessera_core::cfgfile)
-    std::thread::spawn(move || {
-        let _ = tessera_core::cfgfile::edit_config(|m| {
-            let mut cfg = Value::Object(std::mem::take(m));
-            change(&mut cfg, &key, value);
-            if let Value::Object(back) = cfg {
-                *m = back;
-            }
-            true
-        });
+    // (queued on the files lane: no thread per write, read as set at once)
+    tessera_core::cfgfile::edit_config_later(move |m| {
+        let mut cfg = Value::Object(std::mem::take(m));
+        change(&mut cfg, &key, value.clone());
+        if let Value::Object(back) = cfg {
+            *m = back;
+        }
+        true
     });
 }
 

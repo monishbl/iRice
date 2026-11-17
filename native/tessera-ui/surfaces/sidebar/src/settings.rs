@@ -90,17 +90,17 @@ pub fn row_span(list: &[crate::services::ai::chats::ListRow], id: &str, material
 pub fn write(path: &[&str], value: Value) {
     // (the file as it is now, under a lock, written whole; a broken one kept
     // aside, never written over: tessera_core::cfgfile)
-    let r = tessera_core::cfgfile::edit_config(|m| {
+    // (queued on the files lane, never waited on here; read as set at once)
+    let path: Vec<String> = path.iter().map(|s| s.to_string()).collect();
+    tessera_core::cfgfile::edit_config_later(move |m| {
+        let keys: Vec<&str> = path.iter().map(String::as_str).collect();
         let mut cfg = Value::Object(std::mem::take(m));
-        let changed = set(&mut cfg, path, value);
+        let changed = set(&mut cfg, &keys, value.clone());
         if let Value::Object(back) = cfg {
             *m = back;
         }
         changed
     });
-    if let Err(e) = r {
-        eprintln!("tessera-ui: couldn't save a setting: {e}");
-    }
 }
 
 /// Set a value at a path of keys, making objects on the way; false when it was already so

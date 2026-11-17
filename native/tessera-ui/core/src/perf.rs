@@ -1,11 +1,18 @@
 //! Debug measurements for "it feels slow" (TESSERA_DEBUG, or TESSERA_PERF):
 //!
-//! - **Stalls**: any piece of a loop turn that holds the UI thread longer
-//!   than a frame (16 ms) is logged with what it was: the message and the
-//!   part it went to, the host service and its call, a pointer press on a
-//!   surface, Slint's timers, a surface's render, a part's after_frame.
-//!   `debug: stall 42.1 ms: msg host ipc panels toggle controlCenter > host Panels`
-//!   (nested pieces each log, innermost first, so the chain reads outwards).
+//! - **Stalls** (the tripwire): any piece of a loop turn that holds the UI
+//!   thread longer than half a frame (`STEP_MS`, 8 ms) is logged with what it
+//!   was: the message and the part it went to, the host service and its
+//!   step (a Wm tick, event or answer), a pointer press on a surface, Slint's
+//!   timers, a surface's render, a part's after_frame.
+//!   `debug: stall 42.1 ms: msg host > part host > host Wm > tick feed.send`
+//!   Only the piece that holds the time logs: the innermost one over the
+//!   tripwire, and an outer one only when its own code beyond that took
+//!   long too (`… (own 12.0 ms)`), or when it is the loop's outermost piece
+//!   and a stall (over `STALL_MS`, its pieces logged): that line closes the
+//!   chain, so a turn spent in several 8-16 ms steps still reads as one
+//!   stall of its whole time (tools/gate/timinglog.py).
+//!   Also on (without TESSERA_DEBUG) while $XDG_RUNTIME_DIR/tessera-wakes exists.
 //! - **Reloads**: a surface that hands a list a new model (every element
 //!   made again) or makes a window again says so:
 //!   `debug: reload list notifications.cards (12 rows)` / `debug: reload window controlcenter`.
@@ -27,20 +34,42 @@ pub fn on() -> bool {
 /// Longer than this (ms) is a stall: a 60 Hz frame
 pub const STALL_MS: f64 = 16.0;
 
+/// The tripwire: a single step of the UI thread longer than this (ms) is
+/// logged with its path, half a frame (the UI thread may only handle input,
+/// update models and draw; blocking work goes to crate::work)
+pub const STEP_MS: f64 = 8.0;
+
+/// One piece of work running now: its name, the time its pieces took, and
+/// whether one of them was logged already
+struct Step {
+    label: String,
+    inner_ms: f64,
+    inner_logged: bool,
+}
+
 thread_local! {
     // what the loop is doing now, outermost first ("msg host", "host Panels"…)
-    static WHAT: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+    static WHAT: RefCell<Vec<Step>> = const { RefCell::new(Vec::new()) };
     static DEPTH: Cell<usize> = const { Cell::new(0) };
 }
 
-/// Run `f` as the named piece of work; logged when it takes longer than a frame
+/// Should a step that took `ms` be logged? Only the step that holds the time:
+/// the innermost one over the tripwire, and an outer one only for what its
+/// own code took beyond its logged pieces (so one slow call is one line, not
+/// one per level it ran under)
+fn worth_logging(ms: f64, inner_ms: f64, inner_logged: bool, outermost: bool) -> bool {
+    ms > STEP_MS && (!inner_logged || ms - inner_ms > STEP_MS || (outermost && ms > STALL_MS))
+}
+
+/// Run `f` as the named piece of work; logged when it holds the UI thread
+/// longer than the tripwire (`STEP_MS`)
 #[inline]
 pub fn time<R>(what: impl FnOnce() -> String, f: impl FnOnce() -> R) -> R {
     let acc = crate::wayland::wakes_on();
     if !on() && !acc {
         return f();
     }
-    WHAT.with(|w| w.borrow_mut().push(what()));
+    WHAT.with(|w| w.borrow_mut().push(Step { label: what(), inner_ms: 0.0, inner_logged: false }));
     DEPTH.with(|d| d.set(d.get() + 1));
     let t = Instant::now();
     let r = f();
@@ -48,11 +77,24 @@ pub fn time<R>(what: impl FnOnce() -> String, f: impl FnOnce() -> R) -> R {
     DEPTH.with(|d| d.set(d.get() - 1));
     let path = WHAT.with(|w| {
         let mut w = w.borrow_mut();
-        let p = if ms > STALL_MS && (on() || acc) { Some(w.join(" > ")) } else { None };
-        if let Some(label) = w.pop() {
-            if acc {
-                SPENT.with(|m| *m.borrow_mut().entry(label).or_default() += ms);
+        let Some(top) = w.last() else { return None };
+        let log = worth_logging(ms, top.inner_ms, top.inner_logged, w.len() == 1);
+        let own = ms - top.inner_ms;
+        let p = log.then(|| {
+            let p = w.iter().map(|s| s.label.as_str()).collect::<Vec<_>>().join(" > ");
+            if top.inner_logged {
+                format!("{p} (own {own:.1} ms)")
+            } else {
+                p
             }
+        });
+        let step = w.pop()?;
+        if let Some(parent) = w.last_mut() {
+            parent.inner_ms += ms;
+            parent.inner_logged |= log || step.inner_logged;
+        }
+        if acc {
+            SPENT.with(|m| *m.borrow_mut().entry(step.label).or_default() += ms);
         }
         p
     });
@@ -117,5 +159,21 @@ mod tests {
     #[test]
     fn time_returns_the_value() {
         assert_eq!(time(|| "x".into(), || 3), 3);
+    }
+
+    #[test]
+    fn only_the_step_that_holds_the_time_is_logged() {
+        // quick: never
+        assert!(!worth_logging(5.0, 0.0, false, false));
+        // slow, nothing inside it logged: it is the culprit
+        assert!(worth_logging(30.0, 2.0, false, false));
+        // slow because a piece inside was (logged already): not again
+        assert!(!worth_logging(31.0, 30.0, true, false));
+        // slow beyond its logged piece: its own code is slow too
+        assert!(worth_logging(60.0, 30.0, true, false));
+        // the loop's outermost piece over a frame closes the chain (the stall's whole time)
+        assert!(worth_logging(20.0, 19.5, true, true));
+        // …but not under a frame
+        assert!(!worth_logging(15.0, 14.5, true, true));
     }
 }

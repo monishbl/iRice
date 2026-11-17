@@ -137,7 +137,8 @@ impl Sharing {
     }
     pub fn shelf_write(&mut self) {
         let text = serde_json::to_string_pretty(&json!({"items": self.shelf.items})).unwrap_or_default();
-        let _ = tessera_core::util::write_atomic(&Self::shelf_file(), text.as_bytes());
+        // (synced to disk: on the files lane, never the loop)
+        tessera_core::cfgfile::write_later(Self::shelf_file(), text.into_bytes());
     }
 
     // ── What's on it ────────────────────────────────────────────────────
