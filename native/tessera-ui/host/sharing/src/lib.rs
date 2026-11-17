@@ -735,7 +735,7 @@ impl Service for Sharing {
         &["shelf", "share", "appstore", "airplay", "phone", "mirroring", "linkshare", "quickshare", "sharing", "cast", "sharingports"]
     }
     fn ipc_targets(&self) -> &'static [&'static str] {
-        &["sharingdemo", "linkshare", "cast", "mirroring", "shelf"]
+        &["sharingdemo", "linkshare", "cast", "mirroring", "shelf", "sharing"]
     }
 
     fn start(&mut self, h: &mut Host) {
@@ -797,6 +797,12 @@ impl Service for Sharing {
                 None
             }
             "shelf" => self.shelf_ipc(h, func),
+            // `tessera-ui ipc call sharing <fn> …` (the socket is yours only):
+            // what the share card and send window's buttons do, for scripts
+            // and tests: level <off|10min|everyone>, devices, request,
+            // accept / decline (the request on show), send <device name or key>
+            // (what the open send window holds)
+            "sharing" => Some(self.sharing_ipc(func, args)),
             _ => None,
         };
         self.settle(h);
