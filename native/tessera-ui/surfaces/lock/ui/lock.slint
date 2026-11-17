@@ -731,18 +731,28 @@ component FingerGlyph inherits Rectangle {
     changed phase => {
         t0 = animation-tick();
         fresh = true;
+        live = true;
     }
     Timer {
         interval: 1300ms;
         running: root.fresh;
         triggered => { root.fresh = false; }
     }
+    // The waiting loop runs 15 s, then rests lit: a locked screen left on
+    // otherwise redrew 60 times a second for as long as it stayed locked
+    // (17 Nov: ~6% of a core, all the way down to an empty battery)
+    property <bool> live: true;
+    Timer {
+        interval: 15s;
+        running: root.live && root.phase == "waiting";
+        triggered => { root.live = false; }
+    }
     property <float> k: fresh && !still ? (animation-tick() - t0) / 1ms : 5000;
     // a miss: red at once, back to the ink after 1.1 s (150 ms each way)
     property <float> red: phase != "miss" ? 0 : still ? (fresh ? 1 : 0)
         : k < 150 ? 1 - (1 - k / 150) * (1 - k / 150) : k < 1100 ? 1 : k < 1250 ? 1 - (k - 1100) / 150 : 0;
     // waiting (or a miss gone back to waiting): the loop, 2.4 s, linear
-    property <bool> looping: !still && (phase == "waiting" || (phase == "miss" && red <= 0));
+    property <bool> looping: !still && live && (phase == "waiting" || (phase == "miss" && red <= 0));
     property <float> lt: looping ? Math.mod(animation-tick() / 1ms, 2400) / 2400 : -1;
     pure function glow(i: int) -> float {
         if !looping {

@@ -255,8 +255,9 @@ fn tell_off(name: &str) {
             .stderr(std::process::Stdio::null())
             .output();
         if out.is_ok_and(|o| String::from_utf8_lossy(&o.stdout).trim() == "report") {
-            if let Ok(me) = std::env::current_exe() {
-                let _ = std::process::Command::new(me).args(["ipc", "call", "panels", "openSettings", "bugreport"]).stdout(std::process::Stdio::null()).status();
+            {
+                // (/proc/self/exe: still this binary after an update replaced the file)
+                let _ = std::process::Command::new("/proc/self/exe").args(["ipc", "call", "panels", "openSettings", "bugreport"]).stdout(std::process::Stdio::null()).status();
             }
         }
     });

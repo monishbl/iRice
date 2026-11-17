@@ -125,7 +125,13 @@ pub fn start(b: &Backend, kind: Kind, id: u64, secret: String, to: impl Fn(Box<d
         });
         return conv;
     };
-    let exe = std::env::current_exe().unwrap_or_else(|_| "/proc/self/exe".into());
+    // (/proc/self/exe, not current_exe(): once an update or a deploy replaces
+    // the binary on disk, current_exe() reads "<path> (deleted)" and the
+    // helper can't start, so no password could be checked until the shell
+    // restarted (17 Nov: a locked screen after sleep said "Couldn't check your
+    // password" until a reboot). /proc/self/exe runs this process's own file
+    // even when it's been replaced.)
+    let exe = std::path::PathBuf::from("/proc/self/exe");
     let mut cmd = Command::new(exe);
     cmd.arg("--pam-helper").arg(&service);
     if let Some(d) = &dir {

@@ -143,7 +143,8 @@ impl Service for LoginScreen {
         // (TESSERA_GREETER_MOCK: the password "tessera" "logs in", Escape quits);
         // the QML one only if it can't start
         let look = if h.st.shell.look.material { "material" } else { "glass" };
-        let me = std::env::current_exe().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+        // (" (deleted)": an update replaced this binary; the new one at that path previews just as well)
+        let me = std::env::current_exe().map(|p| p.to_string_lossy().trim_end_matches(" (deleted)").to_string()).unwrap_or_default();
         let rust = (!me.is_empty()).then(|| {
             vec!["env".to_string(), "TESSERA_GREETER_MOCK=1".into(), format!("TESSERA_GREETER_CLOCK24={clock24}"), me, "--greeter".into(), "--style".into(), style, "--look".into(), look.into()]
         });

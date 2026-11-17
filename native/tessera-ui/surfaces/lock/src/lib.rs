@@ -1338,7 +1338,8 @@ impl Lock {
                         crate::shell::tell(NAME, serde_json::json!({"sound": "error"}));
                         self.check_lockout(st);
                     }
-                    Outcome::Error(_) => {
+                    Outcome::Error(why) => {
+                        eprintln!("tessera-ui: lock: password check couldn't run: {why}");
                         self.error = "Couldn't check your password. Try again.".into();
                         self.error_count += 1;
                     }
