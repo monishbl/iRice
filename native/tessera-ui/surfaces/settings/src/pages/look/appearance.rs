@@ -95,6 +95,8 @@ fn read_os_release() -> (String, String) {
 }
 
 pub fn appearance(cx: &mut Ctx, p: &mut Page) {
+    // "Glass effect is off", first, while the plugin isn't working
+    super::glassplugin::top(cx, p);
     let h24 = cx.b("appearance.clock24");
     let wall = wallpaper_path(cx);
     let wall_img = if wall.is_empty() { None } else { cx.picture(&wall, 640, 400) };
@@ -425,6 +427,7 @@ pub fn nearest(values: &[f32], v: f32) -> i32 {
 
 pub fn glass(cx: &mut Ctx, p: &mut Page) {
     p.title = if cx.material { "Match apps".into() } else { "Glass".into() };
+    super::glassplugin::top(cx, p);
 
     // Material has no glass, so this page keeps only Match apps, and says why
     if cx.material {
@@ -438,8 +441,6 @@ pub fn glass(cx: &mut Ctx, p: &mut Page) {
     let gm = super::super::glass_material(cx);
     let [lens, _frost, solid, _tint] = amounts(cx);
     let tier = super::super::glass_tier(cx);
-    let plugin = feed(cx)["glassPlugin"].as_bool().unwrap_or(cx.shell.plugin);
-    let version = feed(cx)["glassPluginVersion"].as_i64().unwrap_or(0);
     let advanced = cx.local_b("look.glassAdvanced");
     if !cx.material {
         let custom = gm == "custom";
@@ -467,15 +468,12 @@ pub fn glass(cx: &mut Ctx, p: &mut Page) {
         material.opts = options.iter().map(|o| Opt::new(*o)).collect();
         material.index = idx(&values, &gm);
         material.on = advanced;
-        let footer = if lens > 0.5 && !plugin {
-            "Glass needs the tessera-glass Hyprland plugin; until it's built, it looks frosted."
-        } else {
-            match gm.as_str() {
-                "liquid" => "Glass bends whatever is behind it, live, with light catching the edges.",
-                "frosted" => "Frost (the default) blurs what's behind, with a thin lens at the edges: light on the GPU. Glass is the full engine, bending what's behind it live.",
-                "solid" => "Solid turns transparency off, everywhere.",
-                _ => "Your own mix of lens, frost and solid. Advanced… changes it.",
-            }
+        // (without the plugin, the row at the top says so and builds it)
+        let footer = match gm.as_str() {
+            "liquid" => "Glass bends whatever is behind it, live, with light catching the edges.",
+            "frosted" => "Frost (the default) blurs what's behind, with a thin lens at the edges: light on the GPU. Glass is the full engine, bending what's behind it live.",
+            "solid" => "Solid turns transparency off, everywhere.",
+            _ => "Your own mix of lens, frost and solid. Advanced… changes it.",
         };
         let motion = cx.s("appearance.motion");
         let mv = ["subtle", "snappy", "expressive"];
@@ -586,16 +584,8 @@ pub fn glass(cx: &mut Ctx, p: &mut Page) {
         let depth = cx.s("appearance.glassDepth");
         let dv = ["thin", "depth", "auto"];
         let dp = cx.pick("appearance.glassDepth", &dv);
-        let outdated = plugin && (version == 3 || version == 4);
-        let build = cx.on(|cx, _| cx.ask("look", "buildPlugin", Value::Null));
-        let mut glass_row = Row::new("Compositor glass").visible(tier != "solid").detail(if outdated {
-            "An older build. Update it so glass never shows over full-screen apps."
-        } else if plugin {
-            "Active: Hyprland draws the glass"
-        } else {
-            "Not loaded. Build it once (and again after Hyprland updates)."
-        });
-        glass_row = if !plugin || outdated { glass_row.button(if outdated { "Update plugin…" } else { "Build plugin…" }, build).primary() } else { glass_row.ctl("look", "check", String::new()) };
+        // (says what the row at the top says, with its buttons)
+        let glass_row = super::glassplugin::compositor_row(cx).visible(tier != "solid");
         let tint = cx.b("appearance.wallpaperTint");
         let tt = cx.toggle("appearance.wallpaperTint");
         let frost_values = [0.0f32, 0.5, 0.75, 0.95];

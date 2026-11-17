@@ -235,6 +235,25 @@ class Run(unittest.TestCase):
         self.assertEqual(builds[0]["step"], "Building the glass plugin")
         self.assertIsNone(builds[0]["fraction"])
         self.assertEqual(json.loads((self.d / "state/tessera/build-progress.json").read_text())["phase"], "done")
+        # (its length is kept beside the progress file: next time there's an ETA and a percent)
+        stats = json.loads((self.d / "state/tessera/tessera-build-stats.json").read_text())
+        self.assertIn("make_s", stats["tessera-glass"])
+
+    def test_make_knows_its_last_length(self):
+        p = bp.Progress("tessera-glass", "make", history={"make_s": 40.0}, now=1000.0, title="the glass plugin")
+        self.assertEqual(p.eta(1016.0), 24.0)
+        self.assertAlmostEqual(p.fraction(1016.0, p.eta(1016.0)), 0.4)
+        # (no history: no claim)
+        q = bp.Progress("tessera-glass", "make", now=1000.0)
+        self.assertIsNone(q.fraction(1016.0, q.eta(1016.0)))
+
+    def test_make_failure_says_the_compilers_error(self):
+        p = bp.Progress("tessera-glass", "make")
+        p.feed_line("In file included from main.cpp:3:")
+        p.feed_line("main.cpp:120:5: error: 'CHyprRenderer' has no member named 'foo'")
+        p.feed_line("error: Hyprland's headers (0.57.2) don't match the running Hyprland (0.57.1)")
+        p.finish(1)
+        self.assertEqual(p.snapshot()["error"], "main.cpp:120:5: error: 'CHyprRenderer' has no member named 'foo'")
 
     def test_the_log_rotates_for_a_new_session(self):
         log = self.d / "state/tessera/build.log"
