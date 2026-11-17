@@ -1,5 +1,7 @@
 # shell/modules/settings/PathField.qml ↔ settings.slint Control `r.control == "path"` (settings.slint:121); model.rs Row::path, Ctx::path_setting / choose_file; lib.rs:762 → host panels.rs:683 `picker.pick`
 
+_Re-checked 17 Nov (B5, parity-settings) against main 18628a5 + the B5 ports: statuses below say what's there now; [12 Nov: …] is the old status._
+
 A path in a text field, with Choose… opening a file chooser.
 
 ## Behaviours
@@ -9,7 +11,7 @@ A path in a text field, with Choose… opening a file chooser.
 | 1 | Field 200 wide (fieldWidth), spacing 8 to the button, both vertically centred (16–23) | path branch: SField `r.width > 0 ? r.width : 200px`, spacing 8 | same |
 | 2 | Commit (Enter / focus out): trim, `~` → $HOME, only when different → picked(p) (26–30) | SField `committed` → act i 1 → model.rs `path_setting` (trim, `~`, compare) | same |
 | 3 | Choose…: FilePicker.pick with folder, title "Choose a folder"/"Choose a file", start = value (folder) or its directory, else `start` ("~"), filter (36–41) | act i 2 → `path_setting` → `choose_file` → lib.rs:762 `["pick", …]` → panels.rs:683 `picker.pick` (reply to settings, the row's action gets i 1) | same |
-| 4 | While any file chooser is open (FilePicker.busy, global): button reads "Choosing…" and is disabled (34–35) | path branch uses `r.busy`; only phone.rs:295 sets `.busy(b("pickerBusy"))`. wallpaper.rs:139–141, 150, 205, network.rs:342–353, accounts.rs:251 don't | **different** (most path rows never show "Choosing…" / stay enabled) |
+| 4 | While any file chooser is open (FilePicker.busy, global): button reads "Choosing…" and is disabled (34–35) | path branch uses `r.busy`; only phone.rs:295 sets `.busy(b("pickerBusy"))`. wallpaper.rs:139–141, 150, 205, network.rs:342–353, accounts.rs:251 don't | **same (ported 17 Nov, B5: busy(pickerBusy) on every path row: wallpaper (5), Wi-Fi certificate and key)** [12 Nov: **different** (most path rows never show "Choosing…" / stay enabled)] |
 | 5 | Field placeholder (25) | SField placeholder | same |
 
 ## Test plan

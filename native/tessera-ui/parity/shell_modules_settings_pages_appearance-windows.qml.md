@@ -1,5 +1,7 @@
 # shell/modules/settings/pages/appearance-windows.qml ↔ surfaces/settings (pages/notify/windowrules.rs `windows`)
 
+_Re-checked 17 Nov (B5, parity-settings) against main 18628a5 + the B5 ports: statuses below say what's there now; [12 Nov: …] is the old status._
+
 Shown as the part "Windows, Stages and Overview" of the Windows & Spaces page
 (map.rs PARTS; alias `appearance/windows` → `windowrules`). Feed:
 `cx.feed["notify"]` (host/shell/src/panels.rs builds it in the standalone
@@ -10,7 +12,7 @@ shell; RustBridgeNotify.qml under QML).
 | # | Behaviour (QML line) | Rust place | Status |
 |---|---|---|---|
 | 1 | Page title "Windows and Overview" (12) | part heading "Windows, Stages and Overview" | same (shown as a part) |
-| 2 | Windows footer: titlebars without plugin / controls (plugin-drawn or not) / titlebars / none texts (17) | windowrules.rs 515–527 | **different (standalone)**: the notify feed has no `decorationsPlugin` / `pluginControls`, so with Title bars it always says "Title bars need the hyprbars plugin…", and with Window controls always the not-plugin text |
+| 2 | Windows footer: titlebars without plugin / controls (plugin-drawn or not) / titlebars / none texts (17) | windowrules.rs 515–527 | **same (fixed before 17 Nov: decorationsPlugin/pluginControls via the wm's settings.feed)** [12 Nov: **different (standalone)**: the notify feed has no `decorationsPlugin` / `pluginControls`, so with Title bars it always says "Title bars need the hyprbars plugin…", and with Window controls always the not-plugin text] |
 | 3 | Gaps Segmented 300 None/Compact/Comfortable, detail (18–27) | 528 | same |
 | 4 | Decorations Segmented 300 None/Window controls/Title bars (28–37) | 529 | same |
 | 5 | Stages group + footer; Segmented 300 Off/On/On with recents; On/recents set strip, all set enabled; details (40–62) | 531–548 | same |
@@ -18,7 +20,7 @@ shell; RustBridgeNotify.qml under QML).
 | 7 | More options → Windows: Window transparency Segmented 300 Off/Subtle/More/Custom + detail (84–96) | 562–568 | same |
 | 8 | Custom: Focused window / Other windows sliders 220, 0.6–1, rounded 0.01, detail "NN% opaque" (97–113) | 569–575 | same |
 | 9 | Window tabs Segmented 300 Hyprland/Tessera, detail (+ "(needs the glass plugin…)" without the plugin) (114–124) | 577–585 | same |
-| 10 | hyprbars plugin row (titlebars, plugin not loaded): "Install…" accent pill (Material 40, Glass 28) → Decorations.installPlugin (125–135) | 586–587, host `installHyprbars` | **different (standalone)**: shows whenever Title bars is chosen, even with hyprbars loaded (same missing `decorationsPlugin`) |
+| 10 | hyprbars plugin row (titlebars, plugin not loaded): "Install…" accent pill (Material 40, Glass 28) → Decorations.installPlugin (125–135) | 586–587, host `installHyprbars` | **same (fixed before 17 Nov: same feed)** [12 Nov: **different (standalone)**: shows whenever Title bars is chosen, even with hyprbars loaded (same missing `decorationsPlugin`)] |
 | 11 | More options → Overview: With several displays Segmented 260 "A row per display"/"Each its own" + details; Show the wallpaper in spaces switch; Window previews Segmented 260 Snapshot/Hybrid/Live + details (137–170) | 593–613 | same |
 
 ## Test plan (both looks)

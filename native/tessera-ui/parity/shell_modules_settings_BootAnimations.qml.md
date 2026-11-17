@@ -1,5 +1,7 @@
 # shell/modules/settings/BootAnimations.qml ↔ surfaces/settings (src/pages/look/lock.rs 154–217, ui/settings-look.slint `BootCards` 634–718)
 
+_Re-checked 17 Nov (B5, parity-settings) against main 18628a5 + the B5 ports: statuses below say what's there now; [12 Nov: …] is the old status._
+
 Lock & Login Screen → Starting up → the boot animation cards (both looks).
 Choices: "System (<OS>'s)", each BootSplash design (thumbnail
 assets/plymouth/thumbnails/<id>.png), "None (text)". Picking one →
@@ -16,10 +18,10 @@ BootSplash.set (password, then about a minute's rebuild).
 | 5 | Design: thumbnail at 1 px margins, PreserveAspectCrop, sourceSize 320×200, async (53–61) | 174–177 `cx.picture(..,320,200)` (decoded off the UI thread); slint `image-fit: cover` | same |
 | 6 | System: the distribution's logo (IconLookup osLogo ‖ distributor-logo, fallback computer) 36×36 centred (62–71) | 170 `theme_icon([os_logo, "distributor-logo", "computer"])`; slint 672–677 | same |
 | 7 | None: "Starting…\n[  OK  ] Network\n[  OK  ] Bluetooth", #94949D, mono 9, lineHeight 1.2, left 10, vertically centred (72–80) | slint 679–685 | same at a glance (line height 1.0 in Slint) |
-| 8 | Being set (pending == id): black 50 % over the thumb + **Spinner 24 px, #EDEDEF**, centred (81–91) | slint 687–690 `Busy {}` | **different**: core Busy is 40 px in Material and its Glass glyph is Theme.tertiary, not #EDEDEF; use a 24 px spinner in #EDEDEF (e.g. Busy with a size/colour input, or the SG.notch glyph rotating as SButton's busy) |
+| 8 | Being set (pending == id): black 50 % over the thumb + **Spinner 24 px, #EDEDEF**, centred (81–91) | slint 687–690 `Busy {}` | **same (fixed before 17 Nov: 24 px #EDEDEF spinner glyph)** [12 Nov: **different**: core Busy is 40 px in Material and its Glass glyph is Theme.tertiary, not #EDEDEF; use a 24 px spinner in #EDEDEF (e.g. Busy with a size/colour input, or the SG.notch glyph rotating as SButton's busy)] |
 | 9 | Hover: white at 6 % over the thumb (usable, not chosen), Theme.motion.hover fade (92–98) | slint 691–695 `animate background { SM.hover }` | same |
 | 10 | Chosen ring: outside the thumb, −5 (M) / −4 (G), radius thumb − margin, 3 px m3 primary / 2 px accent (100–109) | slint 645–653 | same |
-| 11 | **Keyboard: each card is in the Tab order (activeFocusOnTab), Space / Return → BootSplash.set; FocusRing around the thumb (radius + 4); a click also focuses the card** (37–42, 110, 126) | — | **missing**: no focus, no keys, no focus ring on the cards |
+| 11 | **Keyboard: each card is in the Tab order (activeFocusOnTab), Space / Return → BootSplash.set; FocusRing around the thumb (radius + 4); a click also focuses the card** (37–42, 110, 126) | — | **same (fixed before 17 Nov: BootCards: a FocusScope per card (Space/Return → set), SFocusRing round the thumb, a click focuses)** [12 Nov: **missing**: no focus, no keys, no focus ring on the cards] |
 | 12 | Accessible radio buttons: name, checked (38–40) | slint 643–646 | same |
 | 13 | Name under the thumb (+8): centred, elided, chosen → label colour weight Medium, else secondary Normal; 14 (M) / small (G) (111–119) | slint 699–708 | same |
 | 14 | MouseArea: hover, pointing hand only when usable; click → set (even when not usable: BootSplash refuses) (120–129) | slint 709–712 | same |

@@ -1,5 +1,7 @@
 # shell/modules/settings/pages/sound.qml ↔ surfaces/settings (pages/devices/sound.rs, ui/settings-devices.slint `level` / `check`)
 
+_Re-checked 17 Nov (B5, parity-settings) against main 18628a5 + the B5 ports: statuses below say what's there now; [12 Nov: …] is the old status._
+
 Devices and volumes: tessera-ui's own sound-server reading (core services/audio.rs,
 `cx.want("audio")`), set there too (Cmd::Sink/SourceVolume, Mute, DefaultSink/Source).
 AirPlay / Needs from RustBridgeDevices.qml `feed.airplay`, `feed.needs`, `healthFixing`,
@@ -13,9 +15,9 @@ AirPlay / Needs from RustBridgeDevices.qml `feed.airplay`, `feed.needs`, `health
 | 2 | Live levels/mute (PwObjectTracker) (19–21) | `cx.want("audio")` → rebuild on change | same |
 | 3 | On show: AirPlay.check() (22) | bridge onPageChanged "sound" | same |
 | 4 | Level: IconButton (speaker-high/-x, microphone/-slash) toggles mute (29–34) | sound.rs `level` 42–71, slint `level` GhostIcon 800–809 | same |
-| 5 | Level IconButton: Tab focus + FocusRing, Space/Enter, Material press radius → 8 (150 ms OutCubic), hover/press colour animated, ElasticControl (common/IconButton.qml 19–56) | slint GhostIcon 43–59 | **different**: no keyboard focus/ring, no Material pressed radius, no colour animation, no press swell |
+| 5 | Level IconButton: Tab focus + FocusRing, Space/Enter, Material press radius → 8 (150 ms OutCubic), hover/press colour animated, ElasticControl (common/IconButton.qml 19–56) | slint GhostIcon 43–59 | **same (fixed before 17 Nov: GhostIcon FocusScope, Material radius 8 pressed, animated colours)** [12 Nov: **different**: no keyboard focus/ring, no Material pressed radius, no colour animation, no press swell] |
 | 6 | Level Slider 200 wide; moving it hushes the OSD, unmutes, sets the volume (35–47) | sound.rs 55–64 (`audio.hush`, Mute false, Volume) | same |
-| 7 | Slider accessible name "Output volume" / "Input volume" (39) | SSlider label = row label ("Volume" / "Input volume") | different (a11y name only: output says "Volume") |
+| 7 | Slider accessible name "Output volume" / "Input volume" (39) | SSlider label = row label ("Volume" / "Input volume") | **different (a11y name only, remaining): the output slider's name is "Volume"** [12 Nov: different (a11y name only: output says "Volume")] |
 | 8 | Output group: "Volume" row, detail = default sink's name (description ‖ nickname ‖ name) (55–59) | sound.rs 82–84, `audio::list_name` | same |
 | 9 | One row per output: name, "AirPlay" detail for raop_sink.*; "Use" button, or an accent check (24 Material / 16 Glass) on the one in use (60–79) | sound.rs 85–95, slint `check` 849–853 | same |
 | 10 | Output footer about AirPlay delay when speakers > 0 (54) | sound.rs 96–98 | same |

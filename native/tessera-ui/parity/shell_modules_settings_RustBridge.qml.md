@@ -1,5 +1,7 @@
 # shell/modules/settings/RustBridge.qml ↔ host/shell/src/panels.rs (sync settings block 417–470, settings_call 669–717), bridges.rs settings_act/look_feed (85–200), picker reply (bridges.rs 1036)
 
+_Re-checked 17 Nov (B5, parity-settings) against main 18628a5 + the B5 ports: statuses below say what's there now; [12 Nov: …] is the old status._
+
 The router between Panels and the Rust Settings window. In the QML shell it forwards
 Panels.settingsOpen / .settingsPage / .settingsTarget as `open` / `page` / `close`
 commands, answers the window's `close`, `page`, `pick` and `act` calls, and hands `act`
@@ -22,8 +24,8 @@ other groups.
 | 8 | Call `pick` [row id, folder, title, start, filter] → FilePicker, answer `{picked:{id,path}}` (75–78) | panels.rs 683 → `picker.pick` reply "settings"; bridges.rs 1036 tells `{"picked":{id,path}}` | same |
 | 9 | Call `act` [group, what, …] → the group's `act` (80–86); unknown group warns (85) | panels.rs 694–713: look/notify → bridges::settings_act; devices/input → `<g>.act`; accounts → `accounts`; about/system → `<g>.<what>` | same (routing); each group's own gaps are in its parity file |
 | 10 | Unknown call warns (88–89) | panels.rs 715 | same |
-| 11 | Each group bridge tells its own `feed` when it changes (95–101, the groups' onFeedChanged) | look/notify: panels.rs 455–470 (diffed, every sync); devices/input/accounts/system/about: their services (polled 250 ms / 300 ms / 1 s / 400 ms / 400 ms) | **different**: polled instead of live signals (acceptable); and see 12 |
-| 12 | Every page-group field that only the shell knows is in the feed (the groups' `feed`) | panels.rs 180 `feeds` map + `settings.feed` [group, patch] handler (604–611, 685–692) | **missing**: no crate ever asks `settings.feed`, so `feeds` is always empty and the look/notify feeds carry only bridges.rs/panels.rs's own fields (see RustBridgeLook/Notify parity files) |
+| 11 | Each group bridge tells its own `feed` when it changes (95–101, the groups' onFeedChanged) | look/notify: panels.rs 455–470 (diffed, every sync); devices/input/accounts/system/about: their services (polled 250 ms / 300 ms / 1 s / 400 ms / 400 ms) | **intentional: polled and diffed (sent only when changed)** [12 Nov: **different**: polled instead of live signals (acceptable); and see 12] |
+| 12 | Every page-group field that only the shell knows is in the feed (the groups' `feed`) | panels.rs 180 `feeds` map + `settings.feed` [group, patch] handler (604–611, 685–692) | **same (fixed before 17 Nov: settings.feed is asked by desktop wm + notif, boot_splash, login_screen, network_alerts)** [12 Nov: **missing**: no crate ever asks `settings.feed`, so `feeds` is always empty and the look/notify feeds carry only bridges.rs/panels.rs's own fields (see RustBridgeLook/Notify parity files)] |
 | 13 | After the surfaces restart (`ready`) Settings is re-opened where it was | panels.rs 506–511 `sent_settings = None` | same |
 | 14 | The page goes to the groups that react to it (devices, system, about read Panels.settingsPage) | panels.rs 448–453 `<g>.page` for devices, system, about | same |
 

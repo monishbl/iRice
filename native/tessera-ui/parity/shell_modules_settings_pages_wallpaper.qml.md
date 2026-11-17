@@ -1,5 +1,7 @@
 # shell/modules/settings/pages/wallpaper.qml ↔ surfaces/settings (pages/look/wallpaper.rs, ui/settings-look.slint wallpaper-preview / sets / wallpaper-grid)
 
+_Re-checked 17 Nov (B5, parity-settings) against main 18628a5 + the B5 ports: statuses below say what's there now; [12 Nov: …] is the old status._
+
 Page id `wallpaper`. Setters: host/shell/src/bridges.rs `wallpaper_set`,
 `wallpaper_use_set` (Wallpaper.qml's `set`, `useSet`).
 
@@ -14,7 +16,7 @@ Page id `wallpaper`. Setters: host/shell/src/bridges.rs `wallpaper_set`,
 | 5 | Dynamic group: footer per mode; Change automatically Segmented 300 Off/Time of day/Light & dark (108–121) | 123–135 | same |
 | 6 | Pictures (time): folder PathField, placeholder "Built-in set", start ~/Pictures, detail (122–133) | 136–139 | same |
 | 7 | Light picture / Dark picture (appearance): file PathFields, placeholders "Built-in day"/"Built-in dusk", images filter, start ~/Pictures (134–155) | 140–141 | same |
-| 8 | Live wallpaper: footer; Video PathField (placeholder ~/Videos/wallpaper.mp4, videos filter, start ~/Videos); detail "Couldn't read this video. Check the path, or install ffmpeg." when a video is set but has no poster, else "An .mp4, .webm or .mkv file" (158–173) | 143–150 | **different (standalone)**: `look_feed` sends no `livePoster`, so any set video shows the "Couldn't read this video" detail |
+| 8 | Live wallpaper: footer; Video PathField (placeholder ~/Videos/wallpaper.mp4, videos filter, start ~/Videos); detail "Couldn't read this video. Check the path, or install ffmpeg." when a video is set but has no poster, else "An .mp4, .webm or .mkv file" (158–173) | 143–150 | **same (fixed before 17 Nov: poster made when missing)** [12 Nov: **different (standalone)**: `look_feed` sends no `livePoster`, so any set video shows the "Couldn't read this video" detail] |
 | 9 | Login screen group: footer status or "Install the Tessera login screen with ./install.sh --greeter." (installed = /usr/share/tessera or /usr/share/irice) (176–189) | 152–159 | same |
 | 10 | "Use this wallpaper on the login screen" (installed only): detail by root helper; button "Use wallpaper" (Material 40 tonal, Glass 28 fill); in the sandbox only the status "Sandbox: would copy…"; else root helper or pkexec cp; status texts (190–225) | 160–163, host `look.loginWallpaper` (bridges.rs 928–948) | same |
 | 11 | Picture grid: the folder's pictures (jpg/jpeg/png/webp/JPG/PNG, by name) then the bundled .jpg; 3 a row, (page−24)/3 wide 16:9, 12 apart, radius 16/10, 3 px accent border on the current; click → Wallpaper.set; pointing hand (228–274) | 165–199, `Grid` | same (list read once while Settings is open; QML's FolderListModel also shows files added while the page is open) |

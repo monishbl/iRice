@@ -1,5 +1,7 @@
 # shell/modules/settings/SettingsMaterial.qml ↔ surfaces/settings/ui/settings.slint (Theme.material)
 
+_Re-checked 17 Nov (B5, parity-settings) against main 18628a5 + the B5 ports: statuses below say what's there now; [12 Nov: …] is the old status._
+
 Settings' Material look: the list pane (search pill, pages in tonal circles,
 the open one on a pill that springs there) and the page pane (top app bar,
 large headline, the page).
@@ -26,7 +28,7 @@ large headline, the page).
 | 16 | ScrollIndicator on the list: shown while scrolling (900 ms) or hovered, fades 150/400 ms; drag/click to move (424–427; ScrollIndicator.qml) | `ScrollBar` | **fixed in batch 1** (was a bar always shown when the list overflowed, no hover/drag) |
 | 17 | Top bar 64 px: surface, surfaceContainer once scrolled (150 ms); back/forward 40 px icon buttons at 0.38 when unusable; title (22 px) fades in when the headline has scrolled under (150 ms) (436–472) | `toolbar`, `arrows`, Material title | same |
 | 18 | Page column min(880, width−64) centred, 4 px down; crumb on subpages (primary, hover onSurface) goes up; headline 32 px Medium, 24 below (479–520) | `page` VerticalLayout, crumb, headline | same |
-| 19 | The page: a Loader made anew on every page; content scrolled to 0; then reveal (522–530) | `pages` + `PageView` (kept, 8), `page-changed()` → content-y 0, reveal timer | different by design (kept pages: instant when going back) |
+| 19 | The page: a Loader made anew on every page; content scrolled to 0; then reveal (522–530) | `pages` + `PageView` (kept, 8), `page-changed()` → content-y 0, reveal timer | **intentional: pages kept, by design** [12 Nov: different by design (kept pages: instant when going back)] |
 | 20 | Flash: primary 16 % + 2 px primary ring, 150 in / 900 hold / 400 out (534–548) | `Flash` | same |
 | 21 | ScrollIndicator on the page (550–553) | `ScrollBar` | fixed in batch 1 (see 16) |
 

@@ -1,5 +1,7 @@
 # shell/modules/settings/pages/google.qml ↔ surfaces/settings (src/pages/accounts/accounts.rs `google`, `drive_group`)
 
+_Re-checked 17 Nov (B5, parity-settings) against main 18628a5 + the B5 ports: statuses below say what's there now; [12 Nov: …] is the old status._
+
 The Google part of Accounts (page `accounts`, heading "Google"; old link
 `google`). Data: RustBridgeAccounts.qml feed `google`, `drives`, `needs`;
 actions `googleRun`, `googleConnect`, `googleEvent`, `googleTasks`,
@@ -28,10 +30,10 @@ DriveGroup.qml (Google Drive folder) is listed here too.
 | 16 | Drive row with rclone: label "~/<folder>" / "Google Drive as a folder"; detail Working… / Connected / Connected · not mounted / Not connected; buttons Open (folder-open, mounted), Mount (busy working), Disconnect (danger), "Connect Google Drive"/"Waiting for the browser…", Cancel while connecting; disabled while drives busy (DriveGroup 34–73) | 446–467 | same |
 | 17 | More options › "Calendars": "Quick add uses" Dropdown 260 of identities (>1 account) → quickAccount (218–232); group folds away when hidden | 214–227 | same |
 | 18 | More › "Advanced": switch "Use your own OAuth client" (page-local, starts off) (235–243) | 230–234, 250 | same (but see #22) |
-| 19 | "Client file" (advanced): detail Imported / "The JSON file…"; PathField: field placeholder "client_secret_….json" commits on Enter/blur (~ expanded) → configure; "Choose…" → chooser "Choose a file" in ~/Downloads, filter OAuth client|*.json; **"Choosing…" and disabled while the picker is open** (244–254; PathField.qml 21–45) | 236–251 `.path(..)` | **different**: no `.busy(..)` on the row, so the button never says "Choosing…"/disables (the feed has no picker-busy flag) |
+| 19 | "Client file" (advanced): detail Imported / "The JSON file…"; PathField: field placeholder "client_secret_….json" commits on Enter/blur (~ expanded) → configure; "Choose…" → chooser "Choose a file" in ~/Downloads, filter OAuth client|*.json; **"Choosing…" and disabled while the picker is open** (244–254; PathField.qml 21–45) | 236–251 `.path(..)` | **same (fixed before 17 Nov: busy(pickerBusy) on Client file)** [12 Nov: **different**: no `.busy(..)` on the row, so the button never says "Choosing…"/disables (the feed has no picker-busy flag)] |
 | 20 | "Connect with your client" (advanced): "Connect Google account", disabled while busy or not configured → run connect (255–263) | 248, 252 | same |
 | 21 | One "Remove Tessera's copy[ of identity]" row per account, "Remove local data" disabled while busy → forget (264–273); footer only while advanced (238) | 254–261 | same |
-| 22 | Page-local state (advanced, chosen, quickAccount, typed event) starts over each time the page loads (Settings' page Loader) | lib.rs 511/579 keep `acct.google.*` | **different**: Advanced stays on, typed text kept after leaving the page |
+| 22 | Page-local state (advanced, chosen, quickAccount, typed event) starts over each time the page loads (Settings' page Loader) | lib.rs 511/579 keep `acct.google.*` | **same (fixed before 17 Nov: acct.* in PAGE_TRANSIENT)** [12 Nov: **different**: Advanced stays on, typed text kept after leaving the page] |
 
 ## Test plan
 

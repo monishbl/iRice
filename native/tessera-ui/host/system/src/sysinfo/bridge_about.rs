@@ -505,6 +505,12 @@ impl About {
                     h.ask("launch.open", json!([u]));
                 }
             }
+            // a link in the update notes (Launch.openLink: web links only)
+            "openLink" => {
+                if a0s.starts_with("https://") || a0s.starts_with("http://") {
+                    h.ask("launch.openLink", json!([a0s]));
+                }
+            }
             // About
             "welcome" => h.ask("welcome.request", json!([])),
             "focusReload" => h.ask("focus.reload", json!([])), // (a restore wrote the Focus modes)

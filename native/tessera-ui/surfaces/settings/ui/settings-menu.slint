@@ -22,6 +22,9 @@ export component SettingsMenu inherits Window {
     // chosen one in the tertiary container (Material); an 11 px check, the
     // body size for every look
     in property <bool> dropdown;
+    // a row's right-click menu (PointerMenu → ContextMenu.qml): 28 px rows,
+    // 11 px separators, labels at 12 (28 beside a tick), the body size
+    in property <bool> at-pointer;
     callback pick(int);
     callback dismiss();
     background: transparent;
@@ -101,7 +104,7 @@ export component SettingsMenu inherits Window {
                 for it[i] in items: VerticalLayout {
                 // (a separator above: the item's num is 1)
                 if it.num > 0.5: Rectangle {
-                    height: 9px;
+                    height: root.at-pointer ? 11px : 9px;
                     Rectangle {
                         x: 8px;
                         width: parent.width - 16px;
@@ -123,21 +126,21 @@ export component SettingsMenu inherits Window {
                     property <color> ink: Theme.material ? (it.off ? Theme.m3-on-surface.with-alpha(0.38) : it.on ? Theme.m3-on-tertiary-container : it.style == 2 ? Theme.m3-error : Theme.m3-on-surface)
                         : lit ? Theme.on-accent : it.off ? Theme.tertiary : it.style == 2 ? Theme.danger : Theme.label;
                     if it.on || it.icon.p != "": SIcon {
-                        x: root.dropdown ? (Theme.material ? 8px : 6px) : Theme.material ? 12px : 8px;
+                        x: root.at-pointer ? 10px : root.dropdown ? (Theme.material ? 8px : 6px) : Theme.material ? 12px : 8px;
                         g: it.on ? SG.check : it.icon;
-                        bold: it.on && (!Theme.material || root.dropdown);
-                        size: root.dropdown ? 11px : Theme.material ? 20px : 12px;
+                        bold: it.on && (!Theme.material || root.dropdown || root.at-pointer);
+                        size: root.dropdown ? 11px : root.at-pointer ? 12px : Theme.material ? 20px : 12px;
                         color: parent.ink;
                     }
                     Text {
-                        x: root.dropdown ? (Theme.material ? 28px : 24px) : Theme.material ? 44px : 28px;
+                        x: root.at-pointer ? (it.on || it.icon.p != "" ? 28px : 12px) : root.dropdown ? (Theme.material ? 28px : 24px) : Theme.material ? 44px : 28px;
                         width: parent.width - self.x - 8px;
                         height: parent.height;
                         vertical-alignment: center;
                         overflow: elide;
                         text: it.text;
                         color: parent.ink;
-                        font-size: Theme.material && !root.dropdown ? 14px : Theme.body;
+                        font-size: Theme.material && !root.dropdown && !root.at-pointer ? 14px : Theme.body;
                         letter-spacing: Theme.material ? 0.1px : 0;
                         accessible-role: AccessibleRole.none;
                     }

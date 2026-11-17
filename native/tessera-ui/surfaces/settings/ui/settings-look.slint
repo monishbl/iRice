@@ -668,6 +668,38 @@ component ClockFaces inherits Rectangle {
         moved => {
             if self.pressed { root.drag = self.mouse-x - root.grab-x; }
         }
+        // A sideways scroll (a trackpad's, a tilt wheel's) moves it, as the
+        // horizontal ListView's Flickable: a face per 15 px, at most one
+        // every 120 ms, and it chooses where it settles. An up/down wheel
+        // isn't its: the page scrolls (checked against the QML in a sandbox)
+        scroll-event(e) => {
+            if abs(e.delta-x) <= abs(e.delta-y) { return reject; }
+            let d = -e.delta-x;
+            // (at either end the page scrolls instead)
+            if (d < 0 && r.index <= 0) || (d > 0 && r.index >= r.data.length - 1) { root.wheel = 0; return reject; }
+            root.wheel += d;
+            if abs(root.wheel) >= 15px && !step-gap.running {
+                let to = max(0, min(r.data.length - 1, r.index + (root.wheel > 0 ? 1 : -1)));
+                root.wheel = 0;
+                step-gap.running = true;
+                SBus.act(r.id, to, 0, "");
+            }
+            wheel-rest.running = false;
+            wheel-rest.running = true;
+            accept
+        }
+    }
+    property <length> wheel;
+    // (a pause between scrolls starts the count again)
+    wheel-rest := Timer {
+        interval: 400ms;
+        running: false;
+        triggered => { root.wheel = 0; self.running = false; }
+    }
+    step-gap := Timer {
+        interval: 120ms;
+        running: false;
+        triggered => { self.running = false; }
     }
 }
 

@@ -1,5 +1,7 @@
 # shell/modules/settings/SubpageLink.qml ↔ settings.slint RowView (kind "link"); model.rs Row::link, Ctx::link / go; lib.rs go
 
+_Re-checked 17 Nov (B5, parity-settings) against main 18628a5 + the B5 ports: statuses below say what's there now; [12 Nov: …] is the old status._
+
 A row that opens a subpage (or another page, scrolled to its `target` row, which flashes).
 
 ## Behaviours
@@ -12,10 +14,10 @@ A row that opens a subpage (or another page, scrolled to its `target` row, which
 | 4 | Material: the Group's tile and hover layer draw it (10–11) | RowView Material tile | same |
 | 5 | Icon 24 / 18 secondary; gap to text 16 / 10; no icon: text at 20 / 14 (38–48) | RowView `has-icon` (link sizes) | same |
 | 6 | Label 16 / body; detail 14 / caption secondary (50–64) | RowView Texts | same |
-| 7 | Text to the tail: 12 px in both looks (48, `rightMargin: 12`) | settings.slint:318 label `padding-right: … (Theme.material ? 16px : 12px)` | **different** (Material 16 vs 12) |
+| 7 | Text to the tail: 12 px in both looks (48, `rightMargin: 12`) | settings.slint:318 label `padding-right: … (Theme.material ? 16px : 12px)` | **same (fixed before 17 Nov: text column padding-right 12 for links; tail 16/12 as SubpageLink.qml 68)** [12 Nov: **different** (Material 16 vs 12)] |
 | 8 | Tail: value (14 / body, secondary), then caret-right 24 Material / 12 bold Glass, tertiary; spacing 8 / 6; right margin 16 / 12 (66–84) | RowView `if link` HorizontalLayout | same |
 | 9 | Pointing-hand cursor (89) | `mouse-cursor: link ? pointer` | same |
-| 10 | Keyboard: Tab reaches it (activeFocusOnTab), Return opens it (92–93) | none: a link row has no FocusScope | **missing** |
+| 10 | Keyboard: Tab reaches it (activeFocusOnTab), Return opens it (92–93) | none: a link row has no FocusScope | **same (fixed before 17 Nov: link rows: FocusScope (Return/Space), SFocusRing)** [12 Nov: **missing**] |
 | 11 | Accessible: Link, label, detail as description (94–96) | settings.slint:360 Rectangle: role button, label, description, default action | same at a glance (button role, Slint has no link role) |
 
 ## Test plan

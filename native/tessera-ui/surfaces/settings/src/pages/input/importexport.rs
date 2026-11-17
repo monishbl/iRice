@@ -100,7 +100,7 @@ pub fn block(cx: &mut Ctx, p: &mut Page, scope: &str, sections: &[&str], title: 
     if !error.is_empty() {
         let sc = scope.to_string();
         let x = cx.on(move |cx, _| cx.ask(G, "ie", json!([sc, "dismiss"])));
-        p.group("").row(Row::new("Couldn't import or export").detail(error).buttons(vec![btn("").icon("x")], x));
+        p.group("").row(Row::new("Couldn't import or export").detail(error).buttons(vec![btn("").icon("x").detail("Dismiss")], x));
     }
     let status = st["status"].as_str().unwrap_or("").to_string();
     let preview = st["preview"].clone();

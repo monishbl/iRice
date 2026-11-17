@@ -1,5 +1,7 @@
 # shell/modules/settings/RustBridgeInput.qml ↔ host/system/src/input/input_bridge.rs (Input service: feed 245–289, act 310–475, call 545–660), keymap.rs, mouse.rs; host/desktop screen/dictation.rs, screen/service.rs
 
+_Re-checked 17 Nov (B5, parity-settings) against main 18628a5 + the B5 ports: statuses below say what's there now; [12 Nov: …] is the old status._
+
 The "input" page group (Mouse & Trackpad, Gestures, Keyboard shortcuts, Dictation, Live Text).
 The Input service owns Keymap's files and the import/export state and sends the feed every
 300 ms while `input.live`. Mice come from bus "mouse" (same crate); Dictation and Live Text
@@ -14,9 +16,9 @@ Feed (QML 25–57):
 |---|---|---|---|
 | 1 | `mice`, `touchpads`, `boundaryAvailable` (26–28) | input_bridge.rs 266, 280 (bus "mouse", mouse.rs 210–212) | same |
 | 2 | `keymap` {ready, defaultsError, userError, saveError, modKey, hyprDir, threeFingerDrag, binds[…], gestures[…], gestureDefaults[…]} (29–40) | 247–264, 281–284 | same |
-| 3 | `dictation` {hasBinary, ready, installing, installError, models, downloading, downloadProgress, downloadError, lastDownload} (41–51) | 267, 285 (bus "dictation" never put) | **missing**: all defaults (no binary, no models); read `h.state("dictation")` (desktop dictation.rs 126–137: models are `info.models`; it has no `installError`/`lastDownload`) |
+| 3 | `dictation` {hasBinary, ready, installing, installError, models, downloading, downloadProgress, downloadError, lastDownload} (41–51) | 267, 285 (bus "dictation" never put) | **same (fixed before 17 Nov: h.state("dictation"))** [12 Nov: **missing**: all defaults (no binary, no models); read `h.state("dictation")` (desktop dictation.rs 126–137: models are `info.models`; it has no `installError`/`lastDownload`)] |
 | 4 | `tools` {ready, swappy, wtype} (52) | 286 (`ready` always true, PATH lookup) | same |
-| 5 | `ocr` {hasTesseract, installing, error, languages} (53) | 268, 287 (bus "screentools" never put) | **missing**: Live Text languages never listed, tesseract "not installed"; desktop screen/service.rs keeps `ocr_languages`, `has_tesseract`, `ocr_installing`, `ocr_install_error` but publishes no state for it |
+| 5 | `ocr` {hasTesseract, installing, error, languages} (53) | 268, 287 (bus "screentools" never put) | **same (fixed before 17 Nov: h.state("ocr"))** [12 Nov: **missing**: Live Text languages never listed, tesseract "not installed"; desktop screen/service.rs keeps `ocr_languages`, `has_tesseract`, `ocr_installing`, `ocr_install_error` but publishes no state for it] |
 | 6 | `updatesRunning` (54) | 288 bus "updates" | same |
 | 7 | `ie` {keys, gestures} import/export states (55, 177–188) | 65–80, 289 (`dialog` from zenity/kdialog on PATH) | same |
 | 8 | Feed told on every change (57) | 291–301, polled every 300 ms (773–777) | same (polled) |

@@ -11,7 +11,7 @@
 // Markdown shows as plain text (links not clickable).
 
 import { Theme } from "@tessera/theme.slint";
-import { SIc, SOpt, SetRow, SBlock, SBus, SG, SM, SIcon, SFocusRing, SSwitch, SSlider, SSegmented, SChoice, SButton, SField, SChip, SSwatch, SFilled } from "settings-kit.slint";
+import { SIc, SOpt, SetRow, SBlock, SBus, SG, SM, SIcon, SFocusRing, SSwitch, SSlider, SSegmented, SChoice, SButton, SField, SChip, SSwatch, SFilled, STip, SWavy } from "settings-kit.slint";
 
 // (no custom blocks in this group: its views are rows)
 export component AboutBlock inherits VerticalLayout {
@@ -23,9 +23,12 @@ component AField {
     in property <string> text;
     in property <string> placeholder;
     in property <string> label;
+    // (focused as it appears: login items' search, about-loginitems.qml 297–300)
+    in property <bool> autofocus;
     callback edited(string);
     callback accepted(string);
     callback escaped();
+    init => { if autofocus { input.focus(); } }
     preferred-width: 240px;
     height: Theme.material ? 40px : 28px;
     if Theme.material: SFilled { active: input.has-focus; hovered: ta.has-hover; }
@@ -251,11 +254,14 @@ export component AboutCtl {
                         vertical-alignment: bottom;
                     }
                 }
-                Text {
-                    text: e.id;
-                    wrap: word-wrap;
-                    color: Theme.label;
-                    font-size: 14px;
+                // (its Markdown: bold, lists, `code`, links in the accent
+                // that open in the browser: UpdateNotes.qml 45–57)
+                StyledText {
+                    text: e.md;
+                    default-color: Theme.label;
+                    default-font-size: 14px;
+                    link-color: Theme.accent-ink;
+                    link-clicked(l) => { SBus.act(r.id, 0, 0, l); }
                 }
             }
             if r.text != "": Text {
@@ -373,24 +379,30 @@ export component AboutCtl {
         }
 
         // ── The steps, the current one bold ──
-        if whole && r.sub == "steps": HorizontalLayout {
+        // (a long list ends in "…" at the row's edge, update.qml 366–378:
+        // the steps shrink from the last, each eliding)
+        if whole && r.sub == "steps": Rectangle {
             height: 30px;
-            padding-left: pad;
-            padding-right: pad;
-            alignment: start;
-            for st[i] in r.data: HorizontalLayout {
-                if i > 0: Text {
-                    text: "  ·  ";
-                    vertical-alignment: center;
-                    color: Theme.secondary;
-                    font-size: Theme.small;
-                }
-                Text {
-                    text: st.text;
-                    vertical-alignment: center;
-                    color: Theme.secondary;
-                    font-size: Theme.small;
-                    font-weight: st.on ? 700 : 400;
+            clip: true;
+            HorizontalLayout {
+                padding-left: pad;
+                padding-right: pad;
+                alignment: start;
+                for st[i] in r.data: HorizontalLayout {
+                    if i > 0: Text {
+                        text: "  ·  ";
+                        vertical-alignment: center;
+                        color: Theme.secondary;
+                        font-size: Theme.small;
+                    }
+                    Text {
+                        text: st.text;
+                        vertical-alignment: center;
+                        overflow: elide;
+                        color: Theme.secondary;
+                        font-size: Theme.small;
+                        font-weight: st.on ? 700 : 400;
+                    }
                 }
             }
         }
@@ -401,47 +413,40 @@ export component AboutCtl {
             padding-left: pad;
             padding-right: pad;
             spacing: 12px;
-            Rectangle {
+            // Material: the wavy bar
+            if Theme.material: VerticalLayout {
+                horizontal-stretch: 1;
+                alignment: center;
+                SWavy { value: r.num < 0 ? -1 : max(0, min(1, r.num)); }
+            }
+            // Glass: a thin rounded bar
+            if !Theme.material: gbar := Rectangle {
                 horizontal-stretch: 1;
                 property <float> v: max(0, min(1, r.num));
-                property <length> stroke: 4px;
-                // track
+                // (not known yet: a short stretch slides there and back,
+                // InOutCubic 900 ms each way, WavyProgress.qml)
+                property <float> u: mod(animation-tick() / 1800ms, 1);
+                property <float> half: u < 0.5 ? u * 2 : 2 - u * 2;
+                property <float> eased: half < 0.5 ? 4 * half * half * half : 1 - (2 - 2 * half) * (2 - 2 * half) * (2 - 2 * half) / 2;
                 Rectangle {
-                    x: Theme.material ? min(parent.width, parent.width * parent.v + 4px + 2px) : 0;
                     y: (parent.height - self.height) / 2;
-                    width: Theme.material ? max(0px, parent.width - self.x) : parent.width;
-                    height: parent.stroke;
+                    height: 4px;
                     border-radius: 2px;
-                    background: Theme.material ? Theme.m3-secondary-container : Theme.toggle-off;
-                    if Theme.material: Rectangle {
-                        x: parent.width - 4px;
-                        width: 4px;
-                        height: 4px;
+                    background: Theme.toggle-off;
+                    clip: true;
+                    if r.num >= 0: Rectangle {
+                        x: 0;
+                        width: parent.width * gbar.v;
                         border-radius: 2px;
-                        background: Theme.m3-primary;
+                        background: Theme.accent;
+                        animate width { duration: 200ms; }
                     }
-                }
-                // done
-                if r.num >= 0: Rectangle {
-                    x: 0;
-                    y: (parent.height - self.height) / 2;
-                    width: parent.width * parent.v;
-                    height: parent.stroke;
-                    border-radius: 2px;
-                    background: Theme.material ? Theme.m3-primary : Theme.accent;
-                    animate width { duration: 200ms; }
-                }
-                // (num < 0: how far isn't known, so a segment sweeps along
-                // the track instead of claiming a percent; a loop: linear)
-                if r.num < 0: Rectangle {
-                    property <float> t: mod(animation-tick() / 1600ms, 1);
-                    property <length> seg: parent.width * 0.3;
-                    x: max(0px, -self.seg + (parent.width + self.seg) * self.t);
-                    y: (parent.height - self.height) / 2;
-                    width: max(0px, min(parent.width, -self.seg + (parent.width + self.seg) * self.t + self.seg) - self.x);
-                    height: parent.stroke;
-                    border-radius: 2px;
-                    background: Theme.material ? Theme.m3-primary : Theme.accent;
+                    if r.num < 0: Rectangle {
+                        x: gbar.eased * (parent.width - parent.width * 0.3);
+                        width: parent.width * 0.3;
+                        border-radius: 2px;
+                        background: Theme.accent;
+                    }
                 }
                 accessible-role: AccessibleRole.progress-indicator;
                 accessible-value: r.num < 0 ? "In progress" : round(self.v * 100) + "%";
@@ -547,11 +552,14 @@ export component AboutCtl {
                             accessible-role: AccessibleRole.button;
                             accessible-label: "Options for " + r.label;
                             accessible-action-default => { SBus.menu(r.text, self.absolute-position.x, self.absolute-position.y, self.width, self.height); }
-                            SIcon { g: SG.dots; size: 16px; color: Theme.tertiary; }
+                            // (the label's colour while its menu is open: about-loginitems.qml 218–225)
+                            property <bool> shown: SBus.menu-shown == r.text && r.text != "";
+                            SIcon { g: SG.dots; size: 16px; color: menu-btn.shown ? Theme.label : Theme.tertiary; }
                             mta := TouchArea {
                                 mouse-cursor: pointer;
                                 clicked => { SBus.menu(r.text, menu-btn.absolute-position.x, menu-btn.absolute-position.y, menu-btn.width, menu-btn.height); }
                             }
+                            STip { text: "Options for " + r.label; hovered: mta.has-hover; }
                         }
                     }
                 }
@@ -703,6 +711,7 @@ export component AboutCtl {
                 text: r.text;
                 placeholder: r.placeholder;
                 label: "Search apps to add";
+                autofocus: true;
                 edited(t) => { SBus.act(r.id, 0, 0, t); }
                 accepted(t) => { SBus.act(r.id, 1, 0, t); }
                 escaped => { SBus.act(r.value, 0, 0, ""); }

@@ -1,5 +1,7 @@
 # shell/modules/settings/pages/notifications-island.qml ↔ surfaces/settings (src/pages/notify/notifications.rs `island`)
 
+_Re-checked 17 Nov (B5, parity-settings) against main 18628a5 + the B5 ports: statuses below say what's there now; [12 Nov: …] is the old status._
+
 The Island subpage (page `notifications/island`, title "Island"). No Popup,
 no Timer.
 
@@ -14,7 +16,7 @@ no Timer.
 | 5 | "network" when NetworkAlerts can't watch: label secondary, detail = reason, switch off and disabled (40–46) | 378–399 (`feed.networkCanWatch/networkReason`, tone 1) | same |
 | 6 | More › "When several are live" Segmented 200 One at a time/All + detail (64–75) | 428–432 | same |
 | 7 | More › "Music player" Segmented 240 Island/Faded/Small: Small → playerLayout side; else playerArt = v, playerLayout overlay; current 2 when side; detail per state (76–94) | 433–443 | same |
-| 8 | More › 12 "… shows" rows, each a **Flow 320 wide of Chips that wraps onto more lines**, chips **not solid** (Glass: on = accent tint with a 1 px accent edge, label colour text; Material filter chips with a tick); checked = Island.shows; click = Island.setShows(kind, piece, !checked) (95–130) | 445–477 `.chips(..).width(320)`, `shows`/`set_shows` (tested) | **different**: the chips control is one HorizontalLayout – no wrapping (Music's 7 chips run far past 320 px and push into the label), `width` ignored, and SChip `solid` is always true (Glass on = solid accent with white text) |
+| 8 | More › 12 "… shows" rows, each a **Flow 320 wide of Chips that wraps onto more lines**, chips **not solid** (Glass: on = accent tint with a 1 px accent edge, label colour text; Material filter chips with a tick); checked = Island.shows; click = Island.setShows(kind, piece, !checked) (95–130) | 445–477 `.chips(..).width(320)`, `shows`/`set_shows` (tested) | **same (fixed before 17 Nov: chips wrap (Row::wrap) 320 wide)** [12 Nov: **different**: the chips control is one HorizontalLayout – no wrapping (Music's 7 chips run far past 320 px and push into the label), `width` ignored, and SChip `solid` is always true (Glass on = solid accent with white text)] |
 | 9 | More › "Running hot at" (on and temperature wanted): slider 70–100 step 1 (220), detail "N °C · the CPU package is M °C now / not reporting", live temperature (131–143) | 479–490 (`feed.temperature`) | same |
 | 10 | More › "Keep the island open", "Volume and brightness in the island" switches + details (only while on) (144–155) | 491–492 | same |
 | 11 | More › "In full screen" Segmented 330 Show alerts/Only important/Compact pill ↔ show/important/compact (Island.fsMode: unknown → show), detail per value (156–169) | 493–507 | same |

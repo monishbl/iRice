@@ -1,5 +1,7 @@
 # shell/modules/settings/pages/displays.qml ↔ surfaces/settings (pages/devices/displays.rs, ui/settings-devices.slint `confirm` / `arrange` / `picker`)
 
+_Re-checked 17 Nov (B5, parity-settings) against main 18628a5 + the B5 ports: statuses below say what's there now; [12 Nov: …] is the old status._
+
 Data: RustBridgeDevices.qml `feed.displays` (Displays.monitors + lw/lh, number,
 scales; confirming/confirmLeft; lowered = CoolDown.savedRates keys), `feed.ddc`,
 `feed.mirroring`, `feed.needs`, `updatesRunning`. Acts: displaysSet / SetMany /
@@ -24,7 +26,7 @@ the Choice + ActionMenu xdg_popup (see shell_modules_settings_ActionMenu.qml.md)
 | 9 | Tile text: number DemiBold max(13, min(28, h·0.3)); label caption when h > 60, elided (192–212) | slint 492–510 | same |
 | 10 | Press on a tile chooses it (219) | TouchArea down → "select\|name" | same |
 | 11 | Drag (only with > 1 placed): open-hand / closed-hand cursor; threshold 4 px; the tile follows the pointer (216–218) | slint 512, `moved` 527–537 | same |
-| 12 | Dragged tile above the others (z 2 while drag.active) (176) | slint tile: no `z` | **different**: a tile dragged over a later one is drawn under it |
+| 12 | Dragged tile above the others (z 2 while drag.active) (176) | slint tile: no `z` | **same (fixed before 17 Nov: z 2 while dragging)** [12 Nov: **different**: a tile dragged over a later one is drawn under it] |
 | 13 | Drop: snap to the nearest free edge, lined up within 120 logical px, then shift so top-left is 0,0; only moved displays sent (Displays.setMany) (109–157, 220–224) | displays.rs `snap`/`drop_at` (unit-tested) + "drop\|…" | same (QML also drops after a ≥ 2 px move that never became a drag; Rust needs > 4 px: no visible difference) |
 | 14 | After drop the tile goes home (binds to the new x/y) (168–171, 223) | dx/dy = 0 on release | same |
 | 15 | Footer: "Drag displays…" (> 1 placed) / "Connect another display to arrange them." (79) | displays.rs 204 | same |

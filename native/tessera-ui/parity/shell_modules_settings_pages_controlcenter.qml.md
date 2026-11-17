@@ -1,5 +1,7 @@
 # shell/modules/settings/pages/controlcenter.qml ↔ surfaces/settings (src/pages/look/menubar.rs `controlcenter`)
 
+_Re-checked 17 Nov (B5, parity-settings) against main 18628a5 + the B5 ports: statuses below say what's there now; [12 Nov: …] is the old status._
+
 Quick Settings, a part of Menu Bar & Dock (`open controlcenter` lands there).
 No Popup, no Timer.
 
@@ -11,7 +13,7 @@ No Popup, no Timer.
 | 2 | "Edit Controls": detail "N controls, arranged by you" / "The default arrangement" (16–17) | 305 | same |
 | 3 | "Edit…" button: accent fill, Material 40 px (+32), Glass 28 px (+24), small DemiBold / 14 Medium, pointing hand; click: Settings closes, Quick Settings opens in edit mode (Panels.settingsOpen=false, ccEditing=true, show controlCenter) (18–33) | `button("Edit…").primary()` → `ask("look","editControls")` → host/shell bridges.rs 119 (and RustBridgeLook.qml 79) | same |
 | 4 | "Panel background" (Glass only): detail "Always on with Solid glass" / "Controls sit on one glass panel" / "Each control is its own glass chip"; switch on when background or tier solid; only the switch disabled with Solid (35–44) | 306–310 `.enabled(!solid)` | same (Rust's row-enabled only reaches the control) |
-| 5 | "Reset to the default layout" only when a layout is saved; its control is a **text link**: "Reset" in accentInk, body size, DemiBold, no background, pointing hand; click → layout [] (45–58) | 311 `button("Reset").minor()` | **different**: Glass minor SButton is a grey fill pill with label-coloured small text; Material minor is a primary text button (40 px, 14 px Medium) – near, but QML is accentInk body DemiBold in both looks |
+| 5 | "Reset to the default layout" only when a layout is saved; its control is a **text link**: "Reset" in accentInk, body size, DemiBold, no background, pointing hand; click → layout [] (45–58) | 311 `button("Reset").minor()` | **same (fixed before 17 Nov: text_link() Reset (menubar.rs))** [12 Nov: **different**: Glass minor SButton is a grey fill pill with label-coloured small text; Material minor is a primary text button (40 px, 14 px Medium) – near, but QML is accentInk body DemiBold in both looks] |
 
 ## Test plan
 

@@ -1,5 +1,7 @@
 # shell/modules/settings/pages/power.qml ↔ surfaces/settings (src/pages/system/power.rs `power`, ui/settings-system.slint `energy`)
 
+_Re-checked 17 Nov (B5, parity-settings) against main 18628a5 + the B5 ports: statuses below say what's there now; [12 Nov: …] is the old status._
+
 Battery & Power. Live values come from the shell: QML reads Power / Backends /
 PowerProfiles / System / ShellPriority directly; Rust reads `feed.system.power`
 (RustBridgeSystem.qml `feed.power` in the QML shell, host/system
@@ -35,7 +37,7 @@ Rust: SChoice → the settings menu (xdg_popup).
 | 20 | Empty: "Nothing has used much energy lately" (212–215) | power.rs:245–247 | same |
 | 21 | Each app: name from its desktop entry (else the ident), detail "N min of CPU" / "N s of CPU", a 120×6 bar (fill / secondary, min 6 px) relative to the top app, Quit (not for bare processes) → Apps.quit (216–248) | power.rs:248–265, `cpu_time` (tested); settings-system.slint:222–253 | same |
 | 22 | Footer: "Off: nothing is recorded." / "CPU time over the last N minutes|hour. …" (196) | power.rs:268–272 | same |
-| 23 | Idle Dropdown keyboard: closed, Up/Down step through the values without opening; Space/Enter/Alt+Down open (common/Dropdown.qml:31–41) | SChoice (settings-kit.slint:590–592): Space/Return/Down open; Up does nothing | **different** (shared control: Down opens instead of stepping; Up/Down don't step) |
+| 23 | Idle Dropdown keyboard: closed, Up/Down step through the values without opening; Space/Enter/Alt+Down open (common/Dropdown.qml:31–41) | SChoice (settings-kit.slint:590–592): Space/Return/Down open; Up does nothing | **same (fixed before 17 Nov: SChoice Up/Down step)** [12 Nov: **different** (shared control: Down opens instead of stepping; Up/Down don't step)] |
 
 ## Test plan (both looks; Material window at 440,205, page column from x≈772)
 

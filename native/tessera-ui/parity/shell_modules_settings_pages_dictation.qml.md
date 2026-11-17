@@ -1,5 +1,7 @@
 # shell/modules/settings/pages/dictation.qml ↔ surfaces/settings (src/pages/input/dictation.rs)
 
+_Re-checked 17 Nov (B5, parity-settings) against main 18628a5 + the B5 ports: statuses below say what's there now; [12 Nov: …] is the old status._
+
 Dictation, a part of Keyboard (page `shortcuts`, PagePart "Dictation"). One
 popup: the Language Dropdown (Rust `Row::choice`). No timers or animations.
 
@@ -7,7 +9,7 @@ popup: the Language Dropdown (Rust `Row::choice`). No timers or animations.
 
 | # | Behaviour (QML line) | Rust place | Status |
 |---|---|---|---|
-| 1 | Dictation.refresh() each time the page is made (Component.onCompleted) (15) | dictation.rs 56–59: ask `dictRefresh` once per `dict.refreshed` local | **different**: once per Settings window (local survives page switches, lib.rs 581); QML refreshes every time Keyboard is opened |
+| 1 | Dictation.refresh() each time the page is made (Component.onCompleted) (15) | dictation.rs 56–59: ask `dictRefresh` once per `dict.refreshed` local | **same (fixed before 17 Nov: dict.refreshed in PAGE_TRANSIENT: refreshed every time the page is made)** [12 Nov: **different**: once per Settings window (local survives page switches, lib.rs 581); QML refreshes every time Keyboard is opened] |
 | 2 | Footer "Press Super+H, speak, then press it again…" (17–19) | 69–70 | same |
 | 3 | "Speech recognition" (only without the binary): detail installError or "Install whisper.cpp…"; label red on an error; primary "Install"/"Installing…" (download-simple), busy while installing, disabled while Updates.running → Dictation.install() (22–35) | 71–75 `.tone(2)`, `.buttons([btn.icon.primary.on.off])`, ask dictInstall | same |
 | 4 | "Typing into apps needs wtype" (binary, Tools ready, no wtype) + detail; "Install"/"Installing…" plain, busy, disabled while updating (36–46) | 76–79 | same |

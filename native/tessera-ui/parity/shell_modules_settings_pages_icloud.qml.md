@@ -1,5 +1,7 @@
 # shell/modules/settings/pages/icloud.qml ↔ surfaces/settings (src/pages/accounts/accounts.rs `icloud`)
 
+_Re-checked 17 Nov (B5, parity-settings) against main 18628a5 + the B5 ports: statuses below say what's there now; [12 Nov: …] is the old status._
+
 The iCloud part of Accounts (heading "iCloud"; old link `icloud`). Data:
 RustBridgeAccounts feed `cloud` (accounts carry their contact count),
 `needs`; actions `cloudSync`, `cloudDisconnect`, `needsInstall`,
@@ -18,7 +20,7 @@ RustBridgeAccounts feed `cloud` (accounts carry their contact count),
 | 7 | "3. App-specific password" TextField 260 secret "abcd-efgh-ijkl-mnop" (74–78) | 311 (secret) | same |
 | 8 | "Sign in to iCloud": primary "Sign in"/"Signing in…" busy while signing here, enabled when not busy and both filled → connectICloud(id.trim, pw); password cleared, Apple ID kept (79–93) | 312–325 | same |
 | 9 | Group "Calendars" (signed in): footer; SubpageLink "Shown calendars" → calendar "From your accounts" (96–109) | 332–337 | same |
-| 10 | Typed Apple ID/password dropped when the page unloads | lib.rs 511/579 keep `acct.icloud.*` | **different** (accounts #6): typed text (incl. the password) survives leaving the page |
+| 10 | Typed Apple ID/password dropped when the page unloads | lib.rs 511/579 keep `acct.icloud.*` | **same (fixed before 17 Nov: acct.* in PAGE_TRANSIENT)** [12 Nov: **different** (accounts #6): typed text (incl. the password) survives leaving the page] |
 
 ## Test plan
 

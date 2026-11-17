@@ -10,7 +10,7 @@
 
 import { Theme } from "@tessera/theme.slint";
 import { Busy } from "@tessera/widgets.slint";
-import { SIc, SOpt, SetRow, SBlock, SBus, SG, SM, SIcon, SFocusRing, SSwitch, SSlider, SSegmented, SChoice, SButton, SField, SChip, SSwatch, SFilled } from "settings-kit.slint";
+import { SIc, SOpt, SetRow, SBlock, SBus, SG, SM, SIcon, SFocusRing, SSwitch, SSlider, SSegmented, SChoice, SButton, SField, SChip, SSwatch, SFilled, SWavy } from "settings-kit.slint";
 
 // Glyphs drawn here (phosphor.js / material-symbols.js codes)
 global DG {
@@ -104,6 +104,10 @@ component ListItem inherits Rectangle {
     height: Theme.material ? (o.detail != "" ? 56px : 48px) : 40px;
     border-radius: Theme.radius-control;
     background: Theme.material ? transparent : ta.pressed ? Theme.fill-pressed : ta.has-hover ? Theme.fill : transparent;
+    // Material: the row swells a little while pressed and springs back
+    // (ListRow's ElasticControl: about 6 %, at most 10 px)
+    transform-scale: Theme.material && ta.pressed ? 1 + min(0.06, 10px / max(self.width, self.height)) : 1;
+    animate transform-scale { duration: ta.pressed ? SM.press : 300ms; easing: ta.pressed ? ease-out : cubic-bezier(0.3, 1.6, 0.5, 1); }
     accessible-role: AccessibleRole.list-item;
     accessible-label: o.text;
     accessible-description: o.detail;
@@ -357,16 +361,18 @@ component SpeedCard inherits VerticalLayout {
             font-size: Theme.display;
             font-weight: 600;
         }
-        Rectangle {
-            height: Theme.material ? 6px : 4px;
+        // (Material: its wavy bar, SpeedTestCard 143–151)
+        if Theme.material: SWavy { value: max(0.02, min(1, r.num)); }
+        if !Theme.material: Rectangle {
+            height: 4px;
             border-radius: self.height / 2;
-            background: Theme.material ? Theme.m3-secondary-container : Theme.fill;
+            background: Theme.fill;
             Rectangle {
                 x: 0;
                 width: parent.width * max(0.02, min(1, r.num));
                 animate width { duration: 250ms; easing: ease-out; }
                 border-radius: parent.border-radius;
-                background: Theme.material ? Theme.m3-primary : Theme.accent;
+                background: Theme.accent;
             }
         }
     }
@@ -806,8 +812,20 @@ export component DevicesCtl inherits VerticalLayout {
     // what's typed, r.style 1 when it's long enough, r.high why Join didn't
     // go ahead. act: the text as it's typed (f 1), "join" (f 2), "other",
     // "cancel" (Esc)
-    if r.sub == "join": Rectangle {
+    if r.sub == "join": join := Rectangle {
         Tile { place: 0; }
+        property <bool> told;
+        // (once laid out: scrolled into view, WifiList.revealAsking 120–129)
+        Timer {
+            interval: 30ms;
+            running: !join.told;
+            triggered => {
+                join.told = true;
+                SBus.ensure-y = join.absolute-position.y;
+                SBus.ensure-h = join.height;
+                SBus.ensure-seq += 1;
+            }
+        }
         VerticalLayout {
             padding-left: 52px;
             padding-right: 14px;
@@ -883,6 +901,12 @@ export component DevicesCtl inherits VerticalLayout {
                     accessible-role: AccessibleRole.button;
                     accessible-label: self.text;
                     accessible-action-default => { SBus.act(r.id, 0, 0, "other"); }
+                    // (underlined while pointed at, WifiList 327–345)
+                    if ota.has-hover: Rectangle {
+                        y: parent.height - 2px;
+                        height: 1px;
+                        background: Theme.accent-ink;
+                    }
                     ota := TouchArea {
                         mouse-cursor: pointer;
                         clicked => { SBus.act(r.id, 0, 0, "other"); }

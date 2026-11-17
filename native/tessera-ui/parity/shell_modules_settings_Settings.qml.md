@@ -1,5 +1,7 @@
 # shell/modules/settings/Settings.qml ↔ surfaces/settings (lib.rs, model.rs)
 
+_Re-checked 17 Nov (B5, parity-settings) against main 18628a5 + the B5 ports: statuses below say what's there now; [12 Nov: …] is the old status._
+
 The window's logic: made on open, history, search, paging, finding a row.
 Batch 1 (page switching smooth and fast) touched the paging and the models.
 
@@ -9,20 +11,20 @@ Batch 1 (page switching smooth and fast) touched the paging and the models.
 |---|---|---|---|
 | 1 | LazyLoader: the window is made when Settings opens, gone when it closes (13–16) | lib.rs `open` → `make_window`, `close` → `drop_window` | same |
 | 2 | Size 1040×700 Material / 860×620 Glass (19–20) | lib.rs `window_size` | same |
-| 3 | minimumSize 840×520 / 720×480 (21) | lib.rs `make_window` (min 0×0) | different: a minimum given before the first frame makes Hyprland open the floating window at its minimum; left out on purpose |
+| 3 | minimumSize 840×520 / 720×480 (21) | lib.rs `make_window` (min 0×0) | **intentional: no minimum size (Hyprland would open the window at it)** [12 Nov: different: a minimum given before the first frame makes Hyprland open the floating window at its minimum; left out on purpose] |
 | 4 | onClosed → Panels.settingsOpen false (23) | `surface_closed` → `close(say)` | same |
 | 5 | Back/forward history, 50 kept, forward cleared on a new page (31–72) | `visit`, `step` (tested: history_like_a_browser) | same |
 | 6 | An older page id goes where it lives now (SettingsMap.aliases) (38, 153–158) | `resolve` (tested) | same |
 | 7 | Panels.settingsTarget → reveal the row (49–55) | `command("page")`, `go` → `rebuild` → M::Reveal | same |
-| 8 | Google sign-in: the window steps aside, back after (74–87) | `message` feed accounts.signingIn → surface hide/show | different: hidden, not minimised (no foreign-toplevel minimise for our own window) |
+| 8 | Google sign-in: the window steps aside, back after (74–87) | `message` feed accounts.signingIn → surface hide/show | **intentional: hidden, not minimised (no foreign-toplevel minimise for our own window)** [12 Nov: different: hidden, not minimised (no foreign-toplevel minimise for our own window)] |
 | 9 | Alt+Left / Alt+Right: back / forward (88–89) | settings.slint `keys` | same |
 | 10 | Search: sections whose name matches first, then index entries, every word must match, 60 at most (91–107) | index.rs `search` | same |
 | 11 | The index: every page's labels/titles/details, read from the page files (108–131) | index.rs `read_pages` + `build`, on a thread | same |
 | 12 | go(page, text): an alias resolved, the target kept, revealed when already on the page (134–145) | `go`, M::Act "search:" / "go:" | same |
 | 13 | reveal(): find the row (retries 12×60 ms), open a closed More options around it, scroll it to 80 px from the top, flash it; a second pass 300 ms later (146–219) | `rebuild` (folded_key_of opens More options) → reveal timer 80 ms → Flash (settings.slint `changed reveal-seq`) | same (one pass: Rust knows the layout once built) |
-| 14 | Mouse Back/Forward buttons (221–224) | — | different: the platform reports extra buttons as one; not told apart |
+| 14 | Mouse Back/Forward buttons (221–224) | — | **intentional: the platform reports extra mouse buttons as one** [12 Nov: different: the platform reports extra buttons as one; not told apart] |
 | 15 | A press outside the search field while typing in it releases its focus (225–236) | settings.slint (TextInput) | not checked in batch 1 |
-| 16 | The look's view in a Loader (238–254): the page itself is a Loader in each view, made anew on every switch | settings.slint `pages` (PageView per kept page) + model.rs `Pages` | different by design: a page once made is kept (8 at most, least recently shown dropped) and shown again at once, then updated in place |
+| 16 | The look's view in a Loader (238–254): the page itself is a Loader in each view, made anew on every switch | settings.slint `pages` (PageView per kept page) + model.rs `Pages` | **intentional: pages kept, by design** [12 Nov: different by design: a page once made is kept (8 at most, least recently shown dropped) and shown again at once, then updated in place] |
 | 17 | (implicit) A page's bindings re-evaluate only what changed | model.rs `Models::apply`/`sync`/`keep`: blocks and rows matched by position, or by key when their number changed; a row's options/pictures lists kept and changed in place | fixed in batch 1 (before: every row's option lists were new models on every build, so every segment, chip and thumbnail was made again on every build, and a group appearing remade the whole page) |
 | 18 | (implicit) Live data updates the page | `data()`: one build per burst of service updates (120 ms) | fixed in batch 1 (before: a whole-page build for every update of every service) |
 | 19 | (implicit) App icons on pages load without holding the window | model.rs `Ctx::icon`/`plain_icon` → lib.rs `Job::Icon` on a thread | fixed in batch 1 (before: Login Items, Window Rules and Shortcuts drew each icon on the UI thread the first time) |

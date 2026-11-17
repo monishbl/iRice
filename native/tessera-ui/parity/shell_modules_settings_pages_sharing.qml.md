@@ -1,5 +1,7 @@
 # shell/modules/settings/pages/sharing.qml ↔ surfaces/settings (src/pages/devices/phone.rs `sharing`)
 
+_Re-checked 17 Nov (B5, parity-settings) against main 18628a5 + the B5 ports: statuses below say what's there now; [12 Nov: …] is the old status._
+
 Sharing, the PagePart of Phone & Sharing (page `phone`). Its processes
 (file-manager-share.py status/install/remove, sharing-check.py status/fix)
 live in RustBridgeDevices.qml for Rust. No popups, timers or animations.
@@ -17,7 +19,7 @@ live in RustBridgeDevices.qml for Rust. No popups, timers or animations.
 | 7 | Group "Android phones (Quick Share)", footer by QuickShare.available (name in quotes) + error (132–137) | 256–265 | same |
 | 8 | "Visible to phones": Segmented 320 ↔ sharing.quickShare; detail by value (138–148) | 266–269 | same |
 | 9 | "Bluetooth": detail by adapter/on (3 texts); "Turn on Bluetooth" (bluetooth) only when available and off → QuickShare.turnOnBluetooth() (149–160) | 270–283 | same |
-| 10 | "Phones ask to pair" (system.pairing.risk): detail with askNote (passwordless → ""); "Stop pairing prompts" (bluetooth), busy while fixing "pairing", disabled while any fix runs → fixSystem("pairing") (161–172) | 284–287 | different (extra): Rust appends the fix's error to the detail; the QML keeps `fixError` but never shows it. Harmless; keep or drop |
+| 10 | "Phones ask to pair" (system.pairing.risk): detail with askNote (passwordless → ""); "Stop pairing prompts" (bluetooth), busy while fixing "pairing", disabled while any fix runs → fixSystem("pairing") (161–172) | 284–287 | **intentional: the fix's error is also shown in the row (the QML shows it elsewhere on the page); harmless extra** [12 Nov: different (extra): Rust appends the fix's error to the detail; the QML keeps `fixError` but never shows it. Harmless; keep or drop] |
 | 11 | "Fast transfers without a shared Wi-Fi": switch on unless quickShareHotspot is false; detail by state (173–182) | 249–250, 288–294 | same |
 | 12 | "Save files to": PathField folder, placeholder "~/Downloads", start "~" (or the folder) → quickShareFolder (183–192) | 251–252, 295 `.path(..)` + `path_setting` | same |
 | 13 | "iPhone and other phones" + detail, "Receive from iPhone" (qr-code) → LinkShare.receive() (194–202) | 296–298 ask `receiveLink` | same |

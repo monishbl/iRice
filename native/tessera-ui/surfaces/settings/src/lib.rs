@@ -253,19 +253,26 @@ pub enum MenuKind {
 pub fn menu_item_h(kind: &MenuKind, material: bool) -> f32 {
     match kind {
         MenuKind::Dropdown => if material { 36.0 } else { 28.0 },
+        // (a row's right-click menu is PointerMenu → ContextMenu.qml: 28 px rows in both looks)
+        MenuKind::Pointer => 28.0,
         _ => if material { 44.0 } else { 32.0 },
     }
 }
 
+/// A separator's height: 11 px in a pointer menu (ContextMenu.qml), 9 in ActionMenu's
+pub fn sep_h(kind: &MenuKind) -> f32 {
+    if *kind == MenuKind::Pointer { 11.0 } else { 9.0 }
+}
+
 /// A menu's size (logical px): its longest label (characters), its rows,
-/// its separators (9 px each), the control's width
+/// its separators (`sep_h` each), the control's width
 pub fn menu_box(kind: &MenuKind, material: bool, longest: usize, n: usize, lines: usize, control_w: f32) -> (u32, u32) {
     let item = menu_item_h(kind, material);
     let (max_h, min_w, pad, per_char) = if material { (360.0, 240.0, 70.0, 7.6) } else { (320.0, 220.0, 54.0, 7.4) };
     // (Dropdown.qml: as wide as the control, 200 at least; 4/5 px above and below)
     let (w, h) = match kind {
         MenuKind::Dropdown => (control_w.max(200.0), (n as f32 * item + if material { 8.0 } else { 10.0 }).min(280.0)),
-        _ => ((longest as f32 * per_char + pad).max(min_w).min(480.0), (n as f32 * item + lines as f32 * 9.0 + 10.0).min(max_h)),
+        _ => ((longest as f32 * per_char + pad).max(min_w).min(480.0), (n as f32 * item + lines as f32 * sep_h(kind) + 10.0).min(max_h)),
     };
     (w.ceil() as u32, h.ceil() as u32)
 }
@@ -411,6 +418,7 @@ impl Settings {
         st.shell.apply_theme(&ui.global::<ui::Theme>());
         ui.set_items(self.menu_rows.model());
         ui.set_item_h(menu_item_h(&kind, material));
+        ui.set_at_pointer(kind == MenuKind::Pointer);
         // (Dropdown.qml: the keys start on the chosen one)
         if kind == MenuKind::Dropdown {
             ui.set_current(checked);
@@ -1221,8 +1229,11 @@ mod tests {
         assert_eq!(menu_box(&MenuKind::Dropdown, true, 5, 3, 0, 260.0), (260, 116));
         assert_eq!(menu_box(&MenuKind::Dropdown, false, 5, 3, 0, 100.0), (200, 94));
         assert_eq!(menu_box(&MenuKind::Dropdown, true, 5, 30, 0, 100.0).1, 280);
-        // (separators: 9 px each)
-        assert_eq!(menu_box(&MenuKind::Pointer, false, 5, 3, 1, 1.0).1, 115);
+        // (a pointer menu: ContextMenu.qml's 28 px rows and 11 px separators, both looks)
+        assert_eq!(menu_box(&MenuKind::Pointer, false, 5, 3, 1, 1.0).1, 105);
+        assert_eq!(menu_box(&MenuKind::Pointer, true, 5, 3, 1, 1.0).1, 105);
+        // (ActionMenu's separators: 9 px each)
+        assert_eq!(menu_box(&MenuKind::Menu, false, 5, 3, 1, 1.0).1, 115);
     }
 
     #[test]

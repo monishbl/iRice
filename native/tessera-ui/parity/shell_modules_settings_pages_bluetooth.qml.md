@@ -1,5 +1,7 @@
 # shell/modules/settings/pages/bluetooth.qml ↔ surfaces/settings (pages/devices/network.rs `bluetooth`, `bt_list`, `bt_menu`; ui/settings-devices.slint `btn-switch` / `list`)
 
+_Re-checked 17 Nov (B5, parity-settings) against main 18628a5 + the B5 ports: statuses below say what's there now; [12 Nov: …] is the old status._
+
 A part of the Network page (PagePart; `open bluetooth` maps to network › Bluetooth,
 map.rs 51/69). Embeds controlcenter/BluetoothList.qml twice (paired / nearby)
 with ListRow.qml and PointerMenu.qml. Devices: tessera-ui's own BlueZ reading
@@ -21,14 +23,14 @@ No QQC.Popup (the menu is PointerMenu → glass/ContextMenu).
 | 7 | My devices / Nearby devices groups only when !broken && on, with their footers (64–103) | network.rs 816–825 | same |
 | 8 | Discovery while the page shows and Bluetooth is on (BluetoothList 85–91) | bridge Binding discovering (page network) | same |
 | 9 | Lists: paired / nearby (named), connected → paired → name, unpaired once per name, max 40 (BluetoothList 28–44) | `device_list` (unit-tested) | same |
-| 10 | Rows are a snapshot, re-sorted every 4 s unless the pointer is over the list (or its menu is open); a vanished device dropped at once (BluetoothList 45–83) | rows follow bluez live | **missing**: rows reorder under the pointer |
+| 10 | Rows are a snapshot, re-sorted every 4 s unless the pointer is over the list (or its menu is open); a vanished device dropped at once (BluetoothList 45–83) | rows follow bluez live | **same (fixed before 17 Nov: network.rs sorted_snapshot: re-sorted at most every 4 s, not while hovered or a menu is open)** [12 Nov: **missing**: rows reorder under the pointer] |
 | 11 | Placeholders: "No devices yet. Pair one from Nearby devices." / "Looking for devices…" (184–197) | `bt_list` empty text | same |
 | 12 | Row: device icon by BlueZ icon, or its picture (Material 72 / Glass 56 px source) with an accent dot when connected; name ‖ address; status Connected · N % / Pairing… / Not connected; busy spinner (202–212; ListRow 128–203) | `bt_list` 746–759, ListItem badge | same |
 | 13 | Click: disconnect / connect / pair (97–104) | `bt_list` 761–765 | same |
-| 14 | Menu: Disconnect/Connect, Stop pairing/Pair, (Don't) connect automatically, **separator**, Copy address, Forget device (danger) (108–134) | `bt_menu` 699–719 | **different**: no separator |
-| 15 | Right-click or press-and-hold 550 ms; menu with its left edge at the pointer (ListRow 205–225; PointerMenu 294) | ListItem right-click only, anchor centred on the pointer | **missing** hold; **different** position (see network rows 15, 17) |
-| 16 | Keyboard: Tab/↑/↓ between rows, Space/Enter, Menu key / Shift+F10 (ListRow 74–100) | — | **missing** (same fix as network row 16) |
-| 17 | Material segmented rows, press swell (ListRow 107–126) | ListItem | different: no press swell (network row 12) |
+| 14 | Menu: Disconnect/Connect, Stop pairing/Pair, (Don't) connect automatically, **separator**, Copy address, Forget device (danger) (108–134) | `bt_menu` 699–719 | **same (fixed before 17 Nov: separator above Copy address)** [12 Nov: **different**: no separator] |
+| 15 | Right-click or press-and-hold 550 ms; menu with its left edge at the pointer (ListRow 205–225; PointerMenu 294) | ListItem right-click only, anchor centred on the pointer | **same (fixed before 17 Nov: ListItem hold 550 ms opens the menu (no click after); pointer menus open with their left edge at the pointer)** [12 Nov: **missing** hold; **different** position (see network rows 15, 17)] |
+| 16 | Keyboard: Tab/↑/↓ between rows, Space/Enter, Menu key / Shift+F10 (ListRow 74–100) | — | **same (fixed before 17 Nov: DevList keys: Tab/↑/↓, Space/Enter, Menu/Shift+F10, ring on the keyed row)** [12 Nov: **missing** (same fix as network row 16)] |
+| 17 | Material segmented rows, press swell (ListRow 107–126) | ListItem | **same (ported 17 Nov, B5: ListItem Material press swell (1+min(6 %, 10 px), spring back))** [12 Nov: different: no press swell (network row 12)] |
 | 18 | Fast Pair: "Show earbuds nearby" switch (fastPair.enabled) + footer (106–113) | network.rs 827–831 | same |
 
 ## Test plan (Material window at 440,205; page column from x≈772)

@@ -322,6 +322,8 @@ fn file(cx: &mut Ctx, key: &'static str, title: &'static str, filter: &'static s
 
 /// The join form's rows (WifiJoinForm.qml), each field kept as it's typed
 fn join_form(cx: &mut Ctx, rows: &mut Vec<Row>, f: &Value, join: &Value) {
+    // (a file chooser open anywhere: Choosing…, PathField 34–35)
+    let picking = cx.feed["look"]["pickerBusy"].as_bool().unwrap_or(false);
     let g = |k: &str| s(&f[k]);
     let hidden = f["hidden"].as_bool().unwrap_or(false);
     let sec = g("security");
@@ -365,9 +367,9 @@ fn join_form(cx: &mut Ctx, rows: &mut Vec<Row>, f: &Value, join: &Value) {
         }
         if tls {
             let id = file(cx, "clientCert", "Choose your certificate", "Certificates|*.pem *.crt *.cer *.der *.p12 *.pfx");
-            rows.push(Row::new("Your certificate").path(g("clientCert"), "Choose file…", id));
+            rows.push(Row::new("Your certificate").path(g("clientCert"), "Choose file…", id).busy(picking));
             let id = file(cx, "privateKey", "Choose your private key", "Keys|*.pem *.key *.der *.p12 *.pfx");
-            rows.push(Row::new("Private key").path(g("privateKey"), "Choose file…", id));
+            rows.push(Row::new("Private key").path(g("privateKey"), "Choose file…", id).busy(picking));
             let id = field(cx, "keyPassword");
             rows.push(Row::new("Private key password").field(g("keyPassword"), "If the key has one", id).secret());
         }

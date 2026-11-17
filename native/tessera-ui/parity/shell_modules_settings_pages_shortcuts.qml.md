@@ -1,5 +1,7 @@
 # shell/modules/settings/pages/shortcuts.qml ↔ surfaces/settings (src/pages/input/shortcuts.rs, keymap.rs, input/mod.rs; ui/settings-input.slint)
 
+_Re-checked 17 Nov (B5, parity-settings) against main 18628a5 + the B5 ports: statuses below say what's there now; [12 Nov: …] is the old status._
+
 The Keyboard page: Tap Super, the shortcuts list (search, per-bind menu, undo),
 the form for one shortcut (recorder: see shell_modules_settings_ShortcutRecorder.qml.md),
 More options (Screenshots, Text in screenshots) and the Dictation part (own file).
@@ -25,12 +27,12 @@ as an xdg_popup.
 | 8 | Groups in data order, Your shortcuts first; footer "Your shortcuts win when they share keys with a default." when it has any (239–263) | `groups` (tested), shortcuts.rs:401–402 | same |
 | 9 | Empty Your shortcuts: "No shortcuts of your own yet" + "Add shortcut" (plus) (249–254) | shortcuts.rs:350–353 | same |
 | 10 | BindRow: label (secondary when off), detail "Off" / "Changed · was <keys>" / actionText (custom); keycaps (opacity 0.4 when off); "…" button; 56/44 px min (82–150) | settings-input.slint BindRow 129–184; shortcuts.rs:354–399 | same |
-| 11 | Clicking anywhere on the row (left OR right button) opens the menu under the "…" (134–141) | BindRow TouchArea `clicked → dots.open()` | **different**: right-click does nothing (TouchArea clicked is left only) |
-| 12 | Row keyboard: Tab focuses each bind row (activeFocusOnTab), focus ring (Material 3 px secondary r4 / Glass 2 px accent), Return/Enter/Space/Menu open its menu (89–105) | BindRow has no FocusScope / ring / keys | **missing** |
+| 11 | Clicking anywhere on the row (left OR right button) opens the menu under the "…" (134–141) | BindRow TouchArea `clicked → dots.open()` | **same (fixed before 17 Nov: right button up opens the menu too)** [12 Nov: **different**: right-click does nothing (TouchArea clicked is left only)] |
+| 12 | Row keyboard: Tab focuses each bind row (activeFocusOnTab), focus ring (Material 3 px secondary r4 / Glass 2 px accent), Return/Enter/Space/Menu open its menu (89–105) | BindRow has no FocusScope / ring / keys | **same (fixed before 17 Nov: BindRow FocusScope (Return/Space/Menu open), SFocusRing)** [12 Nov: **missing**] |
 | 13 | Glass hover/pressed fill on the row; also lit while focused (88) | BindRow `if !Theme.material` Rectangle (hover/pressed only) | same except focus (see 12) |
-| 14 | Material: the Group's tile shows an 8 % on-surface hover layer on the row (87; Group.qml:73–83) | custom rows draw `Tile` (settings-input.slint:19–28) with no hover | **missing** (Material bind rows and app rows don't light on hover) |
-| 15 | "…" icon lit (label colour) while the row is hovered OR its menu is open (146) | Dots `lit: ta.has-hover` | **different**: not lit while its menu is open |
-| 16 | Accessible name "label, keys[, off]" (90–91) | `accessible-label: r.label`, description = detail | different (minor: no keys in the name) |
+| 14 | Material: the Group's tile shows an 8 % on-surface hover layer on the row (87; Group.qml:73–83) | custom rows draw `Tile` (settings-input.slint:19–28) with no hover | **same (fixed before 17 Nov: BindRow/AppRow Material on-surface 8 %/10 % hover/press layer)** [12 Nov: **missing** (Material bind rows and app rows don't light on hover)] |
+| 15 | "…" icon lit (label colour) while the row is hovered OR its menu is open (146) | Dots `lit: ta.has-hover` | **same (fixed before 17 Nov: Dots `shown` while its menu is open)** [12 Nov: **different**: not lit while its menu is open] |
+| 16 | Accessible name "label, keys[, off]" (90–91) | `accessible-label: r.label`, description = detail | **different (a11y name only, remaining): the keys are in the description, not the name** [12 Nov: different (minor: no keys in the name)] |
 | 17 | Menu items: Edit (pencil-simple) / Change shortcut (keyboard); Turn on/off (power); Remove (trash, danger) / Reset to default (arrow-counter-clockwise, enabled only when changed) (46–79) | shortcuts.rs:375–396 | same |
 | 18 | Each menu action offers undo: "Turned off X" / "Turned on X" / "Removed X" / "X is back to <default keys>" (55–76) | shortcuts.rs:377–388 | same |
 | 19 | Import and export (keybinds, shortcuts, gestures) when list && ready (265–269) | importexport::block (own parity file) | same |
@@ -45,9 +47,9 @@ as an xdg_popup.
 | 28 | Tessera action: Choice width 260, placeholder "Choose an action", clears error (483–497) | shortcuts.rs:513–524, `SHELL_ACTIONS` (tested) | same |
 | 29 | Command: field 300, placeholder "kitty -e btop", detail "Runs with sh, …" (498–508) | shortcuts.rs:525–528 | same |
 | 30 | App: search field (56/48 tall, "Search apps"); list of !noDisplay apps sorted by name, chosen first then up to 30; matched by name/genericName/id (509–533) | shortcuts.rs:529–562; slint `search`, AppRow | same (sort: lowercase compare vs localeCompare) |
-| 31 | The app search field is emptied each time the form opens (296) | `set_field kb.appSearch ""` bumps a gen put in `r.num`, but `place_all` (shortcuts.rs:308 → input/mod.rs:46–58) overwrites `num` of every custom row with its tile place; the `search` view uses `gen: r.num` (settings-input.slint:433) | **different**: the field can't be reset by the page; a reused field keeps old text while Rust's query is "" |
+| 31 | The app search field is emptied each time the form opens (296) | `set_field kb.appSearch ""` bumps a gen put in `r.num`, but `place_all` (shortcuts.rs:308 → input/mod.rs:46–58) overwrites `num` of every custom row with its tile place; the `search` view uses `gen: r.num` (settings-input.slint:433) | **same (fixed before 17 Nov: places() skips search/recorder rows' num)** [12 Nov: **different**: the field can't be reset by the page; a reused field keeps old text while Rust's query is ""] |
 | 32 | App row: 24 px icon, name (600 when chosen), accent tint + check when chosen; click → choose (fills Name "Open <app>" if empty) (534–593) | AppRow settings-input.slint:350–397; shortcuts.rs:547–561 | same |
-| 33 | App row keyboard: Tab focus, focus ring, Space/Return choose (542–562) | AppRow: no FocusScope | **missing** |
+| 33 | App row keyboard: Tab focus, focus ring, Space/Return choose (542–562) | AppRow: no FocusScope | **same (fixed before 17 Nov: AppRow FocusScope + ring, Space/Return choose)** [12 Nov: **missing**] |
 | 34 | "Loading apps…" / "No apps match “q”" + detail / "Showing 30 of N. Type to narrow the list." (>31) (595–607) | shortcuts.rs:563–569 | same |
 | 35 | Options (custom): Repeat while held ("Like volume keys"), Works on the lock screen (610–629) | shortcuts.rs:577–589 | same |
 | 36 | Error text under the form: danger, small, left 16/4 (631–639) | `note` num 2 | same |

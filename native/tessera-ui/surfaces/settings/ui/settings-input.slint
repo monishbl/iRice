@@ -263,7 +263,8 @@ component GestureRow inherits Tile {
                 text: r.detail;
                 wrap: word-wrap;
                 color: r.tone == 4 ? Theme.warning : Theme.secondary;
-                font-size: Theme.material ? 14px : Theme.caption;
+                // (the new gesture's clash line: caption in both looks, mouse-gestures.qml 228–235)
+                font-size: Theme.material && r.value != "draft" ? 14px : Theme.caption;
             }
         }
         if r.id != "": VerticalLayout {

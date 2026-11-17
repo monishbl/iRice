@@ -74,18 +74,63 @@ fn cx_notes_leaving(cx: &mut Ctx, leaving: &[String], raw: &Value) -> Option<Row
 /// there's none; the newest only until "Show all"
 fn notes(cx: &mut Ctx, key: &str, changelog: &Value, fallback: &Value) -> Row {
     let all = cx.local_b(key);
-    let entries: Vec<Opt> = changelog.as_array().map(|a| a.iter().map(|e| Opt::new(s(&e["title"])).detail(s(&e["date"])).id(plain(&s(&e["body"])))).collect()).unwrap_or_default();
+    let entries: Vec<Opt> = changelog.as_array().map(|a| a.iter().map(|e| Opt::new(s(&e["title"])).detail(s(&e["date"])).id(plain(&s(&e["body"]))).styled(styled(&s(&e["body"])))).collect()).unwrap_or_default();
     let total = entries.len();
     let shown: Vec<Opt> = if all { entries } else { entries.into_iter().take(1).collect() };
     let fb = if total == 0 { strings(fallback).iter().map(|l| format!("•  {l}")).collect::<Vec<_>>().join("\n") } else { String::new() };
     let k = key.to_string();
-    let toggle = cx.on(move |cx, _| {
+    let toggle = cx.on(move |cx, a| {
+        // a link in a note (Launch.openLink: web links only)
+        if !a.s.is_empty() {
+            if a.s.starts_with("https://") || a.s.starts_with("http://") {
+                cx.ask("about", "openLink", json!([a.s.clone()]));
+            }
+            return;
+        }
         let v = cx.local_b(&k);
         cx.local_set(&k, !v);
     });
     let mut r = Row::custom("about", "notes").id(toggle).data(shown).text_value(fb).num(total as f32);
     r.on = all;
     r
+}
+
+/// A note's Markdown as Slint's StyledText reads it (UpdateNotes.qml's
+/// Text.MarkdownText): headings become bold lines, quotes and rules and raw
+/// HTML go (StyledText refuses them); anything it still can't read is shown
+/// as plain text
+pub fn styled(md: &str) -> slint::StyledText {
+    slint::StyledText::from_markdown(&for_styled(md)).unwrap_or_else(|_| slint::StyledText::from_plain_text(&plain(md)))
+}
+
+/// The Markdown StyledText takes (see `styled`)
+pub fn for_styled(md: &str) -> String {
+    let mut out = Vec::new();
+    for line in md.lines() {
+        let t = line.trim_start();
+        if t.starts_with('#') {
+            let h = t.trim_start_matches('#').trim();
+            if !h.is_empty() {
+                out.push(format!("**{}**", h.replace("**", "")));
+                out.push(String::new());
+            }
+            continue;
+        }
+        if let Some(q) = t.strip_prefix('>') {
+            out.push(q.trim_start().to_string());
+            continue;
+        }
+        // (a rule: ---, ***, ___ alone on a line)
+        let bare: String = t.chars().filter(|c| !c.is_whitespace()).collect();
+        if bare.len() >= 3 && (bare.chars().all(|c| c == '-') || bare.chars().all(|c| c == '*') || bare.chars().all(|c| c == '_')) {
+            continue;
+        }
+        if t.starts_with('<') {
+            continue;
+        }
+        out.push(line.to_string());
+    }
+    out.join("\n").trim().to_string()
 }
 
 /// Markdown as the notes show it: bold and code marks dropped, links as
@@ -693,6 +738,13 @@ mod tests {
     #[test]
     fn notes_as_plain_text() {
         assert_eq!(plain("**New:** see [the docs](https://x.y) and `cfg`\n- one\n  - two"), "New: see the docs and cfg\n•  one\n  •  two");
+    }
+
+    #[test]
+    fn notes_markdown_styledtext_can_read() {
+        assert_eq!(for_styled("## What's new\n- **Faster** [docs](https://x.y)\n> quoted\n---\n<br>\ntext"), "**What's new**\n\n- **Faster** [docs](https://x.y)\nquoted\ntext");
+        // (it parses: no plain-text fallback for an ordinary note)
+        assert!(slint::StyledText::from_markdown(&for_styled("### Fixes\n- one\n  - two\n\nSee `cfg` and *this*.")).is_ok());
     }
 
     #[test]

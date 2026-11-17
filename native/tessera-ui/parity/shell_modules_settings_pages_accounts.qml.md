@@ -1,5 +1,7 @@
 # shell/modules/settings/pages/accounts.qml ↔ surfaces/settings (src/pages/accounts/accounts.rs `page`)
 
+_Re-checked 17 Nov (B5, parity-settings) against main 18628a5 + the B5 ports: statuses below say what's there now; [12 Nov: …] is the old status._
+
 Accounts (page `accounts`): three PageParts, Google, iCloud and Microsoft 365
 (google.qml, icloud.qml, microsoft.qml, each with its own parity file). Rust
 builds them as parts of one page. Older links (`google`, `icloud`,
@@ -15,7 +17,7 @@ builds them as parts of one page. Older links (`google`, `icloud`,
 | 3 | PagePart "iCloud" → icloud.qml (15–18) | accounts.rs 11 | same |
 | 4 | PagePart "Microsoft 365" → microsoft.qml (19–22) | accounts.rs 12 | same |
 | 5 | An older link (`ipc panels settings google` / `icloud` / `microsoft`) opens Accounts at that part's heading (PagePart.qml 4–7) | map.rs 55–57 / 74–76 | same |
-| 6 | The page is a Loader item: leaving the page or closing Settings drops every part's own state (Google's Advanced switch, chosen account, typed text; iCloud's typed Apple ID/password) (Settings pageLoader) | lib.rs 511, 579: only `more:` (and Wi-Fi) keys dropped | **different**: `acct.*` local keys survive page changes and reopening |
+| 6 | The page is a Loader item: leaving the page or closing Settings drops every part's own state (Google's Advanced switch, chosen account, typed text; iCloud's typed Apple ID/password) (Settings pageLoader) | lib.rs 511, 579: only `more:` (and Wi-Fi) keys dropped | **same (fixed before 17 Nov: acct.* in PAGE_TRANSIENT)** [12 Nov: **different**: `acct.*` local keys survive page changes and reopening] |
 
 ## Test plan
 

@@ -1,5 +1,7 @@
 # shell/modules/settings/pages/appearance.qml ↔ surfaces/settings (pages/look/appearance.rs `appearance`, ui/settings-look.slint look-cards / look-thumbs / menu-icons / emoji)
 
+_Re-checked 17 Nov (B5, parity-settings) against main 18628a5 + the B5 ports: statuses below say what's there now; [12 Nov: …] is the old status._
+
 Page id `appearance`. The look previews are shell/common/LookPreview.qml ↔
 settings-look.slint `LookPreview`. The feed is `cx.feed["look"]`: in the
 standalone shell it comes from host/shell/src/bridges.rs `look_feed`, under
@@ -29,11 +31,11 @@ the QML shell from RustBridgeLook.qml.
 | 18 | Accessibility: Reduce transparency (Glass only), Reduce motion, Text contrast Segmented 280 (writes contrast, clears increaseContrast; current = Theme.contrastLevel) (295–329) | 232–250 | same |
 | 19 | More options (MoreOptions) folding the rest (332) | `p.more` / `p.end_more` | same |
 | 20 | Icon contrast slider 220, 0–1, rounded to 0.01, only for Clear/Tinted (335–346) | 279–283 | same |
-| 21 | Emoji: detail "In the emoji picker (Super+.) and Search" or "<package> isn't installed; showing Noto until it is"; Install font button (Material 40 px tonal, Glass 28 px fill, hover) only when missing → EmojiFont.install; Segmented 300 Noto/Apple/Fluent → emoji.style (347–382) | 258–284, `emoji` ctl | **different (standalone)**: `look_feed` has no `emojiAvailable`/`emojiPackage`, so the Install button never shows and the detail never says it's missing |
+| 21 | Emoji: detail "In the emoji picker (Super+.) and Search" or "<package> isn't installed; showing Noto until it is"; Install font button (Material 40 px tonal, Glass 28 px fill, hover) only when missing → EmojiFont.install; Segmented 300 Noto/Apple/Fluent → emoji.style (347–382) | 258–284, `emoji` ctl | **same (fixed before 17 Nov: emoji row + Install; B5: rechecks after Install)** [12 Nov: **different (standalone)**: `look_feed` has no `emojiAvailable`/`emojiPackage`, so the Install button never shows and the detail never says it's missing] |
 | 22 | Menu bar and shortcuts footer, "; Auto follows the icon…" only for Auto (384–387) | 333–337 | same |
 | 23 | Menu icon: 18 choices 40×32, 4 apart, 8 a row; on = accentTint + 2 px accent border; hover fillHover; distro shows /etc/os-release LOGO from the icon theme; "tessera" also on for "circle"/"irice" (388–435) | MENU_ICONS, `menu-icons` ctl | same |
-| 24 | Menu icon tooltip: the choice's name (Badge, <distro>, Linux…) after 600 ms hover (429–431) | — | **missing** (no tooltip anywhere in Settings) |
-| 25 | Distro choice's name: SystemInfo.osName or "Your distro" (394) | `read_os_release` falls back to "Linux" | different (fallback text) |
+| 24 | Menu icon tooltip: the choice's name (Badge, <distro>, Linux…) after 600 ms hover (429–431) | — | **same (fixed before 17 Nov: STip with the choice's name on the menu icon swatches)** [12 Nov: **missing** (no tooltip anywhere in Settings)] |
+| 25 | Distro choice's name: SystemInfo.osName or "Your distro" (394) | `read_os_release` falls back to "Linux" | **same (fixed before 17 Nov: "Your distro" fallback)** [12 Nov: different (fallback text)] |
 | 26 | Icon theme: Dropdown 220 "Automatic" + installed themes (not hicolor, scanned each time the page loads); choosing a different one saves it and repairs the shell 800 ms later (436–465) | 309–342 (`cx.once`), host `repairShell` → `look.later 800` | same (list read once while Settings is open) |
 | 27 | Shortcut symbols: Segmented 300 Auto/⌘ macOS/Windows/Linux, detail "e.g. " + KeyNames.combo("SUPER CTRL F") (466–476) | 329–343 | same |
 

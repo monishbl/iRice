@@ -1,5 +1,7 @@
 # shell/modules/settings/FingerprintSheet.qml ↔ surfaces/settings (src/pages/system/security.rs `sheet`, ui/settings-system.slint `FpSheet`)
 
+_Re-checked 17 Nov (B5, parity-settings) against main 18628a5 + the B5 ports: statuses below say what's there now; [12 Nov: …] is the old status._
+
 Adding a finger: in QML a modal **layer-shell overlay window** over the whole
 focused screen (namespace tessera:fingerprint, exclusive keyboard). In Rust
 the sheet replaces the Security page inside Settings (local `fp.sheet`).
@@ -19,10 +21,10 @@ Progress state: RustBridgeSystem.qml `sheet` {takes, misses, retry, flash}.
 | 8 | Caption 12 px tertiary tnum: "All 11 sections recorded" / "" / "Section N of 11 · the edges/the centre" (196–202) | security.rs 110–116, FpSheet 162–167 | same (no tnum) |
 | 9 | Buttons right-aligned, 8 apart: "Add Another Finger" (done, another free finger) → addAnother; "Try Again" (failed) → enroll(finger); "Done" (primary)/"Cancel" → close (205–223) | security.rs 126–153, FpSheet 169–178 | same |
 | 10 | Card 420 wide, height body+48, radius Material 28 / Glass 20, colour surfaceContainerHigh / #232327 / white, Glass 1 px separator border (124–136) | FpSheet 74–81 | same |
-| 11 | Scrim over the **whole screen**: black 0.5 (dark) / 0.3, blocks clicks, doesn't dismiss (113–117) | FpSheet 66–68: scrim only over the page area (radius 16) | different (in-window; Settings' sidebar still usable) |
-| 12 | Open/close animation: progress 0→1 over Theme.motion.panel OutCubic (close 0.66× InCubic): scrim alpha, card opacity, card scale 0.96→1; window kept 400 ms to fade out (70–82, 115, 134–135) | — | **missing**: FpSheet appears/disappears at once |
-| 13 | **Esc closes the sheet** (cancels the enrolment) (118–122) | — (module doc: Esc closes Settings) | **different**: Esc closes the whole Settings window and leaves fprintd enrolling until the page is rebuilt |
-| 14 | Keyboard exclusive while shown; the window on the focused monitor (83–89) | — | different (by design: in-window) |
+| 11 | Scrim over the **whole screen**: black 0.5 (dark) / 0.3, blocks clicks, doesn't dismiss (113–117) | FpSheet 66–68: scrim only over the page area (radius 16) | **intentional: in-window sheet (the page area), as designed** [12 Nov: different (in-window; Settings' sidebar still usable)] |
+| 12 | Open/close animation: progress 0→1 over Theme.motion.panel OutCubic (close 0.66× InCubic): scrim alpha, card opacity, card scale 0.96→1; window kept 400 ms to fade out (70–82, 115, 134–135) | — | **same (ported 17 Nov, B5: open 300 ms OutCubic (scrim, opacity, scale 0.96→1) was there; Cancel/Done now fades and shrinks it away in 200 ms InCubic before the page comes back (security.rs fp.closing, settings-system.slint FpSheet `closing`))** [12 Nov: **missing**: FpSheet appears/disappears at once] |
+| 13 | **Esc closes the sheet** (cancels the enrolment) (118–122) | — (module doc: Esc closes Settings) | **same (fixed before 17 Nov: FpSheet FocusScope: Esc = its last button (Cancel/Done))** [12 Nov: **different**: Esc closes the whole Settings window and leaves fprintd enrolling until the page is rebuilt] |
+| 14 | Keyboard exclusive while shown; the window on the focused monitor (83–89) | — | **intentional: in-window, by design** [12 Nov: different (by design: in-window)] |
 
 ## Test plan
 

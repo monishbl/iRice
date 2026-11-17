@@ -65,7 +65,70 @@ fn call(cx: &mut Ctx, args: Vec<String>, about: Value) {
     cx.local_set("about.login.n", n);
     let key = format!("about.login.act.{n}");
     cx.local_set(&format!("{key}.about"), about);
-    cx.spawn(&key, move || run(&args).unwrap_or_else(|| json!({"ok": false, "error": "It didn't work; try again."})));
+    // (one at a time, in the order asked: a quick toggle and its Undo
+    // mustn't race, about-loginitems.qml's queue 49–66)
+    let ticket = queue::take();
+    cx.spawn(&key, move || queue::run_in_turn(ticket, || run(&args).unwrap_or_else(|| json!({"ok": false, "error": "It didn't work; try again."}))));
+}
+
+/// The script's changes, one at a time in the order they were asked
+mod queue {
+    use std::sync::{Condvar, Mutex};
+    static NEXT: Mutex<u64> = Mutex::new(0);
+    static SERVING: (Mutex<u64>, Condvar) = (Mutex::new(0), Condvar::new());
+
+    /// A place in the line (on the UI thread, as the change is asked)
+    pub fn take() -> u64 {
+        let mut n = NEXT.lock().unwrap_or_else(|e| e.into_inner());
+        let t = *n;
+        *n += 1;
+        t
+    }
+
+    /// `f` once every earlier place has run (off the UI thread)
+    pub fn run_in_turn<T>(ticket: u64, f: impl FnOnce() -> T) -> T {
+        let (m, cv) = &SERVING;
+        let mut serving = m.lock().unwrap_or_else(|e| e.into_inner());
+        while *serving < ticket {
+            serving = cv.wait(serving).unwrap_or_else(|e| e.into_inner());
+        }
+        drop(serving);
+        // (the next one goes even if this one panicked)
+        struct Next;
+        impl Drop for Next {
+            fn drop(&mut self) {
+                let (m, cv) = &SERVING;
+                let mut s = m.lock().unwrap_or_else(|e| e.into_inner());
+                *s += 1;
+                cv.notify_all();
+            }
+        }
+        let _next = Next;
+        f()
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        #[test]
+        fn changes_run_in_the_order_asked() {
+            let order = std::sync::Arc::new(Mutex::new(Vec::new()));
+            let tickets: Vec<u64> = (0..4).map(|_| take()).collect();
+            // (started backwards: each still waits for the ones before it)
+            let hs: Vec<_> = tickets
+                .iter()
+                .rev()
+                .map(|&t| {
+                    let o = order.clone();
+                    std::thread::spawn(move || run_in_turn(t, || o.lock().unwrap().push(t)))
+                })
+                .collect();
+            for h in hs {
+                h.join().unwrap();
+            }
+            assert_eq!(*order.lock().unwrap(), tickets);
+        }
+    }
 }
 
 fn patch(cx: &mut Ctx, file: &str, v: Value) {

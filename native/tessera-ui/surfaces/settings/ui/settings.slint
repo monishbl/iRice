@@ -112,6 +112,8 @@ component Control {
                     busy: o.on;
                     enabled: r.enabled && !o.off;
                     label: r.label;
+                    // (an icon alone says what it does: its detail)
+                    tip: o.text == "" ? o.detail : "";
                     clicked => { SBus.act(r.id, i, 0, ""); }
                 }
             }
@@ -787,6 +789,19 @@ export component SettingsWindow inherits Window {
     changed reveal-seq => {
         let top = SBus.reveal-y - page-scroll.absolute-position.y - page-scroll.content-y;
         page-scroll.content-y = -max(0px, min(page-scroll.content-height - page-scroll.height, top - 80px));
+    }
+
+    // A row that opened wants to be seen (WifiList.revealAsking): scrolled
+    // just enough, up or down, to show it whole
+    property <int> ensure-seq: SBus.ensure-seq;
+    changed ensure-seq => {
+        let top = SBus.ensure-y - page-scroll.absolute-position.y - page-scroll.content-y;
+        let view = -page-scroll.content-y;
+        if top < view {
+            page-scroll.content-y = -max(0px, top);
+        } else if top + SBus.ensure-h > view + page-scroll.height {
+            page-scroll.content-y = -max(0px, min(page-scroll.content-height - page-scroll.height, top + SBus.ensure-h - page-scroll.height));
+        }
     }
 
     forward-focus: side-keys;

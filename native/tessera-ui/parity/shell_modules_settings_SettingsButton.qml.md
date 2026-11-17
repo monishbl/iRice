@@ -1,5 +1,7 @@
 # shell/modules/settings/SettingsButton.qml ↔ settings-kit.slint SButton (691–781), SFocusRing (192–206); settings.slint Control "button" / "buttons"
 
+_Re-checked 17 Nov (B5, parity-settings) against main 18628a5 + the B5 ports: statuses below say what's there now; [12 Nov: …] is the old status._
+
 Text button for Settings pages: neutral, primary (accent), danger, minor (Material text button), busy.
 
 ## Behaviours
@@ -12,12 +14,12 @@ Text button for Settings pages: neutral, primary (accent), danger, minor (Materi
 | 4 | Glass colours: primary accent darker 1.1 hover / 1.2 press; others fill / fillHover / fillPressed; ColorAnimation 150 ms (39, 42) | `bg.background` Glass, `animate background SM.hover` | same |
 | 5 | Glass press: scale 0.97, Theme.motion.press 100 ms (40–41) | bg width/height ×0.97, `animate width, height { SM.press }` | same |
 | 6 | Material press: corners square off to 8 while held, SpringAnimation springFast (12.8 / 0.54) (30–34) | settings-kit.slint:729 `animate border-radius { 300ms; spring(0.6) }` | same at a glance (tester: time against the QML) |
-| 7 | Material press: ElasticControl swell (~6 %, ≤10 px, springPress 7.5 / 0.3: overshoots on release) (28–29; ElasticControl.qml 31–37; Theme.motion.pressGrow) | none (Material bg stays 1.0) | **missing** |
+| 7 | Material press: ElasticControl swell (~6 %, ≤10 px, springPress 7.5 / 0.3: overshoots on release) (28–29; ElasticControl.qml 31–37; Theme.motion.pressGrow) | none (Material bg stays 1.0) | **same (fixed before 17 Nov: SButton Material transform-scale 1+min(6 %, 10 px), spring release)** [12 Nov: **missing**] |
 | 8 | Disabled: Glass 0.45 opacity, Material colours only; no hover, no cursor (35, 113) | `opacity`, `ta.enabled: active` | same |
 | 9 | Keys Space / Return / Enter click (not auto-repeat), Tab-focusable (36, 44–49) | `fs` key-pressed (`!e.repeat`) | same |
 | 10 | Accessible: button, its text, its row's label as description, press (50–60) | accessible-* (`label`) | same |
-| 11 | Click: takes active focus, then clicked() (115–118) | `fs.focus(); fs.clear-focus(); clicked()` | different (focus is dropped; harmless for the ring, which shows for keyboard focus only, but Tab then starts from the window, not this button) |
-| 12 | Focus ring: keyboard focus only; Glass 2 px accent 4 px out (2 px gap), Material 3 px secondary 5 px out; radius control+4 (62–64; FocusRing.qml 22, 44) | SFocusRing: always 3 px out, 2 px wide, radius +3 | **different** (gap 1 px, Material ring 2 px not 3) |
+| 11 | Click: takes active focus, then clicked() (115–118) | `fs.focus(); fs.clear-focus(); clicked()` | **different (small, remaining): a click drops focus instead of keeping it on the button (the ring shows for keys only either way)** [12 Nov: different (focus is dropped; harmless for the ring, which shows for keyboard focus only, but Tab then starts from the window, not this button)] |
+| 12 | Focus ring: keyboard focus only; Glass 2 px accent 4 px out (2 px gap), Material 3 px secondary 5 px out; radius control+4 (62–64; FocusRing.qml 22, 44) | SFocusRing: always 3 px out, 2 px wide, radius +3 | **same (fixed before 17 Nov: SFocusRing Glass 2 px 4 out, Material 3 px 5 out)** [12 Nov: **different** (gap 1 px, Material ring 2 px not 3)] |
 | 13 | Icon before label: 18 Material / 12 bold Glass, gap 8 / 6 (70, 74–81) | `row` SIcon, spacing | same |
 | 14 | Busy Glass: circle-notch spinning 900 ms linear, label stays (76–89) | `SG.notch`, `animation-tick` 900 ms | same |
 | 15 | Busy Material: an 18 px Spinner in the icon's place (91–99) | `Busy { transform-scale: 0.45 }` in an 18 px box | same at a glance (tester: compare size) |

@@ -1,5 +1,7 @@
 # shell/modules/settings/pages/dock.qml ↔ surfaces/settings (src/pages/look/menubar.rs `dock`)
 
+_Re-checked 17 Nov (B5, parity-settings) against main 18628a5 + the B5 ports: statuses below say what's there now; [12 Nov: …] is the old status._
+
 The Dock, shown as a part of Menu Bar & Dock (page `menubar`, part "Dock";
 `open dock` lands there). No Popup, no Timer.
 
@@ -15,7 +17,7 @@ The Dock, shown as a part of Menu Bar & Dock (page `menubar`, part "Dock";
 | 6 | "Kept in Dock" (footer "Running apps that aren't kept appear after the divider."): a row per pinned id, label the app's name or the id + "Not installed" (65–72) | 208–228 | same |
 | 7 | Remove button: round, Material 40 px tonal (secondaryContainer, 8 % layer on hover, minus 20 px), Glass 26 px fill/fillHover, bold minus 12 px; click removes the id (73–85) | `buttons(vec![btn("").icon("minus")])` → SButton round | same (Rust adds a pointing-hand cursor and press scale; QML has neither) |
 | 8 | "Add to Dock": "Search apps" field 240, placeholder "App name"; with ≥ 2 characters up to 6 matching visible, not-pinned apps, each with "Add" (90–104) | 230–252 (`local dock.filter`) | same |
-| 9 | Add button: accent fill pill, Material 40 px / Glass **26 px**, label + 32 / + 20, onAccent, 14 px Medium / small DemiBold; click appends the id (109–119) | `button("Add").primary()` | different (small): Glass SButton is 28 px tall and label + 24 |
+| 9 | Add button: accent fill pill, Material 40 px / Glass **26 px**, label + 32 / + 20, onAccent, 14 px Medium / small DemiBold; click appends the id (109–119) | `button("Add").primary()` | **same (fixed before 17 Nov: compact() 26 px Add)** [12 Nov: different (small): Glass SButton is 28 px tall and label + 24] |
 | 10 | More › "Space between icons": slider 220, 0.05–0.4 continuous, written rounded to 0.01; detail round(iconSize × gap) px (128–138) | 280 | same |
 | 11 | More › "App names in the App Drawer" (Material only) + "Off shows only the icons" (139–144) | 281 | same |
 | 12 | More › "Recent apps" + detail, "Downloads", "Trash" switches (145–157) | 282–284 | same |

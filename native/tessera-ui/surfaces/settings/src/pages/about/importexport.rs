@@ -109,7 +109,7 @@ pub fn group(cx: &mut Ctx, p: &mut Page, sections: &[&str], title: &str, end4: b
     // Errors and results
     let kk = k.clone();
     let dismiss = cx.on(move |cx, _| cx.ask("about", "ie.dismiss", json!([kk])));
-    p.group("").row(Row::new("Couldn't import or export").visible(!error.is_empty()).detail(error).buttons(vec![btn("").icon("x")], dismiss));
+    p.group("").row(Row::new("Couldn't import or export").visible(!error.is_empty()).detail(error).buttons(vec![btn("").icon("x").detail("Dismiss")], dismiss));
     let undo_snap = !s(&st["undoSnap"]).is_empty();
     let kk = k.clone();
     let undo = cx.on(move |cx, _| cx.ask("about", "ie.undo", json!([kk])));
