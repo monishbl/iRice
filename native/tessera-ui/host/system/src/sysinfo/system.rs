@@ -510,7 +510,11 @@ impl Service for System {
                 self.set_locked(h, on);
             }
             "lockSecure" => {
-                self.lock_secure = arg_bool(args, 0, "lockSecure");
+                let secure = arg_bool(args, 0, "lockSecure");
+                if secure != self.lock_secure {
+                    eprintln!("tessera-ui: system: the lock is {}", if secure { "confirmed (Sleep may go ahead)" } else { "down" });
+                }
+                self.lock_secure = secure;
                 if self.lock_secure {
                     self.finish_sleep();
                 }

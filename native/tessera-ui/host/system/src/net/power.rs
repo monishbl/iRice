@@ -172,6 +172,8 @@ pub struct Power {
     /// the lid's state while Tessera handles it, and the closed-lid guard
     lid_is_closed: bool,
     lid_sleep_asked: f64,
+    /// asks to sleep since the lid closed (the third sleeps without waiting for the lock)
+    lid_sleep_tries: u32,
     hot_since: f64,
     energy_users: i32,
     energy_apps: Value,
@@ -211,6 +213,7 @@ impl Default for Power {
             lid_fd: None,
             lid_is_closed: false,
             lid_sleep_asked: 0.0,
+            lid_sleep_tries: 0,
             hot_since: 0.0,
             energy_users: 0,
             energy_apps: json!([]),
@@ -425,10 +428,26 @@ impl Power {
         }
         let hot_for = if self.hot_since > 0.0 { (now - self.hot_since) / 1000.0 } else { 0.0 };
         let external = h.st.outputs_now().iter().filter(|(_, n)| !is_built_in(n)).count();
-        if policy::lid_should_sleep_now(!on_battery, external, hot_for) && now - self.lid_sleep_asked > 60_000.0 {
-            eprintln!("tessera-ui: the lid is closed and it's still awake ({}): sleeping", if on_battery { "on battery" } else { "running hot" });
+        if !policy::lid_should_sleep_now(!on_battery, external, hot_for) {
+            self.lid_sleep_tries = 0;
+            return;
+        }
+        if now - self.lid_sleep_asked > 60_000.0 {
             self.lid_sleep_asked = now;
-            h.ask("system.power", json!(["sleep"]));
+            self.lid_sleep_tries += 1;
+            if self.lid_sleep_tries <= 2 {
+                eprintln!("tessera-ui: the lid is closed and it's still awake ({}): sleeping", if on_battery { "on battery" } else { "running hot" });
+                // (locks first, sleeps once the lock is confirmed)
+                h.ask("system.power", json!(["sleep"]));
+            } else {
+                // Still awake a minute after asking twice: the lock never
+                // confirmed. The lid is shut, so nobody sees the desktop, and
+                // the lock was asked for: sleep now rather than run the battery
+                // down in a bag (17 Nov: 2 hours, 99% → 20%, hot)
+                eprintln!("tessera-ui: the lid is closed, asked to sleep twice and still awake: sleeping without waiting for the lock");
+                h.ask("system.power", json!(["lock"]));
+                tessera_core::services::bridge::run(&["systemctl", "suspend"]);
+            }
         }
     }
 

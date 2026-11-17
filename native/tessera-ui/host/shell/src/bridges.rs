@@ -380,6 +380,11 @@ impl Bridges {
         }
         self.locked = locked;
         h.set_state("locked", json!(locked));
+        // (and to System, which sleeps only once the lock is confirmed:
+        // Lock.qml told it; standalone nothing did, so Sleep and the closed-lid
+        // guard waited 3 s, gave up and stayed awake. 17 Nov: a closed laptop
+        // ran 2 hours on battery)
+        h.ask("system.locked", json!([locked]));
         // (the mark a shell started again while locked finds: `locked_mark`)
         let mark = locked_mark();
         if locked {
@@ -446,6 +451,7 @@ impl Bridges {
     fn lock_event(&mut self, h: &mut Host, e: &Value) {
         if let Some(secure) = e["secure"].as_bool() {
             h.set_state("lockSecure", json!(secure));
+            h.ask("system.lockSecure", json!([secure]));
             if secure && self.locked {
                 self.lockfx(h, "rest", 0);
             } else if !secure && !self.locked {
