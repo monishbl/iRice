@@ -609,15 +609,17 @@ component Plate inherits Rectangle {
     property <bool> see-through: LockData.plate != "solid";
     border-radius: radius;
     clip: true;
-    // Glass: LockGlass.qml's Plate is liquid Glass, but on the lock surface
-    // Glass.qml finds no host window (QsWindow.window), so it refracts no
-    // backdrop: the QML draws it near-black, the rim and shadow kept
-    background: !see-through ? (LockData.dark-ink ? #FFFFFF : #232327)
-        : LockData.plate == "glass" ? @linear-gradient(180deg, #171514 0%, #0a0807 100%) : transparent;
+    // Glass: the wallpaper behind it, blurred (the lock's own soft copy, as
+    // the password field: a session-lock surface is no layer, so the glass
+    // plugin draws nothing here), under a dark tint for the words, a sheen
+    // along the top and a lit rim. (The QML drew these near-black: its Glass
+    // found no window to refract on the lock; 17 Nov the user: "only the
+    // input is glass")
+    background: !see-through ? (LockData.dark-ink ? #FFFFFF : #232327) : transparent;
     drop-shadow-blur: LockData.plate == "glass" ? 12px : 0;
     drop-shadow-offset-y: 2px;
-    drop-shadow-color: #00000059;
-    if see-through && LockData.plate != "glass" && LockData.has-wallpaper: Image {
+    drop-shadow-color: #00000040;
+    if see-through && LockData.has-wallpaper: Image {
         x: 0;
         y: 0;
         width: root.width;
@@ -632,6 +634,10 @@ component Plate inherits Rectangle {
     }
     if see-through && LockData.plate != "glass": Rectangle {
         background: LockData.plate == "frost" ? (LockData.dark-ink ? #ffffff6b : #00000047) : LockData.dark-ink ? #ffffff4d : #16161a8c;
+    }
+    // (glass: tinted just enough for light words over any part of the picture)
+    if see-through && LockData.plate == "glass": Rectangle {
+        background: LockData.dark-ink ? #ffffff59 : #0e0e1273;
     }
     // (glass: a brighter rim along the top, the light catching its edge)
     if LockData.plate == "glass": Rectangle {
