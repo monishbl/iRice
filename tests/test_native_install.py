@@ -845,3 +845,59 @@ class UiInUse(unittest.TestCase):
         self.assertTrue(ui({"rust": {"surfaces": []}}))
         self.assertFalse(ui({"rust": {"standalone": False, "surfaces": []}}))
         self.assertTrue(ui({"rust": {"standalone": False, "surfaces": ["dock"]}}))
+
+
+class BuildSaysWhatItIs(unittest.TestCase):
+    """A build here tells tessera-ui it's a local build (native/tessera-ui/
+    build.rs: `tessera-ui --version`, Settings → About), with the channel
+    the checkout follows; the installed one's --version line is kept"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(prefix="tessera-ni-env-")
+        d = Path(self.tmp.name)
+        self.origin, self.repo = d / "origin.git", d / "repo"
+
+        def run(*a):
+            subprocess.run(a, check=True, capture_output=True)
+        self.run = run
+        run("git", "init", "-q", "--bare", "-b", "main", str(self.origin))
+        run("git", "init", "-q", "-b", "beta", str(self.repo))
+        (self.repo / "a").write_text("a\n")
+        run("git", "-C", str(self.repo), "add", "-A")
+        run("git", "-C", str(self.repo), "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "one")
+        run("git", "-C", str(self.repo), "remote", "add", "origin", str(self.origin))
+        run("git", "-C", str(self.repo), "push", "-q", "origin", "beta")
+        run("git", "-C", str(self.repo), "branch", "-q", "--set-upstream-to=origin/beta")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_local_build_environment(self):
+        self.assertEqual(ni.build_env(False, repo=str(self.repo)),
+                         {"TESSERA_BUILD_KIND": "local", "TESSERA_BUILD_VARIANT": "generic", "TESSERA_BUILD_CHANNEL": "beta"})
+        self.assertEqual(ni.build_env(True, repo=str(self.repo))["TESSERA_BUILD_VARIANT"], "native")
+        # (a branch that follows no channel: build.rs says "local build")
+        self.run("git", "-C", str(self.repo), "checkout", "-q", "-b", "mine")
+        self.assertEqual(ni.build_env(False, repo=str(self.repo)), {"TESSERA_BUILD_KIND": "local", "TESSERA_BUILD_VARIANT": "generic"})
+
+    def test_the_builder_gets_it(self):
+        seen = Path(self.tmp.name, "seen")
+        builder = Path(self.tmp.name, "builder")
+        builder.write_text("#!/bin/sh\nprintf '%s %s' \"$TESSERA_BUILD_KIND\" \"$TESSERA_BUILD_VARIANT\" > " + str(seen) + "\nexit 1\n")
+        builder.chmod(0o755)
+        stage = Path(self.tmp.name, "stage")
+        stage.mkdir()
+        with mock.patch.dict(os.environ, {"TESSERA_NATIVE_BUILDER": str(builder)}):
+            with self.assertRaises(ni.Failed):
+                ni.run_build(str(stage), True, True, lambda s: None)
+        self.assertEqual(seen.read_text(), "local native")
+
+    def test_install_record_keeps_the_version_line(self):
+        line = "tessera-ui 0.1.0 (beta, 7baa48d, 2026-11-17, generic, built locally)"
+        dest = Path(self.tmp.name, "bin")
+        dest.mkdir()
+        new = dest / "tessera-ui.incoming"
+        new.write_text("#!/bin/sh\n[ \"$1\" = --version ] && echo '" + line + "' && exit 0\nexit 3\n")
+        ni.swap_in(str(dest), {"tessera-ui": str(new)}, {"source": "built", "variant": "generic"})
+        self.assertEqual(ni.read_info(str(dest), "tessera-ui")["build"], line)
+        self.assertEqual(ni.status(str(dest))["tessera-ui"]["build"], line)

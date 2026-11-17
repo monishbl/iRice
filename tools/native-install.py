@@ -599,7 +599,14 @@ def swap_in(dest, files, info):
             else:
                 _remove(os.path.join(dest, name + ".prev.json"))
         os.replace(new, final)
-        _write_info(dest, name, dict(info, at=int(time.time())))
+        extra = {}
+        if name == "tessera-ui":
+            # (what it says it is: channel, commit, date, variant, kind;
+            # Settings shows it when it isn't the build that's running)
+            said = program_version(final)
+            if said.startswith(name + " "):
+                extra["build"] = said
+        _write_info(dest, name, dict(info, at=int(time.time()), **extra))
     _fsync_dir(dest)
 
 
@@ -702,6 +709,7 @@ def run_build(stage, tuned, ui, say):
     {name: path}; raises Failed."""
     cmd = os.environ.get("TESSERA_NATIVE_BUILDER")
     cmd = [cmd] if cmd else ["bash", os.path.join(REPO, "tools", "build-native.sh")]
+    env = dict(os.environ, **build_env(tuned))
     cmd += ["--stage", stage] + (["--tuned"] if tuned else []) + (["--ui"] if ui else [])
     say("STEP Building " + ("tessera-ui and tessera-events" if ui else "tessera-events") + " here" + (", tuned" if tuned else "")
         + (" (several minutes)" if ui else ""))
@@ -712,7 +720,7 @@ def run_build(stage, tuned, ui, say):
     last = []
     tty = sys.stderr.isatty()
     # (a terminal: straight through, so the progress line updates in place)
-    with subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=sys.stderr.fileno() if tty else subprocess.PIPE,
+    with subprocess.Popen(cmd, env=env, stdin=subprocess.DEVNULL, stdout=sys.stderr.fileno() if tty else subprocess.PIPE,
                           stderr=sys.stderr.fileno() if tty else subprocess.STDOUT) as p:
         if not tty:
             for raw in p.stdout:
@@ -725,6 +733,19 @@ def run_build(stage, tuned, ui, say):
     if code != 0 or "tessera-events" not in files:
         raise Failed("it didn't build (" + build_error(last, code) + ")", "build")
     return files
+
+
+def build_env(tuned, repo=None):
+    """What a build here tells tessera-ui about itself (its build.rs, for
+    `tessera-ui --version` and Settings → About): built locally, generic or
+    tuned, and the channel when the checkout follows one (origin/main:
+    stable, origin/beta: beta; any other branch: build.rs says "local build")."""
+    env = {"TESSERA_BUILD_KIND": "local", "TESSERA_BUILD_VARIANT": "native" if tuned else "generic"}
+    up = git("rev-parse", "--abbrev-ref", "@{u}", repo=repo) or ""
+    channel = {"main": "stable", "beta": "beta"}.get(up.split("/", 1)[1] if "/" in up else "")
+    if channel:
+        env["TESSERA_BUILD_CHANNEL"] = channel
+    return env
 
 
 def build_error(last, code):
@@ -878,6 +899,10 @@ def status(dest=None):
         if os.path.exists(os.path.join(dest, n)):
             info = read_info(dest, n)
             out[n] = dict(info, label=label(info), prev=os.path.exists(os.path.join(dest, n + ".prev")))
+            if n == "tessera-ui" and not info.get("build"):
+                said = program_version(os.path.join(dest, n))  # (installed before records kept it)
+                if said.startswith(n + " "):
+                    out[n]["build"] = said
     return out
 
 
@@ -910,7 +935,8 @@ def main(argv=None):
         return 0 if r["build"]["ok"] else 1
     if a.command == "status":
         s = status()
-        emit(s, "\n".join(f"{n}: {i['label']}" + (f" ({i.get('tree', '')[:12]})" if i.get("tree") else "") for n, i in s.items()) or "Nothing installed")
+        emit(s, "\n".join(f"{n}: {i['label']}" + (f" ({i.get('tree', '')[:12]})" if i.get("tree") else "")
+                          + (f"\n  {i['build']}" if i.get("build") else "") for n, i in s.items()) or "Nothing installed")
         return 0
     if a.command == "plan":
         p = plan(a.ref, online=a.online, mode=a.mode, channel=a.channel)

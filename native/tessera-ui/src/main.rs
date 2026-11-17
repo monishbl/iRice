@@ -12,7 +12,7 @@
 //!                                `{"to":"osd",…}` for that surface (RustUi.tell)
 //!   tessera-ui --material-roles SEED dark|light [style]   print Material roles (for checking colours)
 //!   tessera-ui --seed PICTURE    print the Material seed a wallpaper gives (as matugen)
-//!   tessera-ui --version
+//!   tessera-ui --version [--json]   which build: (channel, commit, date, variant, [profile,] signed release | built locally)
 //!   tessera-ui --greeter [--style …] [--demo [STATE]]   the login screen (surfaces/greeter)
 //!   tessera-ui --update-screen [-p] DIR   the update screen update-run.sh shows (surfaces/updatescreen)
 //!   tessera-ui --look-cover [-p] DIR      the cover switch-look.sh shows (surfaces/lookcover)
@@ -128,6 +128,21 @@ fn make_part(name: &str) -> Option<Box<dyn shell::Part>> {
     surfaces::make(name)
 }
 
+/// What build.rs worked out (core/src/build_info.rs)
+fn build_info() -> tessera_core::build_info::BuildInfo {
+    tessera_core::build_info::BuildInfo {
+        version: env!("CARGO_PKG_VERSION"),
+        commit: env!("TESSERA_BI_COMMIT"),
+        date: env!("TESSERA_BI_DATE"),
+        dirty: !env!("TESSERA_BI_DIRTY").is_empty(),
+        branch: env!("TESSERA_BI_BRANCH"),
+        channel: env!("TESSERA_BI_CHANNEL"),
+        variant: env!("TESSERA_BI_VARIANT"),
+        kind: env!("TESSERA_BI_KIND"),
+        profile: env!("TESSERA_BI_PROFILE"),
+    }
+}
+
 fn main() {
     let started = Instant::now();
     // (an XDG folder set but empty or relative means "the default" by the
@@ -139,6 +154,8 @@ fn main() {
             std::env::remove_var(v);
         }
     }
+    // Which build this is (build.rs): --version, Settings → About, Software Update
+    tessera_core::build_info::set(build_info());
     let args: Vec<String> = std::env::args().collect();
     if args.get(1).map(String::as_str) == Some("--material-roles") {
         let seed = args.get(2).map_or("#6750A4", String::as_str);
@@ -160,7 +177,12 @@ fn main() {
         std::process::exit(tessera_lock::auth::helper_main(&args));
     }
     if args.get(1).map(String::as_str) == Some("--version") {
-        println!("tessera-ui {}", env!("CARGO_PKG_VERSION"));
+        let b = tessera_core::build_info::current();
+        if args.iter().skip(2).any(|a| a == "--json") {
+            println!("{}", b.json());
+        } else {
+            println!("{}", b.line());
+        }
         return;
     }
     // The login screen (greetd's greeter): a mode of its own, before anything

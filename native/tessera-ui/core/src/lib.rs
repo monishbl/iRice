@@ -12,6 +12,8 @@
 
 pub mod a11y;
 pub mod appicon;
+pub mod build_info; // (which build this is: --version, Settings → About and Software Update)
+pub mod build_resolve; // (how build.rs decides it; tested in build_info)
 pub mod build_progress; // (tools/build-progress.py's file: Software Update, the update screen)
 pub mod cfgfile; // (config.json and state.json read and changed safely)
 pub mod contain; // (a panic in one part never takes the shell down: contain.rs)
