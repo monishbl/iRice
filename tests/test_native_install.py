@@ -570,7 +570,7 @@ class Install(Fixture):
         self.publish(version=said.split()[1], programs=stage, variants=("x86-64-v3",))
         r, _ = self.install()
         self.assertTrue(r["ok"], r)
-        self.assertEqual(ni.sha256_of(str(self.dest / "tessera-ui")), ni.sha256_of(str(real)))
+        self.assertEqual(ni.sha256_of(str(self.dest / "tessera-ui")), ni.sha256_of(str(real)), r)
         self.assertEqual(ni.program_version(str(self.dest / "tessera-ui")), said)
 
 
