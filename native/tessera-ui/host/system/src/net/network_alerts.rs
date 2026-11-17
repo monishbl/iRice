@@ -99,7 +99,10 @@ pub fn compare(before: &Conns, now: &Conns) -> Vec<(String, String, bool, bool)>
 /// (event, ms) of one alert; None for a kind with none
 pub fn announce(name: &str, kind: &str, hotspot: bool, up: bool) -> Option<(Value, i64)> {
     let ev = |icon: &str, title: &str, sub: String, color: &str, ripple: Option<bool>| {
-        let mut v = json!({"kind": "network", "icon": icon, "title": title, "subtitle": sub, "color": color});
+        // one live entry per kind of link (core notify/live.rs): a drop is a
+        // disconnect (it pops up), coming back too; the rest changes quietly
+        let link = if hotspot { "hotspot" } else { kind };
+        let mut v = json!({"kind": "network", "key": format!("network:{link}"), "icon": icon, "title": title, "subtitle": sub, "color": color, "failure": !up});
         if let Some(r) = ripple {
             v["ripple"] = json!(r);
         }

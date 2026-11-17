@@ -387,7 +387,7 @@ impl Updates {
                 8000,
             );
         } else {
-            helpers::notify_send(&["-a", "Tessera", "-i", if ok { "system-software-update" } else { "dialog-error" }, &title, &sub]);
+            helpers::notify_send(&["-a", "Tessera", "-h", "string:x-tessera-key:sysupdate", "-i", if ok { "system-software-update" } else { "dialog-error" }, &title, &sub]);
         }
     }
 }

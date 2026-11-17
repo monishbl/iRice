@@ -407,6 +407,7 @@ impl Notifications {
                 picture: !a.picture.is_empty(),
                 buttons: self.nc.alert_buttons.get(&format!("a{}", a.hid), if a.act.is_empty() { vec![] } else { vec![ui::NoteButton { key: "act".into(), text: a.act.clone().into() }] }),
                 progress: -1.0,
+                history: self.history(&format!("a{}", a.hid), &a.changes, h24),
                 alert: true,
                 glyph: a.glyph.clone().into(),
                 glyph_color: color(&a.color),
@@ -414,7 +415,7 @@ impl Notifications {
             };
         }
         let n = self.store.get(e.item as u32).cloned().unwrap_or_default();
-        let r = self.nc.replies.get(&n.id).map(|s| Shown { id: s.id, entered: true, leaving: false, deadline: None, replying: s.replying, sent: s.sent, error: s.error.clone() });
+        let r = self.nc.replies.get(&n.id).map(|s| Shown { id: s.id, entered: true, leaving: false, deadline: None, replying: s.replying, sent: s.sent, error: s.error.clone(), place: None });
         self.card(st, &n, r.as_ref())
     }
 
@@ -621,7 +622,7 @@ impl Notifications {
             },
             C::ReplyOpen(i) if i >= 0 => {
                 let id = i as u32;
-                self.nc.replies.insert(id, Shown { id, entered: true, leaving: false, deadline: None, replying: true, sent: false, error: String::new() });
+                self.nc.replies.insert(id, Shown { id, entered: true, leaving: false, deadline: None, replying: true, sent: false, error: String::new(), place: None });
                 self.nc_refresh(st);
             }
             C::ReplyCancel(i) => {

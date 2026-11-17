@@ -113,6 +113,8 @@ struct Shown {
     replying: bool,
     sent: bool,
     error: String,
+    /// where it was last laid out (a leaving card stays there as it fades)
+    place: Option<Place>,
 }
 
 struct Win {
@@ -158,6 +160,8 @@ pub struct Notifications {
     nc_open: bool,
     /// cards' buttons, the same model while the same (stable.rs)
     buttons: stable::Stable<ui::NoteButton>,
+    /// live entries' histories (core notify/live.rs), the same way
+    histories: stable::Stable<slint::SharedString>,
     /// the pills last set (count, expanded): set again only when they change
     pills_sent: Option<(usize, bool)>,
 }
@@ -303,8 +307,22 @@ fn icon_source(n: &Note, lookup: &mut impl FnMut(&str) -> Option<String>) -> Opt
 
 // ── The stack's maths (NotificationPopups.qml) ──────────────────────────────
 
-/// Each banner's place (front first): (y, scale, opacity) and the stack's height
-pub fn stack(heights: &[f32], expanded: bool, material: bool) -> (Vec<(f32, f32, f32)>, f32) {
+/// Where a banner sits: its top, scale and opacity, and in a folded stack
+/// the height it's drawn at (`plate`, 0 its own)
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Place {
+    pub y: f32,
+    pub scale: f32,
+    pub fade: f32,
+    /// a back card in a folded stack is drawn as a plate the front card's
+    /// height, its content hidden, so only its lower edge shows under the
+    /// front card: a taller one used to stick out above the front card and
+    /// its text showed through it (two toasts drawn over each other)
+    pub plate: f32,
+}
+
+/// Each banner's place (front first) and the stack's height
+pub fn stack(heights: &[f32], expanded: bool, material: bool) -> (Vec<Place>, f32) {
     let gap = if material { 8.0 } else { 10.0 };
     let n = heights.len();
     if n == 0 {
@@ -313,23 +331,36 @@ pub fn stack(heights: &[f32], expanded: bool, material: bool) -> (Vec<(f32, f32,
     let offset = |i: usize| heights[..i].iter().map(|h| h + gap).sum::<f32>();
     let places = (0..n)
         .map(|i| {
-            let y = if expanded {
-                offset(i)
-            } else if i == 0 {
-                0.0
-            } else {
-                // older cards peek 8 px below the front one
-                heights[0] + 8.0 * i.min(2) as f32 - heights[i]
-            };
             let front = i == 0;
-            let scale = if expanded || front { 1.0 } else { 1.0 - 0.05 * i.min(2) as f32 };
-            let shown = expanded || i < 3;
-            let fade = if !shown { 0.0 } else if front || expanded { 1.0 } else { 0.9 - 0.25 * (i as f32 - 1.0) };
-            (y, scale, fade)
+            if expanded || front {
+                return Place { y: if expanded { offset(i) } else { 0.0 }, scale: 1.0, fade: 1.0, plate: 0.0 };
+            }
+            // older cards: plates the front's height, peeking 8 px below it
+            // (two at most), smaller and fainter
+            let shown = i < 3;
+            Place {
+                y: 8.0 * i.min(2) as f32,
+                scale: 1.0 - 0.05 * i.min(2) as f32,
+                fade: if shown { 0.9 - 0.25 * (i as f32 - 1.0) } else { 0.0 },
+                plate: heights[0],
+            }
         })
         .collect();
     let height = if expanded { offset(n) - gap } else { heights[0] + 8.0 * (n - 1).min(2) as f32 };
     (places, height)
+}
+
+/// The places of a stack whose leaving cards (`leaving[i]`) keep where they
+/// were (`last`) while they fade out, the rest laid out without them: a card
+/// on its way out no longer holds the front, and isn't counted
+pub fn stack_with_leaving(heights: &[f32], leaving: &[bool], last: &[Option<Place>], expanded: bool, material: bool) -> (Vec<Place>, f32, usize) {
+    let staying: Vec<f32> = heights.iter().zip(leaving).filter(|(_, l)| !**l).map(|(h, _)| *h).collect();
+    let (places, height) = stack(&staying, expanded, material);
+    let mut it = places.into_iter();
+    let out = (0..heights.len())
+        .map(|i| if leaving[i] { last[i].unwrap_or(Place { y: 0.0, scale: 1.0, fade: 1.0, plate: 0.0 }) } else { it.next().unwrap() })
+        .collect();
+    (out, height, staying.len())
 }
 
 /// The pills under a stack of more than one
@@ -415,9 +446,21 @@ impl Notifications {
     }
 
     fn arrived(&mut self, st: &mut State, mut n: Note) {
-        if self.store.has(n.id) {
-            // an update (same id): in place, where it is (a banner showing changes)
+        if let Some(old) = self.store.get(n.id).cloned() {
+            // the same entry again (its id, its event id, its thread: the
+            // server joined them): in place, where it is, its history carried
+            // on (a banner showing changes). It pops up again, its sound with
+            // it (the shell plays it for a new `alerted`), only when it got
+            // more urgent (live.rs)
+            let (n, again) = model::merge(&old, n);
+            let id = n.id;
             self.store.add(n);
+            if again && old.route != Route::Quiet.name() {
+                let route = model::route(self.store.get(id).unwrap(), &st.shell.cfg, &focus_json(), now_ms(), self.shell);
+                if route == Route::Banner {
+                    self.show_banner(st, id);
+                }
+            }
             self.changed(st);
             self.refresh(st);
             return;
@@ -494,11 +537,15 @@ impl Notifications {
     // ── Banners ─────────────────────────────────────────────────────────────
 
     fn show_banner(&mut self, st: &State, id: u32) {
-        if self.banners.iter().any(|s| s.id == id && !s.leaving) {
+        if let Some(i) = self.banners.iter().position(|s| s.id == id && !s.leaving) {
+            // (showing: to the front, its time from the start again)
+            let mut s = self.banners.remove(i);
+            s.deadline = None;
+            self.banners.insert(0, s);
             return;
         }
         self.banners.retain(|s| s.id != id);
-        self.banners.insert(0, Shown { id, entered: false, leaving: false, deadline: None, replying: false, sent: false, error: String::new() });
+        self.banners.insert(0, Shown { id, entered: false, leaving: false, deadline: None, replying: false, sent: false, error: String::new(), place: None });
         // the entrance starts once the card is there to animate
         self.arm(st, &self.enter, 40, || M::Enter);
     }
@@ -566,14 +613,17 @@ impl Notifications {
         Some(img)
     }
 
-    fn row(&mut self, st: &State, s: &Shown, place: (f32, f32, f32), index: usize) -> ui::Banner {
+    fn row(&mut self, st: &State, s: &Shown, place: Place, index: usize) -> ui::Banner {
         let n = self.store.get(s.id).cloned().unwrap_or_default();
         ui::Banner {
             index: index as i32,
-            ty: place.0,
-            tscale: place.1,
-            tfade: place.2,
-            front: index == 0,
+            ty: place.y,
+            tscale: place.scale,
+            tfade: place.fade,
+            plate: place.plate,
+            // (drawn whole: the front card, or any while fanned out; a
+            // plate is a back card of the folded stack)
+            front: index == 0 || place.plate == 0.0,
             entered: s.entered,
             leaving: s.leaving,
             ..self.card(st, &n, Some(s))
@@ -609,7 +659,7 @@ impl Notifications {
             id: n.id as i32,
             app_upper: app.to_uppercase().into(),
             app: app.into(),
-            time: model::time_label(n.at, now_ms(), |t| clock_at(t, h24)).into(),
+            time: model::time_label(n.changes.last().map_or(n.at, |c| c.at), now_ms(), |t| clock_at(t, h24)).into(), // (a live entry: its latest change)
             summary: n.summary.clone().into(),
             body: if plain.is_empty() { slint::StyledText::default() } else { markup::styled(&n.body) },
             body_plain: plain.into(),
@@ -624,28 +674,44 @@ impl Notifications {
             error: s.map(|s| s.error.clone()).unwrap_or_default().into(),
             draft: self.drafts.get(&n.id).cloned().unwrap_or_default().into(),
             progress: if n.value >= 0 { n.value as f32 / 100.0 } else { -1.0 },
+            history: self.history(&format!("n{}", n.id), &n.changes, h24),
             ..Default::default()
         }
+    }
+
+    /// A live entry's history for its card (more than one change: it folds out)
+    fn history(&self, key: &str, changes: &[notify::live::Change], h24: bool) -> ModelRc<slint::SharedString> {
+        let lines: Vec<slint::SharedString> = if changes.len() > 1 { notify::live::history_lines(changes, |t| clock_at(t, h24)).into_iter().map(Into::into).collect() } else { Vec::new() };
+        self.histories.get(key, lines)
     }
 
     /// Everything on screen from the state: the stack's places, the cards,
     /// the window (made on the focused screen, sized, shown or hidden)
     fn refresh(&mut self, st: &mut State) {
         let material = Self::material(st);
-        let count = self.banners.len();
+        // (a leaving card isn't counted: "N more" and the fan-out are the others')
+        let count = self.banners.iter().filter(|s| !s.leaving).count();
+        let drawn = self.banners.len();
         if count <= 1 {
             self.expanded = false;
         }
         let default_h = if material { 96.0 } else { 90.0 };
         let heights: Vec<f32> = self.banners.iter().map(|s| self.heights.get(&s.id).copied().unwrap_or(default_h)).collect();
-        let (places, content) = stack(&heights, self.expanded, material);
+        let leaving: Vec<bool> = self.banners.iter().map(|s| s.leaving).collect();
+        let last: Vec<Option<Place>> = self.banners.iter().map(|s| s.place).collect();
+        let (places, content, _) = stack_with_leaving(&heights, &leaving, &last, self.expanded, material);
+        for (s, p) in self.banners.iter_mut().zip(&places) {
+            s.place = Some(*p);
+        }
+        // (the window still holds a leaving card while it fades)
+        let content = places.iter().zip(&heights).zip(&leaving).filter(|(_, l)| **l).fold(content, |c, ((p, h), _)| c.max(p.y + if p.plate > 0.0 { p.plate } else { *h }));
         // (hidden while Notification Center or Control Center is open on its
         // screen, NotificationPopups' visible)
         let nc_here = self.nc_open && match (self.win.as_ref(), self.nc_output()) {
             (Some(w), Some(o)) => w.output == o,
             _ => true,
         };
-        let want = count > 0 && !self.covered && !nc_here;
+        let want = drawn > 0 && !self.covered && !nc_here;
         // (hidden: the stack folds back, so its timers run again: QML's
         // onVisibleChanged collapse)
         if !want {
@@ -727,7 +793,7 @@ impl Notifications {
         if self.nc_open {
             self.nc_refresh(st);
         }
-        if count > 0 && !self.clock.running() {
+        if drawn > 0 && !self.clock.running() {
             self.arm(st, &self.clock, 30_000, || M::Clock);
         }
     }
@@ -1179,7 +1245,7 @@ mod tests {
     #[test]
     fn one_banner() {
         let (p, h) = stack(&[90.0], false, false);
-        assert_eq!(p, vec![(0.0, 1.0, 1.0)]);
+        assert_eq!(p, vec![Place { y: 0.0, scale: 1.0, fade: 1.0, plate: 0.0 }]);
         assert_eq!(h, 90.0);
         assert!(pills(1, false).is_empty());
     }
@@ -1188,19 +1254,60 @@ mod tests {
     fn a_stack_peeks_and_fans_out() {
         let hs = [90.0, 120.0, 80.0, 100.0];
         let (p, h) = stack(&hs, false, false);
-        // older cards peek 8 px under the front one (two at most), smaller and fainter
-        assert_eq!(p[1], (90.0 + 8.0 - 120.0, 0.95, 0.9));
-        assert_eq!(p[2], (90.0 + 16.0 - 80.0, 0.9, 0.65));
-        assert_eq!(p[3].2, 0.0); // the fourth is hidden
+        // older cards are plates the front's height, peeking 8 px under it
+        // (two at most), smaller and fainter
+        assert_eq!(p[1], Place { y: 8.0, scale: 0.95, fade: 0.9, plate: 90.0 });
+        assert_eq!(p[2], Place { y: 16.0, scale: 0.9, fade: 0.65, plate: 90.0 });
+        assert_eq!(p[3].fade, 0.0); // the fourth is hidden
         assert_eq!(h, 106.0);
         let (p, h) = stack(&hs, true, false);
-        assert_eq!(p.iter().map(|x| x.0).collect::<Vec<_>>(), vec![0.0, 100.0, 230.0, 320.0]);
-        assert!(p.iter().all(|x| x.1 == 1.0 && x.2 == 1.0));
+        assert_eq!(p.iter().map(|x| x.y).collect::<Vec<_>>(), vec![0.0, 100.0, 230.0, 320.0]);
+        assert!(p.iter().all(|x| x.scale == 1.0 && x.fade == 1.0 && x.plate == 0.0));
         assert_eq!(h, 420.0);
         // Material's gap is 8
         assert_eq!(stack(&hs, true, true).1, 414.0);
         assert_eq!(pills(4, false)[0].text, "3 more");
         assert_eq!(pills(4, true).iter().map(|p| p.text.to_string()).collect::<Vec<_>>(), vec!["Clear all", "Show less"]);
+    }
+
+    /// The bug: "Battery empty" (two lines) behind "Connection activated"
+    /// (one) stuck out above it, and its text showed through the glass. In
+    /// a folded stack nothing of a back card reaches above the front card,
+    /// or below it by more than its 8 px edge
+    #[test]
+    fn back_cards_never_show_past_the_front_one() {
+        for hs in [[70.0, 140.0, 200.0], [140.0, 70.0, 90.0], [90.0, 90.0, 90.0]] {
+            let (p, h) = stack(&hs, false, false);
+            for (i, c) in p.iter().enumerate().skip(1) {
+                let drawn = if c.plate > 0.0 { c.plate } else { hs[i] };
+                // scaled about its bottom centre: its top moves down
+                let top = c.y + drawn * (1.0 - c.scale);
+                assert!(top >= 0.0, "{hs:?} card {i} reaches above the front one");
+                assert!(c.y + drawn <= hs[0] + 16.0 + 0.01, "{hs:?} card {i} hangs past the stack");
+                assert!(c.y + drawn <= h + 0.01);
+            }
+        }
+        // fanned out: one under the other with the gap, never overlapping
+        let hs = [70.0, 140.0, 200.0];
+        let (p, _) = stack(&hs, true, true);
+        for i in 1..3 {
+            assert!(p[i].y >= p[i - 1].y + hs[i - 1] + 8.0);
+        }
+    }
+
+    /// Two at once, then the front one leaves (or is replaced): the leaving
+    /// card stays where it was while it fades; the other takes the front and
+    /// isn't drawn as a plate under nothing; "N more" counts only staying ones
+    #[test]
+    fn a_leaving_card_gives_up_the_front() {
+        let hs = [90.0, 120.0];
+        let (before, _) = stack(&hs, false, false);
+        let (p, h, staying) = stack_with_leaving(&hs, &[true, false], &[Some(before[0]), Some(before[1])], false, false);
+        assert_eq!(staying, 1);
+        assert_eq!(p[0], before[0]); // where it was
+        assert_eq!(p[1], Place { y: 0.0, scale: 1.0, fade: 1.0, plate: 0.0 }); // the front now, whole
+        assert_eq!(h, 120.0);
+        assert!(pills(staying, false).is_empty());
     }
 
     #[test]

@@ -429,13 +429,22 @@ pub fn sound_page(snd: &Sound, profiles: &[Profile], mic_in_sound: bool) -> Page
     if mic_in_sound {
         mic_blocks(snd, &mut blocks, true);
     }
+    settings_row(&mut blocks);
     Page { name: "sound".into(), title: "Sound".into(), blocks, ..Default::default() }
+}
+
+/// Every tile's page ends with a row to its settings, as the shell's pages
+/// do (host cc.rs settings_link): here, Sound's
+fn settings_row(blocks: &mut Vec<Block>) {
+    blocks.push(Block { kind: BlockKind::Gap, height: 6.0, ..Default::default() });
+    blocks.push(Block { kind: BlockKind::Row, id: "settings".into(), icon: "gear-six".into(), title: "Sound settings…".into(), ..Default::default() });
 }
 
 /// Control Center → Microphone (MicPage.qml)
 pub fn mic_page(snd: &Sound) -> Page {
     let mut blocks = Vec::new();
     mic_blocks(snd, &mut blocks, false);
+    settings_row(&mut blocks);
     Page { name: "mic".into(), title: "Microphone".into(), blocks, ..Default::default() }
 }
 
@@ -512,13 +521,15 @@ mod tests {
         let p = sound_page(&snd, &[], false);
         let kinds: Vec<BlockKind> = p.blocks.iter().map(|b| b.kind).collect();
         use BlockKind::*;
-        assert_eq!(kinds, vec![Head, Row, Row, Head, App, Slider]);
+        // (and every page's last row: its settings)
+        assert_eq!(kinds, vec![Head, Row, Row, Head, App, Slider, Gap, Row]);
+        assert_eq!((p.blocks[7].id.as_str(), p.blocks[7].title.as_str()), ("settings", "Sound settings…"));
         assert!(p.blocks[1].highlighted && !p.blocks[2].highlighted);
         assert_eq!(p.blocks[2].icon, "monitor");
         assert_eq!(p.blocks[5].value, 0.4);
         let p = sound_page(&snd, &[], true);
         assert_eq!(p.blocks.iter().filter(|b| b.kind == Slider).count(), 2);
-        assert!(p.blocks.last().unwrap().highlighted);
+        assert!(p.blocks[p.blocks.len() - 3].highlighted);
         let prof = [Profile { name: "Monitor speakers".into(), kind: "display".into(), busy: true }];
         let p = sound_page(&snd, &prof, false);
         assert_eq!((p.blocks[3].id.as_str(), p.blocks[3].icon.as_str(), p.blocks[3].busy), ("prof:0", "monitor", true));
@@ -526,5 +537,6 @@ mod tests {
         assert_eq!(p.blocks[2].picture, "");
         let none = mic_page(&Sound::default());
         assert_eq!(none.blocks[0].kind, Note);
+        assert_eq!(none.blocks.last().unwrap().id, "settings");
     }
 }

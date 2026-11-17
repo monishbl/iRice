@@ -331,8 +331,9 @@ impl DeviceAlerts {
                 h,
                 json!({
                     "kind": "device", "key": format!("bt:{}", d.address), "icon": bt_icon(&d.icon), "picture": picture_for(&d.icon, &name),
-                    "title": name, "subtitle": format!("Battery low · {pct}%{}", if step == 10 { " · charge it soon" } else { "" }),
-                    "color": DANGER, "battery": b as f64 / 100.0
+                    "title": name, "subtitle": format!("Low battery · {pct}% left{}", if step == 10 { " · charge it soon" } else { "" }),
+                    // (its live entry: 20% then 10% is one, more urgent at 10%)
+                    "color": DANGER, "severity": if step == 10 { 2 } else { 1 }, "battery": b as f64 / 100.0
                 }),
                 8000,
             );
@@ -354,7 +355,7 @@ impl DeviceAlerts {
                 }
                 if live && island::wants(h, "usb") {
                     self.drive_seen = false;
-                    self.pending_usb = Some(json!({"kind": "usb", "icon": usb_icon(p), "title": name, "subtitle": "Connected", "color": ORANGE}));
+                    self.pending_usb = Some(json!({"kind": "usb", "key": format!("usb:{name}"), "icon": usb_icon(p), "title": name, "subtitle": "Connected", "color": ORANGE}));
                     self.usb_wait_gen += 1;
                     after(h.sender("DeviceAlerts"), 1200, M::UsbWait(self.usb_wait_gen));
                 }
@@ -365,7 +366,7 @@ impl DeviceAlerts {
                 }
                 if let Some(name) = name {
                     if self.live(h) && island::wants(h, "usb") && !self.drive_seen {
-                        island::post(h, json!({"kind": "usb", "icon": "usb", "title": name, "subtitle": "Disconnected", "color": DIM}), 2500);
+                        island::post(h, json!({"kind": "usb", "key": format!("usb:{name}"), "failure": true, "icon": "usb", "title": name, "subtitle": "Disconnected", "color": DIM}), 2500);
                     }
                 }
                 self.drive_seen = false;
@@ -387,9 +388,9 @@ impl DeviceAlerts {
             self.drive_seen_at.insert(seen_key, now_ms());
             if g("ACTION") == "add" {
                 // up for 10 minutes (or until dismissed)
-                island::post(h, json!({"kind": "usb", "icon": "hard-drive", "title": label, "subtitle": "Drive connected", "color": ORANGE, "action": "Open", "onAction": {"call": "devicealerts.openDrive", "args": [dev]}}), 600000);
+                island::post(h, json!({"kind": "usb", "key": format!("drive:{label}"), "icon": "hard-drive", "title": label, "subtitle": "Drive connected", "color": ORANGE, "action": "Open", "onAction": {"call": "devicealerts.openDrive", "args": [dev]}}), 600000);
             } else if g("ACTION") == "remove" {
-                island::post(h, json!({"kind": "usb", "icon": "hard-drive", "title": label, "subtitle": "Drive removed", "color": DIM}), 2500);
+                island::post(h, json!({"kind": "usb", "key": format!("drive:{label}"), "failure": true, "icon": "hard-drive", "title": label, "subtitle": "Drive removed", "color": DIM}), 2500);
             }
         }
     }
@@ -494,7 +495,8 @@ impl Service for DeviceAlerts {
                 island::post(
                     h,
                     json!({
-                        "kind": "display", "icon": if name.starts_with("eDP") { "desktop" } else { "monitor" },
+                        // (one live entry per display: core notify/live.rs; unplugged is a disconnect)
+                        "kind": "display", "key": format!("display:{name}"), "failure": !added, "icon": if name.starts_with("eDP") { "desktop" } else { "monitor" },
                         "title": if desc.is_empty() { name.clone() } else { desc },
                         "subtitle": if added { format!("Display connected · {name}") } else { "Display disconnected".to_string() },
                         "color": if added { GREEN } else { DIM }

@@ -43,6 +43,9 @@ export struct Banner {
     ty: length, // its place: the list when expanded, the stack when not
     tscale: float,
     tfade: float, // its opacity in the stack (back cards fade)
+    // a back card of the folded stack: drawn this tall (the front card's
+    // height), its content hidden, only its edge showing (0: its own height)
+    plate: length,
     front: bool,
     entered: bool, // false only while it's being added (the entrance runs from there)
     leaving: bool, // the exit runs, then Rust removes it
@@ -51,6 +54,49 @@ export struct Banner {
     alert: bool,
     glyph: string,
     glyph-color: color,
+    // A live entry (core notify/live.rs): every state it had, newest first,
+    // "<what it said> · <time>" (more than one: it folds out)
+    history: [string],
+}
+
+// A live entry's history: "3 updates" folds out to every change with its time
+component History inherits VerticalLayout {
+    in property <[string]> lines;
+    in property <color> link: Theme.accent;
+    in property <color> ink: Theme.secondary;
+    in property <length> size: Theme.caption;
+    property <bool> open;
+    spacing: 2px;
+    padding-top: 4px;
+    Rectangle {
+        height: toggle.preferred-height + 4px;
+        accessible-role: button;
+        accessible-label: toggle.text;
+        accessible-expandable: true;
+        accessible-expanded: root.open;
+        accessible-action-default => { root.open = !root.open; }
+        toggle := Text {
+            x: 0;
+            text: root.open ? "Hide updates" : root.lines.length + " updates";
+            color: root.link;
+            font-size: root.size;
+            font-weight: 500;
+            accessible-role: none;
+        }
+        TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.open = !root.open; }
+        }
+    }
+    if root.open: VerticalLayout {
+        spacing: 2px;
+        for l in root.lines: Text {
+            text: l;
+            color: root.ink;
+            font-size: root.size;
+            overflow: elide;
+        }
+    }
 }
 
 // The close button over a Glass card's top-left corner (CloseBadge.qml)
@@ -251,6 +297,9 @@ export component GlassCard {
             max-lines: 4;
             opacity: 0.85;
             link-clicked(url) => { root.link(url); }
+        }
+        if b.history.length > 1: History {
+            lines: b.history;
         }
         // Reply, then the app's own buttons
         if (b.buttons.length > 0 || b.can-reply) && !b.replying: HorizontalLayout {
@@ -513,6 +562,12 @@ export component MaterialCard {
             max-lines: 4;
             link-clicked(url) => { root.link(url); }
         }
+        if b.history.length > 1: History {
+            lines: b.history;
+            link: Theme.m3-primary;
+            ink: Theme.m3-on-surface-variant;
+            size: 12px;
+        }
         // Progress the app reports (downloads, copies): Material's track
         // (the QML card draws it wavy; a straight one here)
         if b.progress >= 0: Rectangle {
@@ -678,11 +733,19 @@ export component Banners inherits Window {
             animate op { duration: 150ms; }
             property <float> shown: op * (Theme.material ? fade : enter);
             property <bool> live: b.front || expanded; // back cards show only their edge
+            // its own height (what Rust measures), and the height it's drawn
+            // at: a back card is a plate the front's height, so nothing of it
+            // shows above the front card or through it
+            property <length> natural: Theme.material ? mcard.height : gcard.height;
+            property <float> drawn-h: (live || b.plate <= 0) ? natural / 1px : b.plate / 1px;
+            animate drawn-h { duration: 300ms; easing: cubic-bezier(0.2, 0, 0, 1); }
+            property <float> content: live ? 1 : 0;
+            animate content { duration: 150ms; }
 
             x: m + (1 - enter) * card-w * (Theme.material ? 0.4 : 0.55);
             y: m + place-y * 1px + (Theme.material ? (1 - enter) * -16px : 0);
             width: card-w;
-            height: Theme.material ? mcard.height : gcard.height;
+            height: drawn-h * 1px;
             transform-origin: { x: self.width / 2, y: self.height };
             transform-scale: sc;
             opacity: shown;
@@ -703,14 +766,16 @@ export component Banners inherits Window {
             // Glass: where the plugin draws its glass, as it moves and fades
             property <string> geometry: self.x / 1px + " " + self.y / 1px + " " + self.width / 1px + " " + self.height / 1px + " " + sc + " " + shown;
             changed geometry => { root.moved(b.id, self.x, self.y, self.width, self.height, shown); }
-            changed height => { root.measured(b.id, self.height); }
+            changed natural => { root.measured(b.id, natural); }
             init => {
-                root.measured(b.id, self.height);
+                root.measured(b.id, natural);
                 root.moved(b.id, self.x, self.y, self.width, self.height, shown);
             }
 
             card-hover := TouchArea {
                 enabled: live;
+                opacity: content;
+                visible: content > 0;
                 gcard := GlassCard {
                     visible: !Theme.material;
                     b: b;

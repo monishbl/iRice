@@ -27,6 +27,8 @@ pub struct Alert {
     pub at: i64,
     /// its own button's label (Open…), "" none
     pub act: String,
+    /// a live entry's every state, newest last (core notify/live.rs)
+    pub changes: Vec<tessera_core::services::notify::live::Change>,
 }
 
 /// A group: an app's notifications (newest first), or the island's alerts

@@ -107,7 +107,32 @@ pub fn plain_locale(c: &mut std::process::Command) -> &mut std::process::Command
 /// else straight to the notification server over D-Bus (notify-send is
 /// libnotify-bin on Debian, not always there). On a thread
 pub fn notify(app: &str, icon: &str, urgency: &str, title: &str, body: &str) {
-    let (app, icon, urgency, title, body) = (app.to_string(), icon.to_string(), urgency.to_string(), title.to_string(), body.to_string());
+    notify_live(app, icon, urgency, &Live::default(), title, body);
+}
+
+/// What makes one of the shell's notifications a live entry (services/
+/// notify/live.rs): its event id (the same id again changes the one entry,
+/// quietly unless it's more urgent), how urgent it is (0–3), and whether it's
+/// over ("done": it stays as this last state; "remove": it goes)
+#[derive(Clone, Debug, Default)]
+pub struct Live {
+    pub key: String,
+    pub severity: Option<u8>,
+    pub resolved: String,
+}
+
+impl Live {
+    pub fn key(key: &str, severity: u8) -> Self {
+        Self { key: key.to_string(), severity: Some(severity), resolved: String::new() }
+    }
+    pub fn resolved(key: &str, how: &str) -> Self {
+        Self { key: key.to_string(), severity: None, resolved: how.to_string() }
+    }
+}
+
+/// notify, as one live entry (`live`: its event id, severity, resolution)
+pub fn notify_live(app: &str, icon: &str, urgency: &str, live: &Live, title: &str, body: &str) {
+    let (app, icon, urgency, title, body, live) = (app.to_string(), icon.to_string(), urgency.to_string(), title.to_string(), body.to_string(), live.clone());
     std::thread::spawn(move || {
         if on_path("notify-send") {
             let mut c = std::process::Command::new("notify-send");
@@ -117,6 +142,15 @@ pub fn notify(app: &str, icon: &str, urgency: &str, title: &str, body: &str) {
             }
             if !urgency.is_empty() {
                 c.args(["-u", &urgency]);
+            }
+            if !live.key.is_empty() {
+                c.args(["-h", &format!("string:x-tessera-key:{}", live.key)]);
+            }
+            if let Some(v) = live.severity {
+                c.args(["-h", &format!("int:x-tessera-severity:{v}")]);
+            }
+            if !live.resolved.is_empty() {
+                c.args(["-h", &format!("string:x-tessera-resolved:{}", live.resolved)]);
             }
             let _ = c.arg("--").arg(&title).arg(&body).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status();
             return;
@@ -129,6 +163,15 @@ pub fn notify(app: &str, icon: &str, urgency: &str, title: &str, body: &str) {
         };
         let mut hints: std::collections::HashMap<&str, zbus::zvariant::Value> = std::collections::HashMap::new();
         hints.insert("urgency", zbus::zvariant::Value::U8(level));
+        if !live.key.is_empty() {
+            hints.insert("x-tessera-key", zbus::zvariant::Value::from(live.key.as_str()));
+        }
+        if let Some(v) = live.severity {
+            hints.insert("x-tessera-severity", zbus::zvariant::Value::I32(v as i32));
+        }
+        if !live.resolved.is_empty() {
+            hints.insert("x-tessera-resolved", zbus::zvariant::Value::from(live.resolved.as_str()));
+        }
         let _ = conn.call_method(
             Some("org.freedesktop.Notifications"),
             "/org/freedesktop/Notifications",

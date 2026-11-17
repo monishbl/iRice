@@ -254,7 +254,7 @@ impl Sharing {
                         self.outcome(to, "sent");
                     }
                     let sub = if paths.len() == 1 { base(&paths[0]) } else { format!("{} files", paths.len()) };
-                    self.island(h, json!({"kind": "custom", "icon": "paper-plane-tilt", "title": format!("Sent to {}", ev["to"].as_str().unwrap_or("device")), "subtitle": sub, "color": GREEN}), 3000);
+                    self.island(h, json!({"kind": "custom", "key": format!("send:{}", ev["to"].as_str().unwrap_or("device")), "icon": "paper-plane-tilt", "title": format!("Sent to {}", ev["to"].as_str().unwrap_or("device")), "subtitle": sub, "color": GREEN}), 3000);
                 }
             }
             "declined" => {
@@ -271,7 +271,7 @@ impl Sharing {
                     if let Some(to) = ev["to"].as_str() {
                         self.outcome(to, "declined");
                     }
-                    self.island(h, json!({"kind": "custom", "icon": "x-circle", "title": format!("{} declined", ev["to"].as_str().unwrap_or("They")), "subtitle": "Nothing was sent", "color": GREY}), 3000);
+                    self.island(h, json!({"kind": "custom", "key": format!("send:{}", ev["to"].as_str().unwrap_or("device")), "failure": true, "icon": "x-circle", "title": format!("{} declined", ev["to"].as_str().unwrap_or("They")), "subtitle": "Nothing was sent", "color": GREY}), 3000);
                 }
             }
             "failed" => {
@@ -292,7 +292,7 @@ impl Sharing {
                 }
                 self.drop_request(&id);
                 if msg != "Cancelled" {
-                    self.island(h, json!({"kind": "custom", "icon": "warning-circle", "title": "Sharing stopped", "subtitle": msg, "color": ORANGE}), 5000);
+                    self.island(h, json!({"kind": "custom", "key": "localsend", "failure": true, "icon": "warning-circle", "title": "Sharing stopped", "subtitle": msg, "color": ORANGE}), 5000);
                 }
             }
             "error" => self.local.error = js(&ev["message"]),

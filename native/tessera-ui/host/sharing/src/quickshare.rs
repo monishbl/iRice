@@ -364,7 +364,7 @@ impl Sharing {
                     let to = js(&ev["to"]);
                     self.outcome(&to, "sent");
                     let sub = if paths.len() == 1 { base(&paths[0]) } else { format!("{} files", paths.len()) };
-                    self.island(h, json!({"kind": "custom", "icon": "paper-plane-tilt", "title": format!("Sent to {to}"), "subtitle": sub, "color": GREEN}), 3000);
+                    self.island(h, json!({"kind": "custom", "key": format!("send:{to}"), "icon": "paper-plane-tilt", "title": format!("Sent to {to}"), "subtitle": sub, "color": GREEN}), 3000);
                 }
             }
             "declined" => {
@@ -382,7 +382,7 @@ impl Sharing {
                     let mut c = reason.chars();
                     c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default()
                 };
-                self.island(h, json!({"kind": "custom", "icon": "x-circle", "title": if reason == "declined" { format!("{to} declined") } else { format!("Not sent to {to}") }, "subtitle": sub, "color": crate::GREY}), 4000);
+                self.island(h, json!({"kind": "custom", "key": format!("send:{to}"), "failure": true, "icon": "x-circle", "title": if reason == "declined" { format!("{to} declined") } else { format!("Not sent to {to}") }, "subtitle": sub, "color": crate::GREY}), 4000);
             }
             "ended" => {
                 let session = js(&ev["session"]);
@@ -407,7 +407,7 @@ impl Sharing {
                 }
                 self.drop_request(&id);
                 if msg != "Cancelled" {
-                    self.island(h, json!({"kind": "custom", "icon": "warning-circle", "title": "Quick Share stopped", "subtitle": msg, "color": ORANGE}), 6000);
+                    self.island(h, json!({"kind": "custom", "key": "quickshare", "failure": true, "icon": "warning-circle", "title": "Quick Share stopped", "subtitle": msg, "color": ORANGE}), 6000);
                 }
             }
             "error" => self.quick.error = js(&ev["message"]),

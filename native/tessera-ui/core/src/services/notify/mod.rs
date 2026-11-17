@@ -19,6 +19,7 @@
 //! them too. The list and everything shown is the part's
 //! (surfaces/notifications); it answers through `Bus`.
 
+pub mod live;
 pub mod markup;
 pub mod model;
 
@@ -71,6 +72,7 @@ impl Bus {
     pub fn closed(&self, id: u32, reason: u32) {
         if let Ok(mut ids) = self.ids.lock() {
             ids.live.remove(&id);
+            ids.threads.retain(|_, t| t.0 != id);
             if let Some(p) = ids.pictures.remove(&id) {
                 let _ = std::fs::remove_file(p);
             }
@@ -99,6 +101,9 @@ struct Ids {
     /// pictures saved from image-data, by id (removed with the notification)
     pictures: HashMap<u32, PathBuf>,
     saved: u64,
+    /// live entries (live.rs): a thread (an event id, or an app's title) ->
+    /// its notification and when it last came
+    threads: HashMap<String, (u32, i64)>,
 }
 
 /// Tessera's state folder ($XDG_STATE_HOME/tessera, or irice while the
@@ -167,6 +172,9 @@ pub fn hints_from(h: &HashMap<String, OwnedValue>) -> Hints {
         sound_file: s("sound-file"),
         value: get("value").and_then(int).map(|v| v as i32),
         reply_placeholder: s("x-kde-reply-placeholder-text"),
+        key: s("x-tessera-key"),
+        severity: get("x-tessera-severity").and_then(int).map(|v| v.clamp(0, 3) as u8),
+        resolved: s("x-tessera-resolved"),
     }
 }
 
@@ -227,10 +235,34 @@ impl Server {
         let h = hints_from(&hints);
         let Ok(mut ids) = self.ids.lock() else { return 0 };
         let live = ids.live.clone();
+        let now = now_ms();
+        // One entry per thing (live.rs): the same event id, or the same app
+        // and title again soon, joins the one that's here
+        let thread = live::thread_key(app_name, &h.key, summary);
+        let joins = ids.threads.get(&thread).filter(|t| live.contains(&t.0) && live::merges(&thread, t.1, now)).map(|t| t.0);
+        let merged = if replaces_id != 0 && live.contains(&replaces_id) {
+            model::Merged::Replaces
+        } else if joins.is_some() {
+            if h.key.is_empty() { model::Merged::Thread } else { model::Merged::Key }
+        } else {
+            model::Merged::No
+        };
+        let replaces = if replaces_id != 0 { replaces_id } else { joins.unwrap_or(0) };
         let mut next = ids.next;
-        let (id, _) = model::assign_id(|i| live.contains(&i), &mut next, replaces_id);
+        let (id, _) = model::assign_id(|i| live.contains(&i), &mut next, replaces);
         ids.next = next;
+        // over, and to go: the entry closes (an unknown one: nothing to do)
+        if live::Resolve::from_str(&h.resolved) == live::Resolve::Remove {
+            ids.threads.remove(&thread);
+            drop(ids);
+            if merged != model::Merged::No {
+                let _ = self.tx.send(Msg::Data(Box::new(Event::CloseRequest(id))));
+            }
+            return id;
+        }
         ids.live.insert(id);
+        ids.threads.retain(|_, t| t.0 != id);
+        ids.threads.insert(thread, (id, now));
         // pixels: saved as a picture file (a new name each time: a picture
         // that changes under the same name would stay cached)
         let mut picture = String::new();
@@ -247,7 +279,8 @@ impl Server {
             }
         }
         drop(ids);
-        let n = model::note_from(id, app_name, app_icon, summary, body, &actions, &h, expire_timeout, &picture, now_ms());
+        let mut n = model::note_from(id, app_name, app_icon, summary, body, &actions, &h, expire_timeout, &picture, now);
+        n.merged = merged;
         let _ = self.tx.send(Msg::Data(Box::new(Event::Notify(n))));
         id
     }

@@ -108,7 +108,7 @@ impl Sharing {
     /// Said once per connection
     fn phone_arrived(&mut self, h: &mut Host, d: &Value) {
         if d["state"] == "unauthorized" {
-            self.island(h, json!({"kind": "custom", "icon": "device-mobile", "title": "Allow this computer on your phone", "subtitle": "Tap Allow on the phone's USB debugging prompt"}), 8000);
+            self.island(h, json!({"kind": "custom", "key": "phone", "icon": "device-mobile", "title": "Allow this computer on your phone", "subtitle": "Tap Allow on the phone's USB debugging prompt"}), 8000);
         } else if d["state"] == "device" {
             let model = js(&d["model"]);
             let sub = match d["battery"].as_f64() {
@@ -118,7 +118,7 @@ impl Sharing {
             let scrcpy = self.has_scrcpy();
             self.island(
                 h,
-                json!({"kind": "custom", "icon": "device-mobile", "title": if model.is_empty() { "Phone connected".to_string() } else { model }, "subtitle": sub,
+                json!({"kind": "custom", "key": "phone", "icon": "device-mobile", "title": if model.is_empty() { "Phone connected".to_string() } else { model }, "subtitle": sub,
                     "action": if scrcpy {"Show Screen"} else {""}, "onAction": crate::act("share.phoneMirror", json!([js(&d["serial"])]))}),
                 6000,
             );
@@ -151,7 +151,7 @@ impl Sharing {
         match spawn(h.sender("Sharing"), "scrcpy", gen, &cmd, &[], false, true) {
             Some(k) => self.phone.mirrors.push((ser, k)),
             None => {
-                self.island(h, json!({"kind": "custom", "icon": "device-mobile", "title": "Couldn't show the phone's screen", "subtitle": "scrcpy stopped", "color": crate::DANGER}), 7000);
+                self.island(h, json!({"kind": "custom", "key": "phone", "icon": "device-mobile", "title": "Couldn't show the phone's screen", "subtitle": "scrcpy stopped", "color": crate::DANGER}), 7000);
             }
         }
     }
@@ -160,7 +160,7 @@ impl Sharing {
         self.phone.mirrors.remove(i);
         if code != 0 && code != 2 {
             // (2: the phone went away)
-            self.island(h, json!({"kind": "custom", "icon": "device-mobile", "title": "Couldn't show the phone's screen", "subtitle": last_line(stderr, "scrcpy stopped"), "color": crate::DANGER}), 7000);
+            self.island(h, json!({"kind": "custom", "key": "phone", "icon": "device-mobile", "title": "Couldn't show the phone's screen", "subtitle": last_line(stderr, "scrcpy stopped"), "color": crate::DANGER}), 7000);
         }
     }
 

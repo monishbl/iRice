@@ -65,6 +65,111 @@ pub fn battery_stage(percent: f64, on_battery: bool) -> u8 {
     }
 }
 
+// ── The battery's alerts: one per mark, one owner (Power) ─────────────────
+
+/// The marks a draining battery passes, each announced once: the battery
+/// saver's level (20% unless changed), low (10%), very low (5%: Sleep now)
+/// and empty (3%: it sleeps). Power is the only one that announces them (the
+/// island used to post its own 20/10/5% alerts on top: two cards at 10%); the
+/// empty one comes from the battery guard while it runs (it does the sleep,
+/// and has to say so even with the shell gone).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum BatteryMark {
+    None,
+    Saver,
+    Low,
+    VeryLow,
+    Empty,
+}
+
+impl BatteryMark {
+    /// The stage on the bus (power.stage): 0 none or the saver mark, 1 low, 2 very low, 3 empty
+    pub fn stage(self) -> u8 {
+        match self {
+            Self::None | Self::Saver => 0,
+            Self::Low => 1,
+            Self::VeryLow => 2,
+            Self::Empty => 3,
+        }
+    }
+}
+
+/// Where the battery is (`critical`: Settings → Critical battery, which
+/// sleeps at 3%: without it there's no very low or empty mark, as nothing
+/// sleeps). A saver level at or under 10% is the low mark.
+pub fn battery_mark(percent: f64, on_battery: bool, saver_level: f64, critical: bool) -> BatteryMark {
+    match battery_stage(percent, on_battery) {
+        0 if on_battery && percent >= 0.0 && percent <= saver_level => BatteryMark::Saver,
+        0 => BatteryMark::None,
+        1 => BatteryMark::Low,
+        _ if !critical => BatteryMark::Low,
+        2 => BatteryMark::VeryLow,
+        _ => BatteryMark::Empty,
+    }
+}
+
+/// Once per mark per discharge: a mark is announced when the battery first
+/// reaches it, never again on the way down (a reading that wobbles between
+/// 10 and 11% doesn't repeat it), and everything is forgotten when it's
+/// plugged in or back above the saver level plus the band.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct BatteryAlerts {
+    shown: Option<BatteryMark>,
+}
+
+impl BatteryAlerts {
+    /// A reading: Some(mark) when that mark is to be announced now
+    pub fn step(&mut self, mark: BatteryMark, percent: f64, on_battery: bool, saver_level: f64) -> Option<BatteryMark> {
+        if !on_battery || (mark == BatteryMark::None && percent > saver_level + SAVER_BAND) {
+            self.shown = None;
+            return None;
+        }
+        if mark == BatteryMark::None || self.shown.is_some_and(|s| s >= mark) {
+            return None;
+        }
+        self.shown = Some(mark);
+        Some(mark)
+    }
+
+    pub fn shown(&self) -> BatteryMark {
+        self.shown.unwrap_or(BatteryMark::None)
+    }
+}
+
+/// What a mark says, the same everywhere (island card or notification): a
+/// short title, "<n>% left · what happens", the icon and the action
+/// (label, call). `saver`: the shell's battery saver came on by itself at
+/// this mark (its notice is the saver mark's alert, with Turn off).
+pub struct BatteryAlert {
+    pub icon: &'static str,
+    pub title: &'static str,
+    pub subtitle: String,
+    pub action: Option<(&'static str, &'static str)>,
+    /// red (low, very low, empty) or the saver's yellow
+    pub urgent: bool,
+    /// its live entry's severity (core notify/live.rs): each mark more
+    /// urgent than the last, so each pops up and the rest change quietly
+    pub severity: u8,
+}
+
+pub fn battery_alert(mark: BatteryMark, percent: f64, saver: bool) -> Option<BatteryAlert> {
+    let p = percent.max(0.0).round();
+    let severity = match mark {
+        BatteryMark::None | BatteryMark::Saver => 0,
+        BatteryMark::Low => 1,
+        BatteryMark::VeryLow => 2,
+        BatteryMark::Empty => 3,
+    };
+    let a = |icon, title, what: &str, action, urgent| Some(BatteryAlert { icon, title, subtitle: format!("{p}% left · {what}"), action, urgent, severity });
+    match mark {
+        BatteryMark::None => None,
+        BatteryMark::Saver if saver => a("leaf", "Battery saver is on", "lighter until you plug in", Some(("Turn off", "power.saverOff")), false),
+        BatteryMark::Saver | BatteryMark::Low => a("battery-warning", "Low battery", "plug in soon", None, true),
+        BatteryMark::VeryLow => a("battery-warning", "Battery very low", "sleeps at 3% to keep your work", Some(("Sleep now", "system.power")), true),
+        BatteryMark::Empty => a("battery-empty", "Battery empty", "sleeping now to keep your work", None, true),
+    }
+}
+
 fn s<'a>(cfg: &'a Value, k: &str, d: &'a str) -> &'a str {
     cfg[k].as_str().unwrap_or(d)
 }
@@ -338,6 +443,62 @@ mod tests {
         assert_eq!([100.0, 10.0, 5.0, 3.0, 2.0].map(|p| battery_stage(p, true)), [0, 1, 2, 3, 3]);
         assert_eq!(battery_stage(2.0, false), 0);
         assert_eq!(battery_stage(-1.0, true), 0);
+    }
+
+    #[test]
+    fn battery_marks() {
+        use BatteryMark::*;
+        let m = |p| battery_mark(p, true, 20.0, true);
+        assert_eq!([50.0, 21.0, 20.0, 11.0, 10.0, 6.0, 5.0, 4.0, 3.0, 1.0].map(m), [None, None, Saver, Saver, Low, Low, VeryLow, VeryLow, Empty, Empty]);
+        assert_eq!(battery_mark(10.0, false, 20.0, true), None); // plugged in
+        assert_eq!(battery_mark(-1.0, true, 20.0, true), None); // not known
+        // Critical battery off: nothing sleeps, so low is the last mark
+        assert_eq!(battery_mark(2.0, true, 20.0, false), Low);
+        // a saver level at 10%: the low mark
+        assert_eq!(battery_mark(10.0, true, 10.0, true), Low);
+        assert_eq!(battery_mark(30.0, true, 35.0, true), Saver);
+    }
+
+    /// The bug: at 10% the island showed its own "Low battery" and Power's
+    /// "Battery low" together. Now a whole run-down gives one alert per
+    /// mark, whatever the readings do.
+    #[test]
+    fn one_alert_per_mark_per_discharge() {
+        use BatteryMark::*;
+        let mut a = BatteryAlerts::default();
+        let mut run = |readings: &[(f64, bool)]| -> Vec<BatteryMark> {
+            readings.iter().filter_map(|&(p, b)| a.step(battery_mark(p, b, 20.0, true), p, b, 20.0)).collect()
+        };
+        // a run-down with readings that wobble and skip
+        let down = [(40.0, true), (21.0, true), (20.0, true), (21.0, true), (20.0, true), (19.0, true), (11.0, true), (10.0, true), (11.0, true), (10.0, true), (9.0, true), (5.0, true), (6.0, true), (5.0, true), (3.0, true), (2.0, true), (1.0, true)];
+        assert_eq!(run(&down), vec![Saver, Low, VeryLow, Empty]);
+        // a jump straight to 4% (asleep through the rest): only the mark it's at
+        assert_eq!(run(&[(30.0, false), (4.0, true), (3.5, true)]), vec![VeryLow]);
+        // plugged in, then unplugged at 15%: the saver mark again
+        assert_eq!(run(&[(15.0, false), (15.0, true)]), vec![Saver]);
+        // back above the level, but not past the band: nothing new at the level
+        assert_eq!(run(&[(22.0, true), (20.0, true)]), Vec::<BatteryMark>::new());
+        // past the band (charged on a light load): the level counts again
+        assert_eq!(run(&[(26.0, true), (20.0, true)]), vec![Saver]);
+    }
+
+    #[test]
+    fn battery_alert_words() {
+        let t = |m, p, s| battery_alert(m, p, s).map(|a| (a.title, a.subtitle));
+        assert_eq!(t(BatteryMark::Saver, 20.0, true), Some(("Battery saver is on", "20% left · lighter until you plug in".into())));
+        assert_eq!(t(BatteryMark::Saver, 20.0, false), Some(("Low battery", "20% left · plug in soon".into())));
+        assert_eq!(t(BatteryMark::Low, 9.6, false), Some(("Low battery", "10% left · plug in soon".into())));
+        assert_eq!(t(BatteryMark::VeryLow, 5.0, false), Some(("Battery very low", "5% left · sleeps at 3% to keep your work".into())));
+        assert_eq!(t(BatteryMark::Empty, 1.0, false), Some(("Battery empty", "1% left · sleeping now to keep your work".into())));
+        assert!(t(BatteryMark::None, 50.0, false).is_none());
+        assert_eq!(battery_alert(BatteryMark::VeryLow, 5.0, false).unwrap().action, Some(("Sleep now", "system.power")));
+        // each mark more urgent than the one before (so each pops up once)
+        let sev: Vec<u8> = [BatteryMark::Saver, BatteryMark::Low, BatteryMark::VeryLow, BatteryMark::Empty].iter().map(|&m| battery_alert(m, 7.0, false).unwrap().severity).collect();
+        assert!(sev.windows(2).all(|w| w[0] < w[1]));
+        // every alert says it the same way: "<n>% left · …"
+        for m in [BatteryMark::Saver, BatteryMark::Low, BatteryMark::VeryLow, BatteryMark::Empty] {
+            assert!(battery_alert(m, 7.0, true).unwrap().subtitle.starts_with("7% left · "));
+        }
     }
 
     #[test]
