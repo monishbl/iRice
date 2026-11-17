@@ -442,8 +442,9 @@ impl Service for CloudAccounts {
                 }
                 (self.was_locked, self.was_nc) = (lk, nc);
                 self.ticks += 1;
+                // (15 minutes; an hour while battery saver is on)
                 if self.ticks % 60 == 0 && !self.arr("accounts").is_empty() && !lk && !idle_long() {
-                    self.freshen(15 * 60_000);
+                    self.freshen(tessera_core::saver::stretch_ticks(15 * 60_000) as i64);
                 }
             }
         }

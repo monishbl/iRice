@@ -24,6 +24,8 @@ bluez.Bluetooth methods, so tests use fakes.
 import asyncio
 import os
 import socket
+import sys
+import time
 
 from . import ble_format, debuglog, endpoint, links, wifi
 from .connection import Connection, ProtocolError
@@ -34,8 +36,12 @@ PORT = 53318
 MAX_INCOMING = 3  # at once; more are refused (a flood shouldn't fill the disk or the island)
 UPGRADE_WAIT = 10  # sending over Bluetooth: how long the files wait for a faster link
 MEDIUM_NAMES = {"wifi_lan": "Wi-Fi", "wifi_direct": "Wi-Fi Direct", "wifi_hotspot": "Wi-Fi hotspot", "ble": "Bluetooth"}
-SLOW = "Staying on Bluetooth, which is slow"
-RETRY = {"lan", "direct"}  # links worth a second try in the same transfer (nothing pauses for them)
+SLOW = "Sending over Bluetooth, which is slower: the Wi-Fi link failed"
+# Links worth a second try in the same transfer (17 Nov: every one that
+# pauses nothing; the user: "stay on Bluetooth only after the faster ones
+# failed, two tries each"). A NetworkManager hotspot ("nm") pauses this
+# computer's Wi-Fi, so it gets one.
+RETRY = {"lan", "direct", "hotspot"}
 RETRY_TIMEOUT = 12  # (the second try waits less)
 SLOW_RTT = 25  # ms: a shared network slower than this goes after Wi-Fi Direct
 SPEED_SAMPLE = 3  # seconds between speed checks on a shared network
@@ -61,7 +67,7 @@ class Unreachable(OSError):
 
 class QuickShareService:
     def __init__(self, emit, discovery=None, folder=None, name=None, ble=None, helper=None, net_probe=None,
-                 memory=None):
+                 memory=None, identity=None):
         self.emit = emit
         self.memory = memory if memory is not None else links.LinkMemory(path="")  # (the daemon's is kept on disk)
         self.discovery = discovery
@@ -70,8 +76,16 @@ class QuickShareService:
         self.net_probe = net_probe or wifi.network
         self.folder = folder or os.path.expanduser("~/Downloads")
         self.name = name or socket.gethostname()
-        self.endpoint_id = endpoint.new_endpoint_id()
-        self.device_token = ble_format.new_device_token()
+        # The same device to phones every time (identity.py: the daemon's is
+        # kept on disk; tests get a fresh one)
+        if identity:
+            self.endpoint_id = identity["endpoint_id"]
+            self.device_token = bytes.fromhex(identity["token"])
+            self.salt = bytes.fromhex(identity["salt"])
+        else:
+            self.endpoint_id = endpoint.new_endpoint_id()
+            self.device_token = ble_format.new_device_token()
+            self.salt = os.urandom(16)
         self.info = None  # our endpoint info: one for mDNS and Bluetooth (a phone sees one device)
         self.visible = False
         self.looking = False
@@ -101,9 +115,18 @@ class QuickShareService:
     def _log(self, what):
         debuglog.log("service", what)
 
+    def _step(self, what):
+        """A link negotiation step, always in the shell's log (stderr goes
+        there): which link, how it went, how long it took. No names."""
+        self._log(what)
+        try:
+            print(f"quickshare: {what}", file=sys.stderr, flush=True)
+        except (OSError, ValueError):
+            pass
+
     def _endpoint_info(self):
         if self.info is None:
-            self.info = endpoint.endpoint_info(self.name, endpoint.LAPTOP, visible=True)
+            self.info = endpoint.endpoint_info(self.name, endpoint.LAPTOP, visible=True, salt=self.salt)
         return self.info
 
     # ── Visibility ───────────────────────────────────────────────────────
@@ -331,6 +354,7 @@ class QuickShareService:
         return f"{prefix}-{self._serial}"
 
     def _transport_event(self, sid, medium):
+        self._step(f"{sid} on {medium}")
         self.emit({"ev": "transport", "session": sid, "medium": medium, "name": MEDIUM_NAMES.get(medium, "Wi-Fi")})
 
     # ── Receiving ────────────────────────────────────────────────────────
@@ -363,6 +387,12 @@ class QuickShareService:
             async def ask(offer):
                 entry["answer"] = asyncio.get_running_loop().create_future()
                 self.emit(dict({"ev": "incoming", "session": sid, "medium": conn.medium}, **offer))
+                if conn.medium == "ble":
+                    # 17 Nov: the faster link is offered at once, while you
+                    # decide (as Android does), not only after you accept: the
+                    # links that pause nothing and ask no password now, the
+                    # rest once you've said yes
+                    self._upgrade_soon(conn, sid, entry, sender, early=True)
                 return await entry["answer"]
 
             def progress(done, total):
@@ -377,7 +407,7 @@ class QuickShareService:
             conn.on_upgrade_retry = lambda mediums, request: self._faster(conn, sid, entry, sender, "the phone asked for a faster link")
 
             if conn.medium == "ble":
-                receive.on_accepted = lambda: conn._spawn(self._upgrade_in(conn, sid, entry, sender))
+                receive.on_accepted = lambda: self._upgrade_soon(conn, sid, entry, sender, early=False)
             elif conn.medium == "wifi_lan":
                 # The phone chose the shared network: if that's a slow one,
                 # offer Wi-Fi Direct as the files start (the same rule as
@@ -400,9 +430,41 @@ class QuickShareService:
             await conn.close()
             await self._release_links(entry)
 
-    async def _upgrade_in(self, conn, sid, entry, sender):
-        """Receiving over Bluetooth, accepted: offer the phone a faster link,
-        fastest first."""
+    def _upgrade_soon(self, conn, sid, entry, sender, early):
+        """Starts offering faster links (one offer run at a time: an accept
+        while the early run is still going lets that run carry on, then
+        offers what it left out)."""
+        if conn._closed or conn._upgraded.is_set():
+            return
+        if not early:
+            entry["accepted"] = True
+        if entry.get("upgrade_task") and not entry["upgrade_task"].done():
+            return  # (the running one looks at entry["accepted"] when it ends)
+        entry["upgrade_task"] = conn._spawn(self._upgrade_in(conn, sid, entry, sender, early=early))
+
+    async def _upgrade_in(self, conn, sid, entry, sender, early=False):
+        """Receiving over Bluetooth: offer the phone a faster link, fastest
+        first (the shared network, then Wi-Fi Direct, then a hotspot), each
+        twice, the files moving over the moment one works. `early`: before
+        you've accepted, only the links that pause nothing and ask no
+        password."""
+        started = time.monotonic()
+        if not entry.get("upgrade_said"):
+            entry["upgrade_said"] = True
+            self.emit({"ev": "link", "session": sid, "message": "Looking for a faster Wi-Fi link", "slow": False,
+                       "auth": False, "upgrading": True})
+        try:
+            await self._upgrade_paths(conn, sid, entry, sender, early)
+        finally:
+            ms = int((time.monotonic() - started) * 1000)
+            self._step(f"{sid} upgrade run ({'before accept' if early else 'after accept'}) ended on "
+                       f"{conn.medium} after {ms} ms")
+        # accepted while the early run went: what it left out, now
+        if early and entry.get("accepted") and not conn._closed and not conn._upgraded.is_set():
+            entry["upgrade_task"] = None
+            await self._upgrade_in(conn, sid, entry, sender, early=False)
+
+    async def _upgrade_paths(self, conn, sid, entry, sender, early):
         net = await self.net_probe()
         helper_ok = self.helper is not None and self.can_host(net)
         ip = wifi.phone_address(conn)
@@ -429,6 +491,14 @@ class QuickShareService:
             self._log(f"{sid}: skipping the shared network: the firewall may block it")
             tries = tries[1:]
         tries = self.memory.order(sender, tries, key=lambda t: t[0])
+        failed = entry.setdefault("failed_links", {})  # link -> tries that failed in this transfer
+        if early:
+            # (no password prompt, no paused Wi-Fi before you've said yes)
+            trusted = os.path.exists(self.trusted) or bool(getattr(self.helper, "proc", None))
+            tries = [t for t in tries if t[0] == "lan" or (t[0] in ("direct", "hotspot") and trusted)]
+            # (and not one that keeps failing with this phone: it goes last, after accept)
+            tries = [t for t in tries if not self.memory.skip(sender, t[0])]
+        tries = [t for t in tries if failed.get(t[0], 0) < (2 if t[0] in RETRY else 1)]
         # Fastest first means the measured kind of fast: a shared network on
         # 2.4 GHz, or one the phone answers slowly on (a busy band, a router
         # in between), goes after a Wi-Fi Direct link (~10 MB/s), when that
@@ -440,7 +510,14 @@ class QuickShareService:
             if band24 or (rtt is not None and rtt > SLOW_RTT):
                 self._log(f"{sid}: the shared network looks slow ({'2.4 GHz' if band24 else f'{rtt:.0f} ms'}): Wi-Fi Direct first")
                 tries = [t for t in tries if t[0] == "direct"] + [t for t in tries if t[0] != "direct"]
-        self._log(f"{sid}: upgrade paths {[p for p, _ in tries]} (phone's address answers: {answers}, {total} bytes)")
+        self._step(f"{sid} upgrade paths {[p for p, _ in tries] or 'none'} (same network answers: {answers}, "
+                   f"{total} bytes, {'before' if early else 'after'} accept)")
+        if early and not tries:
+            return  # (the run after accept says why, if it stays)
+        reasons = entry.setdefault("reasons", [])
+        if not tries and failed:
+            self._warn(sid, f"{SLOW}: {'; '.join(dict.fromkeys(reasons)) or 'no faster link worked'}.")
+            return
         if not tries and fw_blocked:
             self._warn(sid, f"{SLOW}: this computer's firewall would keep {sender} from joining its hotspot. "
                             "Settings → Privacy & Security → Firewall says why.")
@@ -450,20 +527,27 @@ class QuickShareService:
             self._warn(sid, f"{SLOW}: {sender} and this computer share no network, and {why}. "
                             "For full speed, put both on the same Wi-Fi.")
             return
-        reasons = []
         for p, mine in tries:
-            # Fastest first; the cheap links get a second try before falling back
-            for n in range(2 if p in RETRY else 1):
+            # Fastest first; two tries each (one for a hotspot that pauses the Wi-Fi)
+            while failed.get(p, 0) < (2 if p in RETRY else 1):
                 if conn._closed or conn._upgraded.is_set():
                     return
+                n = failed.get(p, 0)
                 entry["offering"] = p
+                t0 = time.monotonic()
                 ok, reason = await self._offer(conn, sid, entry, sender, p, mine, net, RETRY_TIMEOUT if n else 30)
+                ms = int((time.monotonic() - t0) * 1000)
                 if ok or conn._upgraded.is_set():
+                    self._step(f"{sid} upgrade {PATH_MEDIUMS[p]} try {n + 1}: moved in {ms} ms")
                     return
+                failed[p] = n + 1
                 reasons.append(reason)
-                self._log(f"{sid}: {p} failed ({reason})")
+                self._step(f"{sid} upgrade {PATH_MEDIUMS[p]} try {n + 1}: failed in {ms} ms "
+                           f"({(reason or '').replace(sender, 'the phone')})")
             entry.pop("offering", None)
             self.memory.failed(sender, p)
+        if early:
+            return  # (the run after accept tries the rest, then says if it stays)
         if not conn._closed and not conn._upgraded.is_set():
             self._warn(sid, f"{SLOW}: {'; '.join(dict.fromkeys(reasons)) or 'no faster link worked'}.")
 

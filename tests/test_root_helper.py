@@ -671,6 +671,103 @@ class FaceUnlock(unittest.TestCase):
         with self.assertRaises(self.r.Refused):
             self.face(["add"], which=lambda n: None)
 
+    # ── face for administrator prompts (opt-in, infrared cameras only) ──
+    POLKIT = "#%PAM-1.0\n\nauth       include      system-auth\naccount    include      system-auth\npassword   include      system-auth\nsession    include      system-auth\n"
+    # (this laptop's: a finger first, set up by hand, then the password)
+    POLKIT_FP = ("#%PAM-1.0\n\nauth       sufficient   pam_fprintd.so max-tries=2 timeout=10\nauth       include      system-auth\n"
+                 "account    include      system-auth\npassword   include      system-auth\nsession    include      system-auth\n")
+
+    def test_polkit_gets_the_ir_face_first_and_keeps_the_rest(self):
+        t = self.r.polkit_with_face(self.POLKIT_FP)
+        lines = t.splitlines()
+        self.assertEqual(lines[0], "#%PAM-1.0")
+        self.assertIn("sufficient", lines[2])
+        self.assertIn("pam_howdy.so", lines[2])
+        # the finger and the password exactly as they were, after the face
+        self.assertEqual(lines[3], "auth       sufficient   pam_fprintd.so max-tries=2 timeout=10")
+        self.assertEqual(lines[4], "auth       include      system-auth")
+        self.assertEqual([l for l in lines if self.r.FACE_MARK not in l], self.POLKIT_FP.splitlines())
+        # never the blink, never the regular camera's PAM file
+        self.assertNotIn("pam_exec", t)
+        self.assertNotIn("face_live", t)
+        self.assertNotIn("tessera-face-rgb", t)
+        # again: still one face line (ours from before taken out)
+        self.assertEqual(self.r.polkit_with_face(t).count(self.r.FACE_MARK), 1)
+
+    def test_the_dropin_is_a_view_not_an_edit(self):
+        d = self.r.face_dropin("/var/lib/tessera/face/polkit-1", "/etc/pam.d/polkit-1")
+        self.assertIn("BindReadOnlyPaths=/var/lib/tessera/face/polkit-1:/etc/pam.d/polkit-1", d)
+        self.assertIn("DeviceAllow=char-video4linux rw", d)
+
+    def test_infrared_is_told_by_name_or_greyscale(self):
+        sysd = Path(self.dir.name) / "v4l"
+        for dev, name in (("video0", "Integrated Camera"), ("video2", "Integrated IR Camera"), ("video4", "Integrated Camera")):
+            (sysd / dev).mkdir(parents=True)
+            (sysd / dev / "name").write_text(name + "\n")
+        y8 = int.from_bytes(b"GREY", "little")
+        grey = lambda d: [y8] if d.endswith("video4") else [0x56595559]
+        self.assertFalse(self.r.is_infrared("/dev/video0", str(sysd), grey))
+        self.assertTrue(self.r.is_infrared("/dev/video2", str(sysd), grey))
+        self.assertTrue(self.r.is_infrared("/dev/video4", str(sysd), grey))  # (only greyscale)
+        self.assertFalse(self.r.is_infrared("/dev/video0", str(sysd), lambda d: []))
+
+    def admin_tree(self, unit=True, polkit=None):
+        p = Path(self.dir.name) / "sys"
+        (p / "etc/pam.d").mkdir(parents=True)
+        (p / "etc/pam.d/polkit-1").write_text(polkit or self.POLKIT_FP)
+        if unit:
+            (p / "usr/lib/systemd/system").mkdir(parents=True)
+            (p / "usr/lib/systemd/system/polkit-agent-helper@.service").write_text("[Service]\n")
+        (p / "etc/systemd/system/polkit-agent-helper@.service.d").mkdir(parents=True)
+        (p / "var/lib/tessera/face").mkdir(parents=True)  # (the stub write_root makes no folders)
+        self.config.write_text("[video]\ndevice_path = /dev/video2\n")
+        return p
+
+    def admin_on(self, prefix, kind="ir", device="/dev/video2", infrared=lambda d: d == "/dev/video2"):
+        return self.r.face_admin_on(self.uid, device, kind, exists=lambda p: True, which=lambda n: "/usr/bin/howdy",
+                                    prefix=str(prefix), run=lambda *a, **k: None, config=str(self.config), infrared=infrared)
+
+    def test_admin_on_and_off_with_infrared(self):
+        p = self.admin_tree()
+        self.admin_on(p)
+        self.assertEqual((p / "etc/pam.d/polkit-1").read_text(), self.POLKIT_FP)  # (polkit's own file: untouched)
+        copy = (p / "var/lib/tessera/face/polkit-1").read_text()
+        self.assertIn("pam_howdy", copy)
+        self.assertIn("pam_fprintd.so max-tries=2 timeout=10", copy)
+        self.assertNotIn("pam_exec", copy)
+        dropin = p / "etc/systemd/system/polkit-agent-helper@.service.d/50-tessera-face.conf"
+        self.assertTrue(dropin.exists())
+        self.r.face_admin_off(self.uid, prefix=str(p), run=lambda *a, **k: None)
+        self.assertFalse(dropin.exists())
+        self.assertFalse((p / "var/lib/tessera/face/polkit-1").exists())
+
+    def test_a_regular_camera_never_approves_administrators(self):
+        p = self.admin_tree()
+        dropin = p / "etc/systemd/system/polkit-agent-helper@.service.d/50-tessera-face.conf"
+        # asked for a regular camera
+        with self.assertRaises(self.r.Refused) as e:
+            self.admin_on(p, kind="rgb")
+        self.assertIn("regular camera", str(e.exception))
+        # asked as "ir", but Howdy's camera is a regular one
+        self.config.write_text("[video]\ndevice_path = /dev/video0\n")
+        with self.assertRaises(self.r.Refused):
+            self.admin_on(p, device="/dev/video0")
+        # asked for the infrared one while Howdy watches the regular one
+        with self.assertRaises(self.r.Refused):
+            self.admin_on(p, device="/dev/video2")
+        self.assertFalse(dropin.exists())
+        # (and through the command line too)
+        with self.assertRaises(self.r.Refused):
+            self.face(["admin", "on", "/dev/video0", "rgb"])
+
+    def test_no_helper_service_no_admin(self):
+        q = Path(self.dir.name) / "q"
+        (q / "etc/pam.d").mkdir(parents=True)
+        (q / "etc/pam.d/polkit-1").write_text(self.POLKIT)
+        self.config.write_text("[video]\ndevice_path = /dev/video2\n")
+        with self.assertRaises(self.r.Refused):
+            self.admin_on(q)  # (a setuid-only polkit: no service to give a camera)
+
 
 class SysUpdate(unittest.TestCase):
     """The whole real (not --fake) run: one pkexec, the AUR's pacman through it."""

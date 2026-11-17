@@ -16,11 +16,13 @@ pub struct Request {
 }
 
 /// The priorities (PRIORITY in the JS; others 10):
-///   40 Cool-down, 30 Battery saver, 20 your choice and Game Mode
+///   40 Cool-down, 30 Battery saver (Low Power at a low battery, or the
+///   shell's battery saver with "Also use Low Power"), 20 your choice and
+///   Game Mode
 pub fn priority(owner: &str) -> i64 {
     match owner {
         "cooldown" => 40,
-        "battery" => 30,
+        "battery" | "saver" => 30,
         "manual" | "game" => 20,
         _ => 10,
     }
@@ -116,6 +118,103 @@ pub fn idle_listeners(cfg: &Value) -> Vec<(String, String, i64)> {
     out
 }
 
+// ── Battery saver (the shell's: saver.rs in core) ──────────────────────────
+
+/// power.saver: when the shell's battery saver comes on by itself
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SaverMode {
+    /// at or below the level, on battery (the default)
+    Auto,
+    /// whenever it runs on battery
+    OnBattery,
+    /// never by itself (the quick toggle still turns it on)
+    Off,
+}
+
+impl SaverMode {
+    pub fn from_cfg(power: &Value) -> Self {
+        match power["saver"].as_str() {
+            Some("battery") => Self::OnBattery,
+            Some("off") => Self::Off,
+            _ => Self::Auto,
+        }
+    }
+}
+
+/// power.saverLevel, held to 10–50% (20 when unset or not a number)
+pub fn saver_level(power: &Value) -> f64 {
+    power["saverLevel"].as_f64().filter(|v| v.is_finite()).unwrap_or(20.0).clamp(10.0, 50.0)
+}
+
+/// Auto ends only this far above the level (a battery that hovers around it,
+/// or climbs a point on a lighter load, doesn't switch it on and off)
+pub const SAVER_BAND: f64 = 5.0;
+
+/// The shell's battery saver: on while running on battery and the setting
+/// says so (Auto at or below the level until 5 points above it, or always on
+/// battery), or turned on or off by hand; plugging in ends it, and forgets
+/// what was chosen by hand.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Saver {
+    pub on: bool,
+    /// Auto's latch: reached the level, not yet back above it plus the band
+    low: bool,
+    /// turned on or off by hand (the quick toggle, the alert's Turn off),
+    /// until it's plugged in (and a Turn off also until the battery is back
+    /// above the band, so a second run-down turns it on again)
+    pub forced: Option<bool>,
+}
+
+impl Saver {
+    /// A battery reading (`percent` below 0: not known). Some(on) when it
+    /// came on or went off.
+    pub fn step(&mut self, mode: SaverMode, level: f64, percent: f64, on_battery: bool) -> Option<bool> {
+        if !on_battery {
+            self.low = false;
+            self.forced = None;
+        } else if percent >= 0.0 {
+            if percent <= level {
+                self.low = true;
+            } else if percent > level + SAVER_BAND {
+                self.low = false;
+                if self.forced == Some(false) {
+                    self.forced = None;
+                }
+            }
+        }
+        let automatic = match mode {
+            SaverMode::Auto => self.low,
+            SaverMode::OnBattery => true,
+            SaverMode::Off => false,
+        };
+        let on = on_battery && self.forced.unwrap_or(automatic);
+        (on != self.on).then(|| {
+            self.on = on;
+            on
+        })
+    }
+
+    /// It came on by itself now (not by hand): worth a notice
+    pub fn came_on_by_itself(&self, mode: SaverMode) -> bool {
+        self.on && self.forced.is_none() && mode == SaverMode::Auto
+    }
+
+    /// The quick toggle (on battery only: plugged in, it's always off).
+    /// False when there was nothing to switch.
+    pub fn toggle(&mut self, on_battery: bool) -> bool {
+        if !on_battery {
+            return false;
+        }
+        self.forced = Some(!self.on);
+        true
+    }
+
+    /// The alert's Turn off: off until it's plugged in (or back above the band)
+    pub fn turn_off(&mut self) {
+        self.forced = Some(false);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -135,6 +234,103 @@ mod tests {
         assert_eq!(resolve(&[], 0.0).mode, "balanced");
         assert_eq!(fit("performance", false), "balanced");
         assert_eq!(fit("performance", true), "performance");
+    }
+
+    #[test]
+    fn saver_settings() {
+        assert_eq!(SaverMode::from_cfg(&json!({})), SaverMode::Auto);
+        assert_eq!(SaverMode::from_cfg(&json!({"saver": "battery"})), SaverMode::OnBattery);
+        assert_eq!(SaverMode::from_cfg(&json!({"saver": "off"})), SaverMode::Off);
+        assert_eq!(SaverMode::from_cfg(&json!({"saver": 3})), SaverMode::Auto);
+        assert_eq!(saver_level(&json!({})), 20.0);
+        assert_eq!(saver_level(&json!({"saverLevel": 5})), 10.0);
+        assert_eq!(saver_level(&json!({"saverLevel": 80})), 50.0);
+        assert_eq!(saver_level(&json!({"saverLevel": "x"})), 20.0);
+        assert_eq!(saver_level(&json!({"saverLevel": 35})), 35.0);
+    }
+
+    #[test]
+    fn saver_auto_threshold_and_band() {
+        let mut s = Saver::default();
+        let a = SaverMode::Auto;
+        assert_eq!(s.step(a, 20.0, 40.0, true), None);
+        assert_eq!(s.step(a, 20.0, 21.0, true), None);
+        assert_eq!(s.step(a, 20.0, 20.0, true), Some(true)); // at the level
+        assert!(s.came_on_by_itself(a));
+        // (charging a little on a lighter load: stays on within the band)
+        assert_eq!(s.step(a, 20.0, 23.0, true), None);
+        assert_eq!(s.step(a, 20.0, 25.0, true), None);
+        assert!(s.on);
+        assert_eq!(s.step(a, 20.0, 25.5, true), Some(false)); // above level + 5
+        assert_eq!(s.step(a, 20.0, 22.0, true), None); // (and not back on until the level)
+        // an unknown reading changes nothing
+        assert_eq!(s.step(a, 20.0, 19.0, true), Some(true));
+        assert_eq!(s.step(a, 20.0, -1.0, true), None);
+        assert!(s.on);
+    }
+
+    #[test]
+    fn saver_ends_when_plugged_in() {
+        let mut s = Saver::default();
+        let a = SaverMode::Auto;
+        assert_eq!(s.step(a, 20.0, 12.0, true), Some(true));
+        assert_eq!(s.step(a, 20.0, 12.0, false), Some(false)); // plugged in
+        assert_eq!(s.step(a, 20.0, 13.0, false), None);
+        // unplugged again, still low: on again
+        assert_eq!(s.step(a, 20.0, 13.0, true), Some(true));
+        // on the charger, nothing turns it on: not the mode, not the toggle
+        let mut s = Saver::default();
+        assert_eq!(s.step(SaverMode::OnBattery, 20.0, 90.0, false), None);
+        assert!(!s.toggle(false));
+        assert_eq!(s.step(SaverMode::OnBattery, 20.0, 90.0, false), None);
+        assert!(!s.on);
+    }
+
+    #[test]
+    fn saver_always_on_battery_and_off() {
+        let mut s = Saver::default();
+        assert_eq!(s.step(SaverMode::OnBattery, 20.0, 95.0, true), Some(true));
+        assert!(!s.came_on_by_itself(SaverMode::OnBattery)); // (no notice: you chose it)
+        assert_eq!(s.step(SaverMode::OnBattery, 20.0, 95.0, false), Some(false));
+        let mut s = Saver::default();
+        assert_eq!(s.step(SaverMode::Off, 20.0, 5.0, true), None);
+        // the toggle still turns it on, until plugged in
+        assert!(s.toggle(true));
+        assert_eq!(s.step(SaverMode::Off, 20.0, 5.0, true), Some(true));
+        assert!(!s.came_on_by_itself(SaverMode::Off));
+        assert_eq!(s.step(SaverMode::Off, 20.0, 5.0, false), Some(false));
+        assert_eq!(s.forced, None);
+        // changing the setting applies at the next reading
+        let mut s = Saver::default();
+        assert_eq!(s.step(SaverMode::Off, 30.0, 25.0, true), None);
+        assert_eq!(s.step(SaverMode::Auto, 30.0, 25.0, true), Some(true));
+        assert_eq!(s.step(SaverMode::Off, 30.0, 25.0, true), Some(false));
+    }
+
+    #[test]
+    fn saver_turned_off_by_hand() {
+        let mut s = Saver::default();
+        let a = SaverMode::Auto;
+        assert_eq!(s.step(a, 20.0, 18.0, true), Some(true));
+        s.turn_off();
+        assert_eq!(s.step(a, 20.0, 17.0, true), Some(false));
+        assert_eq!(s.step(a, 20.0, 10.0, true), None); // stays off while it runs down
+        // the toggle turns it on again
+        assert!(s.toggle(true));
+        assert_eq!(s.step(a, 20.0, 10.0, true), Some(true));
+        assert!(!s.came_on_by_itself(a));
+        assert!(s.toggle(true));
+        assert_eq!(s.step(a, 20.0, 10.0, true), Some(false));
+        // back above the band, then down again: on by itself again
+        assert_eq!(s.step(a, 20.0, 26.0, true), None);
+        assert_eq!(s.forced, None);
+        assert_eq!(s.step(a, 20.0, 20.0, true), Some(true));
+        assert!(s.came_on_by_itself(a));
+        // turned off, then plugged in: forgotten
+        s.turn_off();
+        s.step(a, 20.0, 19.0, true);
+        s.step(a, 20.0, 19.0, false);
+        assert_eq!(s.step(a, 20.0, 19.0, true), Some(true));
     }
 
     #[test]

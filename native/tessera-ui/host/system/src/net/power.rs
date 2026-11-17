@@ -13,14 +13,21 @@
 //! profile is read over D-Bus on a thread (net.hadess.PowerProfiles, or
 //! UPower's own name for it) and set with `powerprofilesctl set`.
 //!
+//! Battery saver (the shell's, not the energy mode): on battery at or below
+//! power.saverLevel (Auto), always on battery, or only by hand; plugging in
+//! ends it (power_policy::Saver). It sets core's saver flag (saver.rs: 60 Hz,
+//! Reduce motion, slower background refreshes) and has every part read the
+//! settings again; with power.saverProfile it also asks for Low Power.
+//!
 //! Calls (prefix "power"): setMode(mode), ask({owner, mode, why, until}),
-//! release(owner), saverOn, energyUsers(delta), clearEnergy, syncGuard,
-//! idleLater. From System (read off the bus under "system"): gameMode,
+//! release(owner), saverOn, saverToggle, saverOff, energyUsers(delta),
+//! clearEnergy, syncGuard, idleLater. From System (read off the bus under "system"): gameMode,
 //! keepAwake. Asks of others: system.power(["sleep"|"lock"]), sound.play
 //! (["battery"]), island.post. State on the bus as "power": {hasBattery,
 //! percent, onBattery, mode, modeName, why, winner, requests, ppd,
 //! hasPerformance, profile, stage, guardActive, guardError, ownHypridle,
-//! userHypridle, energyApps, energyMinutes, lidMine}.
+//! userHypridle, energyApps, energyMinutes, lidMine, saver {on, mode,
+//! level, byHand}}.
 
 use super::common::*;
 use super::power_policy as policy;
@@ -51,6 +58,7 @@ pub fn cfg_with_defaults(raw: &Value) -> Value {
         "idleDimAc": 300, "idleLockAc": 600, "idleOffAc": 600, "idleSleepAc": 0,
         "idleDimBattery": 120, "idleLockBattery": 300, "idleOffBattery": 300, "idleSleepBattery": 900,
         "lidAc": "sleep", "lidBattery": "sleep", "lidExternal": "nothing", "lidCaffeine": "lock", "passwordAfterSleep": 0, "appEnergy": true,
+        "saver": "auto", "saverLevel": 20, "saverProfile": false,
     });
     if let Some(o) = raw["power"].as_object() {
         for (k, v) in o {
@@ -80,6 +88,8 @@ enum M {
     LidClosed,
     LidOpened,
     Report(String),
+    /// the notification's Turn off
+    SaverOff,
 }
 
 fn ppd_read(conn: &zbus::blocking::Connection, dest: &'static str, path: &'static str) -> zbus::Result<(String, bool)> {
@@ -172,6 +182,8 @@ pub struct Power {
     /// the lid's state while Tessera handles it, and the closed-lid guard
     lid_is_closed: bool,
     lid_sleep_asked: f64,
+    /// asks to sleep since the lid closed (the third sleeps without waiting for the lock)
+    lid_sleep_tries: u32,
     hot_since: f64,
     energy_users: i32,
     energy_apps: Value,
@@ -179,6 +191,8 @@ pub struct Power {
     ticks: u64,
     reporting: bool,
     last: Value,
+    /// the shell's battery saver
+    saver: policy::Saver,
 }
 
 impl Default for Power {
@@ -211,6 +225,7 @@ impl Default for Power {
             lid_fd: None,
             lid_is_closed: false,
             lid_sleep_asked: 0.0,
+            lid_sleep_tries: 0,
             hot_since: 0.0,
             energy_users: 0,
             energy_apps: json!([]),
@@ -218,6 +233,7 @@ impl Default for Power {
             ticks: 0,
             reporting: false,
             last: Value::Null,
+            saver: policy::Saver::default(),
         }
     }
 }
@@ -282,6 +298,12 @@ impl Power {
 
     fn offer_saver(&mut self, h: &mut Host) {
         if !self.cfg["batterySaver"].as_bool().unwrap_or(true) || self.saver_dismissed || self.requests.contains_key("battery") || self.mode() == "power-saver" || !self.ppd {
+            return;
+        }
+        // One alert at the low mark, not two: while the shell's own battery
+        // saver comes on by itself (its notice says so, and its "Also use Low
+        // Power" setting covers the profile), this offer stays quiet
+        if policy::SaverMode::from_cfg(&self.cfg) != policy::SaverMode::Off && !self.cfg["batterySaverAuto"].as_bool().unwrap_or(false) {
             return;
         }
         self.saver_dismissed = true;
@@ -425,10 +447,62 @@ impl Power {
         }
         let hot_for = if self.hot_since > 0.0 { (now - self.hot_since) / 1000.0 } else { 0.0 };
         let external = h.st.outputs_now().iter().filter(|(_, n)| !is_built_in(n)).count();
-        if policy::lid_should_sleep_now(!on_battery, external, hot_for) && now - self.lid_sleep_asked > 60_000.0 {
-            eprintln!("tessera-ui: the lid is closed and it's still awake ({}): sleeping", if on_battery { "on battery" } else { "running hot" });
+        if !policy::lid_should_sleep_now(!on_battery, external, hot_for) {
+            self.lid_sleep_tries = 0;
+            return;
+        }
+        if now - self.lid_sleep_asked > 60_000.0 {
             self.lid_sleep_asked = now;
-            h.ask("system.power", json!(["sleep"]));
+            self.lid_sleep_tries += 1;
+            if self.lid_sleep_tries <= 2 {
+                eprintln!("tessera-ui: the lid is closed and it's still awake ({}): sleeping", if on_battery { "on battery" } else { "running hot" });
+                // (locks first, sleeps once the lock is confirmed)
+                h.ask("system.power", json!(["sleep"]));
+            } else {
+                // Still awake a minute after asking twice: the lock never
+                // confirmed. The lid is shut, so nobody sees the desktop, and
+                // the lock was asked for: sleep now rather than run the battery
+                // down in a bag (17 Nov: 2 hours, 99% → 20%, hot)
+                eprintln!("tessera-ui: the lid is closed, asked to sleep twice and still awake: sleeping without waiting for the lock");
+                h.ask("system.power", json!(["lock"]));
+                tessera_core::services::bridge::run(&["systemctl", "suspend"]);
+            }
+        }
+    }
+
+    /// The shell's battery saver, for the battery as it is now: on or off,
+    /// core's flag with it (every part reads the settings again: Reduce
+    /// motion), Low Power with it if asked, and a notice when it came on by
+    /// itself
+    fn saver_step(&mut self, h: &mut Host) {
+        let mode = policy::SaverMode::from_cfg(&self.cfg);
+        let level = policy::saver_level(&self.cfg);
+        let changed = self.saver.step(mode, level, self.percent(), self.on_battery());
+        // (Low Power with it: only when asked for, and only while it's on)
+        let profile = self.saver.on && self.cfg["saverProfile"].as_bool().unwrap_or(false) && self.ppd;
+        if profile && !self.requests.contains_key("saver") {
+            self.ask_mode("saver", "power-saver", "battery saver", 0.0);
+        } else if !profile {
+            self.release("saver");
+        }
+        if tessera_core::saver::set(self.saver.on) {
+            eprintln!("tessera-ui: battery saver {} (battery at {:.0}%, {})", if self.saver.on { "on" } else { "off" }, self.percent(), if self.on_battery() { "on battery" } else { "plugged in" });
+            let _ = h.st.shell.tx.send(tessera_core::Msg::ConfigChanged);
+        }
+        if changed == Some(true) && self.saver.came_on_by_itself(mode) {
+            let (title, text) = ("Battery saver is on", "The shell runs lighter until you plug in.");
+            if island_enabled(h.cfg()) {
+                island_post(h, json!({"kind": "custom", "icon": "leaf", "title": title, "subtitle": text, "color": accent::YELLOW, "action": "Turn off", "actionCall": "power.saverOff", "actionArgs": []}), 8000);
+            } else {
+                // (a notification with its Turn off: notify-send waits for the answer)
+                let send = h.sender(NAME);
+                std::thread::spawn(move || {
+                    let out = std::process::Command::new("notify-send").args(["-a", "Tessera", "-i", "battery-caution", "-A", "off=Turn off", "--wait", title, text]).stdin(std::process::Stdio::null()).stderr(std::process::Stdio::null()).output();
+                    if out.is_ok_and(|o| String::from_utf8_lossy(&o.stdout).trim() == "off") {
+                        send(Box::new(M::SaverOff));
+                    }
+                });
+            }
         }
     }
 
@@ -438,6 +512,7 @@ impl Power {
         if let Some(b) = h.st.shell.get::<Battery>() {
             self.battery = b.clone();
         }
+        self.saver_step(h);
         if self.has_battery() && !self.guard_synced {
             self.guard_synced = true;
             self.sync_guard(h);
@@ -531,6 +606,7 @@ impl Power {
             "guardActive": self.guard_active, "guardError": self.guard_error, "ownHypridle": self.own_hypridle,
             "userHypridle": tessera_core::util::xdg("XDG_CONFIG_HOME", ".config").join("hypr/hypridle.conf").to_string_lossy(),
             "energyApps": self.energy_apps, "energyMinutes": self.energy_minutes, "lidMine": !self.lid.is_empty(), "sandboxed": tessera_core::env::sandboxed(),
+            "saver": {"on": self.saver.on, "mode": self.cfg["saver"], "level": policy::saver_level(&self.cfg), "byHand": self.saver.forced.is_some()},
             "names": {"power-saver": "Low Power", "balanced": "Balanced", "performance": "Performance"},
         });
         if v != self.last {
@@ -572,6 +648,11 @@ impl Service for Power {
             self.idle_key = k;
             self.idle_later(h);
         }
+        // (a new battery saver setting applies now; not before the first
+        // battery reading, as the tick does)
+        if self.ticks > 0 {
+            self.saver_step(h);
+        }
         self.publish(h);
     }
     fn call(&mut self, h: &mut Host, call: &str, args: &Value) {
@@ -607,6 +688,15 @@ impl Service for Power {
             }
             "syncGuard" => self.sync_guard(h),
             "idleLater" => self.idle_later(h),
+            "saverToggle" => {
+                if self.saver.toggle(self.on_battery()) {
+                    self.saver_step(h);
+                }
+            }
+            "saverOff" => {
+                self.saver.turn_off();
+                self.saver_step(h);
+            }
             _ => {}
         }
         // (a choice applies now, not on the next second's tick; the menus show
@@ -660,6 +750,10 @@ impl Service for Power {
                 self.lid_is_closed = false;
                 self.hot_since = 0.0;
                 Self::built_in_screens(h, true)
+            }
+            M::SaverOff => {
+                self.saver.turn_off();
+                self.saver_step(h);
             }
             M::Report(t) => {
                 self.reporting = false;

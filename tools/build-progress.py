@@ -74,6 +74,7 @@ WRITE_EVERY = 0.5   # s between rewrites of the progress file
 NEW_LOG_AFTER = 15 * 60
 KEEP_LOGS = 3
 STATS = "tessera-build-stats.json"
+GCC_ERROR = re.compile(r"^\S+:\d+(:\d+)?: (fatal )?error: ")
 STATUS = re.compile(r"^\s*(Compiling|Downloading|Downloaded|Fresh|Checking|Building|Updating|Locking|Adding|Blocking|Waiting|Finished)\s+(\S+)(?:\s+(v\S+))?")
 
 
@@ -319,6 +320,9 @@ class Progress:
             self.errors.append(s.strip())
         elif s.startswith("error: could not compile") and not self.errors:
             self.errors.append(s.strip())
+        elif self.kind != "cargo" and GCC_ERROR.match(s) and len(self.errors) < 3:
+            # (a C++ compiler's "main.cpp:12:3: error: …", for make)
+            self.errors.append(s.strip())
 
     # cargo's stdout: one JSON message per line
     def feed_json(self, msg, now=None):
@@ -395,6 +399,12 @@ class Progress:
     def eta(self, now=None):
         now = time.time() if now is None else now
         h = self.history
+        if self.kind != "cargo":
+            # (make: how long the last good build took; nothing to count)
+            if self.phase != "compile" or not h.get("make_s"):
+                return None
+            left = h["make_s"] - self.elapsed(now)
+            return max(0.0, left) if left > -30 else None
         if self.phase == "link" and h.get("link_s") and self.link_at is not None:
             left = h["link_s"] - (now - self.link_at)
             return max(0.0, left) if left > -30 else None
@@ -428,7 +438,9 @@ class Progress:
         of work, so the bar sweeps then instead of sitting at 85 %."""
         if self.phase == "done":
             return 1.0
-        if self.kind != "cargo" or self.phase in ("prepare", "download", "failed"):
+        if self.phase in ("prepare", "download", "failed"):
+            return None
+        if self.kind != "cargo" and eta is None:
             return None
         if eta is not None:
             el = self.elapsed(now)
@@ -479,8 +491,10 @@ class Progress:
 
     def history_after(self):
         """The stats to keep for next time (None: nothing worth keeping)"""
-        if self.code != 0 or self.kind != "cargo":
+        if self.code != 0:
             return None
+        if self.kind != "cargo":
+            return {"make_s": round(self.elapsed(), 1)} if self.ended else None
         h = dict(self.history)
         h["units"] = self.done
         if self.link_at is not None and self.ended:
@@ -610,6 +624,12 @@ def run(kind, label, cmd, final=None, out=None, progress_file=None, log_file=Non
     env = dict(os.environ, CARGO_TERM_COLOR="never", CARGO_TERM_PROGRESS_WHEN="never")
     env.pop("TESSERA_PROGRESS_TTY", None)
     total, exact, history, stats_path, key = None, False, {}, None, None
+    if kind != "cargo":
+        # (make: the last good build's length, for an ETA and a percent),
+        # kept beside the progress file
+        stats_path = os.path.join(os.path.dirname(progress_file), STATS)
+        stats = read_json(stats_path, {}) or {}
+        history = stats.get(label) if isinstance(stats.get(label), dict) else {}
     if kind == "cargo":
         cmd = [a for a in cmd if a not in ("--quiet", "-q") and not a.startswith("--message-format")]
         cmd.append("--message-format=json-render-diagnostics")

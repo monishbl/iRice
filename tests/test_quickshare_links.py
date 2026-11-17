@@ -36,10 +36,13 @@ class LinkMemory(unittest.TestCase):
         self.m.failed("Pixel", "direct")
         self.assertFalse(self.m.skip("Pixel", "direct"))
 
-    def test_order_keeps_fastest_first_and_never_leaves_nothing(self):
+    def test_order_keeps_fastest_first_and_tries_every_link(self):
         for _ in range(2):
             self.m.failed("Pixel", "lan")
-        self.assertEqual(self.m.order("Pixel", ["lan", "direct", "hotspot"]), ["direct", "hotspot"])
+        # (17 Nov: a link that keeps failing goes last, never out: the next
+        # transfer still gets every faster link before Bluetooth)
+        self.assertEqual(self.m.order("Pixel", ["lan", "direct", "hotspot"]), ["direct", "hotspot", "lan"])
+        self.assertEqual(self.m.order("Galaxy", ["lan", "direct", "hotspot"]), ["lan", "direct", "hotspot"])
         self.assertEqual(self.m.order("Pixel", [("lan", 1)], key=lambda t: t[0]), [("lan", 1)])
 
     def test_kept_on_disk_privately(self):

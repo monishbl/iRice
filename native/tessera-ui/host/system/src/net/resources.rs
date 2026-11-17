@@ -259,7 +259,15 @@ impl Service for Resources {
         match *m {
             M::Tick => {
                 self.ticks += 1;
-                if self.active() && (self.fast() || self.ticks % 5 == 0) {
+                // (every second while a graph shows, else every 5; battery
+                // saver: every 2 and every 20)
+                let every = match (self.fast(), tessera_core::saver::on()) {
+                    (true, false) => 1,
+                    (true, true) => 2,
+                    (false, false) => 5,
+                    (false, true) => 20,
+                };
+                if self.active() && self.ticks % every == 0 {
                     self.sample(h);
                     self.publish();
                 }

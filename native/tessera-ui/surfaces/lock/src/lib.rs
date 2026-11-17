@@ -38,7 +38,7 @@
 //! ── With the shell (Lock.qml, LoginIntro.qml; JSON lines) ─────────────────
 //!   stdin  {"to":"lock","held":…,"leaving":…,"finger":…,"face":…}
 //!          {"to":"lock","notes":[{key,app,icon,summary,body,at}…]}
-//!          {"to":"lock","demo":"standby|wake|finger|face|match|typing|wrong|busy|lockout|off"}
+//!          {"to":"lock","demo":"standby|wake|finger|reading|miss|match|face|face-reading|face-miss|face-match|typing|wrong|busy|lockout|off"}
 //!          {"to":"lock","intro":"arm|play|stop","pace":1}
 //!   stdout {"src":"ui","kind":"lock","secure":true|false}  the compositor locked (System.lockSecure)
 //!          {"src":"ui","kind":"lock","unlocked":true}       a password, finger or face matched
@@ -174,6 +174,8 @@ enum M {
     IdleOver,
     FingerRetry,
     FingerMissOver,
+    /// the camera's "not recognised" has shown long enough (the island's miss)
+    FaceMissOver,
     FaceRetry,
     RestOver,
     PhotoNext,
@@ -240,6 +242,14 @@ struct FaceCam {
     armed: bool,
     stopped_at: i64,
     conv: Option<Conv>,
+    /// the blink check spoke in this conversation (a regular camera)
+    checked: bool,
+    /// a "not recognised" showing (the island's miss, 1.3 s)
+    missed: bool,
+    /// it matched (the island's match, on the way out)
+    matched: bool,
+    /// the sandbox's `demo` phase (waiting, reading, match, miss)
+    demo: String,
 }
 
 #[derive(Default)]
@@ -309,6 +319,7 @@ pub struct Lock {
     t_idle: slint::Timer,
     t_finger: slint::Timer,
     t_finger_miss: slint::Timer,
+    t_face_miss: slint::Timer,
     t_face: slint::Timer,
     t_rest: slint::Timer,
     t_photo: slint::Timer,
@@ -376,6 +387,7 @@ impl Default for Lock {
             t_idle: slint::Timer::default(),
             t_finger: slint::Timer::default(),
             t_finger_miss: slint::Timer::default(),
+            t_face_miss: slint::Timer::default(),
             t_face: slint::Timer::default(),
             t_rest: slint::Timer::default(),
             t_photo: slint::Timer::default(),
@@ -465,8 +477,9 @@ fn field_light(soft: &slint::SharedPixelBuffer<slint::Rgb8Pixel>) -> (f32, f32) 
     let (w, h) = (soft.width() as usize, soft.height() as usize);
     let px = soft.as_slice();
     let mut l: Vec<u8> = Vec::new();
-    for y in (h * 78 / 100)..(h * 96 / 100).max(h * 78 / 100 + 1).min(h) {
-        for x in (w * 42 / 100)..(w * 58 / 100).max(w * 42 / 100 + 1).min(w) {
+    // (from the island's top, grown round a reader, to under the field)
+    for y in (h * 72 / 100)..(h * 96 / 100).max(h * 72 / 100 + 1).min(h) {
+        for x in (w * 40 / 100)..(w * 60 / 100).max(w * 40 / 100 + 1).min(w) {
             let p = px[y * w + x];
             l.push((0.2126 * p.r as f32 + 0.7152 * p.g as f32 + 0.0722 * p.b as f32) as u8);
         }
@@ -1041,6 +1054,7 @@ impl Lock {
     /// The field, the reader and the camera
     fn field(&self) {
         let face_looking = self.face.conv.is_some();
+        let island = logic::island(&self.finger.state, self.face_phase(), !self.password.is_empty(), self.busy, self.leaving);
         let pw = self.password.clone();
         for w in &self.wins {
             let d = w.ui.global::<ui::LockData>();
@@ -1059,7 +1073,28 @@ impl Lock {
             d.set_finger_on(self.finger_on);
             d.set_face_on(self.face_on);
             d.set_leaving(self.leaving);
+            d.set_island_kind(island.kind.into());
+            d.set_island_phase(island.phase.into());
+            d.set_island_hint(island.hint.into());
         });
+    }
+
+    /// The camera's phase for the island: a match, a miss showing, looking
+    /// (its conversation running), between tries; the sandbox's demo first
+    fn face_phase(&self) -> &str {
+        if !self.face.demo.is_empty() {
+            &self.face.demo
+        } else if self.face.matched {
+            "match"
+        } else if self.face.missed {
+            "miss"
+        } else if self.face.conv.is_some() {
+            "reading"
+        } else if self.face.text.is_empty() {
+            ""
+        } else {
+            "waiting"
+        }
     }
 
     // ── Bedside Mode (StandBy.qml) ─────────────────────────────────────────
@@ -1411,16 +1446,39 @@ impl Lock {
                 }
                 self.rules(st);
             }
+            // The blink check's hints ("Blink to unlock"), shown as the face's
+            // text; Howdy's own lines aren't (core::face::hint)
+            Auth::Info(Kind::Face, id, m) | Auth::Error(Kind::Face, id, m) if self.face.conv.as_ref().is_some_and(|c| c.id == id) => {
+                if let Some(h) = tessera_core::face::hint(&m) {
+                    self.face.text = h.to_string();
+                    self.face.checked = true;
+                    self.field();
+                }
+            }
             Auth::Done(Kind::Face, id, out) if self.face.conv.as_ref().is_some_and(|c| c.id == id) => {
                 self.face.conv = None;
+                // (pam_exec says "system error" for any no from the blink
+                // check; one that spoke looked, so it's a miss, not a broken camera)
+                let out = match out {
+                    Outcome::Error(why) if std::mem::take(&mut self.face.checked) => Outcome::Failure(why),
+                    o => {
+                        self.face.checked = false;
+                        o
+                    }
+                };
                 match out {
                     Outcome::Success => {
                         self.face.tries = 0;
                         self.face.text.clear();
+                        self.face.matched = true;
                         self.unlocked();
                     }
                     Outcome::Failure(_) => {
                         self.face.tries += 1;
+                        // (the island shows the miss 1.3 s, over the next try's start)
+                        self.face.missed = true;
+                        let to = Self::send(st);
+                        self.t_face_miss.start(slint::TimerMode::SingleShot, Duration::from_millis(1300), move || to(Box::new(M::FaceMissOver)));
                         self.face.text = if self.face.tries < 3 { "Face not recognised".into() } else { String::new() };
                         if self.face.tries >= 3 {
                             self.face.stopped_at = now;
@@ -1466,19 +1524,30 @@ impl Lock {
                 self.typed_on = None;
             }
             "wake" => self.woke(st),
-            "finger" => {
+            "finger" | "reading" => {
                 self.face.text.clear();
+                self.face.demo.clear();
                 self.finger.text = WAITING.into();
-                self.finger.state = "waiting".into();
+                self.finger.state = if what == "finger" { "waiting" } else { "reading" }.into();
             }
-            "face" => {
+            // the camera: waiting, looking, its miss and its match (the island)
+            "face" | "face-reading" | "face-miss" | "face-match" => {
                 self.finger.text.clear();
+                self.finger.state.clear();
                 self.face.text = "Looking for your face…".into();
+                self.face.demo = match what {
+                    "face" => "waiting",
+                    "face-reading" => "reading",
+                    "face-miss" => "miss",
+                    _ => "match",
+                }
+                .into();
             }
             "match" => {
                 self.finger.state = "match".into();
                 self.finger.text.clear();
                 self.face.text.clear();
+                self.face.demo.clear();
             }
             "typing" => {
                 self.sb.idle = false;
@@ -1504,10 +1573,12 @@ impl Lock {
                 self.error_count += 1;
             }
             "miss" => {
+                self.face.demo.clear();
                 self.finger.text = "Not recognised. Try again".into();
                 self.finger.state = "miss".into();
             }
             _ => {
+                self.face.demo.clear();
                 self.sb.demo_charging = false;
                 self.sb.idle = false;
                 self.finger.text.clear();
@@ -1521,7 +1592,7 @@ impl Lock {
         }
         // (the face spinner while "Looking for your face…" shows)
         for w in &self.wins {
-            w.ui.global::<ui::LockData>().set_demo_face(what == "face");
+            w.ui.global::<ui::LockData>().set_demo_face(what.starts_with("face"));
         }
         self.rules(st);
     }
@@ -1810,7 +1881,16 @@ impl Part for Lock {
                 if self.finger_wanted() && self.finger.conv.is_some() {
                     self.finger.text = WAITING.into();
                     self.finger.state = "waiting".into();
+                } else if self.finger.state == "miss" && self.real && self.finger.tries >= 5 {
+                    // (no more tries: the reader rests, the password is there;
+                    // the island goes back to the field instead of a lasting miss)
+                    self.finger.text.clear();
+                    self.finger.state.clear();
                 }
+                self.field();
+            }
+            M::FaceMissOver => {
+                self.face.missed = false;
                 self.field();
             }
             M::FaceRetry => {
@@ -1997,6 +2077,10 @@ impl Lock {
         }
         if let Some(f) = v["face"].as_bool() {
             self.face_on = f;
+        }
+        // (a regular camera's PAM file asks for a blink too: auth::service)
+        if let Some(k) = v["faceKind"].as_str() {
+            auth::set_face_camera(k, v["faceDevice"].as_str().unwrap_or(""));
         }
         if let Some(l) = v["leaving"].as_bool() {
             // (Material's fingerprint shows the check while it fades: lock.slint)

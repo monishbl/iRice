@@ -12,7 +12,7 @@
 //!                                `{"to":"osd",…}` for that surface (RustUi.tell)
 //!   tessera-ui --material-roles SEED dark|light [style]   print Material roles (for checking colours)
 //!   tessera-ui --seed PICTURE    print the Material seed a wallpaper gives (as matugen)
-//!   tessera-ui --version
+//!   tessera-ui --version [--json]   which build: (channel, commit, date, variant, [profile,] signed release | built locally)
 //!   tessera-ui --greeter [--style …] [--demo [STATE]]   the login screen (surfaces/greeter)
 //!   tessera-ui --update-screen [-p] DIR   the update screen update-run.sh shows (surfaces/updatescreen)
 //!   tessera-ui --look-cover [-p] DIR      the cover switch-look.sh shows (surfaces/lookcover)
@@ -128,8 +128,25 @@ fn make_part(name: &str) -> Option<Box<dyn shell::Part>> {
     surfaces::make(name)
 }
 
+/// What build.rs worked out (core/src/build_info.rs)
+fn build_info() -> tessera_core::build_info::BuildInfo {
+    tessera_core::build_info::BuildInfo {
+        version: env!("CARGO_PKG_VERSION"),
+        commit: env!("TESSERA_BI_COMMIT"),
+        date: env!("TESSERA_BI_DATE"),
+        dirty: !env!("TESSERA_BI_DIRTY").is_empty(),
+        branch: env!("TESSERA_BI_BRANCH"),
+        channel: env!("TESSERA_BI_CHANNEL"),
+        variant: env!("TESSERA_BI_VARIANT"),
+        kind: env!("TESSERA_BI_KIND"),
+        profile: env!("TESSERA_BI_PROFILE"),
+    }
+}
+
 fn main() {
     let started = Instant::now();
+    // (malloc: two arenas, a fixed mmap threshold; before any thread: tessera_core::memory)
+    tessera_core::memory::tune_allocator();
     // (an XDG folder set but empty or relative means "the default" by the
     // spec: taken out before anything reads it, so Mesa's shader cache, the
     // shell's children and every crate here use ~/.cache and the rest, not
@@ -139,6 +156,8 @@ fn main() {
             std::env::remove_var(v);
         }
     }
+    // Which build this is (build.rs): --version, Settings → About, Software Update
+    tessera_core::build_info::set(build_info());
     let args: Vec<String> = std::env::args().collect();
     if args.get(1).map(String::as_str) == Some("--material-roles") {
         let seed = args.get(2).map_or("#6750A4", String::as_str);
@@ -159,8 +178,17 @@ fn main() {
     if args.get(1).map(String::as_str) == Some("--pam-helper") {
         std::process::exit(tessera_lock::auth::helper_main(&args));
     }
+    // (pam_exec's program in tessera-face-rgb: the blink check, core/face.rs)
+    if args.get(1).map(String::as_str) == Some("--face-live") {
+        std::process::exit(tessera_core::face::live_main());
+    }
     if args.get(1).map(String::as_str) == Some("--version") {
-        println!("tessera-ui {}", env!("CARGO_PKG_VERSION"));
+        let b = tessera_core::build_info::current();
+        if args.iter().skip(2).any(|a| a == "--json") {
+            println!("{}", b.json());
+        } else {
+            println!("{}", b.line());
+        }
         return;
     }
     // The login screen (greetd's greeter): a mode of its own, before anything
@@ -199,6 +227,8 @@ fn main() {
         if said != "fine" {
             eprintln!("tessera-ui: settings: {said}");
         }
+        // (where its scripts, fonts and pictures come from: tessera_core::env::root)
+        eprintln!("tessera-ui: files from {}", tessera_core::env::root().display());
     }
     let surfaces = surfaces::from_args(&args);
     if surfaces.on.is_empty() {
@@ -226,6 +256,8 @@ fn main() {
                 let (reloads, stalls) = tessera_core::perf::counts();
                 eprintln!("{{\"reloads\":{reloads},\"stalls\":{stalls}}}");
                 eprintln!("tessera-ui: {}", tessera_core::pacing::report());
+                let (used, held) = tessera_core::memory::malloc_use();
+                eprintln!("tessera-ui: malloc in use {:.1} of {:.1} MB, RssAnon {:.1} MB", used as f64 / 1048576.0, held as f64 / 1048576.0, tessera_core::memory::rss_anon_kb() as f64 / 1024.0);
             }
             _ => state.exit = true,
         })
@@ -344,6 +376,14 @@ fn main() {
     let mut prewarm: Option<usize> = Some(0);
     let mut first_frame_at: Option<Instant> = None;
     let mut wakes = tessera_core::wayland::Wakes::default();
+    // (the health record, Settings → Health: the loop's turns timed from
+    // the poll's return, a sample each 5 minutes; the whole shell only)
+    if standalone {
+        let _ = lh.insert_source(tessera_core::health::Woke, |_, _, _| {});
+        tessera_core::health::start();
+    }
+    // (freed memory given back once the shell is quiet after drawing: memory.rs)
+    let mut idle_trim = tessera_core::memory::IdleTrim::new(Instant::now());
     while !state.exit {
         if first_frame_at.is_none() && state.first_frame_logged {
             first_frame_at = Some(Instant::now());
@@ -370,7 +410,9 @@ fn main() {
             let quiet = pacing::quiet(now) && !state.surfaces.iter().any(|s| s.window().has_active_animations());
             due(slint::platform::duration_until_next_timer_update().map(|d| now + if quiet { pacing::coalesce(d) } else { d }), "timers");
             // (an animation no frame callback will wake: at the display's refresh)
-            due(state.animating_unpaced().then(|| now + pacing::refresh()), "animating");
+            due(state.animating_unpaced().then(|| now + pacing::frame_period()), "animating");
+            // (battery saver: a surface held back to 60 frames a second draws when it may)
+            due(state.held_frame_deadline(), "saver");
             // (what a part animates by hand: each frame, or by the refresh when no frame comes)
             due(pacing::frame_timer_deadline(state.surfaces.iter().any(|s| s.frame_pending())), "frame-timers");
             // (glass shapes waiting for their frame go at the latest after Glass's MAX_HOLD)
@@ -379,6 +421,8 @@ fn main() {
             due(state.lost_frame_deadline(), "frame-wait");
             // (the windows made ahead: from 2 s after the first frame, one per quiet turn)
             due(first_frame_at.filter(|_| prewarm.is_some()).map(|t| (t + Duration::from_secs(2)).max(now + Duration::from_millis(50))), "prewarm");
+            // (memory given back after a quiet spell)
+            due(idle_trim.deadline(), "trim");
             match next {
                 Some((at, why)) => (why, Some(at.saturating_duration_since(now))),
                 None => ("idle", None),
@@ -396,6 +440,11 @@ fn main() {
         // (what parts animate by hand moves on once per frame, before the frame is drawn)
         tessera_core::perf::time(|| "frame timers".into(), pacing::run_frame_timers);
         tessera_core::perf::time(|| "render".into(), || state.render_all());
+        let now = Instant::now();
+        idle_trim.turn(now, state.drew_this_turn());
+        if idle_trim.due(now) {
+            tessera_core::memory::trim_in_background();
+        }
         tessera_core::perf::time(|| "after_frame".into(), || state.each_part(|p, st| {
             let n = p.name();
             tessera_core::perf::time(|| format!("after_frame {n}"), || p.after_frame(st))
@@ -409,9 +458,11 @@ fn main() {
             let i = prewarm.unwrap();
             prewarm = state.prewarm_part(i).then_some(i + 1);
         }
+        tessera_core::health::turn_end();
     }
     tessera_core::work::set_leaving();
     state.each_part(|p, st| p.quit(st));
+    tessera_core::health::stop();
     // (settings and state queued from the loop: written before we go; and
     // Hyprland's dispatches asked last)
     tessera_core::cfgfile::flush();

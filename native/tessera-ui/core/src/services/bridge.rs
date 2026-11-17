@@ -92,8 +92,7 @@ fn parse_value(v: &Value) -> Option<Option<Box<dyn Any + Send>>> {
 
 /// shell-ipc.sh, from the repo the shell runs from (TESSERA_ROOT), else this build's
 pub fn ipc_script() -> std::path::PathBuf {
-    let root = crate::env::var("ROOT").filter(|r| !r.is_empty()).map(std::path::PathBuf::from).unwrap_or_else(|| std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../..")));
-    root.join("shell/assets/scripts/shell-ipc.sh")
+    crate::env::root().join("shell/assets/scripts/shell-ipc.sh")
 }
 
 /// `shell-ipc.sh call <args…>` on a thread (the QML shell does it)

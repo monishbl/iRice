@@ -12,6 +12,8 @@
 
 pub mod a11y;
 pub mod appicon;
+pub mod build_info; // (which build this is: --version, Settings → About and Software Update)
+pub mod build_resolve; // (how build.rs decides it; tested in build_info)
 pub mod build_progress; // (tools/build-progress.py's file: Software Update, the update screen)
 pub mod cfgfile; // (config.json and state.json read and changed safely)
 pub mod contain; // (a panic in one part never takes the shell down: contain.rs)
@@ -23,7 +25,10 @@ pub mod skia;
 pub mod egl;
 pub mod gpu;
 pub mod inhibit;
+pub mod memory; // (malloc's arenas and threshold, freed memory given back when quiet: memory.rs)
 pub mod env;
+pub mod face; // (face unlock's PAM services, hints and `--face-live`)
+pub mod health; // (the health record Settings → Health shows: health.rs)
 pub mod global_shortcuts; // (Hyprland's global shortcuts, as Quickshell's GlobalShortcut: standalone)
 pub mod host; // (wave 4: the QML shell's side, in Rust; standalone only)
 pub mod icon_theme;
@@ -35,6 +40,7 @@ pub mod rank;
 pub mod pacing; // (the display's refresh, frames on screen, frame timers, the idle timer grid)
 pub mod perf; // (debug: loop stalls and list/window reloads, TESSERA_DEBUG: perf.rs)
 pub mod rows; // (lists changed in place, not handed a new model: rows.rs)
+pub mod saver; // (battery saver: 60 Hz, reduced motion, slower background refreshes)
 pub mod runloop;
 pub mod seed;
 pub mod services;

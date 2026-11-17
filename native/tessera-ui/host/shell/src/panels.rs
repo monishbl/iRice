@@ -289,14 +289,10 @@ impl Panels {
                 }
             }
             "share" => {
-                // [paths, screen?, note?]
-                let paths: Vec<String> = a.get(0).and_then(Value::as_array).map(|l| l.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default();
-                // (Sharing keeps what the sheet sends and looks for devices
-                // while it's open: Panels.share's Sharing.sheetPaths. Without
-                // this the sheet said "0 files" and Quick Share never started)
-                h.ask("share", json!(["paths", paths.clone(), str_arg(a, 2)]));
-                self.m.share(paths, str_arg(a, 2));
-                self.m.show("share", opt(str_arg(a, 1)), None, None, &f, &first);
+                // [paths, screen?, note?] (a path may come as a file:// URI too)
+                let paths: Vec<String> = a.get(0).and_then(Value::as_array).map(|l| l.iter().filter_map(Value::as_str).flat_map(share_paths).collect()).unwrap_or_default();
+                let screen = opt(str_arg(a, 1)).map(str::to_string);
+                self.open_share(h, paths, screen.as_deref(), str_arg(a, 2), &f, &first);
             }
             "pickShare" => h.ask("picker.pick", json!([{"multiple": true, "title": "Send files", "reply": "share"}])),
             "appExpose" => self.m.app_expose(str_arg(a, 0), opt(str_arg(a, 1)), &f, &first),
@@ -344,16 +340,29 @@ impl Panels {
                 h.ask("screen.cancelSelect", json!([]));
             }
             "shareFiles" => {
-                // one path per line; a file:// URI is decoded
-                let paths: Vec<String> = str_arg(a, 0).split('\n').filter(|p| !p.is_empty()).map(|p| p.strip_prefix("file://").map_or(p.to_string(), percent_decode)).collect();
+                // share-files.sh (the file managers' "Send to a nearby
+                // device…"): file:// URIs or paths, one per line; several
+                // arguments too (`tessera-ui ipc call panels shareFiles a b`)
+                let paths: Vec<String> = a.as_array().map(|l| l.iter().filter_map(Value::as_str).flat_map(share_paths).collect()).unwrap_or_default();
+                eprintln!("tessera-ui: panels: share {} file(s) from a file manager", paths.len());
                 if !paths.is_empty() {
-                    self.m.share(paths, "");
-                    self.m.show("share", None, None, None, &f, &first);
+                    self.open_share(h, paths, None, "", &f, &first);
                 }
             }
             "shareSelection" => h.ask("share.selection", json!([])),
             other => eprintln!("tessera-ui: host: no panels.{other}"),
         }
+    }
+
+    /// The share sheet with these: Sharing is told first, as Panels.share
+    /// did (Sharing.sheetPaths: it keeps what the sheet sends and looks for
+    /// devices while it's open). 17 Nov: the file managers' entry
+    /// (shareFiles) only opened the sheet, so it said "0 files" and nothing
+    /// looked for phones or computers
+    fn open_share(&mut self, h: &mut Host, paths: Vec<String>, screen: Option<&str>, note: &str, f: &str, first: &str) {
+        h.ask("share", json!(["paths", paths.clone(), note]));
+        self.m.share(paths, note);
+        self.m.show("share", screen, None, None, f, first);
     }
 
     fn set(&mut self, key: &str, v: Value) {
@@ -594,6 +603,28 @@ impl Panels {
             other => eprintln!("tessera-ui: host: RustBridge: nothing called {other}"),
         }
     }
+}
+
+/// What a file manager hands over, as local paths: one per line ("\r\n"
+/// too); `file:///a%20b` and `file://localhost/a` are decoded; other kinds
+/// of URI (smb://, trash:/, a web link) can't be sent and are left out
+pub fn share_paths(arg: &str) -> Vec<String> {
+    arg.split('\n')
+        .map(|l| l.trim_end_matches('\r'))
+        .filter(|l| !l.trim().is_empty())
+        .filter_map(|l| {
+            if let Some(rest) = l.strip_prefix("file://") {
+                let rest = rest.strip_prefix("localhost").unwrap_or(rest);
+                rest.starts_with('/').then(|| percent_decode(rest))
+            } else if let Some(rest) = l.strip_prefix("file:/") {
+                Some(percent_decode(&format!("/{}", rest.trim_start_matches('/'))))
+            } else if l.starts_with('/') {
+                Some(l.to_string())
+            } else {
+                None
+            }
+        })
+        .collect()
 }
 
 fn percent_decode(s: &str) -> String {
@@ -845,5 +876,21 @@ mod tests {
         assert_eq!(percent_decode("/tmp/100%25.png"), "/tmp/100%.png");
         assert_eq!(percent_decode("/tmp/a%20b"), "/tmp/a b");
         assert_eq!(percent_decode("/tmp/100%"), "/tmp/100%");
+    }
+
+    #[test]
+    fn file_managers_hand_over_paths_any_way() {
+        // Dolphin's %U: file:// URIs, one per line, spaces as %20
+        assert_eq!(share_paths("file:///home/me/My%20Photos/a%20b.jpg\nfile:///tmp/c.pdf"), ["/home/me/My Photos/a b.jpg", "/tmp/c.pdf"]);
+        // share-files.sh's own: percent-encoded quotes, %, non-ASCII, a newline in a name
+        assert_eq!(share_paths("file:///tmp/%22q%22%20100%25%20caf%C3%A9.txt"), ["/tmp/\"q\" 100% café.txt"]);
+        assert_eq!(share_paths("file:///tmp/two%0Alines.txt"), ["/tmp/two\nlines.txt"]);
+        // plain paths (%F), CRLF, empty lines, a host of localhost, file:/ with one slash
+        assert_eq!(share_paths("/tmp/a b.txt\r\n\n/tmp/c.txt\n"), ["/tmp/a b.txt", "/tmp/c.txt"]);
+        assert_eq!(share_paths("file://localhost/tmp/x.png"), ["/tmp/x.png"]);
+        assert_eq!(share_paths("file:/tmp/y.png"), ["/tmp/y.png"]);
+        // what can't be sent is left out
+        assert!(share_paths("smb://nas/share/a.txt\ntrash:/b.txt\nhttps://example.com/c\nfile://otherhost/d").is_empty());
+        assert!(share_paths("").is_empty());
     }
 }

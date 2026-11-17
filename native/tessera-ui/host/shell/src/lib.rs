@@ -12,6 +12,7 @@
 //!   bridges     Welcome, Overlay, Lock and the login intro, hot corners, OSD and
 //!               Polkit IPC, Launch/FilePicker/Wallpaper calls, Settings' look and notify groups
 //!   appearance  CoolDown and the glass line
+//!   glassbuild  Settings' "Glass effect is off": the plugin's build state, and building it
 //!   events      Events, EventWatch, Startup, StartupSounds
 //!   sounds      Sounds
 //!   intents     Intents
@@ -23,6 +24,7 @@ pub mod appearance;
 pub mod bridges;
 pub mod common;
 pub mod events;
+pub mod glassbuild;
 pub mod intents;
 pub mod ipc;
 pub mod island;
@@ -44,6 +46,7 @@ pub fn services() -> Vec<Box<dyn Service>> {
         Box::new(panels::Panels::new()),
         Box::new(island::Island::default()),
         Box::new(appearance::Appearance::default()),
+        Box::new(glassbuild::GlassBuild::default()),
         Box::new(bridges::Bridges::default()),
         Box::new(sounds::Sounds::default()),
         Box::new(intents::Intents),

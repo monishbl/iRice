@@ -224,9 +224,14 @@ export component OverviewPanel inherits Window {
         triggered => { settled = true; }
     }
 
-    // Dim the screen behind (a click on it closes)
+    // Glass: the screen behind blurred (the plugin's full-screen glass, as
+    // Mission Control's) with a light veil; Material: dimmed. A click on it closes
+    if !Theme.material: Rectangle {
+        background: glass-fill;
+        opacity: min(1, openness);
+    }
     Rectangle {
-        background: Theme.material ? scrim.with-alpha((mac ? 0.24 : 0.4) * min(1, openness)) : #000000.with-alpha((mac ? 0.18 : 0.35) * min(1, openness));
+        background: Theme.material ? scrim.with-alpha((mac ? 0.24 : 0.4) * min(1, openness)) : #000000.with-alpha((mac ? 0.12 : 0.2) * min(1, openness));
     }
 
     content := Rectangle {

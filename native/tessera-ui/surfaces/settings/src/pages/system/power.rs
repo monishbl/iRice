@@ -63,6 +63,43 @@ fn lid_row(cx: &mut Ctx, label: &str, detail: &str, key: &str) -> Row {
     Row::new(label).detail(detail).segmented(&["Sleep", "Lock", "Do nothing"], values.iter().position(|x| *x == v).unwrap_or(0) as i32, id).width(260.0)
 }
 
+/// Battery saver's levels: 10% to 50% in steps of 5 (power.saverLevel)
+pub fn saver_levels() -> Vec<i64> {
+    (10..=50).step_by(5).collect()
+}
+
+/// Battery saver (the shell's: host power.rs, core saver.rs)
+fn saver_group(cx: &mut Ctx, p: &mut Page, pw: &Value, ppd: bool) {
+    let sv = &pw["saver"];
+    let on = sv["on"].as_bool().unwrap_or(false);
+    let values = ["off", "auto", "battery"];
+    let mode = match cx.s("power.saver").as_str() {
+        "off" => "off",
+        "battery" => "battery",
+        _ => "auto",
+    };
+    let mode_id = cx.pick("power.saver", &values);
+    let level = cx.get("power.saverLevel").as_f64().map_or(20, |v| v.round() as i64).clamp(10, 50);
+    let levels = saver_levels();
+    let level_at = levels.iter().position(|l| *l >= level).unwrap_or(2);
+    let level_id = cx.pick_values("power.saverLevel", levels.iter().map(|l| Value::from(*l)).collect());
+    let labels: Vec<String> = levels.iter().map(|l| format!("{l}%")).collect();
+    let profile = cx.b("power.saverProfile");
+    let profile_id = cx.toggle("power.saverProfile");
+    let off_id = cx.on(|cx, _| cx.ask("system", "saverToggle", Value::Null));
+    let detail = match mode {
+        "off" => "Only when you turn it on in Control Center".to_string(),
+        "battery" => "Whenever the computer runs on battery".to_string(),
+        _ => format!("On battery at {level}% or less, until you plug in"),
+    };
+    let g = p.group("Battery saver");
+    g.footer("While it's on, the shell draws at most 60 frames a second, keeps animations short and still, uses frosted glass, and refreshes weather and calendars less often. Your Hyprland settings stay as they are.");
+    g.row(Row::new("Battery saver is on").visible(on).detail("Until you plug in").button("Turn off", off_id));
+    g.row(Row::new("Turn on battery saver").detail(detail).segmented(&["Off", "When low", "On battery"], values.iter().position(|v| *v == mode).unwrap_or(1) as i32, mode_id).width(300.0));
+    g.row(Row::new("Turn on at").visible(mode == "auto").detail("It turns off again 5% above this").choice(&labels, level_at as i32, level_id).width(120.0));
+    g.row(Row::new("Also use Low Power").visible(ppd).detail("Asks the system for its power-saver profile while battery saver is on").switch(profile, profile_id));
+}
+
 /// Battery & Power (power.qml)
 pub fn power(cx: &mut Ctx, p: &mut Page) {
     let feed = cx.feed;
@@ -132,6 +169,7 @@ pub fn power(cx: &mut Ctx, p: &mut Page) {
         p.group("Battery")
             .footer(if guard.is_empty() { "It sleeps rather than shutting down, so your work is there when you plug in. This keeps working even if Tessera isn't running.".to_string() } else { guard })
             .row(Row::new("Critical battery").detail("Warn at 10% and 5%, sleep at 3% (even with Caffeine on)").switch(crit, t));
+        saver_group(cx, p, pw, ppd);
     }
 
     // ── Idle ──

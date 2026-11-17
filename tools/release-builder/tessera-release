@@ -26,7 +26,10 @@ Otherwise: both variants exactly like CI (cargo build --release --locked: the
 full release profile, LTO and one codegen unit; RUSTFLAGS
 "-C target-cpu=x86-64-v3" and ""), through ~/bin/tbuild (a cgroup scope with
 low CPU/IO weight: the machine's own work comes first), packed with the
-manifest exactly like CI. The set lands in
+manifest exactly like CI. tessera-ui is told what it is (build_env:
+TESSERA_BUILD_CHANNEL, _VARIANT, _KIND=release, _COMMIT, _DATE; its build.rs),
+so `tessera-ui --version` reads e.g. "tessera-ui 0.1.0 (beta, 7baa48d,
+2026-11-17, x86-64-v3, signed release)" and the manifest records that line. The set lands in
 ~/tessera-release/out/<release tag>/<tree>/ (both archives and the manifest)
 with a READY file (JSON: what it is, and each file's size and sha256), written
 last. The laptop's --mark-published renames READY to PUBLISHED.
@@ -226,20 +229,33 @@ def load_counts():
         return {}
 
 
-def cargo(args, variant, rustflags, label, logf):
+def build_env(t, variant):
+    """What the build tells tessera-ui about itself (native/tessera-ui/build.rs:
+    `tessera-ui --version`, Settings → About): the channel (stable, beta, or
+    release for a tag), the variant, that it's a release, and the commit and
+    its date (so they don't depend on the clone's state)."""
+    return {"TESSERA_BUILD_CHANNEL": t["channel"], "TESSERA_BUILD_VARIANT": variant, "TESSERA_BUILD_KIND": "release",
+            "TESSERA_BUILD_COMMIT": t["commit"],
+            "TESSERA_BUILD_DATE": git("log", "-1", "--format=%cs", t["commit"], check=False) or ""}
+
+
+def cargo(args, variant, rustflags, label, logf, extra=None):
     """~/bin/tbuild cargo ARGS for VARIANT, its output to LOGF, the count of
-    crates compiled in the status ("about": the last build's count)."""
+    crates compiled in the status ("about": the last build's count). EXTRA:
+    more environment (build_env)."""
     env = {k: v for k, v in os.environ.items()
            if k not in ("CARGO_ENCODED_RUSTFLAGS", "RUSTC_WRAPPER", "RUSTC_WORKSPACE_WRAPPER",
                         "CARGO_BUILD_RUSTFLAGS", "CARGO_PROFILE_RELEASE_LTO")}
     env.update(RUSTFLAGS=rustflags, CARGO_INCREMENTAL="0", CARGO_TERM_COLOR="never",
                CARGO_TARGET_DIR=os.path.join(TARGETS, variant), TBUILD_URGENT="")
+    env.update(extra or {})
     counts = load_counts()
     key = f"{variant}:{label}"
     about = counts.get(key)
     done = 0
     last_write = 0
-    logf.write(f"\n== {now()} {label} ({variant}) RUSTFLAGS={rustflags!r}\n")
+    logf.write(f"\n== {now()} {label} ({variant}) RUSTFLAGS={rustflags!r}"
+               + "".join(f" {k}={v}" for k, v in sorted((extra or {}).items())) + "\n")
     logf.flush()
     p = subprocess.Popen([TBUILD, *args], cwd=SRC, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                          text=True, errors="replace")
@@ -291,7 +307,7 @@ def build(t, tree):
         t0 = time.time()
         with open(os.path.join(LOGS, f"{tree[:12]}-{variant}.log"), "a") as logf:
             cargo(["build", "--release", "--locked", "--manifest-path", "native/tessera-ui/Cargo.toml", "--bin", "tessera-ui"],
-                  variant, rustflags, "tessera-ui", logf)
+                  variant, rustflags, "tessera-ui", logf, build_env(t, variant))
             cargo(["build", "--release", "--locked", "--manifest-path", "native/tessera-events/Cargo.toml"],
                   variant, rustflags, "tessera-events", logf)
         status(step=f"{variant}: packing", progress=None)

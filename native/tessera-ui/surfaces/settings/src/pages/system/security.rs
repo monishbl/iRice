@@ -163,6 +163,64 @@ fn sheet(cx: &mut Ctx, p: &mut Page, finger: &str) {
     }
 }
 
+/// The Face group's footer: where it works, and the privacy line
+pub fn face_footer(rgb: bool, installed: bool) -> String {
+    let what = if !installed {
+        if rgb {
+            "Look at the screen and blink to unlock it. A regular camera can be fooled by a video of you, so it's less secure than a password, a fingerprint or an infrared camera."
+        } else {
+            "Look at the screen to unlock it. It's less secure than a password or a fingerprint: someone who looks very like you might get in."
+        }
+    } else {
+        "Face unlock is for the lock screen; the first login after a restart always needs your password. Each change asks for your password."
+    };
+    format!("{what} Your face is stored on this computer only and never leaves it.")
+}
+
+/// The administrator switch: an infrared camera only (a regular camera
+/// never approves one; a fingerprint or the password still do)
+pub const ADMIN_LABEL: &str = "Also approve administrator prompts with your face (infrared camera)";
+
+pub fn admin_detail(allowed: bool, changing: bool) -> &'static str {
+    if !allowed {
+        "Needs an infrared camera"
+    } else if changing {
+        "Changing…"
+    } else {
+        "Prompts look for your face first, then your fingerprint or password as before. Changing this asks for your password."
+    }
+}
+
+/// A camera's kind, said plainly
+pub fn camera_detail(rgb: bool, both: bool) -> &'static str {
+    match (rgb, both) {
+        (false, false) => "Infrared camera: a photo can't fool it",
+        (true, false) => "Regular camera: you blink to unlock, so a photo won't work",
+        (false, true) => "Infrared is used: a photo can't fool it. Recommended",
+        (true, true) => "Regular is used: you blink to unlock. Infrared is safer",
+    }
+}
+
+/// The Face group's camera row: its name and kind, and a choice when this
+/// computer has both kinds
+fn camera_row(cx: &mut Ctx, face: &Value, camera: &str, rgb: bool, busy: &str) -> Row {
+    let cams = face["cameras"].as_array().cloned().unwrap_or_default();
+    let has = |k: &str| cams.iter().any(|c| c["kind"] == k);
+    let both = has("ir") && has("rgb");
+    let row = Row::new(if camera.is_empty() { "Camera".to_string() } else { camera.to_string() }).icon("camera").detail(camera_detail(rgb, both));
+    if !both {
+        return row;
+    }
+    // (the first of each kind: infrared, regular)
+    let pick: Vec<String> = ["ir", "rgb"].iter().filter_map(|k| cams.iter().find(|c| c["kind"] == *k)).map(|c| s(&c["path"])).collect();
+    let id = cx.on(move |cx, a| {
+        if let Some(p) = pick.get(a.i.max(0) as usize) {
+            cx.ask("system", "faceCamera", json!(p));
+        }
+    });
+    row.segmented(&["Infrared", "Regular"], if rgb { 1 } else { 0 }, id).width(200.0).enabled(busy.is_empty())
+}
+
 /// Fingerprint and Face (biometrics.qml)
 pub fn biometrics(cx: &mut Ctx, p: &mut Page) {
     let feed = cx.feed;
@@ -312,7 +370,8 @@ pub fn biometrics(cx: &mut Ctx, p: &mut Page) {
         }
     }
 
-    // ── Face: only with an infrared camera; the lock screen only ──
+    // ── Face: any real camera (infrared, or regular with a blink); the lock
+    // screen, and administrator prompts only when switched on ──
     let face = &sys["face"];
     if face["hasCamera"].as_bool().unwrap_or(false) {
         let installed = face["installed"].as_bool().unwrap_or(false);
@@ -321,37 +380,56 @@ pub fn biometrics(cx: &mut Ctx, p: &mut Page) {
         let busy = s(&face["busy"]);
         let error = s(&face["error"]);
         let camera = s(&face["camera"]);
+        let rgb = s(&face["kind"]) == "rgb";
+        let (step, steps) = (face["step"].as_i64().unwrap_or(0), face["steps"].as_i64().unwrap_or(3));
         let footer = if !error.is_empty() {
             error
-        } else if !installed {
-            format!("Look at the screen to unlock it, with your laptop's infrared camera ({camera}). It's less secure than a password or a fingerprint: someone who looks very like you might get in. Your password always works too.")
         } else {
-            "Look at the screen when it's locked. Face unlock is for the lock screen only; password prompts and sudo still ask for your password or finger. Each change asks for your password.".into()
+            face_footer(rgb, installed)
         };
         let mut rows = Vec::new();
+
+        // 1. The camera: which kind, and a choice when there are both
+        rows.push(camera_row(cx, face, &camera, rgb, &busy));
+
+        // 2. Setting up, a step at a time
         if !installed {
             let ie = s(&face["installError"]);
             let installing = face["installing"].as_bool().unwrap_or(false);
             let id = cx.on(|cx, _| cx.ask("system", "faceInstall", Value::Null));
+            let needs = if rgb && face["cv2"].as_bool() != Some(true) {
+                "Needs Howdy (howdy-next, from the AUR: Tessera sets up an AUR helper first if there's none) and OpenCV for Python, for the blink. It asks for your password once."
+            } else {
+                "Needs Howdy (howdy-next, from the AUR: Tessera sets up an AUR helper first if there's none). It asks for your password once."
+            };
             rows.push(
-                Row::new("Face unlock")
-                    .detail(if ie.is_empty() { "Needs Howdy (howdy-next, from the AUR: Tessera sets up an AUR helper first if there's none). It asks for your password once.".to_string() } else { ie.clone() })
+                Row::new("Install face unlock")
+                    .detail(if ie.is_empty() { format!("Step {} of {steps}. {needs}", step + 1) } else { ie.clone() })
                     .tone(if ie.is_empty() { 0 } else { 2 })
-                    .buttons(vec![btn(if installing { "Installing…" } else { "Install" }).icon("download-simple").on(installing).off(updates_running)], id),
+                    .buttons(vec![btn(if installing { "Installing…" } else { "Install" }).icon("download-simple").primary().on(installing).off(updates_running)], id),
             );
         }
         if installed && !set_up {
             let id = cx.on(|cx, _| cx.ask("system", "faceSetUp", Value::Null));
-            let cam = if camera.is_empty() { "the IR camera".to_string() } else { camera.clone() };
+            let progress = face["progress"].as_i64().unwrap_or(-1);
+            let detail = if busy == "models" {
+                format!("Downloading the eye model… {}%", progress.max(0))
+            } else if rgb {
+                format!("Step {} of {steps}. Downloads Howdy's face models and an eye model for the blink (54 MB), once", step + 1)
+            } else {
+                format!("Step {} of {steps}. Downloads Howdy's face models, once", step + 1)
+            };
+            let working = busy == "setup" || busy == "models";
             rows.push(
                 Row::new("Set up the camera")
-                    .detail(format!("Uses {cam} and downloads Howdy's face models"))
-                    .buttons(vec![btn(if busy == "setup" { "Setting up…" } else { "Set Up" }).primary().on(busy == "setup").off(!busy.is_empty() && busy != "setup")], id),
+                    .detail(detail)
+                    .buttons(vec![btn(if working { "Setting up…" } else { "Set Up" }).primary().on(working).off(!busy.is_empty() && !working)], id),
             );
         }
         if set_up {
             let asking = confirming == "faces";
-            let label = if busy == "add" {
+            let adding = busy == "add" || busy == "enrol";
+            let label = if adding {
                 "Look at the camera…".to_string()
             } else if faces == 0 {
                 "Add your face".into()
@@ -360,12 +438,14 @@ pub fn biometrics(cx: &mut Ctx, p: &mut Page) {
             } else {
                 format!("{faces} faces added")
             };
-            let detail = if busy == "add" {
-                "Hold still for a moment, in normal light"
+            let detail = if adding && rgb {
+                "Look at the camera and blink a few times, in normal light".to_string()
+            } else if adding {
+                "Hold still for a moment, in normal light".to_string()
             } else if faces == 0 {
-                "Look at the camera for a few seconds"
+                format!("Step {steps} of {steps}. Look at the camera for a few seconds")
             } else {
-                "Add another (with glasses, say) for better recognition"
+                "Add another (with glasses, say) for better recognition".to_string()
             };
             // [Keep]? [Remove …]? [Add …]
             let mut b = Vec::new();
@@ -385,7 +465,7 @@ pub fn biometrics(cx: &mut Ctx, p: &mut Page) {
                 b.push(btn(t).danger().off(!busy.is_empty()));
                 acts.push("remove");
             }
-            let add = btn(if faces == 0 { "Add Face" } else { "Add Another" }).icon("smiley").on(busy == "add").off(!busy.is_empty() && busy != "add");
+            let add = btn(if faces == 0 { "Add Face" } else { "Add Another" }).icon("smiley").on(adding).off(!busy.is_empty() && !adding);
             b.push(if faces == 0 { add.primary() } else { add });
             acts.push("add");
             let id = cx.on(move |cx, a| match acts.get(a.i.max(0) as usize).copied() {
@@ -403,9 +483,33 @@ pub fn biometrics(cx: &mut Ctx, p: &mut Page) {
             });
             rows.push(Row::new(label).detail(detail).buttons(b, id));
             if faces > 0 {
+                // 3. Try it, as the lock would
+                let state = s(&face["tryState"]);
+                let text = s(&face["tryText"]);
+                let running = state == "running";
+                let id = cx.on(|cx, _| cx.ask("system", "faceTry", Value::Null));
+                let hint = if rgb { "Look at the camera and blink" } else { "Look at the camera" };
+                rows.push(
+                    Row::new("Try it")
+                        .detail(if text.is_empty() { hint.to_string() } else { text })
+                        .tone(if state == "no" { 2 } else { 0 })
+                        .buttons(vec![btn(if running { "Looking…" } else { "Try It" }).icon("scan").on(running).off(!busy.is_empty())], id),
+                );
+                // 4. Where it works
                 let on = cx.b("lock.face");
                 let t = cx.toggle("lock.face");
-                rows.push(Row::new("Unlock the lock screen").detail("Look at the screen or type your password").switch(on, t));
+                rows.push(Row::new("Unlock the lock screen").detail(if rgb { "Look at the screen and blink, or type your password" } else { "Look at the screen or type your password" }).switch(on, t));
+                // (infrared only: a regular camera never approves an administrator)
+                let allowed = face["adminAllowed"].as_bool().unwrap_or(false);
+                let admin = allowed && face["admin"].as_bool().unwrap_or(false);
+                let id = cx.on(move |cx, _| cx.ask("system", "faceAdmin", json!(!admin)));
+                let changing = busy == "admin" || busy == "adminOff";
+                rows.push(
+                    Row::new(ADMIN_LABEL)
+                        .detail(admin_detail(allowed, changing))
+                        .switch(admin, id)
+                        .enabled(allowed && busy.is_empty()),
+                );
             }
         }
         let g = p.group("Face");
@@ -525,6 +629,26 @@ mod tests {
         assert_eq!(x, "Lift it");
         let (t, _) = sheet_texts(true, false, false, "thumb", "", "done", "", -1);
         assert_eq!(t, "Your thumb is added");
+    }
+
+    #[test]
+    fn face_says_its_camera_and_where_faces_stay() {
+        assert!(camera_detail(false, false).starts_with("Infrared"));
+        assert!(camera_detail(true, false).contains("blink"));
+        assert!(camera_detail(true, true).contains("Infrared is safer"));
+        for (rgb, installed) in [(false, false), (true, false), (true, true)] {
+            assert!(face_footer(rgb, installed).ends_with("Your face is stored on this computer only and never leaves it."));
+        }
+        assert!(face_footer(true, false).contains("video of you"));
+        assert!(face_footer(false, true).contains("first login after a restart"));
+    }
+
+    #[test]
+    fn the_admin_switch_needs_infrared() {
+        assert!(ADMIN_LABEL.ends_with("(infrared camera)"));
+        assert_eq!(admin_detail(false, false), "Needs an infrared camera");
+        assert_eq!(admin_detail(false, true), "Needs an infrared camera");
+        assert!(admin_detail(true, false).contains("fingerprint or password"));
     }
 
     #[test]

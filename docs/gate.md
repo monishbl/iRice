@@ -293,6 +293,107 @@ What it says:
   the lock) are far longer than anything the script provokes; those are
   one-offs a 5-minute script can't promise to catch.
 
+### Real sessions over days: the health record
+
+The timing log is a debug switch; the shell also keeps a small record of
+itself all the time (17 Nov, Rust only: `native/tessera-ui/core/src/health.rs`,
+shown in Settings → System → Health): `~/.local/state/tessera/health.jsonl`,
+one JSON object a line, at most 200 KB and 8 days, never sent anywhere.
+
+- A sample each 5 minutes on the wall clock: `t` (the bucket's start), `d`
+  (seconds covered), `rss`/`pss` (KiB, smaps_rollup), `cpu` (ms of processor
+  time, every thread), and only when not zero `s16`/`s33` (loop turns over
+  16 / 33 ms, from the poll's return to the turn's end: the gate's "stall",
+  counted whether the timing log is on or not), `w` (the worst, ms), `fr`/`mf`
+  (animation frames shown / missed, only while wp_presentation is asked:
+  the wake log or the slow-GPU watch), `c` (parts that panicked).
+- Events: `start` (`why`: normal, crash, stopped, watchdog, retry; `gpu`;
+  `s` the Hyprland session), `stop`, `crash` (`part`, `report`, `fatal`),
+  `off`, `lock`, `gpu-slow`, and from the scripts `watchdog` and `fallback`.
+
+`jq -c 'select(.s16)' ~/.local/state/tessera/health.jsonl` lists the
+buckets that stalled. Its own cost is two clock reads a loop turn and one
+small write every 5 minutes on the work pool (no timer of its own); the
+gate's overhead check (base `round`, candidate `health`) is in RUST-ONLY.md.
+
+## Memory in real sessions
+
+17 Nov 2026. Real sessions run with glibc's malloc defaults, so the gate's
+RssAnon (one arena, a fixed threshold) said ~50-70 MB while the laptop's shell
+kept 200-400 MB. Read-only from the laptop's live shell (`/proc/<pid>/smaps`,
+2-10 minutes after a start): VmRSS 353-399 MB, RssAnon 231-281 MB, of which
+the main heap was 177 MB (176 MB of it transparent huge pages), 11 more malloc
+arenas 88 MB, the binary 62 MB, libraries 52 MB (mostly shared), fonts 12 MB.
+
+`tools/gate/memprobe.sh <arena> <binary> <out>` measures that kind of session
+in a sandbox: glibc defaults, the gate's seeded home with a 5120x3840
+wallpaper (`PROBE_WALL`), the gate's script (every panel, Settings,
+Spotlight, the dock, windows, 120 Hz, scale 1.5, the lock), then 10 minutes
+alone; `tools/gate/memmap.py <pid>` sums a process's smaps by kind (heap,
+arenas, other anonymous, GPU, fonts, binary, libraries). `PROBE_ENV` adds env
+(`__EGL_VENDOR_LIBRARY_FILENAMES=…50_mesa.json DRI_PRIME=pci-0000_00_02_0`
+draws on server1's Intel GPU with Mesa's iris, the laptop's driver; frames
+stay black on the NVIDIA desktop, the memory is real). Read RssAnon + VmSwap:
+server1 swaps idle sandboxes out within minutes, and RSS then reads low.
+
+Where it went (round ee8e8dc, glibc defaults):
+- **malloc arenas**: glibc makes an arena per thread (8 per core allowed,
+  ~90 threads); each keeps what its thread freed. 110-130 MB after the script,
+  never given back.
+- **Mesa's heap (iris)**: every window's FemtoVG renderer compiled the same
+  15 shader programs, and Mesa keeps each linked program (its NIR and code) in
+  the heap: 75 MB right after start, 110 MB after the script (21-28 windows,
+  panels made again on a mode or scale change). NVIDIA's driver keeps its
+  copies outside the heap.
+- **Huge pages**: THP is "always" on CachyOS (khugepaged max_ptes_none 409):
+  a heap's 2 MB pages stay whole for a few live bytes, and trimmed ranges are
+  collapsed back.
+- Not big: decoded pictures (already trimmed after decoding), glyph atlases
+  and textures (GPU memory, not RSS here), fonts (file pages, shared).
+
+What changed (`core/src/memory.rs`, `vendor/femtovg` SHARE_KEY):
+- At the very start of main: `mallopt(M_ARENA_MAX, 2)` and a fixed
+  `M_MMAP_THRESHOLD` of 128 KiB (big blocks are unmapped when freed; glibc's
+  own threshold grows to 32 MB and keeps them). MALLOC_ARENA_MAX /
+  MALLOC_MMAP_THRESHOLD_ in the environment still win (the gate's knobs).
+- FemtoVG renderers on one GL context share one set of programs; a shared
+  program's samplers and view size are set with every draw
+  (`TESSERA_OWN_PROGRAMS=1`: the old way).
+- After a quiet spell (10 s with fewer than 3 frames in any second, after
+  anything busier), a work-pool thread marks the malloc heaps MADV_NOHUGEPAGE
+  and calls `malloc_trim(0)`, once per quiet spell; it logs
+  `memory: trim … ms, RssAnon a → b MB, malloc in use u of h MB`. It took
+  0.4-1.2 ms; it never runs on the UI thread. THP isn't turned off for the
+  process (PR_SET_THP_DISABLE would be inherited by every app it starts).
+- SIGUSR1 also prints malloc's bytes in use and held.
+
+Measured with memprobe.sh, base ee8e8dc and this change side by side in
+arenas 60-63, glibc defaults, RssAnon + VmSwap in MB (17 Nov, 10:40):
+
+| | NVIDIA before | NVIDIA after | Intel (iris) before | Intel (iris) after |
+|---|---:|---:|---:|---:|
+| idle after start | 64.8 | 38.0 | 120.3 | 42.7 |
+| right after the script | 197.6 | 60.9 | 255.4 | 66.0 |
+| 1 minute later | 197.7 | 60.3 | 255.5 | 65.4 |
+| 10 minutes later | 197.7 | 60.3 | 255.5 | 65.4 |
+| of which heap / arenas, 10 min | 45.5 / 134.3 | 25.5 / 1.4 | 113.3 / 127.4 | 33.4 / 2.4 |
+
+An earlier pair (R2) read the same within 1-2 MB. Screenshots of the
+desktop, Control Center, Launchpad, Notification Center, Mission Control,
+Spotlight, the Wi-Fi menu and Settings match the old build pixel for pixel
+(but the clock); the first try of shared programs drew the Look previews
+black (a program's sampler and view uniforms left from another window),
+hence the uniforms with every draw. The idle trim itself gives back little
+(0.1-2 MB a time) once arenas are capped; it is a backstop for fragmented
+heaps after long uptime.
+
+The gate (ee8e8dc vs this change, 17 Nov 11:39, two rounds, 4.1-4.3 tasks
+running): PASS. Idle RssAnon 47.7 → 38.0 MB and script 69.5 → 58.6 MB even
+with the gate's capped malloc (the shared programs), stalls 77 → 53,
+long stalls 18 → 15, idle CPU 0.53 → 0.47 %, worst stall 144 → 141 ms. First
+frame after a show within noise (Settings 25 → 28 ms, Control Center 9 → 7 ms,
+the rest 0.3-6 ms either way).
+
 ## Limits and what's left
 
 - The sandbox draws through a hidden KWin on server1's NVIDIA GPU, not the

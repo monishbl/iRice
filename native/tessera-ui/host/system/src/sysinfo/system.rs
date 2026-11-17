@@ -491,7 +491,9 @@ impl Service for System {
                 let dark = match mode.as_str() {
                     "dark" => true,
                     "light" => false,
-                    _ => crate::bus::field("theme", "dark").as_bool().unwrap_or(true),
+                    // (auto: what the shell shows now, Theme.dark; 17 Nov: read from
+                    // a bus entry nothing filled, so it always went light)
+                    _ => h.st.shell.look.dark,
                 };
                 util::config_set("appearance.mode", json!(if dark { "light" } else { "dark" }));
             }
@@ -510,7 +512,11 @@ impl Service for System {
                 self.set_locked(h, on);
             }
             "lockSecure" => {
-                self.lock_secure = arg_bool(args, 0, "lockSecure");
+                let secure = arg_bool(args, 0, "lockSecure");
+                if secure != self.lock_secure {
+                    eprintln!("tessera-ui: system: the lock is {}", if secure { "confirmed (Sleep may go ahead)" } else { "down" });
+                }
+                self.lock_secure = secure;
                 if self.lock_secure {
                     self.finish_sleep();
                 }

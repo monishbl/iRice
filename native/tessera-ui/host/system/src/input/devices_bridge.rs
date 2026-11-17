@@ -485,7 +485,9 @@ impl DevicesBridge {
                     "localSend": ls["available"] == true, "localSendError": s(&ls["error"]),
                     "quickShare": qs["available"] == true, "quickShareName": s(&qs["name"]), "quickShareError": s(&qs["error"]),
                     "btAvailable": qs["bluetoothAvailable"] == true, "btOn": qs["bluetoothOn"] == true,
-                    "portsError": s(&h.state("sharing")["ports"]["error"])
+                    "portsError": s(&h.state("sharing")["ports"]["error"]),
+                    // (the one visibility's countdown: "for 7 more min")
+                    "minutesLeft": h.state("sharing")["minutesLeft"].as_i64().unwrap_or(0)
                 });
                 sh["pairingRisk"] = json!(self.system["pairing"]["risk"].as_bool().unwrap_or(false));
                 sh["passwordless"] = json!(self.system["passwordless"].as_bool().unwrap_or(false));

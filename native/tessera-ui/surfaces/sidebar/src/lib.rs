@@ -231,8 +231,8 @@ impl Default for Sidebar {
 
 /// The checkout the shell runs from (its scripts)
 fn shell_root() -> PathBuf {
-    let r = crate::env::var("ROOT").map(PathBuf::from).filter(|p| p.join("shell").is_dir());
-    r.unwrap_or_else(|| PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../../..")))
+    // ($TESSERA_ROOT, else the checkout the shell was started from: env::root, 17 Nov)
+    crate::env::root()
 }
 fn script(name: &str) -> String {
     shell_root().join("shell/assets/scripts").join(name).to_string_lossy().into_owned()

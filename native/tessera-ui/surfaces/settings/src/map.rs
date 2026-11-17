@@ -39,9 +39,13 @@ pub const SECTIONS: &[Section] = &[
     s!("security", "Privacy & Security", "shield-check", "#0A84FF", "System"),
     s!("power", "Battery & Power", "battery-high", "#30D158", "System"),
     s!("accessibility", "Accessibility", "person-arms-spread", "#0A84FF", "System"),
+    s!("health", "Health", "heartbeat", "#FF375F", "System"),
     s!("update", "Software Update", "arrow-circle-up", "#8E8E93", "System"),
     s!("about", "About", "info", "#30D158", "System"),
 ];
+
+/// Sections only the Rust Settings has (the QML's SettingsMap.js is frozen)
+pub const RUST_ONLY: &[&str] = &["health"];
 
 /// Page files shown as a part of another page: (file, page, part heading)
 pub const PARTS: &[(&str, &str, &str)] = &[
@@ -143,11 +147,11 @@ mod tests {
     #[test]
     fn the_same_as_settings_map_js() {
         let js = js();
-        for s in SECTIONS {
+        for s in SECTIONS.iter().filter(|s| !RUST_ONLY.contains(&s.id)) {
             let line = format!("{{ id: \"{}\", name: \"{}\", icon: \"{}\", color: \"{}\", group: \"{}\" }}", s.id, s.name, s.icon, s.color, s.group);
             assert!(js.contains(&line), "{line}");
         }
-        assert_eq!(js.matches("{ id: \"").count(), SECTIONS.len());
+        assert_eq!(js.matches("{ id: \"").count(), SECTIONS.len() - RUST_ONLY.len());
         for p in PARTS {
             assert!(js.contains(&format!("\"{}\": {{ page: \"{}\", part: \"{}\" }}", p.0, p.1, p.2)), "{}", p.0);
         }

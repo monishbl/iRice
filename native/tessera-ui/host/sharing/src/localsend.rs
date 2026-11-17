@@ -3,7 +3,8 @@
 //! LocalSend.qml. The work is done by assets/scripts/localsend.py; this
 //! keeps the list of nearby devices, asks (the share card) before accepting
 //! files, and shows transfers as a live activity.
-//! Receiving (Settings -> Sharing): Off | Everyone for 10 minutes | Everyone.
+//! Receiving follows the one visibility (visibility.rs): No one | Everyone
+//! for 10 min | Everyone, Quick Share's and this together.
 //! The helper only runs while receiving, or while you're sharing something.
 
 use crate::proc::{json_line, spawn, Kept};
@@ -41,8 +42,6 @@ impl Active {
 
 #[derive(Default)]
 pub struct LocalSend {
-    /// "Everyone for 10 minutes" turns itself off (ms since the epoch)
-    pub everyone_until: i64,
     /// the share sheet is open or a send is running
     pub sharing: bool,
     /// (alias, type, id)
@@ -50,6 +49,9 @@ pub struct LocalSend {
     pub active: Active,
     /// A send was asked for and hasn't reported back yet (the sheet may be gone)
     pub send_pending: bool,
+    /// sends asked for before the helper ran or found the peer: (fingerprint,
+    /// paths), told to it once its peers include it
+    pub queued: Vec<(String, Vec<String>)>,
     /// what the next outgoing transfer is called
     pub sending_name: String,
     pub error: String,
@@ -65,14 +67,14 @@ impl Sharing {
         tessera_core::util::on_path("python3")
     }
     pub fn local_receiving(&self) -> bool {
-        let r = self.cfg_str("sharing.receiving", "off");
-        r == "everyone" || (r == "10min" && self.local.everyone_until > tessera_core::util::now_ms())
+        // (one visibility for both: Quick Share's, visibility.rs)
+        self.visible_now()
     }
     pub fn local_alias(&self) -> String {
         self.my_name()
     }
     pub fn local_needed(&self) -> bool {
-        self.local_available() && (self.local_receiving() || self.local.sharing || self.local.send_pending || !self.local.active.is_empty())
+        self.local_available() && (self.local_receiving() || self.local.sharing || self.local.send_pending || !self.local.queued.is_empty() || !self.local.active.is_empty())
     }
     pub fn local_tell(&mut self, obj: Value) {
         if self.local.helper.running {
@@ -100,23 +102,31 @@ impl Sharing {
         if !needed {
             self.local.dead = false;
         }
-        if needed && !self.local.helper.running && !self.local.dead {
+        // (not in a test sandbox: it would announce itself on the real network)
+        if needed && tessera_core::env::sandboxed() {
+            if !self.local.dead {
+                eprintln!("tessera-ui: localsend: not started in the sandbox (it would announce on the real network)");
+                self.local.dead = true;
+            }
+        } else if needed && !self.local.helper.running && !self.local.dead {
             let script = self.script("localsend.py");
             let gen = self.next_gen();
             let cmd = vec!["python3".to_string(), "-I".into(), script];
             match spawn(h.sender("Sharing"), "localsend", gen, &cmd, &[], true, true) {
                 Some(k) => {
+                    eprintln!("tessera-ui: localsend: helper started (receiving {}, looking {}, sends queued {})", self.local_receiving(), self.local.sharing, self.local.queued.len());
                     self.local.helper = k;
                     self.local_mode();
                     self.local_scan();
                 }
                 None => self.local.dead = true,
             }
-        } else if !needed && self.local.helper.running {
+        } else if !needed && self.local.helper.running && self.local.helper.stdin.is_some() {
+            eprintln!("tessera-ui: localsend: helper stopped (not visible, not looking, nothing sending)");
             self.local.helper.stop();
         }
-        // While looking for devices, ask again now and then
-        if self.local.sharing && self.local.helper.running {
+        // While looking for devices (or for a queued send's), ask again now and then
+        if (self.local.sharing || !self.local.queued.is_empty()) && self.local.helper.running {
             self.sched.set_if_later("ls_scan", 4000);
         } else {
             self.sched.cancel("ls_scan");
@@ -133,6 +143,7 @@ impl Sharing {
             return;
         }
         let needed = self.local_needed();
+        eprintln!("tessera-ui: localsend: helper ended (needed {needed})");
         self.local.helper.ended();
         self.local.peers.clear();
         self.local.active.clear();
@@ -146,7 +157,22 @@ impl Sharing {
         let first = paths.first().map(|p| base(p)).unwrap_or_default();
         self.local.sending_name = if paths.len() > 1 { format!("{first} and {} more", paths.len() - 1) } else { first };
         self.local.send_pending = true;
-        self.local_tell(json!({"cmd": "send", "to": peer_id, "files": paths}));
+        // (as Quick Share's: kept until the helper runs and knows the peer)
+        self.local.queued.retain(|(id, _)| id != peer_id);
+        self.local.queued.push((peer_id.to_string(), paths.to_vec()));
+        eprintln!("tessera-ui: localsend: send of {} file(s) asked (helper {})", paths.len(), if self.local.helper.running { "running" } else { "starting" });
+        self.local_flush();
+    }
+    fn local_flush(&mut self) {
+        if !self.local.helper.running {
+            return;
+        }
+        let known: Vec<String> = self.local.peers.iter().map(|p| p.2.clone()).collect();
+        let (ready, wait): (Vec<_>, Vec<_>) = std::mem::take(&mut self.local.queued).into_iter().partition(|(id, _)| known.contains(id));
+        self.local.queued = wait;
+        for (id, paths) in ready {
+            self.local_tell(json!({"cmd": "send", "to": id, "files": paths}));
+        }
     }
     pub fn local_cancel(&mut self, session: &str) {
         self.local_tell(json!({"cmd": "cancel", "session": session}));
@@ -178,12 +204,18 @@ impl Sharing {
             return;
         }
         let Some(ev) = json_line(line) else { return };
-        match ev["ev"].as_str().unwrap_or("") {
+        let kind = ev["ev"].as_str().unwrap_or("");
+        // (peers come every few seconds while looking: logged when the count changes)
+        if kind != "peers" || ev["peers"].as_array().map_or(0, Vec::len) != self.local.peers.len() {
+            crate::quickshare::log_event("localsend", kind, &ev);
+        }
+        match kind {
             "peers" => {
                 self.local.peers = ev["peers"]
                     .as_array()
                     .map(|a| a.iter().map(|p| (js(&p["alias"]), js(&p["type"]), js(&p["id"]))).collect())
                     .unwrap_or_default();
+                self.local_flush();
             }
             "incoming" => {
                 let files = ev["files"].as_array().cloned().unwrap_or_default();

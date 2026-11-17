@@ -132,10 +132,9 @@ pub fn settings_act(h: &mut Host, ctx: &mut Ctx, group: &str, what: &str, a: &[V
         }
         "repairShell" => h.ask("look.later", json!([800, "system.repairShell", []])),
         "installEmoji" => h.ask("system.installEmoji", json!([s(0)])),
-        "buildPlugin" => {
-            let root = tessera_core::env::var("ROOT").unwrap_or_else(|| data_dir().join("src").to_string_lossy().into_owned());
-            launch_terminal(&["sh", "-c", "\"$1\" --load", "sh", &format!("{root}/tools/build-plugin.sh")], true);
-        }
+        // (Build glass: inside the shell, with its progress in Settings: glassbuild.rs)
+        "buildPlugin" => h.ask("glassbuild.start", json!([])),
+        "glassBuildLog" => h.ask("glassbuild.log", json!([])),
         "setWallpaper" => {
             if s(0).starts_with('/') {
                 wallpaper_set(&s(0));
@@ -208,15 +207,26 @@ pub fn look_feed(h: &Host) -> Value {
         .get::<tessera_core::services::weather::Weather>()
         .map(|w| json!({"ready": w.ready, "place": w.place, "temp": w.temp, "condition": w.condition, "error": w.error, "icon": w.icon}))
         .unwrap_or_else(|| json!({"ready": false, "place": "", "temp": 0, "condition": "", "error": "", "icon": "sun"}));
+    // The plugin's build (Appearance's "Glass effect is off"); in a sandbox,
+    // a made-up state when one is asked for (glassbuild.rs's `fake`)
+    let (plugin, plugin_version, glass_build) = match crate::glassbuild::fake(h.state("glassBuild")["fake"].as_str().unwrap_or("")) {
+        // (what the button did stays real: Skipped in a sandbox)
+        Some((p, v, mut b)) => {
+            b["skipped"] = h.state("glassBuild")["skipped"].clone();
+            (p, v, b)
+        }
+        None => (h.st.shell.plugin, h.state("glass")["version"].as_i64().unwrap_or(0), h.state("glassBuild").clone()),
+    };
     json!({
+        "glassBuild": glass_build,
         "cooldownGlass": h.state("cooldown.glass"),
         "sunrise": sunrise, "sunset": sunset,
         "path": h.state("wallpaper.path"),
         "seed": seed, "accent": accent, "tone": h.state("wallpaper.tone"),
-        "glassPlugin": h.st.shell.plugin,
-        // (Settings' "Update plugin…" when the loaded one is older; the
+        "glassPlugin": plugin,
+        // (Settings' "Rebuild glass" when the loaded one is older; the
         // Drop shelf's count and Show/Hide: RustBridgeLook.qml's fields)
-        "glassPluginVersion": h.state("glass")["version"].clone(),
+        "glassPluginVersion": plugin_version,
         "shelfCount": h.state("shelf")["count"].clone(),
         "shelfOpened": h.state("shelf")["opened"].clone(),
         "pickerBusy": h.state("picker.busy"),
@@ -380,6 +390,11 @@ impl Bridges {
         }
         self.locked = locked;
         h.set_state("locked", json!(locked));
+        // (and to System, which sleeps only once the lock is confirmed:
+        // Lock.qml told it; standalone nothing did, so Sleep and the closed-lid
+        // guard waited 3 s, gave up and stayed awake. 17 Nov: a closed laptop
+        // ran 2 hours on battery)
+        h.ask("system.locked", json!([locked]));
         // (the mark a shell started again while locked finds: `locked_mark`)
         let mark = locked_mark();
         if locked {
@@ -439,13 +454,16 @@ impl Bridges {
 
     fn tell_lock(&self, h: &mut Host) {
         let (finger, face) = (h.state("fingerprint.lockScreen").as_bool().unwrap_or(false), h.state("face.lockScreen").as_bool().unwrap_or(false));
-        h.tell("lock", json!({"held": self.held && self.rust_lock, "leaving": self.leaving, "finger": finger, "face": face}));
+        // (faceKind: a regular camera's PAM file asks for a blink too)
+        let (kind, device) = (h.state("face.kind").as_str().unwrap_or("ir").to_string(), h.state("face.device").as_str().unwrap_or("").to_string());
+        h.tell("lock", json!({"held": self.held && self.rust_lock, "leaving": self.leaving, "finger": finger, "face": face, "faceKind": kind, "faceDevice": device}));
     }
 
     /// What the lock screen (Rust) says: secure, unlocked, sound, refused
     fn lock_event(&mut self, h: &mut Host, e: &Value) {
         if let Some(secure) = e["secure"].as_bool() {
             h.set_state("lockSecure", json!(secure));
+            h.ask("system.lockSecure", json!([secure]));
             if secure && self.locked {
                 self.lockfx(h, "rest", 0);
             } else if !secure && !self.locked {
@@ -893,6 +911,7 @@ impl Service for Bridges {
         // died" screen until a restart (16 Nov)
         if locked_mark().exists() {
             eprintln!("tessera-ui: lock: the shell before ended while locked: locking again");
+            tessera_core::health::event("lock", json!({}));
             self.set_locked(h, true);
         }
         h.set_state("menubar.resources", json!(cfg_bool(h.cfg(), "menubar.resources", false)));

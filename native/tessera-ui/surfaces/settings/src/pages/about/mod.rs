@@ -17,6 +17,7 @@ pub mod importexport;
 pub mod loginitems;
 pub mod sysinfo;
 pub mod update;
+pub mod version;
 
 use super::super::model::{Block, Ctx, Kind, Page};
 use serde_json::Value;

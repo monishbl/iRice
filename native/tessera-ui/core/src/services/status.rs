@@ -1,6 +1,11 @@
 //! Battery (UPower's display device) and Wi-Fi (NetworkManager) over the
 //! system bus with zbus, read-only. Each runs on a thread that blocks on the
 //! service's PropertiesChanged signals and sends a fresh reading.
+//!
+//! A sandbox's battery (TESSERA_FAKE_BATTERY=<file>, the dev sandbox only):
+//! the file says "<percent> <charging|discharging|full>", read every second
+//! in place of UPower, so battery saver and the low-battery alerts can be
+//! tried and measured on a machine without one (docs/battery-saver.md).
 
 use crate::Msg;
 use smithay_client_toolkit::reexports::calloop::channel::Sender;
@@ -183,14 +188,53 @@ fn wifi(conn: &Connection) -> zbus::Result<Wifi> {
     Ok(out)
 }
 
+/// The fake battery file's reading: "15 discharging", "80 charging", "100 full"
+pub fn fake_battery(text: &str) -> Option<Battery> {
+    let mut f = text.split_whitespace();
+    let percent: f64 = f.next()?.parse().ok().filter(|p: &f64| (0.0..=100.0).contains(p))?;
+    let state = match f.next().unwrap_or("discharging") {
+        "charging" => 1,
+        "full" => 4,
+        _ => 2,
+    };
+    Some(Battery { present: true, percent, charging: state != 2, state, time_to_empty: 0, time_to_full: 0 })
+}
+
 pub fn spawn(tx: Sender<Msg>) {
-    watch(tx.clone(), "org.freedesktop.UPower", battery, |b| Msg::Data(Box::new(b)));
+    if let Some(file) = crate::env::var("FAKE_BATTERY").filter(|_| crate::env::sandboxed()) {
+        let tx = tx.clone();
+        std::thread::spawn(move || {
+            let mut last: Option<Battery> = None;
+            loop {
+                let b = std::fs::read_to_string(&file).ok().and_then(|t| fake_battery(&t));
+                if b.is_some() && b != last {
+                    last = b.clone();
+                    if tx.send(Msg::Data(Box::new(b.unwrap()))).is_err() {
+                        return;
+                    }
+                }
+                std::thread::sleep(Duration::from_secs(1));
+            }
+        });
+    } else {
+        watch(tx.clone(), "org.freedesktop.UPower", battery, |b| Msg::Data(Box::new(b)));
+    }
     watch(tx, "org.freedesktop.NetworkManager", wifi, |w| Msg::Data(Box::new(w)));
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_sandbox_battery() {
+        let b = fake_battery("15 discharging\n").unwrap();
+        assert!(b.present && !b.charging && b.state == 2 && b.percent == 15.0);
+        assert_eq!(fake_battery("80 charging").unwrap().state, 1);
+        assert_eq!(fake_battery("100 full").unwrap().state, 4);
+        assert_eq!(fake_battery("42").unwrap().state, 2);
+        assert!(fake_battery("").is_none() && fake_battery("x").is_none() && fake_battery("150 full").is_none());
+    }
 
     fn r(connected: bool, strength: u8, ssid: &str) -> Radio {
         Radio { connected, strength, ssid: ssid.into() }

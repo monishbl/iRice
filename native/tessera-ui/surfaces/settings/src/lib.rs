@@ -537,7 +537,7 @@ impl Settings {
         }
         let reopened = !self.open;
         self.open = true;
-        self.cfg.reload(st.shell.cfg.clone());
+        self.cfg.reload(tessera_core::saver::raw(&st.shell.cfg));
         if self.index.is_empty() || self.index_material != Some(st.shell.look.material) {
             self.read_index(st);
         }
@@ -860,7 +860,7 @@ impl Part for Settings {
     }
 
     fn start(&mut self, st: &mut State) {
-        self.cfg = Cfg::new(st.shell.cfg.clone());
+        self.cfg = Cfg::new(tessera_core::saver::raw(&st.shell.cfg));
     }
 
     fn command(&mut self, st: &mut State, c: &ShellCommand) {
@@ -1112,7 +1112,7 @@ impl Part for Settings {
     }
 
     fn config_changed(&mut self, st: &mut State, look: bool) {
-        self.cfg.reload(st.shell.cfg.clone());
+        self.cfg.reload(tessera_core::saver::raw(&st.shell.cfg));
         if look {
             // (another look: the window's size changes; made anew)
             let was = self.open;

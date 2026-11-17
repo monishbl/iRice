@@ -68,6 +68,7 @@ pub const DEFS: &[Def] = &[
     d("stageManager", "Stages", Toggle, S11_21, "", "squares-four"),
     d("mic", "Microphone", Toggle, S11_21, "", "microphone"),
     d("lowPower", "Low Power", Toggle, S11_21, "", "leaf"),
+    d("batterySaver", "Battery saver", Toggle, S11_21, "", "battery-low"),
     d("coolDown", "Cool-down", Toggle, S11_21, "", "snowflake"),
     d("gameMode", "Game Mode", Toggle, S11_21, "", "game-controller"),
     d("antiFlashbang", "Anti-Flash", Toggle, S11_21, "", "sun-dim"),

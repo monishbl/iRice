@@ -30,28 +30,39 @@ pub struct Share {
 }
 
 impl Sharing {
+    /// The one visibility (visibility.rs): `sharing.quickShare`
     pub fn level(&self) -> String {
-        devices::combine(&self.cfg_str("sharing.receiving", "off"), &self.cfg_str("sharing.quickShare", "off"))
+        crate::visibility::level_of(&self.cfg["sharing"]).to_string()
     }
-    /// The two differ (set separately on the page): the module says so
+    /// (there's one level since 17 Nov: never "Custom")
     pub fn mixed(&self) -> bool {
-        self.cfg_str("sharing.receiving", "off") != self.cfg_str("sharing.quickShare", "off")
+        false
     }
+    /// "No one", "Everyone", "7 min left"
     pub fn level_text(&self) -> String {
-        let l = self.level();
-        if l == "off" {
-            "Off".into()
-        } else if self.mixed() {
-            "Custom".into()
-        } else if l == "10min" {
-            "Everyone for 10 min".into()
+        crate::visibility::status(&self.level(), self.quick.everyone_until, tessera_core::util::now_ms())
+    }
+    /// Visible to anyone now (the tile is drawn on while so)
+    pub fn visible_now(&self) -> bool {
+        crate::visibility::visible(&self.level(), self.quick.everyone_until, tessera_core::util::now_ms())
+    }
+    /// Minutes left of "Everyone for 10 min" (0 otherwise)
+    pub fn minutes_left(&self) -> i64 {
+        if self.level() == "10min" {
+            crate::visibility::minutes_left(self.quick.everyone_until, tessera_core::util::now_ms())
         } else {
-            "Everyone".into()
+            0
         }
     }
     pub fn set_level(&mut self, l: &str) {
-        self.set_config("sharing.receiving", json!(l));
-        self.set_config("sharing.quickShare", json!(l));
+        let l = crate::visibility::norm(l);
+        // (the old LocalSend key too: the QML fallback reads it)
+        for k in [crate::visibility::KEY, crate::visibility::OLD_KEY] {
+            self.set_config(k, json!(l));
+            if let Some(m) = self.cfg.as_object_mut() {
+                tessera_core::cfgfile::put_path(m, k, json!(l));
+            }
+        }
     }
 
     // ── Nearby devices ──────────────────────────────────────────────────
@@ -316,5 +327,151 @@ impl Sharing {
             _ => {}
         }
         let _ = h;
+    }
+}
+
+impl Sharing {
+    /// `tessera-ui ipc call sharing <fn> …` (the IPC socket is the user's
+    /// only): what the tile, the share card and the send window's buttons
+    /// do, for scripts and tests on a real session.
+    ///   level <off|10min|everyone>   the one visibility, as the tile sets it
+    ///   devices                      the send window's list: name, how, key
+    ///   request                      the newest request waiting for an answer
+    ///   accept | decline             answer that one (never an older one)
+    ///   send <device name or key>    send what the open send window holds,
+    ///                                only to a device in its list
+    /// Refused while the sandbox's made-up devices are shown (sharingdemo).
+    pub fn sharing_ipc(&mut self, func: &str, args: &[String]) -> String {
+        if self.share.demo.is_some() && func != "level" {
+            return "refused: the demo devices are showing (sharingdemo real ends it)".into();
+        }
+        match func {
+            "level" => {
+                let l = args.first().map(String::as_str).unwrap_or("");
+                if crate::visibility::LEVELS.contains(&l) {
+                    self.set_level(l);
+                    format!("visible to {l}")
+                } else {
+                    "level takes off, 10min or everyone".into()
+                }
+            }
+            "devices" => self.devices().iter().map(|d| format!("{}\t{}\t{}", d.name, d.prefer, d.key)).collect::<Vec<_>>().join("\n"),
+            "request" => match self.newest_pending() {
+                Some(r) => format!("{}\t{}\t{}", crate::localsend::js(&r["id"]), crate::localsend::js(&r["via"]), crate::localsend::js(&r["what"])),
+                None => "none".into(),
+            },
+            "accept" | "decline" => match self.newest_pending().map(|r| crate::localsend::js(&r["id"])) {
+                Some(id) => {
+                    eprintln!("tessera-ui: sharing: {func} {id} (over IPC)");
+                    self.answer(&id, func == "accept");
+                    format!("{}ed {id}", if func == "accept" { "accept" } else { "declin" })
+                }
+                None => "no request is waiting".into(),
+            },
+            "send" => {
+                let want = args.join(" ");
+                match self.devices().into_iter().find(|d| d.key == want || d.name == want) {
+                    Some(_) if self.sheet_paths.is_empty() => "nothing to send: open the send window with files first".into(),
+                    Some(d) => {
+                        let paths = self.sheet_paths.clone();
+                        eprintln!("tessera-ui: sharing: send {} file(s) over {} (over IPC)", paths.len(), d.prefer);
+                        self.send_to(&d, &paths);
+                        format!("sending {} file(s) to {} over {}", paths.len(), d.name, d.prefer)
+                    }
+                    None => "no such device in the send window's list".into(),
+                }
+            }
+            _ => "sharing: level <l> | devices | request | accept | decline | send <device>".into(),
+        }
+    }
+
+    /// The newest request still asking (Accept / Decline on show)
+    fn newest_pending(&self) -> Option<&Value> {
+        self.share.requests.iter().rev().find(|r| r["state"] == "asking")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn with(sharing: Value) -> Sharing {
+        let mut s = Sharing::default();
+        s.cfg = json!({"sharing": sharing});
+        s
+    }
+
+    #[test]
+    fn one_level_drives_both_protocols() {
+        // the user's config of 17 Nov: the tile's key says everyone, no LocalSend key
+        let s = with(json!({"quickShare": "everyone", "quickShareHotspot": true, "quickShareFolder": ""}));
+        assert_eq!(s.level(), "everyone");
+        assert!(s.quick_visible() && s.local_receiving());
+        assert_eq!(s.level_text(), "Everyone");
+        assert!(!s.mixed());
+        // an old LocalSend "everyone" no longer opens LocalSend alone
+        let s = with(json!({"quickShare": "off", "receiving": "everyone"}));
+        assert!(!s.quick_visible() && !s.local_receiving());
+        assert_eq!(s.level_text(), "No one");
+    }
+
+    #[test]
+    fn ten_minutes_end_for_both() {
+        let mut s = with(json!({"quickShare": "10min"}));
+        let now = tessera_core::util::now_ms();
+        s.quick.everyone_until = now + 3 * 60_000 - 10;
+        assert!(s.quick_visible() && s.local_receiving());
+        assert_eq!(s.minutes_left(), 3);
+        assert_eq!(s.level_text(), "3 min left");
+        s.quick.everyone_until = now - 1;
+        assert!(!s.quick_visible() && !s.local_receiving());
+    }
+
+
+    #[test]
+    fn ipc_answers_only_the_newest_waiting_request() {
+        let mut s = with(json!({"quickShare": "everyone"}));
+        assert_eq!(s.sharing_ipc("accept", &[]), "no request is waiting");
+        s.add_request(json!({"id": "qs:in-1", "via": "quickshare", "session": "in-1", "what": "a.jpg"}));
+        s.add_request(json!({"id": "qs:in-2", "via": "quickshare", "session": "in-2", "what": "b.jpg"}));
+        assert!(s.sharing_ipc("request", &[]).starts_with("qs:in-2\tquickshare"));
+        assert_eq!(s.sharing_ipc("accept", &[]), "accepted qs:in-2");
+        assert_eq!(s.find_request("qs:in-2").unwrap()["state"], "receiving");
+        assert_eq!(s.find_request("qs:in-1").unwrap()["state"], "asking");
+        assert_eq!(s.sharing_ipc("decline", &[]), "declined qs:in-1");
+        assert!(s.find_request("qs:in-1").is_none());
+        assert_eq!(s.sharing_ipc("decline", &[]), "no request is waiting");
+    }
+
+    #[test]
+    fn ipc_sends_only_to_a_listed_device_and_never_in_demo() {
+        let mut s = with(json!({"quickShare": "off"}));
+        s.quick.devices = vec![("Moto edge".into(), "phone".into(), "Q9".into())];
+        assert_eq!(s.sharing_ipc("send", &["Moto edge".into()]), "nothing to send: open the send window with files first");
+        s.sheet_paths = vec!["/tmp/a b.bin".into()];
+        assert_eq!(s.sharing_ipc("send", &["Someone else".into()]), "no such device in the send window's list");
+        assert_eq!(s.sharing_ipc("send", &["Moto".into(), "edge".into()]), "sending 1 file(s) to Moto edge over quickshare");
+        assert_eq!(s.quick.queued.len(), 1);
+        assert_eq!(s.sharing_ipc("level", &["10min".into()]), "visible to 10min");
+        assert_eq!(s.level(), "10min");
+        assert_eq!(s.sharing_ipc("level", &["on".into()]), "level takes off, 10min or everyone");
+        s.share.demo = Some(json!({"localsend": [], "quickshare": [], "items": []}));
+        assert!(s.sharing_ipc("send", &["Moto edge".into()]).starts_with("refused"));
+        assert!(s.sharing_ipc("accept", &[]).starts_with("refused"));
+    }
+
+    #[test]
+    fn a_send_before_the_device_is_known_waits_for_it() {
+        let mut s = with(json!({"quickShare": "off"}));
+        s.quick_send("Q1", &["/tmp/a b.jpg".to_string()]);
+        assert_eq!(s.quick.queued.len(), 1);
+        // (the helper is wanted for it, and looks for the device)
+        assert_eq!(s.quick_needed(), s.quick_available());
+        assert!(s.sending_now());
+        s.local_send("fp1", &["/tmp/c.pdf".to_string(), "/tmp/d.pdf".to_string()]);
+        assert_eq!(s.local.queued, vec![("fp1".to_string(), vec!["/tmp/c.pdf".to_string(), "/tmp/d.pdf".to_string()])]);
+        assert_eq!(s.local.sending_name, "c.pdf and 1 more");
+        // the firewall opens for sending, Quick Share's ports too
+        assert!(s.ports_need().0.contains("quickshare") && s.ports_need().0.contains("localsend"));
     }
 }

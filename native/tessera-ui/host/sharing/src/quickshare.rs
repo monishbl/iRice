@@ -30,6 +30,9 @@ pub struct QuickShare {
     pub devices: Vec<(String, String, String)>,
     pub active: Active,
     pub send_pending: bool,
+    /// sends asked for before the helper ran or found the device: (device
+    /// id, paths), told to it once its device list has the id
+    pub queued: Vec<(String, Vec<String>)>,
     pub error: String,
     /// the helper could reach BlueZ (python-gobject, bluetoothd)
     pub bluetooth_engine: bool,
@@ -57,8 +60,7 @@ impl Sharing {
         tessera_core::util::on_path("python3")
     }
     pub fn quick_visible(&self) -> bool {
-        let m = self.cfg_str("sharing.quickShare", "off");
-        m == "everyone" || (m == "10min" && self.quick.everyone_until > tessera_core::util::now_ms())
+        self.visible_now()
     }
     /// One name for this computer, LocalSend's too (Settings -> Sharing -> Your name)
     pub fn my_name(&self) -> String {
@@ -72,7 +74,7 @@ impl Sharing {
         self.cfg_str("sharing.quickShareFolder", "")
     }
     pub fn quick_needed(&self) -> bool {
-        self.quick_available() && (self.quick_visible() || self.quick.looking || self.quick.send_pending || !self.quick.active.is_empty())
+        self.quick_available() && (self.quick_visible() || self.quick.looking || self.quick.send_pending || !self.quick.queued.is_empty() || !self.quick.active.is_empty())
     }
     pub fn bluetooth_available(&self, h: &Host) -> bool {
         h.st.shell.get::<tessera_core::services::bluez::Bluetooth>().is_some_and(|b| b.present)
@@ -81,7 +83,7 @@ impl Sharing {
         h.st.shell.get::<tessera_core::services::bluez::Bluetooth>().is_some_and(|b| b.present && b.powered)
     }
     pub fn bluetooth_needed(&self, h: &Host) -> bool {
-        self.bluetooth_available(h) && !self.bluetooth_on(h) && (self.cfg_str("sharing.quickShare", "off") != "off" || self.quick.looking)
+        self.bluetooth_available(h) && !self.bluetooth_on(h) && (self.level() != "off" || self.quick.looking)
     }
     /// The user's "Turn on Bluetooth" (Powered = true on the adapter), off the loop
     pub fn bluetooth_turn_on(&self) {
@@ -136,7 +138,10 @@ impl Sharing {
     /// A short line for it: "on Bluetooth (slow)", "Wi-Fi paused"...
     fn note_of(&self, ev: &Value) -> String {
         if ev["slow"].as_bool().unwrap_or(false) {
-            return "on Bluetooth (slow)".into();
+            return "over Bluetooth, slower: the Wi-Fi link failed".into();
+        }
+        if ev["upgrading"].as_bool().unwrap_or(false) {
+            return "finding a faster Wi-Fi link…".into();
         }
         if ev["auth"].as_bool().unwrap_or(false) {
             // (no prompt when it's trusted)
@@ -153,7 +158,25 @@ impl Sharing {
         let first = paths.first().map(|p| base(p)).unwrap_or_default();
         self.quick.sending_name = if paths.len() > 1 { format!("{first} and {} more", paths.len() - 1) } else { first };
         self.quick.send_pending = true;
-        self.quick_tell(json!({"cmd": "send", "to": device_id, "files": paths}));
+        // (the helper may not be running, or be new and not know the device
+        // yet: a send from the Control Center after the sheet closed. It was
+        // written to nobody and lost; now it waits for the device)
+        self.quick.queued.retain(|(id, _)| id != device_id);
+        self.quick.queued.push((device_id.to_string(), paths.to_vec()));
+        eprintln!("tessera-ui: quickshare: send of {} file(s) asked (helper {})", paths.len(), if self.quick.helper.running { "running" } else { "starting" });
+        self.quick_flush();
+    }
+    /// The queued sends whose device the helper knows now
+    fn quick_flush(&mut self) {
+        if !self.quick.helper.running {
+            return;
+        }
+        let known: Vec<String> = self.quick.devices.iter().map(|d| d.2.clone()).collect();
+        let (ready, wait): (Vec<_>, Vec<_>) = std::mem::take(&mut self.quick.queued).into_iter().partition(|(id, _)| known.contains(id));
+        self.quick.queued = wait;
+        for (id, paths) in ready {
+            self.quick_tell(json!({"cmd": "send", "to": id, "files": paths}));
+        }
     }
     pub fn quick_cancel(&mut self, session: &str) {
         self.quick_tell(json!({"cmd": "cancel", "session": session}));
@@ -215,7 +238,8 @@ impl Sharing {
     /// exits by itself must be tried again: a few seconds later, then less
     /// often). Also the QML's change handlers (visible, name, folder, looking).
     pub fn quick_sync(&mut self, h: &mut Host) {
-        let (visible, name, folder, looking) = (self.quick_visible(), self.my_name(), self.quick_folder(), self.quick.looking);
+        // (a queued send looks for its device too)
+        let (visible, name, folder, looking) = (self.quick_visible(), self.my_name(), self.quick_folder(), self.quick.looking || !self.quick.queued.is_empty());
         if visible != self.quick.last_visible || name != self.quick.last_name || folder != self.quick.last_folder {
             self.quick.last_visible = visible;
             self.quick.last_name = name;
@@ -229,7 +253,8 @@ impl Sharing {
         let needed = self.quick_needed();
         if needed && !self.quick.helper.running && !self.sched.has("qs_retry") {
             self.quick_start(h);
-        } else if !needed && self.quick.helper.running {
+        } else if !needed && self.quick.helper.running && self.quick.helper.stdin.is_some() {
+            eprintln!("tessera-ui: quickshare: helper stopped (not visible, not looking, nothing sending)");
             self.quick.helper.stop();
         }
         if self.quick.send_pending {
@@ -248,13 +273,18 @@ impl Sharing {
         // (The helper ends when its stdin closes: shell quit or restarted, or
         // no longer needed; the parent-death signal covers the shell being killed outright)
         let cmd = vec!["python3".to_string(), "-I".into(), script];
-        match spawn(h.sender("Sharing"), "quickshare", gen, &cmd, &[], true, true) {
+        // (a test sandbox shares the real system bus and network: no mDNS
+        // announcement, no Bluetooth advertising or scanning from it)
+        let env: &[(&str, &str)] = if tessera_core::env::sandboxed() { &[("TESSERA_QS_NO_MDNS", "1"), ("TESSERA_QS_NO_BLE", "1")] } else { &[] };
+        match spawn(h.sender("Sharing"), "quickshare", gen, &cmd, env, true, true) {
             Some(k) => {
+                eprintln!("tessera-ui: quickshare: helper started (visible {}, looking {}, sends queued {})", self.quick_visible(), self.quick.looking, self.quick.queued.len());
                 self.quick.helper = k;
                 self.quick.backoff.began();
                 self.quick.error.clear();
                 self.quick_configure();
-                if self.quick.looking {
+                self.quick.last_looking = self.quick.looking || !self.quick.queued.is_empty();
+                if self.quick.last_looking {
                     self.quick_tell(json!({"cmd": "discover", "on": true}));
                 }
             }
@@ -269,6 +299,7 @@ impl Sharing {
         if gen != self.quick.helper.gen && !never_started {
             return;
         }
+        eprintln!("tessera-ui: quickshare: helper ended{} (retry {})", if never_started { " before it started" } else { "" }, self.quick.retries);
         self.quick.helper.ended();
         self.quick.devices.clear();
         self.quick.active.clear();
@@ -291,10 +322,13 @@ impl Sharing {
             return;
         }
         let Some(ev) = json_line(line) else { return };
-        match ev["ev"].as_str().unwrap_or("") {
+        let kind = ev["ev"].as_str().unwrap_or("");
+        log_event("quickshare", kind, &ev);
+        match kind {
             "status" => self.quick.retries = 0, // up and answering
             "devices" => {
                 self.quick.devices = ev["devices"].as_array().map(|a| a.iter().map(|d| (js(&d["name"]), js(&d["type"]), js(&d["id"]))).collect()).unwrap_or_default();
+                self.quick_flush();
             }
             "incoming" => {
                 let what = Self::describe(&ev);
@@ -379,7 +413,15 @@ impl Sharing {
             "error" => self.quick.error = js(&ev["message"]),
             "bluetooth" => self.quick.bluetooth_engine = ev["available"].as_bool().unwrap_or(false) && ev["powered"].as_bool().unwrap_or(false),
             "transport" => {
-                self.quick.transports.insert(js(&ev["session"]), js(&ev["name"]));
+                let (session, name) = (js(&ev["session"]), js(&ev["name"]));
+                self.quick.transports.insert(session.clone(), name.clone());
+                // (on a Wi-Fi link now: "finding a faster link" is over; the
+                // item says the link it's really on)
+                if name != "Bluetooth" {
+                    self.set_link(&session, json!({"note": "", "slow": false, "transport": name}));
+                } else {
+                    self.set_link(&session, json!({"transport": name}));
+                }
             }
             // how the link is going: quietly, with the transfer
             "link" => {
@@ -468,9 +510,51 @@ impl Sharing {
     }
 }
 
+/// One line in the shell's log for a helper's event: kinds, numbers and
+/// states only (no file names; a device's name only in a count)
+pub fn log_event(who: &str, kind: &str, ev: &Value) {
+    if let Some(line) = log_line(who, kind, ev) {
+        eprintln!("tessera-ui: {line}");
+    }
+}
+
+pub fn log_line(who: &str, kind: &str, ev: &Value) -> Option<String> {
+    let n = |k: &str| ev[k].as_array().map_or(0, Vec::len);
+    let s = |k: &str| js(&ev[k]);
+    Some(match kind {
+        // (progress is many a second: its start and end are logged by the others)
+        "progress" | "link" | "connected" => return None,
+        "status" => format!("{who}: visible {} port {}", ev["visible"].as_bool().unwrap_or(false), ev["port"].as_i64().unwrap_or(0)),
+        "ready" => format!("{who}: ready on port {} (receiving {})", ev["port"].as_i64().unwrap_or(0), ev["receiving"].as_bool().unwrap_or(false)),
+        "devices" | "peers" => format!("{who}: {} device(s) found", n(kind)),
+        "incoming" => format!("{who}: incoming {} {} file(s) {} bytes", s("session"), n("files"), ev["total"].as_f64().unwrap_or(0.0) as i64),
+        "finished" => format!("{who}: finished {} ({}, {} file(s))", s("session"), if s("dir").is_empty() { "out".into() } else { s("dir") }, n("paths")),
+        "declined" => format!("{who}: declined {} {}", s("session"), s("reason")),
+        "ended" => format!("{who}: ended {}", s("session")),
+        "failed" => format!("{who}: failed {}: {}", s("session"), s("message")),
+        "error" => format!("{who}: error: {}", s("message")),
+        "bluetooth" => format!("{who}: bluetooth available {} powered {}", ev["available"].as_bool().unwrap_or(false), ev["powered"].as_bool().unwrap_or(false)),
+        "transport" => format!("{who}: {} on {}", s("session"), s("name")),
+        _ => format!("{who}: {kind}"),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn log_lines_carry_numbers_not_names() {
+        let ev = json!({"ev": "incoming", "session": "in-3", "from": "Kai's Pixel", "files": [{"name": "secret.pdf"}], "total": 5000});
+        let l = log_line("quickshare", "incoming", &ev).unwrap();
+        assert_eq!(l, "quickshare: incoming in-3 1 file(s) 5000 bytes");
+        assert!(!l.contains("secret") && !l.contains("Kai"));
+        let d = json!({"devices": [{"name": "A"}, {"name": "B"}]});
+        assert_eq!(log_line("quickshare", "devices", &d).unwrap(), "quickshare: 2 device(s) found");
+        assert!(log_line("quickshare", "progress", &json!({})).is_none());
+        let f = json!({"session": "out-1", "paths": ["/home/me/a b.txt"]});
+        assert_eq!(log_line("localsend", "finished", &f).unwrap(), "localsend: finished out-1 (out, 1 file(s))");
+    }
 
     #[test]
     fn what_arrived_is_said_in_words() {

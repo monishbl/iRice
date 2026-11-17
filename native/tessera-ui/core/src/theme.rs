@@ -60,7 +60,8 @@ pub fn read_json() -> Value {
 }
 
 pub fn read() -> Look {
-    let mut v = read_json();
+    // (battery saver: Reduce motion on, saver.rs)
+    let mut v = crate::saver::overlay(read_json());
     // The seed and a wallpaper accent come from the picture showing now (the
     // bundled default when none is chosen, the dynamic one, a live poster), as
     // the shell's do, not only from the chosen file
@@ -618,6 +619,7 @@ macro_rules! __theme_tokens {
             expressive / set_expressive: bool,
             snappy / set_snappy: bool,
             press_bounce / set_press_bounce: bool,
+            still / set_still: bool,
         }
     };
 }
@@ -695,6 +697,7 @@ pub fn tokens(look: &Look, plugin: bool) -> Tokens {
     t.set_expressive(expressive);
     t.set_snappy(snappy);
     t.set_press_bounce(look.material && !look.reduce_motion);
+    t.set_still(look.reduce_motion);
     if look.material {
         let roles = look_roles(look);
         let r = |k: &str| hex(roles.iter().find(|(n, _)| n == k).map(|(_, v)| v.as_str()).unwrap_or("#ff00ff"));

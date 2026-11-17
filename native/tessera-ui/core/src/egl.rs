@@ -99,6 +99,10 @@ impl Egl {
             .create_context(display, config, None, &[egl::CONTEXT_CLIENT_VERSION, 3, egl::NONE])
             .or_else(|_| api.create_context(display, config, None, &[egl::CONTEXT_CLIENT_VERSION, 2, egl::NONE]))
             .map_err(|e| format!("no OpenGL ES 2 or 3 context: {e}"))?;
+        // (every window's FemtoVG renderer on this context shares one set of
+        // shader programs: vendor/femtovg SHARE_KEY; ~15 programs a window,
+        // each tens to hundreds of KB in Mesa's heap)
+        femtovg::renderer::share_programs((!crate::env::is_set("OWN_PROGRAMS")).then_some(context.as_ptr() as usize));
         let extensions = api.query_string(Some(display), egl::EXTENSIONS).map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
         let has = |e: &str| extensions.split_ascii_whitespace().any(|x| x == e);
         let swap_with_damage = [("EGL_KHR_swap_buffers_with_damage", "eglSwapBuffersWithDamageKHR"), ("EGL_EXT_swap_buffers_with_damage", "eglSwapBuffersWithDamageEXT")]

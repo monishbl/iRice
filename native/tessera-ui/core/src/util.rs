@@ -189,10 +189,11 @@ pub fn link_target(path: &std::path::Path) -> PathBuf {
     path.to_path_buf()
 }
 
-/// A file of the repo's (shell/assets/…): from the source tree, else from
-/// $TESSERA_ROOT (where the shell runs from)
+/// A file of the repo's (shell/assets/…): from the checkout the shell runs
+/// from (crate::env::root), else the source tree (17 Nov: the source tree
+/// came first, and it's the build machine's path in a ready-made binary)
 pub fn asset(rel: &str) -> Option<PathBuf> {
-    [PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../..")), PathBuf::from(crate::env::var("ROOT").unwrap_or_default())]
+    [crate::env::root(), PathBuf::from(crate::env::BUILT_ROOT)]
         .into_iter()
         .map(|r| r.join(rel))
         .find(|p| p.exists())

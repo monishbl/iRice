@@ -72,7 +72,9 @@ pub fn home() -> std::path::PathBuf {
 
 /// The repo the shell runs from (shell-ipc.sh's root: TESSERA_ROOT, else this build's)
 pub fn root() -> std::path::PathBuf {
-    std::env::var_os("TESSERA_ROOT").filter(|r| !r.is_empty()).map(Into::into).unwrap_or_else(|| std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../../..")))
+    // ($TESSERA_ROOT, else the checkout the shell was started from: the build
+    // path compiled in is the build machine's in a ready-made binary, 17 Nov)
+    tessera_core::env::root()
 }
 
 /// shell/assets/scripts/<name> (the helper scripts the QML calls)

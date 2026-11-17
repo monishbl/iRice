@@ -64,6 +64,12 @@ pub fn lowest_rate(modes: &[String], width: i64, height: i64, current: f64) -> O
     (pick.is_finite() && (pick - current).abs() >= 0.5).then_some(pick)
 }
 
+/// The cheaper glass Cool-down chose, or battery saver's frosted glass (no
+/// lens: its refraction is the costliest part) when Cool-down keeps it
+pub fn saver_glass(cool: &str, saver: bool) -> String {
+    if saver && cool == "keep" { "frosted".into() } else { cool.into() }
+}
+
 /// Is this output the laptop's own panel (eDP, LVDS, DSI)
 pub fn internal(name: &str) -> bool {
     ["eDP", "LVDS", "DSI"].iter().any(|p| name.starts_with(p))
@@ -79,7 +85,7 @@ impl Appearance {
     }
 
     fn glass_line(&self, h: &Host) -> Value {
-        json!({"src": "shell", "kind": "glass", "tone": self.tone.clone().unwrap_or_default(), "cooldown": self.cool.glass(self.cfg_cool(h))})
+        json!({"src": "shell", "kind": "glass", "tone": self.tone.clone().unwrap_or_default(), "cooldown": saver_glass(&self.cool.glass(self.cfg_cool(h)), tessera_core::saver::on())})
     }
 
     /// Say the glass line when it changed
@@ -106,7 +112,9 @@ impl Appearance {
             "On battery"
         };
         let pause = active && cfg_bool(c, "cooling.pauseLiveWallpaper", true);
-        let state = json!({"active": active, "why": why, "glass": self.cool.glass(c), "motionScale": self.cool.motion_scale(c), "pauseLive": pause, "hot": self.cool.hot});
+        // (savedRates: the rates before cool-down lowered them, CoolDown.savedRates: host-system's
+        // Displays keeps those in what it saves, and shows a lowered screen as lowered)
+        let state = json!({"active": active, "why": why, "glass": self.cool.glass(c), "motionScale": self.cool.motion_scale(c), "pauseLive": pause, "hot": self.cool.hot, "savedRates": self.saved_rates});
         h.set_state("cooldown", state);
         // what the Settings pages and the lock read of the wallpaper and the look
         h.set_state("wallpaper.tone", json!(self.tone.clone().unwrap_or_default()));
@@ -389,6 +397,14 @@ impl Service for Appearance {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn battery_saver_frosts_the_glass() {
+        assert_eq!(saver_glass("keep", true), "frosted");
+        assert_eq!(saver_glass("solid", true), "solid");
+        assert_eq!(saver_glass("frosted", true), "frosted");
+        assert_eq!(saver_glass("keep", false), "keep");
+    }
 
     #[test]
     fn modes_parse() {

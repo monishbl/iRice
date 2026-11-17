@@ -44,11 +44,21 @@ With the password:
       screen needs none of this (its PAM file is in the shell).
   face setup <camera> | add | clear | list
       face unlock for Tessera's lock screen, with Howdy (howdy-next): setup
-      downloads Howdy's face models (once) and sets the infrared camera
-      (a /dev/v4l/by-path, /dev/v4l/by-id or /dev/videoN path that exists) in
-      /etc/howdy/config.ini; add, clear and list the faces of the person who
-      asked (never anyone else's). Tessera's lock screen uses its own PAM file;
-      no system PAM file is touched.
+      downloads Howdy's face models (once) and sets the camera, infrared or
+      regular (a /dev/v4l/by-path, /dev/v4l/by-id or /dev/videoN path that
+      exists) in /etc/howdy/config.ini; add, clear and list the faces of the
+      person who asked (never anyone else's; clear also ends admin below).
+      Tessera's lock screen uses its own PAM file; no system PAM file is
+      touched.
+  face admin on <camera> ir | face admin off
+      opt-in, infrared cameras only: your face approves administrator
+      prompts too. Refused unless Howdy's camera is that camera and it's
+      infrared (a regular camera never approves an administrator). A drop-in
+      for polkit's helper service (polkit-agent-helper@.service.d/50-tessera-
+      face.conf) gives it the camera and shows it a copy of its PAM file with
+      `auth sufficient pam_howdy.so` first, the rest (a fingerprint, the
+      password) as it was. polkit's own PAM file isn't changed; off removes
+      the drop-in, and so does setting up a regular camera.
   phonecam on|off
       a virtual camera for an Android phone's camera (Settings → Phone): the
       v4l2loopback module with one device, /dev/video42 "Phone camera",
@@ -430,14 +440,157 @@ def face(args, uid, run=subprocess.run, config=HOWDY_CONFIG, exists=os.path.exis
         except FileNotFoundError:
             text = ""
         write_root(config, howdy_device(text, device).encode(), 0o644)
+        if not is_infrared(device):
+            # (a regular camera now: it never approves an administrator)
+            with contextlib.suppress(OSError):
+                face_admin_off(uid, run=run)
         return 0
     if args == ["add"]:
         return run([howdy, "-U", user, "--plain", "-y", "add", "Tessera " + time.strftime("%Y-%m-%d %H.%M")]).returncode
     if args == ["clear"]:
+        with contextlib.suppress(OSError):
+            face_admin_off(uid, run=run)
         return run([howdy, "-U", user, "-y", "clear"]).returncode
     if args == ["list"]:
         return run([howdy, "-U", user, "--plain", "list"]).returncode
-    raise Refused("face: setup <camera> | add | clear | list")
+    if args[:2] == ["admin", "on"] and len(args) == 4:
+        for d in face_admin_on(uid, args[2], args[3], exists=exists, which=which):
+            print("changed", d)
+        return 0
+    if args == ["admin", "off"]:
+        for d in face_admin_off(uid):
+            print("changed", d)
+        return 0
+    raise Refused("face: setup <camera> | add | clear | list | admin on <camera> ir | admin off")
+
+
+# ── face for administrator prompts (opt-in: Settings → Face) ───────────
+# Infrared cameras only: a regular camera never approves an administrator
+# (a video of you could fool it), whatever is asked. polkit's PAM file isn't
+# changed. polkit asks through its helper, a systemd service started per
+# request (polkit-agent-helper@.service); a drop-in shows that service alone
+# our copy of its PAM file, with Howdy first and everything else as it was
+# (a fingerprint line, the password: BindReadOnlyPaths, a view, not an
+# edit; removing the drop-in is the whole undo).
+FACE_ADMIN_DIR = "/var/lib/tessera/face"
+FACE_DROPIN = "/etc/systemd/system/polkit-agent-helper@.service.d/50-tessera-face.conf"
+POLKIT_HELPER_UNITS = ("/usr/lib/systemd/system/polkit-agent-helper@.service", "/etc/systemd/system/polkit-agent-helper@.service")
+POLKIT_PAM = ("/etc/pam.d/polkit-1", "/usr/lib/pam.d/polkit-1")  # (PAM's own order)
+FACE_MARK = "# Tessera face"
+VIDIOC_ENUM_FMT = 0xC0405602
+GREY_FORMATS = {int.from_bytes(c.encode().ljust(4)[:4], "little") for c in ("GREY", "Y8  ", "Y10 ", "Y12 ", "Y16 ", "Y10B", "Y8I ", "Y12I")}
+NOT_INFRARED = ("A regular camera never approves administrator prompts (a video of you could fool it): "
+                "only an infrared camera, a fingerprint or your password")
+
+
+def polkit_face_line():
+    """Howdy with the infrared camera: a face in time approves; none, and
+    what follows (a finger, the password) is asked as before"""
+    return f"auth       sufficient                       pam_howdy.so   {FACE_MARK}"
+
+
+def polkit_with_face(text):
+    """polkit's PAM file with the face first (before its first auth line),
+    any face lines of ours from before taken out; nothing else changed"""
+    lines = [l for l in text.splitlines() if FACE_MARK not in l]
+    at = next((i for i, l in enumerate(lines) if re.match(r"^\s*-?auth\b", l)), len(lines))
+    return "\n".join(lines[:at] + [polkit_face_line()] + lines[at:]) + "\n"
+
+
+def face_dropin(overlay, target):
+    return ("# Tessera: face unlock (infrared camera) for administrator prompts (Settings → Face).\n"
+            "# The camera, and polkit's PAM file with the face first; delete this file to undo.\n"
+            "[Service]\nPrivateDevices=no\nDeviceAllow=char-video4linux rw\n"
+            f"BindReadOnlyPaths={overlay}:{target}\n")
+
+
+def camera_formats(dev):
+    """The pixel formats a camera gives (VIDIOC_ENUM_FMT: nothing switched on)"""
+    import fcntl
+    import struct
+    out = []
+    try:
+        fd = os.open(dev, os.O_RDONLY | os.O_NONBLOCK)
+    except OSError:
+        return out
+    try:
+        for i in range(32):
+            buf = bytearray(struct.pack("II", i, 1) + bytes(56))
+            try:
+                fcntl.ioctl(fd, VIDIOC_ENUM_FMT, buf)
+            except OSError:
+                break
+            out.append(struct.unpack_from("I", buf, 44)[0])
+    finally:
+        os.close(fd)
+    return out
+
+
+def is_infrared(device, sys_root="/sys/class/video4linux", formats=camera_formats):
+    """face.py's test, here as root: its name says IR, or it gives only greyscale"""
+    node = os.path.join(sys_root, os.path.basename(os.path.realpath(device)))
+    label = ""
+    for f in ("device/interface", "name"):
+        with contextlib.suppress(OSError):
+            with open(os.path.join(node, f)) as fh:
+                label += " " + fh.read().strip()
+    if re.search(r"\bIR\b|infrared", label, re.I):
+        return True
+    fmts = formats(device)
+    return bool(fmts) and all(f in GREY_FORMATS for f in fmts)
+
+
+def howdy_camera(config=HOWDY_CONFIG):
+    """The camera Howdy (so pam_howdy) uses"""
+    try:
+        with open(config) as f:
+            m = re.search(r"^\s*device_path\s*=\s*(\S+)", f.read(), re.M)
+    except OSError:
+        return ""
+    return m.group(1) if m and m.group(1).lower() != "none" else ""
+
+
+def face_admin_on(uid, device, kind, exists=os.path.exists, which=shutil.which, prefix="/", run=subprocess.run,
+                  config=HOWDY_CONFIG, infrared=is_infrared):
+    if kind != "ir":
+        raise Refused(NOT_INFRARED)
+    if not CAMERA_PATH.match(device) or not exists(device):
+        raise Refused(f"not a camera: {device}")
+    # (pam_howdy uses Howdy's camera: that one must be the infrared one, whatever was asked)
+    if howdy_camera(config) != device:
+        raise Refused("Howdy is set to another camera: set face unlock up again")
+    if not infrared(device):
+        raise Refused(NOT_INFRARED)
+    root = lambda p: os.path.join(prefix, p.lstrip("/"))
+    if not which("howdy"):
+        raise Refused("Howdy isn't installed (howdy-next)")
+    if not any(os.path.exists(root(u)) for u in POLKIT_HELPER_UNITS):
+        raise Refused("this polkit asks with its setuid helper, which can't be given a camera: administrator prompts keep asking for your password")
+    target = next((p for p in POLKIT_PAM if os.path.exists(root(p))), "")
+    if not target:
+        raise Refused("polkit has no PAM file (polkit-1)")
+    with open(root(target)) as f:
+        text = f.read()
+    overlay = f"{FACE_ADMIN_DIR}/polkit-1"
+    write_root(root(overlay), polkit_with_face(text).encode(), 0o644)
+    write_root(root(FACE_DROPIN), face_dropin(overlay, target).encode(), 0o644)
+    if prefix == "/":
+        run(["systemctl", "daemon-reload"], timeout=30, check=False)
+    return [root(overlay), root(FACE_DROPIN)]
+
+
+def face_admin_off(uid=None, prefix="/", run=subprocess.run):
+    """Faces no longer approve administrator prompts: the drop-in and our
+    copy go (polkit sees its own PAM file again)"""
+    root = lambda p: os.path.join(prefix, p.lstrip("/"))
+    gone = []
+    for p in (FACE_DROPIN, FACE_ADMIN_DIR + "/polkit-1"):
+        if os.path.exists(root(p)):
+            os.unlink(root(p))
+            gone.append(root(p))
+    if prefix == "/" and gone:
+        run(["systemctl", "daemon-reload"], timeout=30, check=False)
+    return gone
 
 
 # ── phonecam (Settings → Phone → Use as webcam) ─────────────────────────

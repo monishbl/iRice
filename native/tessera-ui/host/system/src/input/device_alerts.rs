@@ -223,6 +223,17 @@ pub struct DeviceAlerts {
     started: bool,
 }
 
+/// Files.qml's `manager`: Settings > Desktop's file manager when it's
+/// installed, else the first one installed, else xdg-open
+pub fn file_manager(cfg: &Value) -> String {
+    let on_path = tessera_core::util::on_path;
+    let want = cfg["desktop"]["fileManager"].as_str().unwrap_or("");
+    if !want.is_empty() && on_path(want) {
+        return want.into();
+    }
+    ["nautilus", "dolphin", "thunar", "nemo", "caja", "pcmanfm-qt", "pcmanfm"].iter().find(|m| on_path(m)).map_or_else(|| "xdg-open".into(), |m| m.to_string())
+}
+
 impl DeviceAlerts {
     fn live(&self, h: &Host) -> bool {
         island::enabled(h) && self.armed
@@ -454,13 +465,15 @@ impl Service for DeviceAlerts {
             }
         }));
     }
-    fn call(&mut self, _h: &mut Host, call: &str, args: &Value) {
+    fn call(&mut self, h: &mut Host, call: &str, args: &Value) {
         if call.ends_with(".openDrive") {
             let dev = args[0].as_str().unwrap_or("").to_string();
             if dev.is_empty() {
                 return;
             }
-            let fm = crate::bus::get("files")["manager"].as_str().unwrap_or("xdg-open").to_string();
+            // (Files.manager: Settings' file manager, else the first installed;
+            // 17 Nov: read from a bus entry nothing filled, so always xdg-open)
+            let fm = file_manager(h.cfg());
             crate::util::run_async(&["sh", "-c", "m=$(findmnt -nro TARGET \"$1\" | head -1); [ -z \"$m\" ] && m=$(udisksctl mount -b \"$1\" 2>/dev/null | sed -n 's/.* at //p'); ${2:-xdg-open} \"${m:-$HOME}\"", "sh", &dev, &fm]);
         }
     }

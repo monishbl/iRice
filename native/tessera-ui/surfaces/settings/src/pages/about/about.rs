@@ -1,4 +1,4 @@
-//! About (pages/about.qml): this computer, the subpages (System health,
+//! About (pages/about.qml): this build (version.rs: Version, with Copy), this computer, the subpages (System health,
 //! Login Items, Report a Bug), the welcome screen again, and Back up and
 //! restore (assets/scripts/settings-backup.py, run here as the QML page runs
 //! it: the settings, shortcuts, Focus modes and wallpaper in one file,
@@ -131,8 +131,10 @@ pub fn page(cx: &mut Ctx, p: &mut Page) {
         }
     });
     let today_name = cx.s("today.name");
+    // (the build that's running, as `tessera-ui --version` says it: version.rs)
+    let version = super::version::row(cx, "Version", "");
     p.group("")
-        .row(Row::new("Tessera").shows("1.0"))
+        .row(version)
         .row(Row::new("System").shows(if info.is_null() { "Linux".to_string() } else { s(&info["os"]) }))
         .row(Row::new("Computer name").shows(s(&info["host"])))
         .row(Row::new("Your name").detail("Today greets you by it. Empty: your account's name").field(today_name, name_ph, name_set).width(220.0))

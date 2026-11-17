@@ -283,8 +283,13 @@ pub fn page(cx: &mut Ctx, p: &mut Page) {
         }
     });
     let auto = cx.toggle("update.autoCheck");
+    // (the shell that's running, as About and `tessera-ui --version` say it,
+    // then what the channel has once checked: version.rs)
+    let latest = super::version::latest(checked && !checking, available, report, info);
+    let this_build = super::version::row(cx, "This build", &latest);
     p.group("Channel")
         .footer("Stable changes only when a tested version is promoted. Beta gets every change first, so expect rough edges. Either way, nothing installs until you choose Update.")
+        .row(this_build)
         .row(Row::new("Follow")
             .detail(follow)
             .segmented(&["Stable", "Beta"], ["stable", "beta"].iter().position(|c| *c == picked).map_or(-1, |i| i as i32), pick)

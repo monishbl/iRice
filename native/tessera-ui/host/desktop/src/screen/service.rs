@@ -186,6 +186,15 @@ impl ScreenSvc {
             self.last_state = Some(s.clone());
             util::tell_both(h, json!({"state": s}));
         }
+        // (a selection on screen, for host-system's Mouse: the pointer held to
+        // that screen and no hover focus meanwhile, as Mouse.qml followed
+        // ScreenTools.selecting; it's told when that changes. 17 Nov:
+        // standalone nothing told it)
+        let sel = json!({"selecting": self.selecting, "selectingScreen": if self.selecting.is_empty() { String::new() } else { self.selecting_screen.clone() }});
+        if *h.state("screentools") != sel {
+            h.set_state("screentools", sel);
+            h.ask("mouse.confine", json!([]));
+        }
         // (the menu bar's red recording item: ScreenTools.recording / recordingStarted)
         h.set_state("recording", json!({"on": self.recording, "started": self.started}));
         h.set_state("recorder", json!({"recording": self.recording, "paused": self.paused, "file": self.file, "started": self.started, "pausedAt": self.paused_at, "countdown": self.countdown, "micMuted": self.mic_muted, "canPause": self.gsr()}));

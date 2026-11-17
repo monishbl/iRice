@@ -1160,14 +1160,14 @@ component QsMedia {
             y: 10px;
             // the done part: QSMedia's WavyProgress while playing (a sine,
             // 3 px high, 24 px long, drifting), else the flat line
-            if !media.playing: Rectangle {
+            if !media.playing || Theme.still: Rectangle {
                 y: 8px;
                 width: media.timed ? max(4px, parent.width * media.progress) : 0;
                 height: 4px;
                 border-radius: 2px;
                 background: Theme.m3-primary;
             }
-            if media.playing: Rectangle {
+            if media.playing && !Theme.still: Rectangle {
                 y: 4px;
                 width: media.timed ? max(4px, parent.width * media.progress) : 0;
                 height: 12px;

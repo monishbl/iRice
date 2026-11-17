@@ -346,6 +346,24 @@ pub fn desktop_family() -> Option<&'static str> {
     DRAWING.get().and_then(|d| d.desktop)
 }
 
+/// The family of the GPU the shell draws on, when it chose one (two GPUs)
+pub fn drawing_family() -> Option<&'static str> {
+    DRAWING.get().map(|d| d.on.family)
+}
+
+/// The faster GPU there is to switch to (Settings → Health's "Use the
+/// other GPU"), when the shell draws on the low-power one
+pub fn faster_family() -> Option<&'static str> {
+    DRAWING.get().filter(|d| d.low_power).and_then(|d| d.faster.as_ref()).map(|g| g.family)
+}
+
+/// Draw on the faster GPU from now (the setting, and the shell starts again)
+pub fn use_faster() -> bool {
+    let Some(f) = faster_family() else { return false };
+    answered("switch", f);
+    true
+}
+
 /// The slow-GPU watch runs: drawing on the low-power GPU by its policy, a
 /// faster one exists, and "Not now" wasn't said this week
 pub fn watching() -> bool {
@@ -360,6 +378,7 @@ pub fn slow(share: f64) {
     let Some(faster) = d.faster.clone() else { return };
     let (on, to) = (family_label(d.on.family), family_label(faster.family));
     eprintln!("tessera-ui: {:.0}% of animation frames missed on the {on} GPU: asking about the {to} GPU", share * 100.0);
+    crate::health::event("gpu-slow", serde_json::json!({"share": (share * 1000.0).round() / 1000.0, "on": on, "to": to}));
     let title = format!("Tessera is running slowly on the {on} graphics — use the {to} GPU?");
     let body = format!("Animations missed {:.0}% of their frames. The {to} GPU is faster but uses more power. You can change this in Settings → Battery → Cool-down and performance.", share * 100.0);
     std::thread::spawn(move || {
@@ -388,8 +407,7 @@ fn answered(answer: &str, family: &str) {
 /// The shell starts again (repair-shell.sh: it outlives this process,
 /// replaces it, and apps keep running)
 fn restart_shell() {
-    let root = crate::env::var("ROOT").filter(|r| !r.is_empty()).map(std::path::PathBuf::from).unwrap_or_else(|| std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../..")));
-    let script = root.join("shell/assets/scripts/repair-shell.sh");
+    let script = crate::env::root().join("shell/assets/scripts/repair-shell.sh");
     crate::services::bridge::run(&["setsid", "-f", &script.to_string_lossy()]);
 }
 

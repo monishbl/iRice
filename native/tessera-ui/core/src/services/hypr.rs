@@ -372,8 +372,11 @@ impl Glass {
             // (TESSERA_GLASS_FORCE=1: send shapes even without the plugin, to see them in TESSERA_DEBUG's log)
             let debug = crate::env::is_set("DEBUG");
             let force = crate::env::is_set("GLASS_FORCE");
-            // (a ping: finds the plugin and its version; false when it is gone)
+            // (a ping: finds the plugin and its version; false when it is gone.
+            // Said when either changed: a plugin rebuilt and loaded again by
+            // Settings' Rebuild glass is the same "found", with a new version)
             let ping = |ui: &Sender<Msg>, first: bool, was: &mut bool| {
+                let before = GLASS_VERSION.load(std::sync::atomic::Ordering::Relaxed);
                 let found = find_plugin(|c| request(c).ok());
                 if let Some(n) = found {
                     let _ = GLASS_CMD.set(n);
@@ -388,7 +391,7 @@ impl Glass {
                     GLASS_VERSION.store(0, std::sync::atomic::Ordering::Relaxed);
                 }
                 let ok = found.is_some() || force;
-                if first || ok != *was {
+                if first || ok != *was || GLASS_VERSION.load(std::sync::atomic::Ordering::Relaxed) != before {
                     let _ = ui.send(Msg::GlassPlugin(ok));
                 }
                 *was = ok;

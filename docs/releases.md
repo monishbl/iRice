@@ -93,6 +93,66 @@ on failure. If the update rolls back, the code goes back and
 `.prev`, with no download or build. Any time the checkout returns to the
 version of the `.prev` build, an install swaps it back instead of downloading.
 
+## Which build is this?
+
+tessera-ui knows exactly what it is, and says it the same way everywhere:
+
+```sh
+$ tessera-ui --version
+tessera-ui 0.1.0 (beta, 7baa48d, 2026-11-17, x86-64-v3, signed release)
+$ tessera-ui --version --json
+{"name":"tessera-ui","version":"0.1.0","commit":"7baa48d…","short":"7baa48d","date":"2026-11-17","dirty":false,
+ "branch":"","channel":"beta","variant":"x86-64-v3","profile":"release","kind":"release","line":"tessera-ui 0.1.0 (…)"}
+```
+
+The parts: the channel it was built for (`stable`, `beta`, `release` for a
+`v*` tag, or `local build`), the commit it was built from (`-dirty` when
+`native/tessera-ui` had uncommitted edits), that commit's date, the variant
+(`x86-64-v3`, `generic`, or `native`: tuned for the computer that built it),
+the profile when it isn't `release` (`fast profile`, `dev profile`), and
+`signed release` (the release builder's, published signed) or `built
+locally`. A local developer build looks like `tessera-ui 0.1.0 (local build,
+7baa48d-dirty, 2026-11-17, generic, fast profile, built locally)`.
+
+Where it shows:
+
+- **Settings → About → Version**: two lines (`Beta · 7baa48d · 17 November
+  2026`, `x86-64-v3 · signed release`) and **Copy** (the `--version` line,
+  for a bug report).
+- **Settings → Software Update → Channel → This build**: the same two lines,
+  then, once checked, what the channel has (`Available on Beta: version
+  5e6f7a8b, ready-made (v3)` or `The latest on Beta.`).
+- Both say plainly when the build isn't from the channel Software Update
+  follows (`update.channel`, else the branch the checkout follows): "This
+  build is from Beta, but Software Update follows Stable. Check for updates
+  to get Stable's version."; a local build off another branch says so; a
+  build promoted from Beta to Stable unchanged says "Built on Beta and
+  published to Stable unchanged." (server1 packs beta's build again for main,
+  so the binary still says beta). When a newer build was installed but the
+  shell hasn't restarted yet, they say that too.
+- `tools/native-install.py status`: what's installed, and the installed
+  tessera-ui's `--version` line (kept in `tessera-ui.json` as `build`).
+
+How it's decided (`native/tessera-ui/build.rs`, the rules in
+`core/src/build_resolve.rs`): these variables first, else git, else unknown.
+
+| Variable | Set by | Values |
+|---|---|---|
+| `TESSERA_BUILD_CHANNEL` | the release builder (the target's channel); native-install's local builds (only when the checkout follows `origin/main` or `origin/beta`) | `stable`, `beta`, `release`; unset: the branch (main: stable, beta: beta, else `local build`) |
+| `TESSERA_BUILD_VARIANT` | the release builder; native-install (`generic`, or `native` for buildTuned) | unset: RUSTFLAGS' `-C target-cpu`, else `generic` |
+| `TESSERA_BUILD_KIND` | the release builder (`release`); native-install (`local`) | anything but `release` is a local build |
+| `TESSERA_BUILD_COMMIT` | the release builder | a full commit; unset: `git rev-parse HEAD` |
+| `TESSERA_BUILD_DATE` | the release builder | `YYYY-MM-DD`; unset: the commit's date (`git log -1 --format=%cs`) |
+
+It doesn't slow builds: the build script reruns only when one of these
+variables changes, when HEAD moves (HEAD, the branch's ref, `packed-refs`), or
+when a source in `native/tessera-ui` changes (then the binary recompiles
+anyway); never on every build. Without git (a tarball) it watches only the
+variables, and an unknown commit reads `unknown`. The release builder's
+`--version` line is what the manifest records per variant
+(`programs.tessera-ui.version`), and installs check the download says
+exactly that.
+
 ## Update channels
 
 Settings → Software Update → **Channel** says which Tessera to follow
@@ -212,7 +272,11 @@ For `main`, `beta` and every `v*` tag, each run:
 3. Builds both variants like the workflow: `cargo build --release --locked`
    (the full `release` profile: LTO, one codegen unit; never `fast`) for
    tessera-ui and tessera-events, `RUSTFLAGS="-C target-cpu=x86-64-v3"` and
-   `RUSTFLAGS=""`, each variant in its own target folder
+   `RUSTFLAGS=""`, with `TESSERA_BUILD_CHANNEL` (the target's channel),
+   `TESSERA_BUILD_VARIANT`, `TESSERA_BUILD_KIND=release`,
+   `TESSERA_BUILD_COMMIT` and `TESSERA_BUILD_DATE` for tessera-ui (so its
+   `--version` says what it is: "Which build is this?" above), each variant
+   in its own target folder
    (`~/tessera-release/target/<variant>`). Every cargo goes through
    `~/bin/tbuild` (not urgent: a cgroup scope with CPU and IO weight 10 and
    capped memory, paused by tgovernor when memory runs short), so the

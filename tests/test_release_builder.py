@@ -227,6 +227,58 @@ class Release(unittest.TestCase):
                 self.assertNotIn("correct horse", Path(f).read_text())
 
 
+class BuildEnv(unittest.TestCase):
+    """What a release build tells tessera-ui about itself (its build.rs:
+    `tessera-ui --version`, Settings → About)"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(prefix="tessera-release-env-")
+        self.rb = load("tessera_release_builder_env", BUILDER)
+        self.rb.SRC = src = os.path.join(self.tmp.name, "src")
+        self.rb.TARGETS = os.path.join(self.tmp.name, "target")
+        self.rb.STATE.clear()
+        self.rb.ROOT = self.rb.CACHE = self.tmp.name
+        self.rb.STATUS = os.path.join(self.tmp.name, "r.json")
+        os.makedirs(src)
+        subprocess.run(["git", "init", "-q", "-b", "main", src], check=True)
+        Path(src, "a").write_text("a\n")
+        git(src, "add", "-A")
+        subprocess.run(["git", "-C", src, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "one",
+                        "--date", "2026-11-17T08:00:00+00:00"], check=True,
+                       env=dict(os.environ, GIT_COMMITTER_DATE="2026-11-17T08:00:00+00:00"))
+        self.commit = git(src, "rev-parse", "HEAD")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_channel_variant_kind_commit_and_date(self):
+        for channel in ("stable", "beta", "release"):
+            t = {"name": "x", "kind": "branch", "tag": "t", "channel": channel, "commit": self.commit}
+            env = self.rb.build_env(t, "x86-64-v3")
+            self.assertEqual(env, {"TESSERA_BUILD_CHANNEL": channel, "TESSERA_BUILD_VARIANT": "x86-64-v3",
+                                   "TESSERA_BUILD_KIND": "release", "TESSERA_BUILD_COMMIT": self.commit,
+                                   "TESSERA_BUILD_DATE": "2026-11-17"})
+
+    def test_cargo_gets_them(self):
+        seen = {}
+
+        class P:
+            def __init__(self, cmd, env=None, **kw):
+                seen.update(env)
+                self.stdout = iter(())
+
+            def wait(self):
+                return 0
+
+        t = {"name": "beta", "kind": "branch", "tag": "tessera-ui-beta", "channel": "beta", "commit": self.commit}
+        extra = self.rb.build_env(t, "generic")
+        with mock.patch.object(self.rb.subprocess, "Popen", P), open(os.path.join(self.tmp.name, "log"), "w") as logf:
+            self.rb.cargo(["build"], "generic", "", "tessera-ui", logf, extra)
+        self.assertEqual((seen["TESSERA_BUILD_CHANNEL"], seen["TESSERA_BUILD_VARIANT"], seen["TESSERA_BUILD_KIND"]), ("beta", "generic", "release"))
+        self.assertEqual(seen["RUSTFLAGS"], "")
+        self.assertIn('build_env(t, variant)', BUILDER.read_text())
+
+
 class Units(unittest.TestCase):
     def test_timers_every_ten_minutes(self):
         self.assertIn("OnCalendar=*:0/10", (ROOT / "tools/release-builder/tessera-release.timer").read_text())

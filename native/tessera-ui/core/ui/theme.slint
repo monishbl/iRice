@@ -132,6 +132,9 @@ export global Theme {
     in property <bool> expressive: false;
     in property <bool> snappy: false;
     in property <bool> press-bounce: false;
+    // Reduce motion, or battery saver (saver.rs): what moves on its own
+    // (wavy progress, loops) holds still
+    in property <bool> still: false;
 }
 
 // Phosphor glyphs used here (shell/common/phosphor.js)
