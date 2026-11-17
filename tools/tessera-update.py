@@ -474,7 +474,7 @@ def is_checkout():
     return os.path.exists(os.path.join(REPO, ".git"))
 
 
-NOT_A_CHECKOUT = "This copy of Tessera isn't a git checkout, so it can't update itself. Get it with the install command from irice.monishbl.in."
+NOT_A_CHECKOUT = "This copy of Tessera isn't a git checkout, so it can't update itself. Get it with the install command from tessera.monishbl.in."
 
 
 def check(config_dir, fetch=True, channel=None):

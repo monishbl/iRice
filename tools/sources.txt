@@ -9,6 +9,6 @@
 #   a URL with {branch}     a tarball of that branch: a fresh install's last
 #                           resort (no git history, so it can't update itself
 #                           until setup.sh is run again)
-https://github.com/monishbl/iRice.git
-https://gitlab.com/monishbl/iRice.git
-https://codeload.github.com/monishbl/iRice/tar.gz/refs/heads/{branch}
+https://github.com/monishbl/tessera.git
+https://gitlab.com/monishbl/tessera.git
+https://codeload.github.com/monishbl/tessera/tar.gz/refs/heads/{branch}

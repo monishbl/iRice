@@ -59,18 +59,22 @@ class TheList(unittest.TestCase):
             self.assertEqual(SOURCES.git_sources(), ["a.git", "b.git"])
 
     def test_release_bases(self):
-        self.assertEqual(SOURCES.release_base("https://github.com/monishbl/iRice.git"),
-                         "https://github.com/monishbl/iRice/releases/download/{tag}")
-        self.assertEqual(SOURCES.release_base("https://gitlab.com/monishbl/iRice.git"),
-                         "https://gitlab.com/api/v4/projects/monishbl%2FiRice/packages/generic/tessera-ui/{tag}")
+        self.assertEqual(SOURCES.release_base("https://github.com/monishbl/tessera.git"),
+                         "https://github.com/monishbl/tessera/releases/download/{tag}")
+        self.assertEqual(SOURCES.release_base("https://gitlab.com/monishbl/tessera.git"),
+                         "https://gitlab.com/api/v4/projects/monishbl%2Ftessera/packages/generic/tessera-ui/{tag}")
         self.assertEqual(SOURCES.release_base("git@gitlab.com:group/sub/proj.git"),
                          "https://gitlab.com/api/v4/projects/group%2Fsub%2Fproj/packages/generic/tessera-ui/{tag}")
         self.assertIsNone(SOURCES.release_base("https://example.org/x.git"))
 
     def test_same_repo_however_written(self):
-        self.assertTrue(SOURCES.same_repo("git@github.com:monishbl/iRice.git", "https://github.com/monishbl/iRice"))
-        self.assertTrue(SOURCES.is_official("https://github.com/monishbl/iRice/"))
+        self.assertTrue(SOURCES.same_repo("git@github.com:monishbl/tessera.git", "https://github.com/monishbl/tessera"))
+        self.assertTrue(SOURCES.is_official("https://github.com/monishbl/tessera/"))
         self.assertFalse(SOURCES.is_official("https://github.com/someone/fork.git"))
+        # (its name until 17 Nov 2026: installs made before keep it as origin)
+        self.assertTrue(SOURCES.is_official("https://github.com/monishbl/iRice.git"))
+        self.assertTrue(SOURCES.same_repo("git@github.com:monishbl/iRice.git", "https://github.com/monishbl/tessera"))
+        self.assertFalse(SOURCES.is_official("https://github.com/someone/iRice.git"))
 
     def test_a_dead_source_fails_fast(self):
         t = time.time()

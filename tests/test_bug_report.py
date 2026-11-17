@@ -174,7 +174,7 @@ class Sending(unittest.TestCase):
 
     def test_the_github_link_leaves_out_the_log(self):
         url = self.m.github_url(dict(self.report, includeLog=True, log="SECRET-LOG", includeInfo=True, sysinfo={"Hyprland": "0.56"}))
-        self.assertTrue(url.startswith("https://github.com/monishbl/iRice/issues/new?"))
+        self.assertTrue(url.startswith("https://github.com/monishbl/tessera/issues/new?"))
         self.assertNotIn("SECRET-LOG", url)
         self.assertIn("bug-report", url)
 

@@ -67,7 +67,7 @@ const post = (body, ip = "203.0.113.7") =>
         body: typeof body === "string" ? body : JSON.stringify(body),
     });
 
-function fakeGithub(t, answer = { status: 201, body: { html_url: "https://github.com/monishbl/iRice/issues/42" } }) {
+function fakeGithub(t, answer = { status: 201, body: { html_url: "https://github.com/monishbl/tessera/issues/42" } }) {
     const calls = [];
     const real = globalThis.fetch;
     globalThis.fetch = async (url, init) => {
@@ -93,13 +93,13 @@ test("a report is stored and filed as an issue, without the sender's IP", async 
     const out = await res.json();
     assert.equal(out.ok, true);
     assert.match(out.id, /^[0-9a-f]{32}$/);
-    assert.equal(out.issue_url, "https://github.com/monishbl/iRice/issues/42");
+    assert.equal(out.issue_url, "https://github.com/monishbl/tessera/issues/42");
     assert.equal(env.DB.reports.length, 1);
     assert.equal(env.DB.reports[0].issue_url, out.issue_url);
     assert.ok(!JSON.stringify(env.DB.reports[0]).includes("203.0.113.7"), "IP stored");
 
     assert.equal(calls.length, 1);
-    assert.equal(calls[0].url, "https://api.github.com/repos/monishbl/iRice/issues");
+    assert.equal(calls[0].url, "https://api.github.com/repos/monishbl/tessera/issues");
     assert.equal(calls[0].init.headers.Authorization, "Bearer ghp_test");
     const issue = JSON.parse(calls[0].init.body);
     assert.deepEqual(issue.labels, ["bug-report"]);

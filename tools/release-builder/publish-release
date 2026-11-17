@@ -15,7 +15,7 @@ checksums, minisign and gh. Installed as ~/tessera-verify/publish-release.sh
 Needs, here: the signing key ~/.minisign/tessera-ui.key, its password in
 ~/.minisign/tessera-ui.password (mode 600; handed to minisign on its input,
 never written or logged anywhere else), minisign, and gh logged in to an
-account that can publish to monishbl/iRice. Without one of them it stops
+account that can publish to monishbl/tessera. Without one of them it stops
 before fetching anything, says what to do, and the sets stay waiting.
 
 For each set server1 lists (`tessera-release --list-ready`, over ssh):
@@ -72,7 +72,7 @@ GITLAB_TOKEN_FILE = os.path.join(HOME, ".config", "tessera", "gitlab-token")
 GITLAB_PROJECT_FILE = os.path.join(HOME, ".config", "tessera", "gitlab-project")
 HOST = os.environ.get("TESSERA_BUILDER") or "user@server1"
 REPO = os.path.expanduser(os.environ.get("TESSERA_REPO") or "~/Projects/Personal/iRice")
-GH_REPO = os.environ.get("TESSERA_RELEASE_GH_REPO") or "monishbl/iRice"
+GH_REPO = os.environ.get("TESSERA_RELEASE_GH_REPO") or "monishbl/tessera"
 SSH = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15"]
 SCP = ["scp", "-q", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15"]
 ROLLING = {"tessera-ui-latest": "main", "tessera-ui-beta": "beta"}
@@ -376,7 +376,7 @@ def publish_gitlab(s, dest):
     tag, tree = s["tag"], s["tree"]
     with open(GITLAB_TOKEN_FILE) as f:
         token = f.read().strip()
-    project = "monishbl/iRice"
+    project = "monishbl/tessera"
     if os.path.exists(GITLAB_PROJECT_FILE):
         with open(GITLAB_PROJECT_FILE) as f:
             project = f.read().strip() or project

@@ -1,6 +1,6 @@
 // iRice bug reports: POST /api/bug-reports from iRice's Settings → Report a
 // Bug (shell/assets/scripts/bug-report.py), stored in D1 and filed as a
-// GitHub issue in monishbl/iRice. A report's screenshot is served at
+// GitHub issue in monishbl/tessera. A report's screenshot is served at
 // /api/bug-reports/<id>/screenshot, where the id is 128 random bits, so only
 // the issue's link finds it.
 //
@@ -8,7 +8,7 @@
 // hashed with a secret salt and the hour, to allow a few reports an hour from
 // one network. The shell scrubs the log and system info before sending.
 
-const REPO = "monishbl/iRice";
+const REPO = "monishbl/tessera";
 const MAX_BODY = 2.5 * 1024 * 1024; // the client caps itself at 2 MB
 const MAX_SHOT = 1.5 * 1024 * 1024; // decoded bytes (D1 rows top out at 2 MB)
 const PER_HOUR = 5;

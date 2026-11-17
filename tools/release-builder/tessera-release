@@ -64,8 +64,8 @@ LOG = os.path.join(CACHE, "tessera-release.log")
 STATUS = os.path.join(CACHE, "tessera-release.json")
 TBUILD = os.path.join(HOME, "bin", "tbuild")
 
-REPO_URL = os.environ.get("TESSERA_RELEASE_URL") or "https://github.com/monishbl/iRice.git"
-GH_REPO = os.environ.get("TESSERA_RELEASE_GH_REPO") or "monishbl/iRice"
+REPO_URL = os.environ.get("TESSERA_RELEASE_URL") or "https://github.com/monishbl/tessera.git"
+GH_REPO = os.environ.get("TESSERA_RELEASE_GH_REPO") or "monishbl/tessera"
 # branch → (channel, rolling release), as the workflow names them
 BRANCHES = {"main": ("stable", "tessera-ui-latest"), "beta": ("beta", "tessera-ui-beta")}
 VARIANTS = (("x86-64-v3", "-C target-cpu=x86-64-v3"), ("generic", ""))

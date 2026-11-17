@@ -2,7 +2,7 @@
 
 The server behind Settings → Report a Bug. A Cloudflare Worker at
 `https://irice-bugs.monishbl.in` stores each report in a D1 database and files
-it as a GitHub issue in monishbl/iRice, labelled `bug-report`. Everything it
+it as a GitHub issue in monishbl/tessera, labelled `bug-report`. Everything it
 uses is on Cloudflare's free tier.
 
 - `POST /api/bug-reports`: a report (JSON, at most 2.5 MB). Answers
@@ -36,7 +36,7 @@ Run these from the repository root, logged in with `npx wrangler login`.
        npx wrangler secret put RATE_SALT --config site/bugs/wrangler.jsonc
 
    `GITHUB_TOKEN` is a fine-grained personal access token limited to the
-   monishbl/iRice repository, with the Issues permission set to Read and
+   monishbl/tessera repository, with the Issues permission set to Read and
    write and nothing else. `RATE_SALT` is any long random string, for example
    the output of `openssl rand -hex 32`.
 

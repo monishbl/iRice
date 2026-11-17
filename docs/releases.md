@@ -240,7 +240,7 @@ bash tools/release-builder/install.sh             # install or update it (from a
 
 Each run first checks what it needs: the key `~/.minisign/tessera-ui.key`,
 its password in `~/.minisign/tessera-ui.password` (mode 600), minisign, and
-`gh` logged in to an account that can publish to `monishbl/iRice`. When one is
+`gh` logged in to an account that can publish to `monishbl/tessera`. When one is
 missing it says what to do (once in the log, and in the status file),
 fetches nothing, and the sets wait on server1. Then for each set
 `tessera-release --list-ready` gives (over `ssh -o BatchMode=yes
@@ -301,14 +301,14 @@ Nothing here needs sudo.
    bash -c 'umask 077; read -rs -p "Key password: " pw && printf "%s\n" "$pw" > ~/.minisign/tessera-ui.password; echo'
    ```
 2. **On the laptop:** minisign (`sudo pacman -S minisign`) and `gh` logged in
-   as an account that can publish to `monishbl/iRice` (the active account; it
+   as an account that can publish to `monishbl/tessera` (the active account; it
    checks before every publish and says so when it can't). ssh to
    `user@server1` with a key (BatchMode: it never asks for a password).
 3. **On server1:** cargo, zstd, git, and `~/bin/tbuild`. No key, no password,
    no GitHub login.
 4. **Optional, on the laptop:** the GitLab mirror's token in
    `~/.config/tessera/gitlab-token` (mode 600), and its project path in
-   `~/.config/tessera/gitlab-project` when it isn't `monishbl/iRice`.
+   `~/.config/tessera/gitlab-project` when it isn't `monishbl/tessera`.
 
 ## The signing key
 
@@ -334,7 +334,7 @@ releases signed with the old key.
 
 ```sh
 tree=$(git rev-parse HEAD:native)
-base=https://github.com/monishbl/iRice/releases/download/tessera-ui-latest   # or …/download/v1.2.3
+base=https://github.com/monishbl/tessera/releases/download/tessera-ui-latest   # or …/download/v1.2.3
 curl -LO "$base/tessera-ui-$tree.manifest.json" -LO "$base/tessera-ui-$tree.manifest.json.minisig"
 curl -LO "$base/tessera-ui-$tree-x86-64-v3.tar.zst" -LO "$base/tessera-ui-$tree-x86-64-v3.tar.zst.minisig"
 
@@ -362,9 +362,9 @@ for one run, and `setup.sh` carries a copy, kept the same by
 
 | Order | Source | Used for |
 |---|---|---|
-| 1 | `https://github.com/monishbl/iRice.git` | everything (today's only source) |
-| 2 | `https://gitlab.com/monishbl/iRice.git` | the code (git), and the builds from its generic package registry: `https://gitlab.com/api/v4/projects/monishbl%2FiRice/packages/generic/tessera-ui/<tag>/<file>` |
-| 3 | `https://codeload.github.com/monishbl/iRice/tar.gz/refs/heads/<branch>` | a fresh install only: the files without git history (Software Update can't update such a copy until `setup.sh` is run again) |
+| 1 | `https://github.com/monishbl/tessera.git` | everything (today's only source) |
+| 2 | `https://gitlab.com/monishbl/tessera.git` | the code (git), and the builds from its generic package registry: `https://gitlab.com/api/v4/projects/monishbl%2FiRice/packages/generic/tessera-ui/<tag>/<file>` |
+| 3 | `https://codeload.github.com/monishbl/tessera/tar.gz/refs/heads/<branch>` | a fresh install only: the files without git history (Software Update can't update such a copy until `setup.sh` is run again) |
 
 - **setup.sh** clones from the first that works; a source is looked at first
   (5 seconds to connect, `info/refs`), so a dead one, or a GitLab project that
@@ -408,7 +408,7 @@ https://github.com/archlinux/aur.git`), built with `makepkg -si`.
 Until this is done, every source after GitHub is passed over quietly, and the
 laptop's publisher skips the upload (quietly, never a failed publish).
 
-1. On gitlab.com, create the project **monishbl/iRice** (empty, without a
+1. On gitlab.com, create the project **monishbl/tessera** (empty, without a
    README), **public**, so installs need no login. (Another path: change it in
    `tools/sources.txt`, `setup.sh` and the README, and set the repository
    variable or secret `GITLAB_PROJECT` to it.)
@@ -419,7 +419,7 @@ laptop's publisher skips the upload (quietly, never a failed publish).
    scopes **write_repository** and **api**, with an expiry you'll remember.
 4. For the builds: on the laptop that publishes, put the token in
    `~/.config/tessera/gitlab-token` (mode 600; the project path in
-   `~/.config/tessera/gitlab-project` if it isn't `monishbl/iRice`). The
+   `~/.config/tessera/gitlab-project` if it isn't `monishbl/tessera`). The
    publisher then uploads each new build and its signatures to the
    project's package registry (`tessera-ui/<tag>`), keeping the three newest
    builds of each rolling tag. Builds published before the token existed

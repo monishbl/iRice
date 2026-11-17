@@ -31,7 +31,7 @@ import urllib.parse
 import urllib.request
 
 ENDPOINT = "https://irice-bugs.monishbl.in/api/bug-reports"
-REPO = "monishbl/iRice"
+REPO = "monishbl/tessera"
 MAX_BYTES = 2 * 1024 * 1024
 MAX_SIDE = 1600
 LOG_LINES = 500

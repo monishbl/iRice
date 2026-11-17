@@ -396,9 +396,9 @@ class Mirrors(Fixture):
 
     def test_releases_bases_follow_the_sources(self):
         with mock.patch.dict(os.environ, {"TESSERA_RELEASES": "", "TESSERA_MIRRORS": ""}):
-            git(self.repo, "remote", "add", "origin", "https://github.com/monishbl/iRice.git")
+            git(self.repo, "remote", "add", "origin", "https://github.com/monishbl/tessera.git")
             self.assertEqual(ni.releases_bases(str(self.repo)), [
-                "https://github.com/monishbl/iRice/releases/download/{tag}",
+                "https://github.com/monishbl/tessera/releases/download/{tag}",
                 "https://gitlab.com/api/v4/projects/monishbl%2FiRice/packages/generic/tessera-ui/{tag}"])
             # (a fork: its own releases only)
             git(self.repo, "remote", "set-url", "origin", "https://github.com/someone/Tessera.git")

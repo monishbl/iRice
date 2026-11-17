@@ -99,13 +99,13 @@ The shell idles below 0.1% CPU. A live wallpaper is the exception while it's vis
 On Arch Linux (a fresh install or your current one), one line does everything:
 
 ```sh
-bash <(curl -fsSL https://raw.githubusercontent.com/monishbl/iRice/main/setup.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/monishbl/tessera/main/setup.sh)
 ```
 
 When GitHub can't be reached, the same script from Tessera's GitLab mirror:
 
 ```sh
-bash <(curl -fsSL https://gitlab.com/monishbl/iRice/-/raw/main/setup.sh)
+bash <(curl -fsSL https://gitlab.com/monishbl/tessera/-/raw/main/setup.sh)
 ```
 
 Either way it tries GitHub, then the GitLab mirror, then a plain download of the files (`tools/sources.txt`; `TESSERA_MIRRORS` overrides it), and Software Update and the ready-made `tessera-ui` downloads fall back the same way. Before installing packages it checks your pacman mirror lists (Arch's and CachyOS's): ones that are short or behind are re-ranked first (the old lists kept as `*.tessera-backup`), and when the AUR is down, AUR packages come from Arch's GitHub mirror of it.

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Tessera one-line setup, for a fresh or existing Arch Linux:
 #
-#   bash <(curl -fsSL https://raw.githubusercontent.com/monishbl/iRice/main/setup.sh)
+#   bash <(curl -fsSL https://raw.githubusercontent.com/monishbl/tessera/main/setup.sh)
 #
 # or, when GitHub can't be reached, the same script from the GitLab mirror:
 #
-#   bash <(curl -fsSL https://gitlab.com/monishbl/iRice/-/raw/main/setup.sh)
+#   bash <(curl -fsSL https://gitlab.com/monishbl/tessera/-/raw/main/setup.sh)
 #
 # Downloads Tessera to ~/.local/share/tessera/repo (or updates it) and runs its
 # installer, which installs everything Tessera needs, builds it, sets it up and
@@ -17,9 +17,9 @@ set -euo pipefail
 # GitHub's tarball of the branch (no git history: a last resort). The same
 # list as tools/sources.txt (this runs before that's downloaded);
 # TESSERA_MIRRORS replaces it, TESSERA_REPO goes first.
-SOURCES=(https://github.com/monishbl/iRice.git
-         https://gitlab.com/monishbl/iRice.git
-         "https://codeload.github.com/monishbl/iRice/tar.gz/refs/heads/{branch}")
+SOURCES=(https://github.com/monishbl/tessera.git
+         https://gitlab.com/monishbl/tessera.git
+         "https://codeload.github.com/monishbl/tessera/tar.gz/refs/heads/{branch}")
 [[ -n "${TESSERA_MIRRORS:-}" ]] && read -r -a SOURCES <<<"${TESSERA_MIRRORS//,/ }"
 REPO="${TESSERA_REPO:-${IRICE_REPO:-}}"
 [[ -n "$REPO" ]] && SOURCES=("$REPO" "${SOURCES[@]}")
