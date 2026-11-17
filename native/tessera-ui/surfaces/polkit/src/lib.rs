@@ -9,8 +9,9 @@
 //!     Authority for this session, polkit's own helper for the
 //!     conversation): only when real: not `--demo` (nor TESSERA_UI_DEMO=1)
 //!     and not a sandbox (TESSERA_SANDBOX / IRICE_SANDBOX ≠ 1), and only
-//!     when the shell started it naming "polkit" in `--surfaces` (stdin its
-//!     pipe: tessera-ui run by hand never registers). Polkit.qml
+//!     for the session's shell: `--standalone`, or started by the QML shell
+//!     naming "polkit" in `--surfaces` (stdin its pipe: tessera-ui run by
+//!     hand never registers). Polkit.qml
 //!     then doesn't make its own agent (RustUi.drawing("polkit")).
 //!   A test agent on the SESSION bus: only when not real and
 //!     TESSERA_POLKIT_TEST=1, against a fake Authority there (src/bin/
@@ -365,9 +366,14 @@ impl Part for Polkit {
     }
 
     fn start(&mut self, st: &mut State) {
-        // (the real agent only for the shell that named it: tessera-ui run by
-        // hand draws every surface, and mustn't become the session's agent)
-        if self.real && !(explicitly_asked(&std::env::args().collect::<Vec<_>>(), NAME) && stdin_is_pipe()) {
+        // (the real agent only for the session's shell: the standalone shell
+        // (`--standalone`, the whole shell), or the one the QML shell started
+        // naming it; tessera-ui run by hand draws every surface and mustn't
+        // become the session's agent. 17 Nov: the standalone shell counted as
+        // neither, so the session had no agent at all and everything that
+        // needs an administrator's password said "Not allowed" without asking)
+        let named = explicitly_asked(&std::env::args().collect::<Vec<_>>(), NAME) && stdin_is_pipe();
+        if self.real && !(tessera_core::host::standalone() || named) {
             self.real = false;
         }
         let test = !self.real && crate::env::var("POLKIT_TEST").as_deref() == Some("1") && Self::fake_helper().is_some();
