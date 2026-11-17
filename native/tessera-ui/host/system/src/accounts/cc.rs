@@ -22,7 +22,6 @@ use super::common::*;
 use serde_json::{json, Value};
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
-use std::time::Duration;
 use tessera_core::host::{Host, Service};
 use tessera_core::services::{bluez::Bluetooth, mpris::Players, status::Wifi};
 
@@ -281,7 +280,6 @@ pub struct ControlCenter {
     share_retry: bool,
     /// the Resources page asked for samples (resources.use "graph")
     res_used: bool,
-    poll: slint::Timer,
 }
 
 impl Default for ControlCenter {
@@ -317,7 +315,6 @@ impl Default for ControlCenter {
             share_copied: 0,
             share_retry: false,
             res_used: false,
-            poll: slint::Timer::default(),
         }
     }
 }
@@ -1681,6 +1678,11 @@ impl Service for ControlCenter {
     fn name(&self) -> &'static str {
         "ControlCenter"
     }
+    fn every_second(&mut self, h: &mut Host, n: u64) {
+        // (the host's shared second: was a timer of its own)
+        let _ = n;
+        self.message(h, Box::new(M::Poll));
+    }
     fn calls(&self) -> &'static [&'static str] {
         &["cc"]
     }
@@ -1691,7 +1693,6 @@ impl Service for ControlCenter {
         h.st.shell.want("weather");
         let tx = Tx::new(h.sender("ControlCenter"));
         self.tx = Some(tx.clone());
-        self.poll.start(slint::TimerMode::Repeated, Duration::from_secs(1), move || tx.send(M::Poll));
         h.set_state("ccPage", json!(""));
         h.set_state("ccEditing", json!(false));
     }

@@ -65,6 +65,13 @@ fn inbound_changes<'a>(state: impl Fn(&str) -> &'a Value, last: &[Value]) -> Vec
     INBOUND.iter().enumerate().map(|(i, (_, key))| (i, state(key))).filter(|(i, v)| last.get(*i) != Some(*v)).collect()
 }
 
+/// The shell's "resources" state, at the resolution the bar and the island
+/// show it (whole percents, whole degrees)
+fn resources_state(cpu: f64, memory: f64, temperature: f64) -> Value {
+    let pct = |v: f64| (v * 100.0).round() / 100.0;
+    serde_json::json!({"cpu": pct(cpu), "memory": pct(memory), "temperature": temperature.round()})
+}
+
 fn hm(secs: i64) -> String {
     let m = (secs as f64 / 60.0).round() as i64;
     format!("{}:{:02}", m / 60, m % 60)
@@ -116,11 +123,19 @@ impl Mirror {
             self.resources_on = Some(on);
             h.ask("resources.use", json!([{"kind": "menubar", "on": on}]));
         }
-        let r = bus::get("Resources");
-        // (whatever was sampled, for whoever asked: the bar, or the expanded
-        // island's last line, which asks resources.use "island" itself)
-        // (the island's status line shows the temperature too, and turns it red while hot)
-        h.set_state("resources", json!({"cpu": r["cpu"].as_f64().unwrap_or(0.0), "memory": r["memory"].as_f64().unwrap_or(0.0), "temperature": r["temperature"].as_f64().unwrap_or(0.0)}));
+        // (whatever was sampled, for whoever shows it: the bar, or the expanded
+        // island's last line, which asks resources.use "desktop" itself; the
+        // island's status line shows the temperature too, and turns it red
+        // while hot. As they show it: whole percents and degrees, so a sample
+        // that reads the same changes no state, and no part's turn or bar
+        // redraw follows; nothing while neither shows it, 17 Nov: the bar
+        // redrew whole every ~4 s for figures nobody saw. The fields alone:
+        // the whole state carries a minute of history per figure.)
+        let shown = bus::field("Resources", "shown").as_bool().unwrap_or(false);
+        if shown || h.state("resources").is_null() {
+            let f = |k: &str| bus::field("Resources", k).as_f64().unwrap_or(0.0);
+            h.set_state("resources", resources_state(f("cpu"), f("memory"), f("temperature")));
+        }
         // Power.has("cooldown"): Cool-down holds a request (the island's "running hot" wording)
         let cooling = p["requests"].as_array().is_some_and(|r| r.iter().any(|q| q["owner"] == "cooldown"));
         h.set_state("power.cooldown", json!(cooling));
@@ -205,6 +220,14 @@ struct Logo(String, String);
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn resources_change_only_as_shown() {
+        // (two samples the bar shows alike: the same state, no redraw)
+        assert_eq!(resources_state(0.1234, 0.5012, 47.2), resources_state(0.1249, 0.4996, 46.8));
+        assert_eq!(resources_state(0.1234, 0.5012, 47.2), json!({"cpu": 0.12, "memory": 0.5, "temperature": 47.0}));
+        assert_ne!(resources_state(0.124, 0.5, 47.0), resources_state(0.126, 0.5, 47.0));
+    }
 
     #[test]
     fn the_other_hosts_state_reaches_this_crates_bus() {

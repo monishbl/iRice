@@ -173,10 +173,6 @@ impl Feed {
         }
     }
 
-    pub fn begin(&mut self, io: &mut Io) {
-        io.every("feed.send", 2000);
-    }
-
     pub fn add_widget(&self, h: &mut Host, kind: &str, size: &str) {
         h.tell("desktop", json!({"add": [kind, size]}));
     }

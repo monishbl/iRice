@@ -42,7 +42,6 @@ pub struct AccountsBridge {
     sent: String,
     ai_undo: String, // the text shown ("" none)
     undo_t: slint::Timer,
-    poll: slint::Timer,
     tx: Option<Tx>,
     /// models whose credential was saved here since the keys were read (the
     /// shell's cached Keys don't hear of it)
@@ -51,7 +50,7 @@ pub struct AccountsBridge {
 
 impl Default for AccountsBridge {
     fn default() -> Self {
-        Self { live: true, sent: String::new(), ai_undo: String::new(), undo_t: slint::Timer::default(), poll: slint::Timer::default(), tx: None, saved_keys: Default::default() }
+        Self { live: true, sent: String::new(), ai_undo: String::new(), undo_t: slint::Timer::default(), tx: None, saved_keys: Default::default() }
     }
 }
 
@@ -313,6 +312,11 @@ impl Service for AccountsBridge {
     fn name(&self) -> &'static str {
         "AccountsBridge"
     }
+    fn every_second(&mut self, h: &mut Host, n: u64) {
+        // (the host's shared second: was a timer of its own)
+        let _ = n;
+        self.message(h, Box::new(M::Poll));
+    }
     fn calls(&self) -> &'static [&'static str] {
         &["accounts"]
     }
@@ -320,7 +324,6 @@ impl Service for AccountsBridge {
         h.st.shell.want("ai"); // (the saved credentials, for hasKey)
         let tx = Tx::new(h.sender("AccountsBridge"));
         self.tx = Some(tx.clone());
-        self.poll.start(slint::TimerMode::Repeated, Duration::from_secs(1), move || tx.send(M::Poll));
     }
     fn call(&mut self, h: &mut Host, call: &str, args: &Value) {
         let list: Vec<Value> = args.as_array().cloned().unwrap_or_else(|| if args.is_null() { vec![] } else { vec![args.clone()] });

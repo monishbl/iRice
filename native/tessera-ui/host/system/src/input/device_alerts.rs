@@ -197,7 +197,6 @@ pub fn disk_of(dev: &str) -> String {
 
 enum M {
     Armed,
-    Poll,
     Udev(HashMap<String, String>),
     UsbWait(u64),
     PulseLine(String),
@@ -421,8 +420,10 @@ impl Service for DeviceAlerts {
     fn start(&mut self, h: &mut Host) {
         self.started = true;
         h.st.shell.want("bluez");
+        // (what's connected now is learned at once, not alerted: the
+        // readings come as data from here on, a 1 s poll before 17 Nov)
+        self.scan_bluetooth(h);
         after(h.sender("DeviceAlerts"), 4000, M::Armed);
-        after(h.sender("DeviceAlerts"), 1000, M::Poll);
         spawn_hypr_events(&["monitoraddedv2", "monitorremovedv2"], h.sender("DeviceAlerts"));
         // udev: one block of KEY=value lines per event
         let send = h.sender("DeviceAlerts");
@@ -465,6 +466,11 @@ impl Service for DeviceAlerts {
                 send(Box::new(M::PulseLine(line.to_string())));
             }
         }));
+    }
+    fn data(&mut self, h: &mut Host, what: std::any::TypeId) {
+        if what == std::any::TypeId::of::<Bluetooth>() {
+            self.scan_bluetooth(h);
+        }
     }
     fn call(&mut self, h: &mut Host, call: &str, args: &Value) {
         if call.ends_with(".openDrive") {
@@ -510,10 +516,6 @@ impl Service for DeviceAlerts {
         let Ok(m) = msg.downcast::<M>() else { return };
         match *m {
             M::Armed => self.armed = true,
-            M::Poll => {
-                self.scan_bluetooth(h);
-                after(h.sender("DeviceAlerts"), 1000, M::Poll);
-            }
             M::Udev(p) => self.on_udev(h, &p),
             M::UsbWait(g) => {
                 if g == self.usb_wait_gen {

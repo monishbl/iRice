@@ -79,7 +79,6 @@ fn idle_key(c: &Value) -> String {
 // ── The power daemon, over D-Bus ───────────────────────────────────────────
 
 enum M {
-    Tick,
     /// (profile, has a Performance profile); None: no daemon
     Ppd(Option<(String, bool)>),
     GuardDone(String),
@@ -179,7 +178,6 @@ pub struct Power {
     own_hypridle: bool,
     idle_key: String,
     idle_timer: slint::Timer,
-    tick: slint::Timer,
     lid: Vec<Watch>,
     /// logind's lid inhibitor, held by this process (closes with it)
     lid_fd: Option<zbus::zvariant::OwnedFd>,
@@ -226,7 +224,6 @@ impl Default for Power {
             own_hypridle: false,
             idle_key: String::new(),
             idle_timer: Default::default(),
-            tick: Default::default(),
             lid: vec![],
             lid_fd: None,
             lid_is_closed: false,
@@ -683,9 +680,11 @@ impl Service for Power {
         self.idle_key = idle_key(&self.cfg);
         spawn_ppd(h.sender(NAME));
         self.idle_later(h);
-        let send = h.sender(NAME);
-        self.tick.start(slint::TimerMode::Repeated, Duration::from_secs(1), move || send(Box::new(M::Tick)));
         self.last_mode = self.mode();
+    }
+    fn every_second(&mut self, h: &mut Host, _n: u64) {
+        self.tick(h);
+        self.publish(h);
     }
     fn config_changed(&mut self, h: &mut Host) {
         let old = std::mem::replace(&mut self.cfg, cfg_with_defaults(h.cfg()));
@@ -764,7 +763,6 @@ impl Service for Power {
     fn message(&mut self, h: &mut Host, msg: Box<dyn Any + Send>) {
         let Ok(m) = msg.downcast::<M>() else { return };
         match *m {
-            M::Tick => self.tick(h),
             M::Ppd(None) => {
                 self.ppd = false;
             }
@@ -815,7 +813,6 @@ impl Service for Power {
         self.publish(h);
     }
     fn quit(&mut self, _h: &mut Host) {
-        self.tick.stop();
         self.lid.drain(..).for_each(|w| w.stop());
     }
 }

@@ -71,6 +71,8 @@ use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 const NAME: &str = "spotlight";
@@ -107,7 +109,67 @@ enum M {
     Fetched(String, Option<PathBuf>),
     /// make the window ahead, so the first open draws at once
     Prepare,
+    /// a ranking from the rank lane (Spotlight::refresh), by its number
+    Ranked(u64, Box<Ranked>),
 }
+
+/// What ranking reads, owned: a keystroke's rows are worked out on the rank
+/// lane (tessera_core::work), not the UI thread, which only applies them
+struct Inputs {
+    text: String,
+    apps: Arc<Vec<rank::App>>,
+    /// Search.qml's actions, then the Chromecasts'
+    actions: Arc<Vec<rank::Action>>,
+    answer: Option<Answer>,
+    qalc: bool,
+    conversion: Option<String>,
+    definition: Option<Definition>,
+    extras: Option<Extras>,
+    ai: AiMeta,
+    files: Vec<(bool, String)>,
+    contents: Vec<String>,
+    home: String,
+    material: bool,
+}
+
+/// The rows for one ranking, laid out
+pub struct Ranked {
+    rows: Vec<Row>,
+    wants: rank::Wants,
+    have_extras: bool,
+    entries: Vec<Entry>,
+    content_h: f32,
+    material: bool,
+}
+
+impl Inputs {
+    /// rank::query and the layout (pure: any thread)
+    fn rank(&self) -> Ranked {
+        let raw = self.text.trim();
+        let k = Known {
+            apps: &self.apps,
+            actions: &self.actions,
+            answer: self.answer.as_ref(),
+            qalc: self.qalc,
+            conversion: self.conversion.as_deref(),
+            definition: self.definition.as_ref(),
+            extras: self.extras.as_ref(),
+            ai: Some(&self.ai),
+            emoji: if raw.starts_with(':') { providers::emoji() } else { &[] },
+            files: &self.files,
+            contents: &self.contents,
+            home: &self.home,
+        };
+        let (rows, wants) = rank::query(&self.text, &k);
+        let (entries, content_h) = if self.material { layout::material(&rows) } else { layout::glass(&rows) };
+        Ranked { rows, wants, have_extras: self.extras.is_some(), entries, content_h, material: self.material }
+    }
+}
+
+/// The lane keystrokes are ranked on: one thread, in order, so a ranking
+/// is never overtaken by an older one; a ranking a newer keystroke has
+/// replaced is skipped before it starts (and dropped if it finishes late)
+static RANK: tessera_core::work::Lane = tessera_core::work::Lane::new("rank");
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 struct IconKey {
@@ -272,8 +334,17 @@ pub struct Spotlight {
     ai: AiMeta,
     cast: Vec<rank::Action>,
     actions: Vec<rank::Action>,
-    apps: Vec<rank::App>,
+    /// actions, then cast (handed to the rank lane as they are)
+    all_actions: Arc<Vec<rank::Action>>,
+    apps: Arc<Vec<rank::App>>,
     extras: Option<Extras>,
+    /// the newest ranking asked for (the lane skips older ones), the
+    /// newest applied, and whether one asked since was for typing (its
+    /// selection and scroll start over)
+    rank_gen: u64,
+    rank_latest: Arc<AtomicU64>,
+    rank_applied: u64,
+    rank_typed: bool,
     asked: Option<(String, bool)>,
     hold_until: Option<Instant>,
     had_rows: bool,
@@ -320,8 +391,13 @@ impl Default for Spotlight {
             ai: AiMeta::default(),
             cast: Vec::new(),
             actions: rank::actions(),
-            apps: Vec::new(),
+            all_actions: Arc::new(rank::actions()),
+            apps: Arc::new(Vec::new()),
             extras: None,
+            rank_gen: 0,
+            rank_latest: Arc::new(AtomicU64::new(0)),
+            rank_applied: 0,
+            rank_typed: false,
             asked: None,
             hold_until: None,
             had_rows: false,
@@ -500,6 +576,11 @@ impl Spotlight {
         self.focus = 0;
         self.had_rows = false;
         self.asked = None;
+        // (a ranking still on its way is for the text before)
+        self.rank_gen += 1;
+        self.rank_latest.store(self.rank_gen, Ordering::SeqCst);
+        self.rank_applied = self.rank_gen;
+        self.rank_typed = false;
         crate::shell::ask("clipboard.refresh", serde_json::json!([]));
         // (the AI's name and the Chromecasts, before anything's typed)
         self.ask_extras(String::new(), false);
@@ -547,32 +628,74 @@ impl Spotlight {
         }
     }
 
-    /// The rows again, for the field's text and what's known
-    fn refresh(&mut self, st: &State, typed: bool) {
+    /// What ranking reads now, owned
+    fn inputs(&self, st: &State) -> Inputs {
         let raw = self.text.trim().to_string();
-        let ans = self.answer.as_ref().filter(|a| a.0 == raw).map(|a| &a.1);
-        let conv = self.conv.as_ref().filter(|c| c.0 == raw).map(|c| c.1.as_str());
         let word = rank::word_to_define(&raw);
-        let def = self.def.as_ref().filter(|d| !word.is_empty() && d.0 == word).map(|d| &d.1);
-        let extras = self.extras.as_ref().filter(|e| e.q == raw);
-        let mut actions = self.actions.clone();
-        actions.extend(self.cast.iter().cloned());
-        let k = Known {
-            apps: &self.apps,
-            actions: &actions,
-            answer: ans,
+        Inputs {
+            text: self.text.clone(),
+            apps: self.apps.clone(),
+            actions: self.all_actions.clone(),
+            answer: self.answer.as_ref().filter(|a| a.0 == raw).map(|a| a.1.clone()),
             qalc: self.qalc,
-            conversion: conv,
-            definition: def,
-            extras,
-            ai: Some(&self.ai),
-            emoji: if raw.starts_with(':') { providers::emoji() } else { &[] },
-            files: &self.files,
-            contents: &self.contents,
-            home: &self.home,
-        };
-        let (rows, wants) = rank::query(&self.text, &k);
-        let have_extras = extras.is_some();
+            conversion: self.conv.as_ref().filter(|c| c.0 == raw).map(|c| c.1.clone()),
+            definition: self.def.as_ref().filter(|d| !word.is_empty() && d.0 == word).map(|d| d.1.clone()),
+            extras: self.extras.as_ref().filter(|e| e.q == raw).cloned(),
+            ai: self.ai.clone(),
+            files: self.files.clone(),
+            contents: self.contents.clone(),
+            home: self.home.clone(),
+            material: Self::material(st),
+        }
+    }
+
+    /// The rows again, for the field's text and what's known: ranked and
+    /// laid out on the rank lane (a keystroke under load cost its ranking
+    /// on the UI thread before its frame, 17 Nov), applied when they come
+    /// back if nothing newer was asked meanwhile
+    fn refresh(&mut self, st: &State, typed: bool) {
+        self.rank_gen += 1;
+        self.rank_typed |= typed;
+        let gen = self.rank_gen;
+        let latest = self.rank_latest.clone();
+        latest.store(gen, Ordering::SeqCst);
+        let inputs = self.inputs(st);
+        let to = Self::send(st);
+        RANK.run(move || {
+            if latest.load(Ordering::SeqCst) != gen {
+                return; // (another keystroke came: this one's rows would never show)
+            }
+            let r = inputs.rank();
+            if latest.load(Ordering::SeqCst) == gen {
+                to(Box::new(M::Ranked(gen, Box::new(r))));
+            }
+        });
+    }
+
+    /// A ranking still on the lane, worked out here and applied now: what
+    /// Enter, the arrows and Tab act on is the rows for what's typed
+    fn rank_now(&mut self, st: &State) {
+        if self.rank_applied >= self.rank_gen {
+            return;
+        }
+        let r = crate::perf::time(|| "spotlight rank now".into(), || self.inputs(st).rank());
+        self.ranked(st, self.rank_gen, r);
+    }
+
+    /// A ranking back from the lane (or rank_now): applied if it's the
+    /// newest asked for and none as new was applied (never out of order)
+    fn ranked(&mut self, st: &State, gen: u64, r: Ranked) {
+        if gen != self.rank_gen || gen <= self.rank_applied {
+            return;
+        }
+        self.rank_applied = gen;
+        let typed = std::mem::take(&mut self.rank_typed);
+        self.apply_ranked(st, typed, r);
+    }
+
+    fn apply_ranked(&mut self, st: &State, typed: bool, r: Ranked) {
+        let raw = self.text.trim().to_string();
+        let Ranked { rows, wants, have_extras, entries, content_h, material } = r;
         // What's still to ask, as Search.qml's debounces
         if let Some(q) = wants.answer {
             if q != self.ans_query {
@@ -644,13 +767,20 @@ impl Spotlight {
             self.after(st, T_INTRO, 700, || M::IntroEnd);
         }
         self.had_rows = has;
-        self.rebuild(st);
+        // (laid out on the lane, unless the look changed meanwhile)
+        let laid = (material == Self::material(st)).then_some((entries, content_h));
+        self.rebuild_laid(st, laid);
     }
 
     /// The rows into the window
     fn rebuild(&mut self, st: &State) {
+        self.rebuild_laid(st, None);
+    }
+
+    /// The rows into the window, with their layout if it's known
+    fn rebuild_laid(&mut self, st: &State, laid: Option<(Vec<Entry>, f32)>) {
         let m = Self::material(st);
-        let (entries, h) = if m { layout::material(&self.rows) } else { layout::glass(&self.rows) };
+        let (entries, h) = laid.unwrap_or_else(|| if m { layout::material(&self.rows) } else { layout::glass(&self.rows) });
         self.entries = entries;
         let Some(w) = &self.win else { return };
         let t = w.ui.global::<ui::Theme>();
@@ -909,6 +1039,8 @@ impl Spotlight {
     }
 
     fn key(&mut self, st: &mut State, text: &str, shift: bool, ctrl: bool) {
+        // (what the key acts on: the rows for what's typed)
+        self.rank_now(st);
         let is = |k: Key| text == SharedString::from(k).as_str();
         let m = Self::material(st);
         let has_text = !self.text.is_empty();
@@ -992,7 +1124,8 @@ impl Spotlight {
             .iter()
             .filter(|e| !e.no_display)
             .map(|e| rank::App { id: e.id.clone(), name: e.name.clone(), generic: e.generic_name.clone(), comment: e.comment.clone(), keywords: e.keywords.clone(), icon: e.icon.clone() })
-            .collect();
+            .collect::<Vec<_>>()
+            .into();
     }
 }
 
@@ -1094,6 +1227,7 @@ impl Part for Spotlight {
                             .iter()
                             .map(|a| rank::Action { title: a["title"].as_str().unwrap_or("").into(), glyph: a["glyph"].as_str().unwrap_or("").into(), keywords: a["keywords"].as_str().unwrap_or("").into() })
                             .collect();
+                        self.all_actions = Arc::new(self.actions.iter().chain(&self.cast).cloned().collect());
                     }
                     self.extras = Some(parse_extras(x));
                     if self.open {
@@ -1111,6 +1245,7 @@ impl Part for Spotlight {
         };
         let Ok(m) = msg.downcast::<M>() else { return };
         match *m {
+            M::Ranked(gen, r) => self.ranked(st, gen, *r),
             M::Key(t, shift, ctrl) => self.key(st, &t, shift, ctrl),
             M::Edited(t) => self.edited(st, t),
             M::Activate(i) => self.run(st, i.max(0) as usize),
@@ -1330,6 +1465,37 @@ impl Spotlight {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn the_lane_ranks_as_the_ui_thread_did() {
+        let apps = vec![
+            rank::App { id: "firefox".into(), name: "Firefox".into(), generic: "Web Browser".into(), ..Default::default() },
+            rank::App { id: "foot".into(), name: "Foot".into(), generic: "Terminal".into(), ..Default::default() },
+        ];
+        let actions = rank::actions();
+        let inputs = Inputs {
+            text: "fir".into(),
+            apps: Arc::new(apps.clone()),
+            actions: Arc::new(actions.clone()),
+            answer: None,
+            qalc: false,
+            conversion: None,
+            definition: None,
+            extras: None,
+            ai: AiMeta::default(),
+            files: Vec::new(),
+            contents: Vec::new(),
+            home: "/home/x".into(),
+            material: false,
+        };
+        let r = std::thread::spawn(move || inputs.rank()).join().unwrap();
+        let k = Known { apps: &apps, actions: &actions, ai: Some(&AiMeta::default()), home: "/home/x", ..Default::default() };
+        let (rows, wants) = rank::query("fir", &k);
+        assert_eq!(r.rows, rows);
+        assert_eq!(r.wants, wants);
+        assert_eq!(r.rows[0].title, "Firefox");
+        assert_eq!((r.entries, r.content_h), layout::glass(&rows));
+    }
 
     fn k(key: Key) -> String {
         SharedString::from(key).to_string()

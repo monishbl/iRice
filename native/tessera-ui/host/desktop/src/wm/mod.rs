@@ -235,7 +235,6 @@ impl Wm {
                 self.watch(h);
                 self.feed.send(h, true);
             }
-            "wm.watch" => self.watch(h),
             _ => {}
         }
     }
@@ -343,6 +342,18 @@ impl Service for Wm {
     fn ipc_targets(&self) -> &'static [&'static str] {
         &["tiling", "focus", "findpointer", "switcher"]
     }
+    /// The desktop's feed (and the screen time in it) every 2 s, on the
+    /// host's shared second (a timer of its own before 17 Nov)
+    fn every_second(&mut self, h: &mut Host, n: u64) {
+        if n % 2 == 0 {
+            tessera_core::perf::time(|| "tick feed.send".to_string(),|| self.tick(h, "feed.send"));
+        }
+    }
+    /// Whether the screen is locked, said as soon as it changes (polled
+    /// once a second before 17 Nov)
+    fn settled(&mut self, h: &mut Host) {
+        self.watch(h);
+    }
 
     fn start(&mut self, h: &mut Host) {
         for s in ["hypr", "clients", "apps", "calendar", "todos", "weather", "mpris", "status", "bluez"] {
@@ -363,11 +374,9 @@ impl Service for Wm {
         self.rules.begin(h, &mut io);
         self.deco.begin(h, &mut io);
         self.modes.begin(h, &mut io);
-        self.feed.begin(&mut io);
         self.spaces.reconcile(&mut io, 250);
         self.apptheme.config_changed(h, &mut io);
         self.findp.config_changed(h);
-        io.every("wm.watch", 1000);
         io.arm("wm.sendall", 800);
         self.io.restore(io);
     }

@@ -93,7 +93,6 @@ pub fn parse_vcp(text: &str) -> Option<(u32, u32)> {
 const DETECT: &str = "set -- /dev/i2c-*; [ -e \"$1\" ] || { echo 'PROBLEM module'; exit 0; }; ok=; for d; do [ -r \"$d\" ] && [ -w \"$d\" ] && ok=1; done; [ -n \"$ok\" ] || { echo 'PROBLEM access'; exit 0; }; exec ddcutil detect --brief 2>&1";
 
 enum M {
-    Tick,
     StartScan,
     Detected(String),
     Read(String, String),
@@ -117,7 +116,6 @@ pub struct Brightness {
     reading: String,
     focused: String,
     scan: slint::Timer,
-    tick: slint::Timer,
     last: Value,
     installed: bool,
 }
@@ -255,8 +253,27 @@ impl Service for Brightness {
         self.installed = has_tool("ddcutil");
         // A few seconds after start (not in the startup rush)
         self.schedule_scan(h);
-        let send = h.sender(NAME);
-        self.tick.start(slint::TimerMode::Repeated, Duration::from_millis(500), move || send(Box::new(M::Tick)));
+        self.publish(h);
+    }
+    // (what it shows follows the backlight's readings and the focused
+    // screen as they arrive: it was a 500 ms poll of both, 17 Nov)
+    fn data(&mut self, h: &mut Host, what: std::any::TypeId) {
+        if what == std::any::TypeId::of::<Snapshot>() {
+            // Focus moved to an external: read it again (its own buttons may
+            // have changed it), not again right after a read
+            let focused = h.st.shell.get::<Snapshot>().map(|s| s.focused.clone()).unwrap_or_default();
+            if focused != self.focused {
+                self.focused = focused;
+                if let Some(o) = self.target().map(|d| d.output.clone()) {
+                    if now_ms() - self.read_at.get(&o).copied().unwrap_or(0.0) > 10000.0 {
+                        self.read_ddc(h, &o);
+                    }
+                }
+                self.publish(h);
+            }
+        } else if what == std::any::TypeId::of::<Backlight>() {
+            self.publish(h);
+        }
     }
     fn outputs_changed(&mut self, h: &mut Host) {
         self.schedule_scan(h);
@@ -314,19 +331,6 @@ impl Service for Brightness {
     fn message(&mut self, h: &mut Host, msg: Box<dyn Any + Send>) {
         let Ok(m) = msg.downcast::<M>() else { return };
         match *m {
-            M::Tick => {
-                // Focus moved to an external: read it again (its own buttons may
-                // have changed it), not again right after a read
-                let focused = h.st.shell.get::<Snapshot>().map(|s| s.focused.clone()).unwrap_or_default();
-                if focused != self.focused {
-                    self.focused = focused;
-                    if let Some(o) = self.target().map(|d| d.output.clone()) {
-                        if now_ms() - self.read_at.get(&o).copied().unwrap_or(0.0) > 10000.0 {
-                            self.read_ddc(h, &o);
-                        }
-                    }
-                }
-            }
             M::StartScan => self.rescan(h),
             M::Detected(t) => {
                 self.detecting = false;
@@ -362,7 +366,6 @@ impl Service for Brightness {
         self.publish(h);
     }
     fn quit(&mut self, _h: &mut Host) {
-        self.tick.stop();
         self.scan.stop();
     }
 }

@@ -63,7 +63,6 @@ pub struct CloudAccounts {
     was_nc: bool,
     ticks: u32,
     start_t: slint::Timer,
-    poll: slint::Timer,
 }
 
 fn merge(a: &Value, b: &Value) -> Value {
@@ -258,6 +257,11 @@ impl Service for CloudAccounts {
     fn name(&self) -> &'static str {
         "CloudAccounts"
     }
+    fn every_second(&mut self, h: &mut Host, n: u64) {
+        // (the host's shared second: was a timer of its own)
+        let _ = n;
+        self.message(h, Box::new(M::Poll));
+    }
     fn calls(&self) -> &'static [&'static str] {
         &["cloudaccounts"]
     }
@@ -269,7 +273,6 @@ impl Service for CloudAccounts {
         self.send(json!({"cmd": "status"}), "");
         let t2 = tx.clone();
         self.start_t.start(slint::TimerMode::SingleShot, Duration::from_secs(20), move || t2.send(M::Start));
-        self.poll.start(slint::TimerMode::Repeated, Duration::from_secs(1), move || tx.send(M::Poll));
         self.publish();
     }
     fn config_changed(&mut self, h: &mut Host) {

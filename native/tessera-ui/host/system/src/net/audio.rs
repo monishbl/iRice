@@ -11,7 +11,6 @@
 
 use super::common::*;
 use serde_json::{json, Value};
-use std::any::Any;
 use tessera_core::host::{Host, Service};
 use tessera_core::services::audio::{self, Cmd, Sound};
 
@@ -30,21 +29,17 @@ pub fn icon(muted: bool, volume: f64) -> &'static str {
     }
 }
 
-enum M {
-    Tick,
-}
-
 #[derive(Default)]
 pub struct Audio {
     quiet_until: f64,
     last: Value,
-    tick: slint::Timer,
 }
 
 impl Audio {
     fn hush(&mut self, h: &mut Host, what: &str) {
         self.quiet_until = now_ms() + 1000.0;
         h.tell("osd", json!({"hush": what})); // (tessera-ui's OSD, when it draws it)
+        self.publish(h);
     }
 
     fn publish(&mut self, h: &Host) {
@@ -70,12 +65,12 @@ impl Service for Audio {
     }
     fn start(&mut self, h: &mut Host) {
         h.st.shell.want("audio");
-        // (the sound server's readings arrive as data; this republishes them for the other services)
-        let send = h.sender(NAME);
-        self.tick.start(slint::TimerMode::Repeated, std::time::Duration::from_millis(400), move || send(Box::new(M::Tick)));
+        self.publish(h);
     }
-    fn message(&mut self, h: &mut Host, msg: Box<dyn Any + Send>) {
-        if msg.downcast::<M>().is_ok() {
+    // (the sound server's readings arrive as data; this republishes them for
+    // the other services when they do: it was a 400 ms poll, 17 Nov)
+    fn data(&mut self, h: &mut Host, what: std::any::TypeId) {
+        if what == std::any::TypeId::of::<Sound>() {
             self.publish(h);
         }
     }
@@ -126,9 +121,6 @@ impl Service for Audio {
             }
             _ => {}
         }
-    }
-    fn quit(&mut self, _h: &mut Host) {
-        self.tick.stop();
     }
 }
 
