@@ -124,7 +124,10 @@ class Fixture(unittest.TestCase):
             for name in ni.PROGRAMS:
                 if not programs:
                     fake_program(stage / name, (said or {}).get(name, f"{name} {version}"))
-                progs[name] = {"sha256": ni.sha256_of(str(stage / name)), "version": f"{name} {version}"}
+                # (real programs: what they say, the whole --version line, as
+                # the release builder records it since builds name their channel)
+                said_line = ni.program_version(str(stage / name)) if programs else f"{name} {version}"
+                progs[name] = {"sha256": ni.sha256_of(str(stage / name)), "version": said_line}
             buf = io.BytesIO()
             with tarfile.open(fileobj=buf, mode="w") as tar:
                 for name in ni.PROGRAMS:
@@ -399,7 +402,7 @@ class Mirrors(Fixture):
             git(self.repo, "remote", "add", "origin", "https://github.com/monishbl/tessera.git")
             self.assertEqual(ni.releases_bases(str(self.repo)), [
                 "https://github.com/monishbl/tessera/releases/download/{tag}",
-                "https://gitlab.com/api/v4/projects/monishbl%2FiRice/packages/generic/tessera-ui/{tag}"])
+                "https://gitlab.com/api/v4/projects/monishbl%2Ftessera/packages/generic/tessera-ui/{tag}"])
             # (a fork: its own releases only)
             git(self.repo, "remote", "set-url", "origin", "https://github.com/someone/Tessera.git")
             self.assertEqual(ni.releases_bases(str(self.repo)), ["https://github.com/someone/Tessera/releases/download/{tag}"])

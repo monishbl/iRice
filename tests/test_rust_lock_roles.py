@@ -58,9 +58,13 @@ class SessionLock(unittest.TestCase):
         src = read(LOCK / "lib.rs")
         # (the session lock is asked for in one place, behind !demo)
         self.assertEqual(src.count("st.lock_session()"), 1)
-        self.assertRegex(src, r"fn take\(&mut self, st: &mut State\) \{\s*if !self\.demo \{\s*match st\.lock_session\(\)")
+        # (a lock handed over by one that panicked is kept: `self.lock.is_none()`)
+        self.assertRegex(src, r"fn take\(&mut self, st: &mut State\) \{\s*(//[^\n]*\n\s*)*if !self\.demo && self\.lock\.is_none\(\) \{\s*match st\.lock_session\(\)")
         # taken from the shell's `held` line only
-        self.assertEqual(len(re.findall(r"self\.take\(st\)", src)), 1)
+        # (and taken again only while still held, after the compositor ended
+        # it: M::Retake, never in demo)
+        self.assertEqual(len(re.findall(r"self\.take\(st\)", src)), 2)
+        self.assertRegex(src, r"M::Retake => \{\s*if self\.held && self\.lock\.is_none\(\) && !self\.demo \{\s*(eprintln!\([^;]*;\s*)?self\.take\(st\);")
         self.assertRegex(src, r"if held \{\s*(eprintln!\([^;]*;\s*)?self\.leaving = false;\s*self\.take\(st\);")
         # let go in one place: release(), from `held: false`
         self.assertEqual(src.count("l.unlock()"), 1)
