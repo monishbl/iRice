@@ -14,6 +14,8 @@
 //! installAsked, installError, busy, error.
 //! Calls: face.refresh|install|setUpCamera|addFace|clearFaces|chooseCamera
 //! [path]|tryIt|stopTry|setAdmin [bool]|updatesFinished [job].
+//! Administrator prompts (`admin`, `adminAllowed`): an infrared camera only;
+//! a regular camera never approves one (picking it removes the override).
 
 use super::common::*;
 use crate::util::config_set;
@@ -77,6 +79,13 @@ pub fn steps(installed: bool, set_up: bool, faces: i64) -> (i64, i64) {
         3
     };
     (done, 3)
+}
+
+/// Face for administrator prompts: an infrared camera only (17 Nov, the
+/// user's decision: infrared, a fingerprint or the password; a regular
+/// camera could be fooled by a video)
+pub fn admin_allowed(kind: &str) -> bool {
+    kind == "ir"
 }
 
 /// The blink check can run: OpenCV for Python, its eye model, your
@@ -174,7 +183,8 @@ impl Face {
             json!({"info": i, "camera": self.camera(), "cameras": i["cameras"].clone(), "hasCamera": self.camera().is_some(),
                    "kind": kind, "device": self.cfg_device, "installed": self.installed(),
                    "setUp": set_up, "faces": self.cfg_count, "lockScreen": lock, "step": step, "steps": total,
-                   "progress": self.progress, "tryState": self.try_state, "tryText": self.try_text, "admin": self.cfg_admin,
+                   "progress": self.progress, "tryState": self.try_state, "tryText": self.try_text,
+                   "admin": self.cfg_admin && admin_allowed(&kind), "adminAllowed": admin_allowed(&kind),
                    "installing": updates_running() && self.install_asked, "installError": self.install_error,
                    "busy": self.busy, "error": self.error}),
         );
@@ -203,7 +213,14 @@ impl Face {
                 }
                 let args: Vec<String> = match job {
                     "setup" => strs(&["face", "setup", &path]),
-                    "admin" => strs(&["face", "admin", "on", &device, &kind]),
+                    // (infrared only: the root helper refuses anything else too)
+                    "admin" if admin_allowed(&kind) => strs(&["face", "admin", "on", &device, "ir"]),
+                    "admin" => {
+                        self.error = "Needs an infrared camera.".into();
+                        self.then.clear();
+                        self.publish();
+                        return;
+                    }
                     "adminOff" => strs(&["face", "admin", "off"]),
                     _ => strs(&["face", job]),
                 };
@@ -362,6 +379,11 @@ impl Service for Face {
                             self.cfg_device.clear();
                             config_set("lock.faceDevice", json!(""));
                         }
+                        // a regular camera never approves an administrator: the
+                        // override goes now (and setting it up removes it too)
+                        if self.cfg_admin && !admin_allowed(&self.kind()) {
+                            self.run("adminOff");
+                        }
                         self.publish();
                     }
                 }
@@ -376,9 +398,6 @@ impl Service for Face {
                 if self.kind() == "rgb" {
                     // your features for the blink first (as you), then Howdy's (root)
                     self.then = vec!["add".into()];
-                    if self.cfg_admin {
-                        self.then.push("admin".into());
-                    }
                     self.run("enrol");
                 } else {
                     self.run("add");
@@ -393,8 +412,12 @@ impl Service for Face {
                 self.try_child.stop();
             }
             "setAdmin" => {
+                // (on: infrared only; off: always)
                 let on = args[0].as_bool().unwrap_or(false);
-                if on != self.cfg_admin && self.set_up() && self.cfg_count > 0 {
+                if on && !admin_allowed(&self.kind()) {
+                    self.error = "Needs an infrared camera.".into();
+                    self.publish();
+                } else if on != self.cfg_admin && (!on || (self.set_up() && self.cfg_count > 0)) {
                     self.run(if on { "admin" } else { "adminOff" });
                 }
             }
@@ -448,6 +471,11 @@ impl Service for Face {
                             self.cfg_kind = kind.into();
                             config_set("lock.faceDevice", json!(path));
                             config_set("lock.faceKind", json!(kind));
+                            if !admin_allowed(kind) && self.cfg_admin {
+                                // (the root helper removed the override with a regular camera's setup)
+                                self.cfg_admin = false;
+                                config_set("lock.faceAdmin", json!(false));
+                            }
                         }
                         "add" => {
                             self.cfg_count += 1;
@@ -584,6 +612,19 @@ mod tests {
         assert!(f.installed() && f.set_up());
         // (an old setup, before regular cameras: no faceKind, infrared)
         assert_eq!(f.cfg_kind, "ir");
+    }
+
+    #[test]
+    fn only_infrared_approves_administrators() {
+        assert!(admin_allowed("ir"));
+        assert!(!admin_allowed("rgb"));
+        assert!(!admin_allowed(""));
+        // a regular camera set up: never shown as on, even with a stale config
+        let info = json!({"howdy": true, "pam": true, "models": true, "private": true, "pamExec": true,
+                          "cameras": [{"path": "/dev/video0", "kind": "rgb"}], "live": {"cv2": true, "eyeModel": true, "enrolled": 1}});
+        let f = face_with(info, json!({"faceDevice": "/dev/video0", "faceKind": "rgb", "faceCount": 1, "faceAdmin": true}));
+        assert_eq!(f.kind(), "rgb");
+        assert!(f.cfg_admin && !admin_allowed(&f.kind()));
     }
 
     #[test]

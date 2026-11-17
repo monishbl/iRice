@@ -22,12 +22,10 @@ An infrared camera doesn't need it (a photo doesn't show up in infrared).
   face_live.py models     download the eye-landmark model, once (SHA-256
                           pinned below); lines "PROGRESS <0-100>"
   face_live.py status     JSON: {"cv2", "eyeModel", "howdyModels", "enrolled"}
-  face_live.py check --admin
-      administrator prompts (opt-in; tessera-root face admin on): polkit's
-      helper runs this as root for PAM_USER, from root's copies in
-      /var/lib/tessera/face (the camera, the face, the eye model)
 
-Nothing leaves this computer; the only download is the model below.
+The lock screen only: a regular camera never approves administrator
+prompts (a video of you could fool it; tessera-root face admin is for
+infrared cameras alone). Nothing leaves this computer; the only download is the model below.
 
 The blink: OpenCV's YuNet finds the face (Howdy's own model file), its
 68-point LBF facemark model places the eyelids, and the eye aspect ratio
@@ -227,17 +225,7 @@ def home():
         return "/"
 
 
-# Administrator prompts (opt-in: tessera-root face admin on): polkit's helper
-# runs this as root, for PAM_USER, from root's own copies (it can't read
-# your home; and a copy you could change mustn't approve an administrator)
-ADMIN_DIR = "/var/lib/tessera/face"
-ADMIN_USER = ""  # (set by --admin)
-USER_NAME = r"^[a-z_][a-z0-9_-]{0,31}\$?$"
-
-
 def data_dir():
-    if ADMIN_USER:
-        return ADMIN_DIR
     base = os.environ.get("XDG_DATA_HOME") or os.path.join(home(), ".local/share")
     return os.path.join(base, "tessera/face")
 
@@ -247,16 +235,7 @@ def eye_model():
 
 
 def me_file():
-    return os.path.join(ADMIN_DIR, ADMIN_USER + ".json") if ADMIN_USER else os.path.join(data_dir(), "me.json")
-
-
-def admin_device():
-    """The camera root's copy names (tessera-root face admin on)"""
-    try:
-        with open(me_file()) as f:
-            return str(json.load(f).get("device", ""))
-    except (OSError, ValueError, AttributeError):
-        return ""
+    return os.path.join(data_dir(), "me.json")
 
 
 def howdy_model(prefix):
@@ -559,19 +538,8 @@ def arg(args, name, default):
 
 
 def main(argv):
-    global ADMIN_USER
-    import re
     cmd = argv[1] if len(argv) > 1 else ""
     rest = argv[2:]
-    if "--admin" in rest:
-        # (polkit's helper, as root: only a check, only from root's copies)
-        user = os.environ.get("PAM_USER", "")
-        if cmd != "check" or not re.match(USER_NAME, user):
-            log("--admin: a check for PAM_USER only")
-            return 2
-        ADMIN_USER = user
-        dev = admin_device()
-        return check(dev, 6.0) if dev else 2
     device = arg(rest, "--device", os.environ.get("TESSERA_FACE_DEVICE", ""))
     if cmd == "status":
         print(json.dumps(status()))

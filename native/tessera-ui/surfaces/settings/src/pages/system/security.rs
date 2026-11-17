@@ -177,6 +177,20 @@ pub fn face_footer(rgb: bool, installed: bool) -> String {
     format!("{what} Your face is stored on this computer only and never leaves it.")
 }
 
+/// The administrator switch: an infrared camera only (a regular camera
+/// never approves one; a fingerprint or the password still do)
+pub const ADMIN_LABEL: &str = "Also approve administrator prompts with your face (infrared camera)";
+
+pub fn admin_detail(allowed: bool, changing: bool) -> &'static str {
+    if !allowed {
+        "Needs an infrared camera"
+    } else if changing {
+        "Changing…"
+    } else {
+        "Prompts look for your face first, then your fingerprint or password as before. Changing this asks for your password."
+    }
+}
+
 /// A camera's kind, said plainly
 pub fn camera_detail(rgb: bool, both: bool) -> &'static str {
     match (rgb, both) {
@@ -485,20 +499,16 @@ pub fn biometrics(cx: &mut Ctx, p: &mut Page) {
                 let on = cx.b("lock.face");
                 let t = cx.toggle("lock.face");
                 rows.push(Row::new("Unlock the lock screen").detail(if rgb { "Look at the screen and blink, or type your password" } else { "Look at the screen or type your password" }).switch(on, t));
-                let admin = face["admin"].as_bool().unwrap_or(false);
+                // (infrared only: a regular camera never approves an administrator)
+                let allowed = face["adminAllowed"].as_bool().unwrap_or(false);
+                let admin = allowed && face["admin"].as_bool().unwrap_or(false);
                 let id = cx.on(move |cx, _| cx.ask("system", "faceAdmin", json!(!admin)));
                 let changing = busy == "admin" || busy == "adminOff";
                 rows.push(
-                    Row::new("Also approve administrator prompts with your face")
-                        .detail(if changing {
-                            "Changing…"
-                        } else if rgb {
-                            "A video of you could fool a regular camera, and then change your system. Your password always works too. Changing this asks for your password."
-                        } else {
-                            "Prompts look for your face first, then ask for your password. Changing this asks for your password."
-                        })
+                    Row::new(ADMIN_LABEL)
+                        .detail(admin_detail(allowed, changing))
                         .switch(admin, id)
-                        .enabled(busy.is_empty()),
+                        .enabled(allowed && busy.is_empty()),
                 );
             }
         }
@@ -631,6 +641,14 @@ mod tests {
         }
         assert!(face_footer(true, false).contains("video of you"));
         assert!(face_footer(false, true).contains("first login after a restart"));
+    }
+
+    #[test]
+    fn the_admin_switch_needs_infrared() {
+        assert!(ADMIN_LABEL.ends_with("(infrared camera)"));
+        assert_eq!(admin_detail(false, false), "Needs an infrared camera");
+        assert_eq!(admin_detail(false, true), "Needs an infrared camera");
+        assert!(admin_detail(true, false).contains("fingerprint or password"));
     }
 
     #[test]

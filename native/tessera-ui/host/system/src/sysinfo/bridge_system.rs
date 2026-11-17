@@ -233,7 +233,7 @@ impl SystemBridge {
                 "cameraPath": s(&face["camera"]["path"]), "kind": get(&face, "kind", &json!("ir")),
                 "cameras": get(&face, "cameras", &json!([])), "step": get(&face, "step", &json!(0)), "steps": get(&face, "steps", &json!(3)),
                 "progress": get(&face, "progress", &json!(-1)), "tryState": s(&face["tryState"]), "tryText": s(&face["tryText"]),
-                "admin": b(&face["admin"]), "lockScreen": b(&face["lockScreen"]),
+                "admin": b(&face["admin"]), "adminAllowed": b(&face["adminAllowed"]), "lockScreen": b(&face["lockScreen"]),
                 "cv2": b(&face["info"]["live"]["cv2"]),
             },
             "check": self.check,
