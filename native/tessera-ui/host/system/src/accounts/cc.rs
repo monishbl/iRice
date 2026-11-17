@@ -116,7 +116,7 @@ fn sharing_level(sh: &Value, cfg: &Value) -> (String, String) {
         Some(t) => t.to_string(),
         None => match level.as_str() {
             "off" => "No one".into(),
-            "10min" => "Everyone · 10 min".into(),
+            "10min" => "10 min left".into(),
             _ => "Everyone".into(),
         },
     };
@@ -1769,8 +1769,8 @@ mod tests {
     #[test]
     fn the_sharing_tile_says_and_shows_one_level() {
         // host-sharing's state there: its words (the countdown)
-        let st = json!({"level": "10min", "levelText": "Everyone · 7 min", "on": true});
-        assert_eq!(sharing_level(&st, &json!({})), ("10min".into(), "Everyone · 7 min".into()));
+        let st = json!({"level": "10min", "levelText": "7 min left", "on": true});
+        assert_eq!(sharing_level(&st, &json!({})), ("10min".into(), "7 min left".into()));
         // not there (the bug of 17 Nov: Null read as "Everyone", drawn off): the config's one key
         let cfg = json!({"sharing": {"quickShare": "everyone", "quickShareHotspot": true}});
         assert_eq!(sharing_level(&Value::Null, &cfg), ("everyone".into(), "Everyone".into()));

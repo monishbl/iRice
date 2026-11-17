@@ -38,7 +38,7 @@ impl Sharing {
     pub fn mixed(&self) -> bool {
         false
     }
-    /// "No one", "Everyone", "Everyone · 7 min"
+    /// "No one", "Everyone", "7 min left"
     pub fn level_text(&self) -> String {
         crate::visibility::status(&self.level(), self.quick.everyone_until, tessera_core::util::now_ms())
     }
@@ -361,7 +361,7 @@ mod tests {
         s.quick.everyone_until = now + 3 * 60_000 - 10;
         assert!(s.quick_visible() && s.local_receiving());
         assert_eq!(s.minutes_left(), 3);
-        assert_eq!(s.level_text(), "Everyone · 3 min");
+        assert_eq!(s.level_text(), "3 min left");
         s.quick.everyone_until = now - 1;
         assert!(!s.quick_visible() && !s.local_receiving());
     }

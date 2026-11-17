@@ -121,7 +121,7 @@ impl Sharing {
                 }
                 None => self.local.dead = true,
             }
-        } else if !needed && self.local.helper.running {
+        } else if !needed && self.local.helper.running && self.local.helper.stdin.is_some() {
             eprintln!("tessera-ui: localsend: helper stopped (not visible, not looking, nothing sending)");
             self.local.helper.stop();
         }

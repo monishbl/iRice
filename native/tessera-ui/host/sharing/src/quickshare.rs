@@ -253,7 +253,7 @@ impl Sharing {
         let needed = self.quick_needed();
         if needed && !self.quick.helper.running && !self.sched.has("qs_retry") {
             self.quick_start(h);
-        } else if !needed && self.quick.helper.running {
+        } else if !needed && self.quick.helper.running && self.quick.helper.stdin.is_some() {
             eprintln!("tessera-ui: quickshare: helper stopped (not visible, not looking, nothing sending)");
             self.quick.helper.stop();
         }

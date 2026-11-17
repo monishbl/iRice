@@ -79,11 +79,11 @@ pub fn deadline(kept: Option<i64>, now: i64) -> i64 {
     }
 }
 
-/// The status words: "No one", "Everyone", "Everyone · 7 min"
+/// The status words: "No one", "Everyone", "7 min left" (fits the tile)
 pub fn status(level: &str, until: i64, now: i64) -> String {
     match level {
         "everyone" => "Everyone".into(),
-        "10min" if until > now => format!("Everyone · {} min", minutes_left(until, now)),
+        "10min" if until > now => format!("{} min left", minutes_left(until, now)),
         _ => "No one".into(),
     }
 }
@@ -152,9 +152,9 @@ mod tests {
         let until = deadline(None, t0);
         assert_eq!(until, t0 + TEN_MIN);
         assert!(visible("10min", until, t0));
-        assert_eq!(status("10min", until, t0), "Everyone · 10 min");
-        assert_eq!(status("10min", until, t0 + 1), "Everyone · 10 min");
-        assert_eq!(status("10min", until, t0 + 60_000), "Everyone · 9 min");
+        assert_eq!(status("10min", until, t0), "10 min left");
+        assert_eq!(status("10min", until, t0 + 1), "10 min left");
+        assert_eq!(status("10min", until, t0 + 60_000), "9 min left");
         assert_eq!(minutes_left(until, t0 + TEN_MIN - 1), 1);
         assert!(!visible("10min", until, t0 + TEN_MIN));
         assert_eq!(status("10min", until, t0 + TEN_MIN), "No one");
