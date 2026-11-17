@@ -1510,7 +1510,7 @@ impl Overview {
             .collect();
     }
 
-    /// Glass: the field, the results, the zones and the menu on the plugin's glass
+    /// Glass: the screen behind, the field, the results, the zones and the menu on the plugin's glass
     fn glass(&mut self, st: &mut State) {
         let look = st.shell.look.clone();
         for w in &mut self.wins {
@@ -1523,6 +1523,11 @@ impl Overview {
             let (cx, cy) = (w.w / 2.0, w.h / 2.0);
             let sc = |r: Rect| Rect { x: cx + (r.x - cx) * k, y: cy + (r.y - cy) * k, w: r.w * k, h: r.h * k };
             let mut shapes = Vec::new();
+            // the whole screen behind it, blurred: borderless, no lens, no rim
+            // (Mission Control's backdrop)
+            let mut back = theme::shadow_margin(theme::glass_shape(&look, 0.0, 0.0, w.w, w.h, 0.0, o, 0.0), 0.0);
+            back[11] = 0.0;
+            shapes.push(back);
             let f = sc(Rect { x: ui.get_sx() + 20.0, y: ui.get_sy() + 20.0, w: 560.0, h: 52.0 });
             shapes.push(theme::shadow_margin(theme::glass_shape(&look, f.x, f.y, f.w, f.h, 26.0 * k, o, 1.0), 20.0 * k));
             if ui.get_res_h() > 0.0 && w.output == self.key_out {
