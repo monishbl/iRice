@@ -302,6 +302,9 @@ impl Surface {
             let tp = Instant::now();
             let region = crate::perf::time(|| format!("damage probe {}", self.namespace), || self.renderer.damage.region(&self.window, (w as f32, h as f32)));
             PROBE_MS.with(|c| c.set(tp.elapsed().as_secs_f32() * 1000.0));
+            if crate::env::is_set("DAMAGE_LOG") {
+                eprintln!("damage {} {:?}", self.namespace, region.as_ref().map(|r| r.iter().map(|x| [x.origin.x as i32, x.origin.y as i32, x.size.width as i32, x.size.height as i32]).collect::<Vec<_>>()));
+            }
             *self.damage.borrow_mut() = region.map(|r| (crate::damage::to_buffer(&r, self.scale.get(), (px.width as i32, px.height as i32)), px.height as i32));
             // (and the frame draws only that, with the back buffer's age: egl.rs)
             self.gl_frame.set(true);
