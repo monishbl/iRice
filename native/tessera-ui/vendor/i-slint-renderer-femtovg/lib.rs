@@ -101,7 +101,10 @@ pub(crate) fn cull_off() -> bool {
     // Hyprland 0.56, two screens) panels stopped redrawing after a change
     // (Control Center tiles, Notification Center cards) and the island
     // stuttered; arenas never showed it. TESSERA_UI_CULL=1 turns it on to test
-    *OFF.get_or_init(|| !std::env::var("TESSERA_UI_CULL").is_ok_and(|v| v == "1") || std::env::var("TESSERA_UI_NO_CULL").is_ok_and(|v| v == "1"))
+    // (on again from 18 Nov evening: every item stays watched after a culled
+    // frame, and the island's art is one picture; checked on the user's
+    // laptop. TESSERA_UI_NO_CULL=1 turns it off)
+    *OFF.get_or_init(|| std::env::var("TESSERA_UI_NO_CULL").is_ok_and(|v| v == "1"))
 }
 #[cfg(feature = "opengl")]
 pub mod opengl;
