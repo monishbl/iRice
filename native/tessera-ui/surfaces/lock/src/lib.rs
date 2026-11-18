@@ -172,6 +172,8 @@ enum M {
     Player(String),
     Second,
     IdleOver,
+    /// a reader's match has been seen (the island's green tick): unlock now
+    MatchShown,
     FingerRetry,
     FingerMissOver,
     /// the camera's "not recognised" has shown long enough (the island's miss)
@@ -341,6 +343,8 @@ pub struct Lock {
     /// tries at taking the lock again after the compositor ended it
     retakes: u32,
     t_retake: slint::Timer,
+    /// holds the unlock while a reader's match shows
+    t_match: slint::Timer,
 }
 
 impl Default for Lock {
@@ -403,6 +407,7 @@ impl Default for Lock {
             position: (String::new(), 0),
             retakes: 0,
             t_retake: slint::Timer::default(),
+            t_match: slint::Timer::default(),
         }
     }
 }
@@ -1330,6 +1335,15 @@ impl Lock {
     }
 
     /// Unlocked here: the shell lets the lock go (System.locked = false)
+    /// A reader matched: the island shows it (ridges fill green, the tick;
+    /// the face's green brackets) and the lock goes a moment later. 18 Nov:
+    /// it unlocked in the same turn, so the match was never drawn
+    fn unlock_after_match(&mut self, st: &mut State) {
+        let reduced = b(&st.shell.cfg["appearance"], "reduceMotion", false) || tessera_core::saver::on();
+        let to = Self::send(st);
+        self.t_match.start(slint::TimerMode::SingleShot, Duration::from_millis(if reduced { 250 } else { 650 }), move || to(Box::new(M::MatchShown)));
+    }
+
     fn unlocked(&mut self) {
         self.error.clear();
         self.fails = 0;
@@ -1421,8 +1435,8 @@ impl Lock {
                     self.finger.text.clear();
                     self.finger.tries = 0;
                     self.finger.busy = 0;
-                    self.unlocked();
                     self.field();
+                    self.unlock_after_match(st);
                     return;
                 }
                 // over at once, before it asked: the reader was busy
@@ -1471,7 +1485,7 @@ impl Lock {
                         self.face.tries = 0;
                         self.face.text.clear();
                         self.face.matched = true;
-                        self.unlocked();
+                        self.unlock_after_match(st);
                     }
                     Outcome::Failure(_) => {
                         self.face.tries += 1;
@@ -1837,6 +1851,7 @@ impl Part for Lock {
                     self.bedside(st);
                 }
             }
+            M::MatchShown => self.unlocked(),
             M::IdleOver => {
                 if self.held && self.can_standby(st) {
                     self.sb.idle = true;
