@@ -142,8 +142,10 @@ export component UpdateScreen inherits Window {
                 height: 28px;
             }
 
+            // (wrapped in the column: a long error step ran past the screen's middle column)
             Text {
                 horizontal-alignment: center;
+                wrap: word-wrap;
                 text: root.error ? Up.step : Up.phase == "done" ? "Tessera is up to date" : Up.phase == "restart" ? "Tessera is restarting" : "Tessera is updating";
                 color: #EDEDEF;
                 font-family: "Inter";
@@ -202,6 +204,7 @@ export component UpdateScreen inherits Window {
             }
             if root.building: Text {
                 horizontal-alignment: center;
+                wrap: word-wrap;
                 text: Up.build-time;
                 color: #94949D;
                 font-family: "Inter";
