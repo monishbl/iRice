@@ -312,6 +312,14 @@ impl Surface {
         if let Err(e) = crate::perf::time(|| format!("femtovg draw {}", self.namespace), || self.renderer.draw()) {
             eprintln!("tessera-ui: render failed: {e}");
         }
+        // (a frame that skipped items left the window tracking only the drawn
+        // ones: every item is read again, so a change anywhere asks for a frame;
+        // damage.rs track_all)
+        #[cfg(not(feature = "skia"))]
+        if self.egl.has_damage() && i_slint_renderer_femtovg::last_frame().culled > 0 {
+            let (w, h) = self.logical.get();
+            crate::perf::time(|| format!("damage track {}", self.namespace), || self.renderer.damage.track_all(&self.window, (w as f32, h as f32)));
+        }
         let took = t.elapsed();
         // (TESSERA_DRAW_STATS=1: where each frame's time went, one line a frame)
         if draw_stats() {

@@ -97,6 +97,32 @@ impl Damage {
         }
         Some(rects)
     }
+
+    /// After a frame that skipped items (culled outside the damage): the
+    /// window's redraw tracker is given every item's drawing again.
+    ///
+    /// Slint's `draw_contents` runs inside the window's redraw tracker and
+    /// makes what that pass reads the window's only dependencies: a change to
+    /// anything else never asks for a frame. The renderer's pass is the last
+    /// one each frame, and with culling it reads only the items in the
+    /// damage, so a change to any other item (a card removed by X, Clear all,
+    /// a Control Center tile's state) drew nothing until something else
+    /// redrew the window (18 Nov, the laptop). The probe reads what every
+    /// item draws with, as `region` does, here with no dirty bookkeeping.
+    pub fn track_all(&self, window: &slint::Window, (w, h): (f32, f32)) {
+        let size = LogicalSize::new(w, h);
+        let inner = WindowInner::from_pub(window);
+        let tick = self.tick.as_ref();
+        let mut probe = Probe { window: inner, tick, stack: vec![Frame { transform: ItemTransform::identity(), clip: LogicalRect::from_size(size) }] };
+        let adapter = inner.window_adapter();
+        inner.draw_contents(|components, _| {
+            for (c, origin) in components {
+                if let Some(c) = i_slint_core::item_tree::ItemTreeWeak::upgrade(c) {
+                    i_slint_core::item_rendering::render_component_items(&c, &mut probe, *origin, &adapter);
+                }
+            }
+        });
+    }
 }
 
 /// The surface's renderer: Slint's FemtoVG one, and the tracking above,
