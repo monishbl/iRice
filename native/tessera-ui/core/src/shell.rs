@@ -198,6 +198,7 @@ pub fn tell(kind: &str, fields: serde_json::Value) {
 /// A panel closed itself: the shell's Panels follows (Panels.close() while
 /// it's still the open one)
 pub fn closed(surface: &str) {
+    crate::wayland::note_layer_change();
     tell("closed", serde_json::json!({"surface": surface}));
 }
 
@@ -372,6 +373,9 @@ impl State {
             eprintln!("debug: command {} {}", cmd.cmd, cmd.surface);
         }
         let name = cmd.surface.clone();
+        if cmd.cmd == "open" || cmd.cmd == "close" {
+            crate::wayland::note_layer_change();
+        }
         crate::perf::time(|| format!("command {} {}", cmd.cmd, cmd.surface), || self.part(&name, |p, st| p.command(st, &cmd)));
     }
 }

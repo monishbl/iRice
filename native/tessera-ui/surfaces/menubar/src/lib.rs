@@ -296,6 +296,112 @@ fn luma(c: slint::Color) -> f32 {
 }
 
 impl Menubar {
+    /// The bars' input regions, glass shapes and accessibility, once a frame is drawn
+    fn after_frame_drawn(&mut self, st: &mut State) {
+        let cfg = Self::cfg(st);
+        let mut changed = false;
+        for b in &mut self.bars {
+            let h = b.ui.get_hovered();
+            if h != b.hovered {
+                b.hovered = h;
+                changed |= cfg.auto_hide;
+            }
+        }
+        if changed {
+            self.refresh(st);
+        }
+        for b in &mut self.bars {
+            let keys = b.ui.get_island_keys();
+            if keys != b.keys {
+                b.keys = keys;
+                b.surface.layer.set_keyboard_interactivity(if keys { KeyboardInteractivity::OnDemand } else { KeyboardInteractivity::None });
+                b.surface.layer.commit();
+            }
+            if !b.surface.mapped.get() {
+                continue;
+            }
+            let r = Self::region(b, &cfg);
+            let key = format!("{r:?}");
+            if key != b.region_sent {
+                st.set_input_region(&b.surface, Some(&r));
+                b.region_sent = key;
+            }
+        }
+        let kbd = st.keyboard_surface();
+        for b in &mut self.bars {
+            let f = kbd.as_ref().is_some_and(|k| Rc::ptr_eq(k, &b.surface));
+            if let Some(a) = b.a11y.as_mut() {
+                a.update(false, f);
+            }
+        }
+        if let Some(m) = self.menu.as_mut() {
+            let f = kbd.as_ref().is_some_and(|k| Rc::ptr_eq(k, &m.surface));
+            if let Some(a) = m.a11y.as_mut() {
+                a.update(false, f);
+            }
+            if m.open && m.surface.mapped.get() {
+                // the whole screen takes the pointer: a click outside the panel
+                // closes it; one on the bar's strip is passed on to the bar
+                let (w, h) = m.surface.logical_size();
+                let r = [(0, 0, w as i32, h as i32)];
+                let key = format!("{r:?}");
+                if key != m.region_sent {
+                    st.set_input_region(&m.surface, Some(&r));
+                    m.region_sent = key;
+                }
+            }
+        }
+        if !st.shell.plugin || st.shell.look.material {
+            return;
+        }
+        let look = st.shell.look.clone();
+        let strip = cfg.background || cfg.auto_hide;
+        for b in &mut self.bars {
+            if !b.surface.mapped.get() {
+                continue;
+            }
+            let ui = &b.ui;
+            let (w, _) = b.surface.logical_size();
+            let mut shapes: Vec<tessera_core::theme::GlassShape> = Vec::new();
+            if strip && ui.get_chrome() && ui.get_revealed() {
+                shapes.push(theme::shadow_margin(theme::glass_shape(&look, 0.0, 0.0, w as f32, BAR_H as f32, 0.0, 1.0, 1.0), 0.0));
+            }
+            // the island: glass under its lower rim as it opens
+            let fade = ui.get_isl_fade();
+            if cfg.island && fade > 0.01 && ui.get_revealed() {
+                shapes.push(theme::shadow_margin(theme::glass_shape(&look, ui.get_isl_x(), ui.get_isl_y(), ui.get_isl_w(), ui.get_isl_h(), ui.get_isl_r(), fade, 1.0), 16.0));
+            }
+            // the hover tip
+            let o = ui.get_tip_o();
+            if o > 0.01 {
+                shapes.push(theme::glass_shape(&look, ui.get_tip_x(), ui.get_tip_y(), ui.get_tip_w(), ui.get_tip_h(), 10.0, o, 0.35));
+            }
+            let key = format!("{shapes:?}");
+            if key != b.glass_sent {
+                st.shell.glass.set(&b.output, BAR_NS, &shapes);
+                b.glass_sent = key;
+            }
+        }
+        if let Some(m) = &mut self.menu {
+            if !m.surface.mapped.get() {
+                return;
+            }
+            let ui = &m.ui;
+            let open = ui.get_openness();
+            let s = ui.get_panel_scale();
+            let (px, py, pw, ph) = (ui.get_panel_x(), ui.get_panel_y(), ui.get_panel_width(), ui.get_panel_height());
+            // scaled about (18, 0) in the panel, as in menubar.slint
+            let x = px + (if ui.get_context() { pw / 2.0 } else { 18.0 }) * (1.0 - s);
+            let opacity = (open * 1.6).min(1.0);
+            let shape = theme::glass_shape(&look, x, py, pw * s, ph * s, 14.0 * s, opacity, 0.35);
+            let key = format!("{shape:?}");
+            if key != m.glass_sent {
+                st.shell.glass.set(&m.output, MENU_NS, if opacity > 0.002 { std::slice::from_ref(&shape) } else { &[] });
+                m.glass_sent = key;
+            }
+        }
+    }
+
     fn spec<'a>(output: &'a WlOutput, name: &'a str, height: u32, exclusive: i32, layer: Layer) -> Spec<'a> {
         Spec {
             layer,
@@ -2771,109 +2877,11 @@ impl Part for Menubar {
             Some(m) => tessera_core::outside::open(&st.tx, NAME, &m.output),
             None => tessera_core::outside::close(&st.tx, NAME),
         }
+        self.after_frame_drawn(st);
+        // (the island's next size, after this frame's glass shapes went out:
+        // set before them, the glass took the size a frame ahead of the
+        // island it's under, and the island flickered as it closed)
         self.island_size(st);
-        let cfg = Self::cfg(st);
-        let mut changed = false;
-        for b in &mut self.bars {
-            let h = b.ui.get_hovered();
-            if h != b.hovered {
-                b.hovered = h;
-                changed |= cfg.auto_hide;
-            }
-        }
-        if changed {
-            self.refresh(st);
-        }
-        for b in &mut self.bars {
-            let keys = b.ui.get_island_keys();
-            if keys != b.keys {
-                b.keys = keys;
-                b.surface.layer.set_keyboard_interactivity(if keys { KeyboardInteractivity::OnDemand } else { KeyboardInteractivity::None });
-                b.surface.layer.commit();
-            }
-            if !b.surface.mapped.get() {
-                continue;
-            }
-            let r = Self::region(b, &cfg);
-            let key = format!("{r:?}");
-            if key != b.region_sent {
-                st.set_input_region(&b.surface, Some(&r));
-                b.region_sent = key;
-            }
-        }
-        let kbd = st.keyboard_surface();
-        for b in &mut self.bars {
-            let f = kbd.as_ref().is_some_and(|k| Rc::ptr_eq(k, &b.surface));
-            if let Some(a) = b.a11y.as_mut() {
-                a.update(false, f);
-            }
-        }
-        if let Some(m) = self.menu.as_mut() {
-            let f = kbd.as_ref().is_some_and(|k| Rc::ptr_eq(k, &m.surface));
-            if let Some(a) = m.a11y.as_mut() {
-                a.update(false, f);
-            }
-            if m.open && m.surface.mapped.get() {
-                // the whole screen takes the pointer: a click outside the panel
-                // closes it; one on the bar's strip is passed on to the bar
-                let (w, h) = m.surface.logical_size();
-                let r = [(0, 0, w as i32, h as i32)];
-                let key = format!("{r:?}");
-                if key != m.region_sent {
-                    st.set_input_region(&m.surface, Some(&r));
-                    m.region_sent = key;
-                }
-            }
-        }
-        if !st.shell.plugin || st.shell.look.material {
-            return;
-        }
-        let look = st.shell.look.clone();
-        let strip = cfg.background || cfg.auto_hide;
-        for b in &mut self.bars {
-            if !b.surface.mapped.get() {
-                continue;
-            }
-            let ui = &b.ui;
-            let (w, _) = b.surface.logical_size();
-            let mut shapes: Vec<tessera_core::theme::GlassShape> = Vec::new();
-            if strip && ui.get_chrome() && ui.get_revealed() {
-                shapes.push(theme::shadow_margin(theme::glass_shape(&look, 0.0, 0.0, w as f32, BAR_H as f32, 0.0, 1.0, 1.0), 0.0));
-            }
-            // the island: glass under its lower rim as it opens
-            let fade = ui.get_isl_fade();
-            if cfg.island && fade > 0.01 && ui.get_revealed() {
-                shapes.push(theme::shadow_margin(theme::glass_shape(&look, ui.get_isl_x(), ui.get_isl_y(), ui.get_isl_w(), ui.get_isl_h(), ui.get_isl_r(), fade, 1.0), 16.0));
-            }
-            // the hover tip
-            let o = ui.get_tip_o();
-            if o > 0.01 {
-                shapes.push(theme::glass_shape(&look, ui.get_tip_x(), ui.get_tip_y(), ui.get_tip_w(), ui.get_tip_h(), 10.0, o, 0.35));
-            }
-            let key = format!("{shapes:?}");
-            if key != b.glass_sent {
-                st.shell.glass.set(&b.output, BAR_NS, &shapes);
-                b.glass_sent = key;
-            }
-        }
-        if let Some(m) = &mut self.menu {
-            if !m.surface.mapped.get() {
-                return;
-            }
-            let ui = &m.ui;
-            let open = ui.get_openness();
-            let s = ui.get_panel_scale();
-            let (px, py, pw, ph) = (ui.get_panel_x(), ui.get_panel_y(), ui.get_panel_width(), ui.get_panel_height());
-            // scaled about (18, 0) in the panel, as in menubar.slint
-            let x = px + (if ui.get_context() { pw / 2.0 } else { 18.0 }) * (1.0 - s);
-            let opacity = (open * 1.6).min(1.0);
-            let shape = theme::glass_shape(&look, x, py, pw * s, ph * s, 14.0 * s, opacity, 0.35);
-            let key = format!("{shape:?}");
-            if key != m.glass_sent {
-                st.shell.glass.set(&m.output, MENU_NS, if opacity > 0.002 { std::slice::from_ref(&shape) } else { &[] });
-                m.glass_sent = key;
-            }
-        }
     }
 
     fn a11y(&mut self) -> Vec<&mut crate::a11y::A11y> {

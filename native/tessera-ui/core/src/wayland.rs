@@ -360,6 +360,8 @@ impl Surface {
         // one that never animates would keep it: so the first after each
         // `show` is drawn twice)
         if self.shown_frames.get() == 1 {
+            // (mapped: a layer taking the keyboard moves Hyprland's focused monitor)
+            note_layer_change();
             self.needs_redraw.set(true);
             if wakes_on() {
                 // (open timing: the first frame after a show, by the wall clock)
@@ -394,6 +396,9 @@ impl Surface {
             eprintln!("debug: hide on a lock surface: kept its buffer");
         }
         framelog_on("hide", &self.namespace, &self.output);
+        if self.mapped.get() {
+            note_layer_change();
+        }
         self.configured.set(false);
         self.frame_pending.set(false);
         self.mapped.set(false);
@@ -1772,6 +1777,22 @@ fn drew_after_press(ns: &str, render_ms: f64) {
         seen.push(ns.to_string());
         eprintln!("click {on} -> {ns} drew {ms:.0} ms after, render {render_ms:.1} ms, at {}", crate::util::now_ms());
     });
+}
+
+static LAYER_CHANGE_AT: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+
+/// (also when a panel is told to open or close, or closes itself: it gives
+/// the keyboard back as its close starts, before it unmaps)
+pub fn note_layer_change() {
+    LAYER_CHANGE_AT.store(crate::util::now_ms(), std::sync::atomic::Ordering::Relaxed);
+}
+
+/// When one of the shell's surfaces last mapped or unmapped (ms, util::now_ms;
+/// 0: never). Hyprland moves its focused monitor with a layer that takes or
+/// gives back the keyboard, and its `focusedmonv2` can come before its own
+/// open/closelayer: the display-switch cue asks this, which we know first
+pub fn layer_changed_at() -> i64 {
+    LAYER_CHANGE_AT.load(std::sync::atomic::Ordering::Relaxed)
 }
 
 /// A press at this surface-local position is off the window (`size`
