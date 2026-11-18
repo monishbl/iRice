@@ -326,6 +326,8 @@ impl Notifications {
         ui.set_cal_targets(targets.model());
         ui.show().expect("show notification center");
         let a11y = crate::a11y::A11y::new(&surface, st.tx.clone());
+        // (a new window's rows say their places as they're made)
+        self.nc.cards.clear();
         self.nc.win = Some(Win { output: output.into(), surface, ui, rows, days, day_items, todos, laps, targets, a11y, glass_sent: String::new() });
         true
     }
@@ -344,7 +346,9 @@ impl Notifications {
             self.nc.selected = t;
             self.nc.shown = (t.0, t.1);
             self.nc.groups_open.clear();
-            self.nc.cards.clear();
+            // (not the cards' places: the rows stay made while it's closed,
+            // so they don't say them again; cleared, the glass under each
+            // card was gone after the first opening: 18 Nov)
             // (the QML widgets are made anew: month view, the Focus timer)
             self.nc.week = false;
             self.nc.focus_mode = 0;
@@ -482,6 +486,9 @@ impl Notifications {
             });
         }
         let anything = !rows.is_empty();
+        // (places of rows no longer there)
+        let n = rows.len() as i32;
+        self.nc.cards.retain(|i, _| *i < n);
         let h24 = st.shell.cfg["appearance"]["clock24"].as_bool().unwrap_or(false);
         let today = today();
         let w = &self.nc.widgets;
@@ -932,7 +939,7 @@ impl Notifications {
             st.shell.glass.set(&w.output, NS, &[]);
             w.glass_sent.clear();
         }
-        self.nc.cards.clear();
+        // (the cards' places stay: a row that moves says its new one)
         self.nc_refresh(st);
     }
 
