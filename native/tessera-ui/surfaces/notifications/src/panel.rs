@@ -992,6 +992,30 @@ mod tests {
         assert!(bare(&json!({}), true, 0.5));
     }
 
+    /// The island sends an icon's name; the card draws its glyph (the name
+    /// itself drew as an empty badge)
+    #[test]
+    fn alert_glyphs_from_names() {
+        let usb = alert_glyph("usb");
+        assert_eq!(usb, crate::icons::glyph("usb"));
+        assert_eq!(usb.chars().count(), 1);
+        assert!(('\u{e000}'..='\u{f8ff}').contains(&usb.chars().next().unwrap()));
+        // already a glyph: kept; unknown or empty: the bell
+        assert_eq!(alert_glyph(&usb), usb);
+        assert_eq!(alert_glyph("no-such-icon"), crate::icons::glyph("bell"));
+        assert_eq!(alert_glyph(""), crate::icons::glyph("bell"));
+    }
+
+    /// The timing log names a card's act by kind and id, never its text
+    #[test]
+    fn card_acts_in_the_log() {
+        assert_eq!(act_name(&C::Close(3)).as_deref(), Some("close 3"));
+        assert_eq!(act_name(&C::Action(-2, "secret-key".into())).as_deref(), Some("action -2"));
+        assert_eq!(act_name(&C::ClearAll).as_deref(), Some("clear-all"));
+        assert_eq!(act_name(&C::ClearGroup("Ann's app".into())).as_deref(), Some("clear-group"));
+        assert!(act_name(&C::Minute).is_none());
+    }
+
     #[test]
     fn colours_from_the_shell() {
         assert_eq!(color("#ff0000"), slint::Color::from_rgb_u8(255, 0, 0));
