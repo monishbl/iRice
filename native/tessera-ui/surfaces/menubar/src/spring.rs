@@ -197,6 +197,25 @@ mod tests {
     }
 
     #[test]
+    fn it_ticks_every_frame_until_settled_then_stops() {
+        // (the frame timer runs while `moving`: every frame of the opening,
+        // and with half a pixel's epsilon not a second of sub-pixel tail)
+        for frame_ms in [1000.0 / 60.0, 1000.0 / 120.0] {
+            let mut s = Spring::at(26.0, 5.0, 0.36, 0.5);
+            s.retarget(263.0);
+            let mut frames = 0;
+            while s.moving() {
+                s.advance(frame_ms);
+                frames += 1;
+                assert!(frames < 1000);
+            }
+            let ms = frames as f64 * frame_ms;
+            assert!((150.0..700.0).contains(&ms), "{frame_ms}: settled after {ms} ms");
+            assert_eq!(s.value(), 263.0);
+        }
+    }
+
+    #[test]
     fn reduce_motion_and_saver_snap() {
         use serde_json::json;
         assert!(!still(&json!({}), false));

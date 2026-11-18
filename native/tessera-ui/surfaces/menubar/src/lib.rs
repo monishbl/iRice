@@ -69,6 +69,8 @@ const NAME: &str = "menubar";
 /// The HUD's level bar, px (IslandEvent's hudBar in the open island: the
 /// spring's epsilon, 0.5 px, is in these)
 const HUD_BAR_PX: f64 = 280.0;
+/// The island's size spring stops within half a pixel (and as slow)
+const ISLAND_EPSILON: f64 = 0.5;
 const BAR_H: u32 = 30;
 /// with the island: room for it to open below the bar (MenuBar.qml's 420)
 const ISLAND_H: u32 = 420;
@@ -1642,7 +1644,9 @@ impl Menubar {
                 let t = b.ui.global::<ui::Theme>();
                 // (Theme.motion.spring + 1.2, damping + 0.04; QML's epsilon 0.01)
                 let (k, d) = if t.get_material() || t.get_snappy() { (7.28, 0.54) } else if t.get_expressive() { (4.2, 0.26) } else { (5.0, 0.36) };
-                b.size = Some(Rc::new(std::cell::RefCell::new((spring::Spring::at(want.0, k, d, 0.01), spring::Spring::at(want.1, k, d, 0.01)))));
+                // (epsilon half a pixel, as the HUD's: Qt's 0.01 kept a whole bar
+                // redrawing for a second of sub-pixel tail after each change)
+                b.size = Some(Rc::new(std::cell::RefCell::new((spring::Spring::at(want.0, k, d, ISLAND_EPSILON), spring::Spring::at(want.1, k, d, ISLAND_EPSILON)))));
                 b.ui.set_isl_spring_w(want.0 as f32);
                 b.ui.set_isl_spring_h(want.1 as f32);
                 continue;
@@ -1655,7 +1659,10 @@ impl Menubar {
                 if tessera_core::env::is_set("DEBUG") && (s.0.moving() || s.1.moving()) {
                     eprintln!("debug: island {} size retargeted while moving: {:.0}x{:.0} -> {:.0}x{:.0}", b.output, s.0.target(), s.1.target(), want.0, want.1);
                 }
-                if still {
+                // (a pixel or less, at rest: a text's width changed under the pill;
+                // no animation worth a frame for it)
+                let small = !s.0.moving() && !s.1.moving() && (s.0.target() - want.0).abs() <= 1.0 && (s.1.target() - want.1).abs() <= 1.0;
+                if still || small {
                     s.0.jump(want.0);
                     s.1.jump(want.1);
                     b.size_tick.stop();
@@ -1672,6 +1679,7 @@ impl Menubar {
             let ui = b.ui.as_weak();
             let out = b.output.clone();
             let mut last = std::time::Instant::now();
+            let mut shown = (b.ui.get_isl_spring_w(), b.ui.get_isl_spring_h());
             b.size_tick.start_while(move || {
                 let now = std::time::Instant::now();
                 let ms = now.duration_since(last).as_secs_f64() * 1000.0;
@@ -1679,9 +1687,15 @@ impl Menubar {
                 let mut s = sz.borrow_mut();
                 s.0.advance(ms);
                 s.1.advance(ms);
-                if let Some(ui) = ui.upgrade() {
-                    ui.set_isl_spring_w(s.0.value() as f32);
-                    ui.set_isl_spring_h(s.1.value() as f32);
+                // (only a change that shows: a tenth of a pixel or more, or the end)
+                let (w, h) = (s.0.value() as f32, s.1.value() as f32);
+                let done = !s.0.moving() && !s.1.moving();
+                if done || (w - shown.0).abs() >= 0.1 || (h - shown.1).abs() >= 0.1 {
+                    shown = (w, h);
+                    if let Some(ui) = ui.upgrade() {
+                        ui.set_isl_spring_w(w);
+                        ui.set_isl_spring_h(h);
+                    }
                 }
                 if trace {
                     let t = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0.0, |d| d.as_secs_f64());
