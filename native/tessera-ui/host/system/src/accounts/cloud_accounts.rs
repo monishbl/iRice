@@ -1,11 +1,18 @@
-//! CloudAccounts.qml: iCloud (calendars, contacts) and Microsoft 365
-//! (Outlook calendars, Microsoft To Do), through assets/scripts/
+//! CloudAccounts.qml: iCloud (calendars, Reminders, contacts) and Microsoft
+//! 365 (Outlook calendars, Microsoft To Do), through assets/scripts/
 //! cloud-accounts.py: one request per run, its state back. Changes show at
 //! once and go to the helper in turn; deleting hides first and is sent when
 //! its Undo (8 s) has run out. Syncs: at login (20 s after start), on
 //! unlock, when Notification Center opens after 2 minutes, every 15 minutes
 //! in use; never while locked or idle. The Apple ID password and every token
 //! only ever go to the helper's stdin; nothing here logs them.
+//!
+//! Offline (Rust only; the QML said "Change not saved"): the helper keeps a
+//! change it couldn't send in its outbox (shown as made) and this asks it to
+//! send them again ("flush"): after 30 s, then 2, 8 and 30 minutes, and the
+//! helper sends them first at each sync. A change the server turned away
+//! meanwhile is dropped with a notification that says so. iCloud Reminders
+//! (VTODO lists) are Rust only too: the QML had Microsoft To Do alone.
 //!
 //! Bus "cloudaccounts": { state, accounts, hasICloud, hasMicrosoft,
 //! calendars, taskLists, contacts, syncedAt, busy, lastError, offline,
@@ -30,6 +37,7 @@ enum M {
     MsDone(String),
     Start,
     Poll,
+    Resend,
 }
 
 struct Req {
@@ -63,6 +71,9 @@ pub struct CloudAccounts {
     was_nc: bool,
     ticks: u32,
     start_t: slint::Timer,
+    /// sending the outbox again (after 30 s, then longer each time it can't)
+    resend: slint::Timer,
+    send_failures: u32,
 }
 
 fn merge(a: &Value, b: &Value) -> Value {
@@ -174,8 +185,11 @@ impl CloudAccounts {
                 if o.is_some_and(|o| o["hidden"].as_bool().unwrap_or(false)) {
                     return None;
                 }
-                let due = t["date"].as_str().map_or(0, due_of);
-                let base = merge(t, &json!({"key": key, "cloud": true, "allDay": true, "due": due}));
+                // (iCloud Reminders may have a time: dueAt)
+                let base = match t["dueAt"].as_i64().filter(|d| *d != 0) {
+                    Some(at) => merge(t, &json!({"key": key, "cloud": true, "allDay": false, "due": at})),
+                    None => merge(t, &json!({"key": key, "cloud": true, "allDay": true, "due": t["date"].as_str().map_or(0, due_of)})),
+                };
                 Some(merge(&base, &o.map(|o| o["patch"].clone()).unwrap_or(Value::Null)))
             })
             .collect()
@@ -189,7 +203,7 @@ impl CloudAccounts {
                    "calendars": self.arr("calendars"), "taskLists": self.arr("taskLists"), "contacts": self.arr("contacts"),
                    "syncedAt": self.synced_at(), "busy": self.running, "lastError": self.last_error, "offline": self.offline,
                    "signingIn": self.signing_in, "signingInto": self.signing_into, "errorFrom": self.error_from,
-                   "tasks": self.tasks(), "events": self.events(), "queued": self.queue.len()}),
+                   "tasks": self.tasks(), "events": self.events(), "queued": self.queue.len(), "outbox": self.outbox()}),
         );
     }
 
@@ -206,7 +220,7 @@ impl CloudAccounts {
         let request = self.fresh_etag(next.request);
         self.current = Some(Req { request: request.clone(), key: next.key });
         self.running = true;
-        let cmd = vec!["python3".to_string(), "-I".into(), script("cloud-accounts.py")];
+        let cmd = fake_accounts("cloud").unwrap_or_else(|| vec!["python3".to_string(), "-I".into(), script("cloud-accounts.py")]);
         let tx = self.tx();
         std::thread::spawn(move || {
             let (_, out, _) = run_full(&cmd, Some(&format!("{}\n", request)));
@@ -246,6 +260,16 @@ impl CloudAccounts {
         if now_ms() - self.synced_at() >= age {
             self.send(json!({"cmd": "sync"}), "");
         }
+    }
+    /// changes the helper keeps until the accounts can be reached
+    fn outbox(&self) -> i64 {
+        self.state["outbox"].as_i64().unwrap_or(0)
+    }
+    /// 30 s, 2, 8, then 30 minutes
+    fn arm_resend(&self) {
+        let ms = (30_000f64 * 4f64.powi(self.send_failures.saturating_sub(1) as i32)).min(30.0 * 60_000.0);
+        let tx = self.tx();
+        self.resend.start(slint::TimerMode::SingleShot, Duration::from_millis(ms as u64), move || tx.send(M::Resend));
     }
     /// the raw event of an `e` the QML passes (its `source`)
     fn raw(e: &Value) -> Value {
@@ -322,7 +346,12 @@ impl Service for CloudAccounts {
                 let (acc, list) = r.split_once('|').unwrap_or((&r, ""));
                 let item = a(1);
                 let date = item["due"].as_i64().filter(|d| *d != 0).map(day_of).unwrap_or_default();
-                self.send(json!({"cmd": "taskInsert", "account": acc, "listId": list, "fields": {"text": item["text"], "done": item["done"].as_bool().unwrap_or(false), "date": date}}), "");
+                let mut fields = json!({"text": item["text"], "done": item["done"].as_bool().unwrap_or(false), "date": date});
+                // (a time: iCloud Reminders keep it, Microsoft To Do the date)
+                if let Some(at) = item["dueAt"].as_i64().filter(|d| *d != 0) {
+                    fields["dueAt"] = json!(at);
+                }
+                self.send(json!({"cmd": "taskInsert", "account": acc, "listId": list, "fields": fields}), "");
             }
             "updateTask" => {
                 let (t, patch) = (a(0), a(1));
@@ -335,9 +364,13 @@ impl Service for CloudAccounts {
                 }
                 if !patch["due"].is_null() {
                     f.insert("date".into(), json!(patch["due"].as_i64().filter(|d| *d != 0).map(day_of).unwrap_or_default()));
+                    f.insert("dueAt".into(), json!(patch["dueAt"].as_i64().unwrap_or(0)));
                 }
                 let key = task_key(&t);
-                let shown = merge(&self.patch_of(&key), &patch);
+                let mut shown = merge(&self.patch_of(&key), &patch);
+                if let Some(o) = shown.as_object_mut() {
+                    o.remove("dueAt");
+                }
                 self.set_override(&key, Some(json!({"patch": shown})));
                 self.send(json!({"cmd": "taskPatch", "account": t["account"], "listId": t["listId"], "id": t["id"], "etag": t["etag"].as_str().unwrap_or(""), "fields": f}), &key);
             }
@@ -386,6 +419,15 @@ impl Service for CloudAccounts {
         let Ok(m) = msg.downcast::<M>() else { return };
         match *m {
             M::Start => self.freshen(0),
+            M::Resend => {
+                if self.outbox() > 0 && !locked() {
+                    if self.running || !self.queue.is_empty() {
+                        self.arm_resend();
+                    } else {
+                        self.send(json!({"cmd": "flush"}), "");
+                    }
+                }
+            }
             M::MsDone(out) => {
                 self.ms_running = false;
                 let r: Value = out.trim().lines().last().and_then(|l| serde_json::from_str(l).ok()).unwrap_or(json!({}));
@@ -407,10 +449,25 @@ impl Service for CloudAccounts {
                     self.last_error = s["error"].as_str().unwrap_or("").to_string();
                     self.error_from = done.as_ref().map(|d| self.provider_of(&d.request)).unwrap_or_default();
                     let cmd = done.as_ref().map(|d| js(&d.request, "cmd")).unwrap_or_default();
-                    if !self.last_error.is_empty() && (cmd.starts_with("event") || cmd.starts_with("task")) {
+                    // (offline, a change the helper kept isn't lost: it goes later)
+                    let kept = self.offline && s["outbox"].as_i64().unwrap_or(0) > 0;
+                    if !self.last_error.is_empty() && !kept && (cmd.starts_with("event") || cmd.starts_with("task")) {
                         tessera_core::util::notify("Tessera", "", "", "Change not saved", &self.last_error);
                     }
+                    // the outbox's changes the server turned away meanwhile
+                    for why in s["dropped"].as_array().into_iter().flatten().filter_map(Value::as_str) {
+                        tessera_core::util::notify("Tessera", "", "", "Change not saved", why);
+                    }
                     self.state = s;
+                    if self.outbox() > 0 {
+                        if self.offline {
+                            self.send_failures += 1;
+                        }
+                        self.arm_resend();
+                    } else {
+                        self.send_failures = 0;
+                        self.resend.stop();
+                    }
                 } else {
                     self.last_error = "The calendar helper didn't answer. Check that Python 3 is installed.".into();
                 }

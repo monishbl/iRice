@@ -198,6 +198,7 @@ pub fn tell(kind: &str, fields: serde_json::Value) {
 /// A panel closed itself: the shell's Panels follows (Panels.close() while
 /// it's still the open one)
 pub fn closed(surface: &str) {
+    crate::wayland::note_layer_change();
     tell("closed", serde_json::json!({"surface": surface}));
 }
 
@@ -250,6 +251,12 @@ pub trait Part {
     /// elsewhere without leaning on the compositor's popup grab (Hyprland's
     /// counts the popup's parent window as inside it)
     fn pointer_pressed(&mut self, st: &mut State, surface: &Rc<Surface>) {}
+    /// A button went down outside the bounds of the surface that has the
+    /// pointer: Hyprland 0.56 keeps the pointer with a layer that holds the
+    /// keyboard exclusively (an open panel) even over another screen, and
+    /// sends the press there, at a position off the window. Slint doesn't
+    /// hear it; a part's popover closes (outside.rs)
+    fn pointer_pressed_outside(&mut self, st: &mut State, surface: &Rc<Surface>) {}
     /// The compositor closed one of its surfaces
     fn surface_closed(&mut self, st: &mut State, surface: &Rc<Surface>) {}
     /// A drag and drop over one of its surfaces that takes drops
@@ -366,6 +373,9 @@ impl State {
             eprintln!("debug: command {} {}", cmd.cmd, cmd.surface);
         }
         let name = cmd.surface.clone();
+        if cmd.cmd == "open" || cmd.cmd == "close" {
+            crate::wayland::note_layer_change();
+        }
         crate::perf::time(|| format!("command {} {}", cmd.cmd, cmd.surface), || self.part(&name, |p, st| p.command(st, &cmd)));
     }
 }

@@ -356,7 +356,10 @@ impl Notif {
             c.local = cal::read_local(&std::fs::read_to_string(calq::events_path()).unwrap_or_default());
         }
         let accent = h.st.shell.look.accent.clone();
-        let mut v = calendar_payload(&c, &todos::list(), &calq::local_raw(), calq::default_alert(), first, to, day, &accent);
+        // (the accounts as they are now: a change made a moment ago shows)
+        c.accounts = tessera_core::services::accounts::current();
+        let target = cfg_get("google.newEventCalendar").as_str().unwrap_or("").to_string();
+        let mut v = calendar_payload(&c, &todos::list(), &calq::local_raw(), calq::default_alert(), first, to, day, &accent, &target);
         v["undo"] = json!(self.cal_undo.as_ref().and_then(|u| u["title"].as_str()).unwrap_or(""));
         let s = v.to_string();
         if s != self.last_calendar {
@@ -415,7 +418,8 @@ pub fn alert_rows(lines: &[Value]) -> Vec<Value> {
         .collect()
 }
 
-pub fn calendar_payload(c: &Calendar, todo_list: &[todos::Item], raw: &[Value], default_alert: i64, first: i64, to: i64, day: i64, accent: &str) -> Value {
+#[allow(clippy::too_many_arguments)]
+pub fn calendar_payload(c: &Calendar, todo_list: &[todos::Item], raw: &[Value], default_alert: i64, first: i64, to: i64, day: i64, accent: &str, new_target: &str) -> Value {
     let list = c.between(first, to);
     let daily = calq::daily_in(&list, first, to);
     let mut marks: BTreeMap<String, (Vec<String>, i64, Vec<Value>, i64)> = BTreeMap::new();
@@ -442,12 +446,26 @@ pub fn calendar_payload(c: &Calendar, todo_list: &[todos::Item], raw: &[Value], 
         let name = calq::name_of(c, e);
         let id = e.key.strip_prefix("local:");
         let r = id.and_then(|id| raw.iter().find(|r| r["id"].as_str() == Some(id)));
-        let info = if id.is_some() { String::new() } else { format!("{}\nFrom {}, a subscribed calendar (read-only).", calq::time_text(e), if name.is_empty() { "a calendar" } else { &name }) };
+        // (an account's: yours to change where its calendar lets you; a
+        // repeating Google one asks "this or all?")
+        let account = !e.account.is_empty();
+        let mine = id.is_some() || (account && e.writable);
+        let info = if mine {
+            String::new()
+        } else if account && e.recurring && e.key.starts_with("cloud:") {
+            format!("{}\nFrom {} ({}). Change repeating events on your phone or on the web.", calq::time_text(e), name, e.account)
+        } else if account {
+            format!("{}\nFrom {} ({}). You can view this calendar but not change it.", calq::time_text(e), name, e.account)
+        } else {
+            format!("{}\nFrom {}, a subscribed calendar (read-only).", calq::time_text(e), if name.is_empty() { "a calendar" } else { &name })
+        };
         json!({"kind": "event", "title": e.title, "sub": format!("{}{}", calq::time_text(e), if name.is_empty() { String::new() } else { format!(" · {name}") }),
                "color": if e.color.is_empty() { accent.to_string() } else { e.color.clone() }, "key": e.key,
                "day": key_of(e.start), "allDay": e.all_day, "start": hm(e.start), "end": hm(e.end),
-               "alert": r.and_then(|r| r["alert"].as_i64()).unwrap_or(default_alert), "notes": r.and_then(|r| r["notes"].as_str()).unwrap_or(""),
-               "location": "", "editable": id.is_some(), "movable": id.is_some(), "recurring": false, "account": false, "info": info, "calLine": ""})
+               "alert": r.and_then(|r| r["alert"].as_i64()).or(e.alert).unwrap_or(default_alert),
+               "notes": r.and_then(|r| r["notes"].as_str()).unwrap_or(&e.notes),
+               "location": e.location, "editable": mine, "movable": mine, "recurring": account && e.recurring && e.writable, "account": account, "info": info,
+               "calLine": if account { format!("{name} · {}", e.account) } else { String::new() }})
     };
     let todo = |t: &todos::Item| {
         json!({"kind": "todo", "title": t.text, "sub": format!("To-do{}", if t.all_day { String::new() } else { format!(" · {}", hm(t.due)) }), "done": t.done, "key": t.key,
@@ -482,10 +500,13 @@ pub fn calendar_payload(c: &Calendar, todo_list: &[todos::Item], raw: &[Value], 
         .collect();
     let mut items: Vec<Value> = calq::events_on(c, day).iter().map(event).collect();
     items.extend(on(day).iter().map(todo));
-    // (where a new event can go: this computer; the accounts' calendars are
-    // the system host's, see calendar.rs)
+    // (where a new event can go: this computer, or an account's calendar you
+    // can change; the last one chosen first, as Settings keeps it)
+    let mut targets = vec![json!({"value": "", "label": "This computer"})];
+    targets.extend(c.accounts.targets.iter().map(|t| json!({"value": t.value, "label": t.label})));
+    let target = c.accounts.target(new_target).map_or(("", "This computer"), |t| (t.value.as_str(), t.label.as_str()));
     json!({"to": "notifications", "do": "calendar", "marks": marks, "everyDay": daily.values().cloned().collect::<Vec<_>>().join(", "), "items": items,
-           "targets": [{"value": "", "label": "This computer"}], "target": "", "targetLabel": "This computer", "defaultAlert": default_alert})
+           "targets": targets, "target": target.0, "targetLabel": target.1, "defaultAlert": default_alert})
 }
 
 #[cfg(test)]
@@ -522,7 +543,7 @@ mod tests {
         let first = cal::make(2026, 10, 1, 0, 0, 0);
         let todo = todos::Item { key: "local/t".into(), text: "Pay".into(), done: false, due: cal::make(2026, 10, 7, 17, 0, 0), all_day: false };
         let raw = vec![json!({"id": "a", "alert": 30, "notes": "Bring card"})];
-        let v = calendar_payload(&c, &[todo], &raw, 10, first, first + 30 * calq::DAY, at, "#0A84FF");
+        let v = calendar_payload(&c, &[todo], &raw, 10, first, first + 30 * calq::DAY, at, "#0A84FF", "");
         assert_eq!(v["marks"]["2026-11-06"]["colors"][0], "#0A84FF");
         assert_eq!(v["marks"]["2026-11-07"]["todos"], 1);
         assert_eq!(v["items"][0]["title"], "Dentist");
@@ -532,5 +553,45 @@ mod tests {
         assert_eq!(v["items"][0]["notes"], "Bring card");
         assert_eq!(v["items"][0]["day"], "2026-11-06");
         assert_eq!(v["targets"][0]["label"], "This computer");
+    }
+
+    #[test]
+    fn the_accounts_events_show_with_their_calendar_and_where_new_ones_can_go() {
+        use std::sync::Arc;
+        use tessera_core::services::accounts::{AccEvent, Data, Target, Times};
+        let at = cal::make(2026, 10, 6, 9, 0, 0);
+        let ev = |key: &str, provider: &str, account: &str, writable: bool, series: &str| AccEvent {
+            key: key.into(),
+            provider: provider.into(),
+            account: account.into(),
+            calendar: "Work".into(),
+            color: "#0078d4".into(),
+            title: key.into(),
+            location: "Room 4".into(),
+            notes: "Agenda".into(),
+            writable,
+            recurring: !series.is_empty(),
+            series: series.into(),
+            times: Times::Fixed { start: at, end: at + 1_800_000, all_day: false },
+            source: json!({}),
+        };
+        let mut c = Calendar::default();
+        c.accounts = Arc::new(Data {
+            events: vec![ev("google:g:c:standup", "google", "jane@gmail.com", true, "s1"), ev("cloud:ms:m1", "microsoft", "Microsoft 365", false, "s2")],
+            targets: vec![Target { value: "g|c".into(), label: "Work".into(), provider: "google".into() }],
+            ..Default::default()
+        });
+        let first = cal::make(2026, 10, 1, 0, 0, 0);
+        let v = calendar_payload(&c, &[], &[], 10, first, first + 30 * calq::DAY, at, "#0A84FF", "g|c");
+        let items = v["items"].as_array().unwrap();
+        let g = items.iter().find(|i| i["key"] == "google:g:c:standup").unwrap();
+        assert_eq!((g["editable"].as_bool(), g["recurring"].as_bool(), g["account"].as_bool()), (Some(true), Some(true), Some(true)));
+        assert_eq!((g["calLine"].as_str(), g["location"].as_str(), g["notes"].as_str(), g["color"].as_str()), (Some("Work · jane@gmail.com"), Some("Room 4"), Some("Agenda"), Some("#0078d4")));
+        assert_eq!(g["sub"], format!("{} · Work", calq::time_text(&c.between(at, at + 1)[0])));
+        let m = items.iter().find(|i| i["key"] == "cloud:ms:m1").unwrap();
+        assert_eq!((m["editable"].as_bool(), m["movable"].as_bool(), m["recurring"].as_bool()), (Some(false), Some(false), Some(false)));
+        assert!(m["info"].as_str().unwrap().ends_with("Change repeating events on your phone or on the web."));
+        assert_eq!(v["targets"][1]["value"], "g|c");
+        assert_eq!((v["target"].as_str(), v["targetLabel"].as_str()), (Some("g|c"), Some("Work")));
     }
 }

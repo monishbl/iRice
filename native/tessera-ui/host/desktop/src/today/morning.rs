@@ -15,8 +15,9 @@
 //! today [options?] (the widget), today.show [effect] (Spotlight's Show
 //! Today). Ipc target "today": preview <bloom|shrink|drop|"">, close.
 //!
-//! Differences: the accounts' events and tasks (`accounts`) are empty (the
-//! system host holds the sign-ins); Wallpaper.started is taken as true.
+//! Differences: `accounts` is sent empty: the accounts' events and tasks
+//! reach Today inside the calendar and the to-dos it reads itself (core
+//! services/accounts.rs); Wallpaper.started is taken as true.
 
 use super::common::*;
 use serde_json::{json, Value};

@@ -341,5 +341,313 @@ class Microsoft(unittest.TestCase):
         self.assertEqual(post[3]["dueDateTime"], {"dateTime": "2026-11-05T00:00:00", "timeZone": "UTC"})
 
 
+# ── iCloud Reminders (VTODO) ────────────────────────────────────────────
+class Reminders(unittest.TestCase):
+    TODO = ("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VTODO\r\nUID:r1\r\nDTSTAMP:20260101T000000Z\r\nSUMMARY:Call mum\\, later\r\n"
+            "DESCRIPTION:Her new number\r\nDTSTART:20261120T090000Z\r\nDUE:20261120T170000Z\r\nSTATUS:NEEDS-ACTION\r\nSEQUENCE:1\r\n"
+            "BEGIN:VALARM\r\nTRIGGER;VALUE=DATE-TIME:20261120T170000Z\r\nACTION:DISPLAY\r\nDESCRIPTION:Reminder\r\nEND:VALARM\r\n"
+            "END:VTODO\r\nEND:VCALENDAR\r\n")
+
+    def ms(self, *a):
+        return int(ca.datetime(*a, tzinfo=ca.timezone.utc).timestamp() * 1000)
+
+    def test_read(self):
+        p = ca.vtodo_props(self.TODO)
+        self.assertEqual((p["uid"], p["text"], p["done"]), ("r1", "Call mum, later", False))
+        self.assertEqual(p["dueAt"], self.ms(2026, 11, 20, 17, 0))
+        dated = ca.vtodo_props(self.TODO.replace("DUE:20261120T170000Z", "DUE;VALUE=DATE:20261121"))
+        self.assertEqual((dated["date"], dated["dueAt"]), ("2026-11-21", 0))
+        # (a time with a zone name or none is local time, as the calendar reads it)
+        local = ca.vtodo_props(self.TODO.replace("DUE:20261120T170000Z", "DUE;TZID=Europe/Paris:20261120T170000"))
+        self.assertEqual(local["dueAt"], int(ca.datetime(2026, 11, 20, 17, 0).timestamp() * 1000))
+        self.assertTrue(ca.vtodo_props(self.TODO.replace("STATUS:NEEDS-ACTION", "STATUS:COMPLETED"))["done"])
+        self.assertEqual(ca.vtodo_props("nothing")["uid"], "")
+
+    def test_new(self):
+        out = ca.new_vtodo("u2", {"text": "Pay rent", "date": "2026-11-20"})
+        self.assertIn("BEGIN:VTODO", out)
+        self.assertIn("DUE;VALUE=DATE:20261120", out)
+        self.assertIn("STATUS:NEEDS-ACTION", out)
+        p = ca.vtodo_props(out)
+        self.assertEqual((p["uid"], p["text"], p["date"], p["dueAt"]), ("u2", "Pay rent", "2026-11-20", 0))
+        timed = ca.vtodo_props(ca.new_vtodo("u3", {"text": "x", "dueAt": self.ms(2026, 11, 20, 8, 30)}))
+        self.assertEqual(timed["dueAt"], self.ms(2026, 11, 20, 8, 30))
+
+    def test_patch_keeps_the_rest(self):
+        out = ca.patch_vtodo(self.TODO, {"text": "Call dad", "done": True})
+        p = ca.vtodo_props(out)
+        self.assertEqual((p["text"], p["done"]), ("Call dad", True))
+        self.assertIn("DESCRIPTION:Her new number", out)
+        self.assertIn("PERCENT-COMPLETE:100", out)
+        self.assertIn("SEQUENCE:2", out)
+        self.assertEqual(out.count("SUMMARY"), 1)
+        # ticked off again
+        back = ca.patch_vtodo(out, {"done": False})
+        self.assertFalse(ca.vtodo_props(back)["done"])
+        self.assertNotIn("COMPLETED:", back)
+        # a new time moves the alarm set for the old one; the start goes
+        later = self.ms(2026, 11, 21, 9, 0)
+        moved = ca.patch_vtodo(self.TODO, {"date": "2026-11-21", "dueAt": later})
+        self.assertEqual(ca.vtodo_props(moved)["dueAt"], later)
+        self.assertIn("TRIGGER;VALUE=DATE-TIME:20261121T090000Z", moved)
+        self.assertNotIn("DTSTART", moved)
+        # (the alarm's own DESCRIPTION stays in the alarm)
+        self.assertLess(moved.index("BEGIN:VALARM"), moved.index("DESCRIPTION:Reminder"))
+        undated = ca.patch_vtodo(self.TODO, {"date": "", "dueAt": 0})
+        self.assertNotIn("DUE", undated)
+
+
+# ── A stand-in iCloud CalDAV ────────────────────────────────────────────
+class FakeDav(http.server.ThreadingHTTPServer):
+    """caldav.icloud.com as far as the helper uses it: the principal, the
+    calendar home, one calendar and one Reminders list, REPORT, GET, PUT,
+    DELETE with ETags (If-Match / If-None-Match)."""
+
+    def __init__(self):
+        super().__init__(("127.0.0.1", 0), DavHandler)
+        self.items = {}  # path -> (etag, text)
+        self.version = 0
+        self.calls = []
+        self.put_item("/home/rem/done.ics", Reminders.TODO.replace("UID:r1", "UID:done").replace("STATUS:NEEDS-ACTION", "STATUS:COMPLETED"))
+        self.put_item("/home/rem/r1.ics", Reminders.TODO)
+
+    def put_item(self, path, text):
+        self.version += 1
+        self.items[path] = (f'"{self.version}"', text)
+        return self.items[path][0]
+
+
+class DavHandler(http.server.BaseHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+    def send(self, code, body="", headers=None):
+        data = body.encode()
+        self.send_response(code)
+        for k, v in (headers or {}).items():
+            self.send_header(k, v)
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def ms(self, responses):
+        return ('<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">'
+                + "".join(responses) + "</d:multistatus>")
+
+    def body(self):
+        n = int(self.headers.get("Content-Length") or 0)
+        return self.rfile.read(n).decode()
+
+    def authed(self):
+        want = "Basic " + ca.base64.b64encode(b"jane@icloud.com:abcd-efgh-ijkl-mnop").decode()
+        if self.headers.get("Authorization") != want:
+            self.send(401)
+            return False
+        return True
+
+    def do_PROPFIND(self):
+        body = self.body()
+        self.server.calls.append(("PROPFIND", self.path))
+        if not self.authed():
+            return
+        p = self.path
+        if "current-user-principal" in body:
+            return self.send(207, self.ms(['<d:response><d:href>/</d:href><d:propstat><d:prop><d:current-user-principal>'
+                                           '<d:href>/principal/</d:href></d:current-user-principal></d:prop></d:propstat></d:response>']))
+        if "calendar-home-set" in body:
+            return self.send(207, self.ms(['<d:response><d:href>/principal/</d:href><d:propstat><d:prop><c:calendar-home-set>'
+                                           '<d:href>/home/</d:href></c:calendar-home-set></d:prop></d:propstat></d:response>']))
+        if p == "/home/":
+            def coll(href, name, comp):
+                return (f'<d:response><d:href>{href}</d:href><d:propstat><d:prop><d:resourcetype><d:collection/><c:calendar/></d:resourcetype>'
+                        f'<d:displayname>{name}</d:displayname><c:supported-calendar-component-set><c:comp name="{comp}"/>'
+                        '</c:supported-calendar-component-set></d:prop></d:propstat></d:response>')
+            return self.send(207, self.ms(['<d:response><d:href>/home/</d:href><d:propstat><d:prop><d:resourcetype><d:collection/>'
+                                           '</d:resourcetype></d:prop></d:propstat></d:response>',
+                                           coll("/home/cal/", "Home", "VEVENT"), coll("/home/rem/", "Errands", "VTODO")]))
+        self.send(404)
+
+    def do_REPORT(self):
+        body = self.body()
+        self.server.calls.append(("REPORT", self.path))
+        if not self.authed():
+            return
+        kind = "VTODO" if 'name="VTODO"' in body else "VEVENT"
+        out = []
+        for path, (etag, text) in sorted(self.server.items.items()):
+            if path.startswith(self.path) and f"BEGIN:{kind}" in text:
+                out.append(f'<d:response><d:href>{path}</d:href><d:propstat><d:prop><d:getetag>{etag}</d:getetag>'
+                           f'<c:calendar-data>{text.replace("&", "&amp;").replace("<", "&lt;")}</c:calendar-data></d:prop></d:propstat></d:response>')
+        self.send(207, self.ms(out))
+
+    def do_GET(self):
+        self.server.calls.append(("GET", self.path))
+        if not self.authed():
+            return
+        if self.path not in self.server.items:
+            return self.send(404 if self.path != "/" else 200)
+        etag, text = self.server.items[self.path]
+        self.send(200, text, {"ETag": etag})
+
+    def do_PUT(self):
+        text = self.body()
+        self.server.calls.append(("PUT", self.path, self.headers.get("If-Match"), self.headers.get("If-None-Match")))
+        if not self.authed():
+            return
+        have = self.server.items.get(self.path)
+        if self.headers.get("If-None-Match") == "*" and have:
+            return self.send(412)
+        if self.headers.get("If-Match") and (not have or have[0] != self.headers["If-Match"]):
+            return self.send(412)
+        self.send(201 if not have else 204, "", {"ETag": self.server.put_item(self.path, text)})
+
+    def do_DELETE(self):
+        self.server.calls.append(("DELETE", self.path))
+        if not self.authed():
+            return
+        self.server.items.pop(self.path, None)
+        self.send(204)
+
+
+class ICloudReminders(unittest.TestCase):
+    def setUp(self):
+        self.srv = FakeDav()
+        threading.Thread(target=self.srv.serve_forever, daemon=True).start()
+        self.state = tempfile.TemporaryDirectory()
+        self.env = dict(os.environ, XDG_STATE_HOME=self.state.name, TESSERA_CLOUD_SECRET_FILE=os.path.join(self.state.name, "secrets.json"))
+        self.base = f"http://127.0.0.1:{self.srv.server_address[1]}/"
+
+    def tearDown(self):
+        self.srv.shutdown()
+        self.srv.server_close()
+        self.state.cleanup()
+
+    def connect(self):
+        return run({"cmd": "connectICloud", "appleId": "jane@icloud.com", "password": "abcd-efgh-ijkl-mnop",
+                    "server": self.base, "cardServer": self.base}, self.env)
+
+    def test_lists_and_open_reminders(self):
+        s = self.connect()
+        self.assertNotIn("error", s)
+        self.assertEqual([c["title"] for c in s["calendars"]], ["Home"])
+        self.assertNotIn("kind", s["calendars"][0])
+        self.assertEqual([l["title"] for l in s["taskLists"]], ["Errands"])
+        self.assertEqual([t["text"] for t in s["tasks"]], ["Call mum, later"])  # (the completed one isn't shown)
+        t = s["tasks"][0]
+        self.assertEqual((t["listId"], t["id"]), (self.base + "home/rem/", self.base + "home/rem/r1.ics"))
+        self.assertGreater(t["dueAt"], 0)
+        self.assertEqual(s["outbox"], 0)
+
+    def test_add_tick_rename_delete(self):
+        s = self.connect()
+        acc, lst = s["accounts"][0]["id"], s["taskLists"][0]["id"]
+        s = run({"cmd": "taskInsert", "account": acc, "listId": lst, "fields": {"text": "Pay rent", "date": "2026-11-20", "done": False}}, self.env)
+        self.assertNotIn("error", s)
+        new = next(t for t in s["tasks"] if t["text"] == "Pay rent")
+        put = next(c for c in self.srv.calls if c[0] == "PUT")
+        self.assertEqual(put[3], "*")  # (made, never overwriting)
+        self.assertEqual(new["date"], "2026-11-20")
+        s = run({"cmd": "taskPatch", "account": acc, "listId": lst, "id": new["id"], "etag": new["etag"], "fields": {"text": "Pay the rent"}}, self.env)
+        self.assertEqual(next(t for t in s["tasks"] if t["id"] == new["id"])["text"], "Pay the rent")
+        # an edit against an old version is turned away and says so
+        s = run({"cmd": "taskPatch", "account": acc, "listId": lst, "id": new["id"], "etag": new["etag"], "fields": {"text": "Stale"}}, self.env)
+        self.assertIn("changed on your other devices", s["error"])
+        cur = next(t for t in s["tasks"] if t["id"] == new["id"])
+        s = run({"cmd": "taskPatch", "account": acc, "listId": lst, "id": cur["id"], "etag": cur["etag"], "fields": {"done": True}}, self.env)
+        self.assertFalse(any(t["id"] == new["id"] for t in s["tasks"]))  # (done: not shown)
+        self.assertIn("STATUS:COMPLETED", self.srv.items["/home/rem/" + new["id"].rsplit("/", 1)[1]][1])
+        s = run({"cmd": "taskDelete", "account": acc, "listId": lst, "id": self.base + "home/rem/r1.ics"}, self.env)
+        self.assertEqual(s["tasks"], [])
+        self.assertNotIn("/home/rem/r1.ics", self.srv.items)
+
+    def test_offline_changes_wait_and_go_later(self):
+        s = self.connect()
+        acc, lst = s["accounts"][0]["id"], s["taskLists"][0]["id"]
+        port = self.srv.server_address[1]
+        self.srv.shutdown()
+        self.srv.server_close()
+        s = run({"cmd": "taskInsert", "account": acc, "listId": lst, "fields": {"text": "Buy milk", "date": "", "done": False}}, self.env)
+        self.assertTrue(s["offline"])
+        self.assertIn("saved on this computer", s["error"])
+        self.assertEqual(s["outbox"], 1)
+        milk = next(t for t in s["tasks"] if t["text"] == "Buy milk")  # (shown as made)
+        s = run({"cmd": "taskPatch", "account": acc, "listId": lst, "id": milk["id"], "fields": {"text": "Buy oat milk"}}, self.env)
+        self.assertEqual(s["outbox"], 2)
+        self.assertEqual(next(t for t in s["tasks"] if t["id"] == milk["id"])["text"], "Buy oat milk")
+        # a restart keeps them
+        self.assertEqual(run({"cmd": "status"}, self.env)["outbox"], 2)
+        # back online, at the same address
+        self.srv = http.server.ThreadingHTTPServer(("127.0.0.1", port), DavHandler)
+        self.srv.items, self.srv.version, self.srv.calls = {}, 100, []
+        self.srv.put_item = FakeDav.put_item.__get__(self.srv)
+        threading.Thread(target=self.srv.serve_forever, daemon=True).start()
+        s = run({"cmd": "flush"}, self.env)
+        self.assertNotIn("error", s)
+        self.assertEqual(s["outbox"], 0)
+        self.assertEqual([t["text"] for t in s["tasks"]], ["Buy oat milk"])
+        self.assertEqual([c[0] for c in self.srv.calls if c[0] in ("PUT", "GET")], ["PUT", "GET", "PUT"])
+
+    def test_deleting_what_never_left_sends_nothing(self):
+        s = self.connect()
+        acc, lst = s["accounts"][0]["id"], s["taskLists"][0]["id"]
+        self.srv.shutdown()
+        self.srv.server_close()
+        s = run({"cmd": "taskInsert", "account": acc, "listId": lst, "fields": {"text": "Oops"}}, self.env)
+        oops = next(t for t in s["tasks"] if t["text"] == "Oops")
+        s = run({"cmd": "taskDelete", "account": acc, "listId": lst, "id": oops["id"]}, self.env)
+        self.assertEqual(s["outbox"], 0)
+        self.assertFalse(any(t["text"] == "Oops" for t in s["tasks"]))
+
+
+class MicrosoftOffline(unittest.TestCase):
+    def setUp(self):
+        self.srv = FakeGraph()
+        threading.Thread(target=self.srv.serve_forever, daemon=True).start()
+        self.state = tempfile.TemporaryDirectory()
+        self.env = dict(os.environ, XDG_STATE_HOME=self.state.name)
+        self.graph = f"http://127.0.0.1:{self.srv.server_address[1]}/v1.0"
+        s = run({"cmd": "connectMicrosoft", "identity": "sam@outlook.com", "graph": self.graph, "testToken": "test-token"}, self.env)
+        self.acc = s["accounts"][0]["id"]
+        self.accounts = Path(self.state.name, "tessera/cloud/accounts.json")
+
+    def tearDown(self):
+        self.srv.shutdown()
+        self.srv.server_close()
+        self.state.cleanup()
+
+    def point(self, url):
+        a = json.loads(self.accounts.read_text())
+        a[0]["graph"] = url
+        self.accounts.write_text(json.dumps(a))
+
+    def test_new_task_then_its_change_go_in_order(self):
+        self.point(f"http://127.0.0.1:{free_port()}/v1.0")  # (nobody there: offline)
+        s = run({"cmd": "taskInsert", "account": self.acc, "listId": "l1", "fields": {"text": "Call mum", "date": "2026-11-05"}}, self.env)
+        self.assertTrue(s["offline"])
+        pending = next(t for t in s["tasks"] if t["text"] == "Call mum")
+        self.assertTrue(pending["id"].startswith("pending-"))
+        s = run({"cmd": "taskPatch", "account": self.acc, "listId": "l1", "id": pending["id"], "fields": {"done": True}}, self.env)
+        self.assertEqual(s["outbox"], 2)
+        self.point(self.graph)
+        s = run({"cmd": "sync"}, self.env)
+        self.assertNotIn("error", s)
+        self.assertEqual(s["outbox"], 0)
+        post = next(c for c in self.srv.calls if c[0] == "POST" and c[1].endswith("/tasks"))
+        patch = next(c for c in self.srv.calls if c[0] == "PATCH")
+        self.assertEqual(post[3]["title"], "Call mum")
+        self.assertEqual(patch[1], "/v1.0/me/todo/lists/l1/tasks/t2")  # (the server's id, not the pending one)
+        self.assertEqual(patch[3], {"status": "completed"})
+
+    def test_a_change_turned_away_later_is_said(self):
+        self.point(f"http://127.0.0.1:{free_port()}/v1.0")
+        s = run({"cmd": "eventPatch", "account": self.acc, "calendarId": "cal1", "id": "e2", "etag": 'W/"old"', "fields": {"title": "Christmas"}}, self.env)
+        self.assertEqual(next(e for e in s["events"] if e["id"] == "e2")["title"], "Christmas")  # (shown meanwhile)
+        self.point(self.graph)
+        s = run({"cmd": "flush"}, self.env)
+        self.assertEqual(s["outbox"], 0)
+        self.assertIn("changed on your other devices", s["dropped"][0])
+        self.assertEqual(next(e for e in s["events"] if e["id"] == "e2")["title"], "Holiday")  # (the server's again)
+
+
 if __name__ == "__main__":
     unittest.main()

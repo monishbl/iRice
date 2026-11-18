@@ -153,19 +153,21 @@ impl Hub {
                     todos::add(h, &s("text"));
                 }
             }
-            "todo.toggle" => todos::toggle(&s("key")),
+            "todo.toggle" => todos::toggle(h, &s("key")),
             "todo.rename" => {
                 if !s("text").trim().is_empty() {
-                    todos::update(&s("key"), &json!({"text": s("text").trim()}));
+                    if let Err(why) = todos::update(h, &s("key"), &json!({"text": s("text").trim()})) {
+                        notify_send("Reminders", None, None, "Task not renamed", &why);
+                    }
                 }
             }
             "todo.remove" => {
-                self.notif.undo = todos::remove(&s("key"));
+                self.notif.undo = todos::remove(h, &s("key"));
                 self.notif.undo_at = now;
             }
             "todo.restore" => {
                 if let Some(u) = self.notif.undo.take() {
-                    todos::restore(&u);
+                    todos::restore(h, &u);
                 }
             }
             // the calendar's editor (CalendarWidget.qml): new / edit, delete
@@ -173,14 +175,14 @@ impl Hub {
             "cal.save" | "cal.remove" | "cal.move" | "cal.restore" => {
                 let done = match e["act"].as_str().unwrap_or("") {
                     "cal.save" => calendar::nc_save(h, e),
-                    "cal.remove" => calendar::nc_remove(&s("key")).map(|u| {
+                    "cal.remove" => calendar::nc_remove(h, &s("key"), e["every"].as_bool().unwrap_or(false)).map(|u| {
                         self.notif.cal_undo = Some(u);
                         self.notif.cal_undo_at = now;
                     }),
-                    "cal.move" => calendar::nc_move(&s("key"), &s("day")),
+                    "cal.move" => calendar::nc_move(h, &s("key"), &s("day"), e["every"].as_bool().unwrap_or(false)),
                     _ => {
                         if let Some(u) = self.notif.cal_undo.take() {
-                            calendar::nc_restore(&u);
+                            calendar::nc_restore(h, &u);
                         }
                         Ok(())
                     }

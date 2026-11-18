@@ -281,7 +281,7 @@ mod tests {
 
     #[test]
     fn busy_days_cover_a_multi_day_event() {
-        let c = Calendar { local: vec![], sources: vec![], parsed: Default::default() };
+        let c = Calendar::default();
         assert!(busy_days(&c, 0, 1000).is_empty());
     }
 

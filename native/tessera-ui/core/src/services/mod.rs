@@ -27,9 +27,12 @@
 //!            and calls back into it (shell-ipc.sh)
 //!   calendar your events and file subscriptions (calendar::Calendar)
 //!   todos    your to-dos on this computer (todos::Todos)
+//!   accounts the accounts' events and tasks (accounts::Data), set by the
+//!            system host standalone; they ride in Calendar and Todos
 //!   weather  wttr.in's weather (weather::Weather)
 //! (The glass plugin's client, hypr::Glass, starts with the shell itself.)
 
+pub mod accounts;
 pub mod ai;
 pub mod apps;
 pub mod audio;

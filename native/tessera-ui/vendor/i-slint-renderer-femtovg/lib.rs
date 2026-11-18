@@ -68,6 +68,8 @@ pub struct FrameStats {
     pub culled: u32,
     pub layers_full: u32,
     pub layers_partial: u32,
+    /// layer textures made in it
+    pub layers_new: u32,
     /// the frame was culled to its damage
     pub partial: bool,
 }
@@ -99,7 +101,10 @@ pub(crate) fn cull_off() -> bool {
     // Hyprland 0.56, two screens) panels stopped redrawing after a change
     // (Control Center tiles, Notification Center cards) and the island
     // stuttered; arenas never showed it. TESSERA_UI_CULL=1 turns it on to test
-    *OFF.get_or_init(|| !std::env::var("TESSERA_UI_CULL").is_ok_and(|v| v == "1") || std::env::var("TESSERA_UI_NO_CULL").is_ok_and(|v| v == "1"))
+    // (on again from 18 Nov evening: every item stays watched after a culled
+    // frame, and the island's art is one picture; checked on the user's
+    // laptop. TESSERA_UI_NO_CULL=1 turns it off)
+    *OFF.get_or_init(|| std::env::var("TESSERA_UI_NO_CULL").is_ok_and(|v| v == "1"))
 }
 #[cfg(feature = "opengl")]
 pub mod opengl;
@@ -402,7 +407,7 @@ impl<B: GraphicsBackend> FemtoVGRenderer<B> {
                     collector.measure_frame_rendered(&mut item_renderer, metrics);
                 }
                 let c = item_renderer.counts;
-                (stats.drawn, stats.culled, stats.layers_full, stats.layers_partial) = (c.drawn, c.culled, c.layers_full, c.layers_partial);
+                (stats.drawn, stats.culled, stats.layers_full, stats.layers_partial, stats.layers_new) = (c.drawn, c.culled, c.layers_full, c.layers_partial, c.layers_new);
                 stats.items_ms = t_items.elapsed().as_secs_f32() * 1000.;
 
                 let t_flush = std::time::Instant::now();

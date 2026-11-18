@@ -21,15 +21,28 @@ pub fn put(name: &'static str, v: Value) {
     if let Ok(mut m) = map().lock() {
         if m.get(name) != Some(&v) {
             m.insert(name, v);
-            GEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let g = GEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+            if let Ok(mut n) = names().lock() {
+                n.insert(name, g);
+            }
         }
     }
+}
+
+fn names() -> &'static Mutex<HashMap<&'static str, u64>> {
+    static N: OnceLock<Mutex<HashMap<&'static str, u64>>> = OnceLock::new();
+    N.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
 /// Bumped by every `put` that changed something (a reader that mirrors the
 /// bus can skip a turn in which nothing changed)
 pub fn generation() -> u64 {
     GEN.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// The generation of one service's last change (0: none yet)
+pub fn generation_of(name: &str) -> u64 {
+    names().lock().ok().and_then(|n| n.get(name).copied()).unwrap_or(0)
 }
 
 /// A service's last published state (Null if none yet)

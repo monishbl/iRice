@@ -262,7 +262,7 @@ impl Google {
         self.offline = false;
         self.running = true;
         let cfgdir = tessera_core::theme::config_path().parent().map(|p| p.join("google").to_string_lossy().into_owned()).unwrap_or_default();
-        let cmd = vec!["python3".to_string(), "-I".into(), script("google-account.py"), cfgdir];
+        let cmd = fake_accounts("google").unwrap_or_else(|| vec!["python3".to_string(), "-I".into(), script("google-account.py"), cfgdir]);
         let (t1, t2) = (self.tx(), self.tx());
         let ok = self.child.spawn(&cmd, Some(format!("{}\n", request)), move |l| t1.send(M::Line(l)), move |c| t2.send(M::Exit(c)));
         if !ok {

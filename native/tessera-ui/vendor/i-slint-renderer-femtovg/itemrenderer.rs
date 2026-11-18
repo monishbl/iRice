@@ -99,7 +99,15 @@ pub struct DrawCounts {
     /// only their damaged part
     pub layers_full: u32,
     pub layers_partial: u32,
+    /// layer textures made (a layer whose size changed gets a new one)
+    pub layers_new: u32,
 }
+
+/// tessera-ui: a layer texture is reused while the layer is at most this
+/// many px smaller in each direction (create_layer_target)
+const LAYER_SLACK: u32 = 160;
+/// and a layer that changed size gets a texture rounded up to this
+const LAYER_STEP: u32 = 64;
 
 /// The bounding box of `rect` rotated by `radians` (around the origin)
 fn rotated_bbox(rect: LogicalRect, radians: f32) -> LogicalRect {
@@ -1036,19 +1044,36 @@ impl<'a, R: femtovg::Renderer + TextureImporter> LayerRenderer<'a> for GLItemRen
         // cache entry holds the only other reference, so once we return from
         // the outer `get_or_update_cache_entry` that ref is dropped.
         // (tessera-ui: and remember where it was, render_into_layer)
+        // (tessera-ui: a layer whose size changes, an island opening, reuses
+        // its texture while it still fits with at most LAYER_SLACK px to
+        // spare: a new texture every frame of a size animation cost ~1 ms
+        // each on Intel, 60 of them in a frame. A texture bigger than the
+        // layer is cleared whole and drawn whole, never in part; the
+        // margin stays clear, so blending it as before draws nothing there)
+        let fits = |t: euclid::default::Size2D<u32>| {
+            t.width >= size.width && t.height >= size.height && t.width - size.width <= LAYER_SLACK && t.height - size.height <= LAYER_SLACK
+        };
         let reused = self.layer_cache.with_entry(item_rc, |cache_entry| match cache_entry {
-            Some((origin, texture)) if texture.size() == Some(size.to_untyped()) => {
+            Some((origin, texture)) if texture.size().is_some_and(fits) => {
+                let exact = texture.size() == Some(size.to_untyped());
                 let cloned = texture.clone();
                 debug_assert_eq!(Rc::strong_count(&cloned), 2);
-                Some((*origin, cloned))
+                Some((exact.then_some(*origin), cloned))
             }
             _ => None,
         });
-        self.layer_reused_at = reused.as_ref().map(|(origin, _)| *origin);
+        self.layer_reused_at = reused.as_ref().and_then(|(origin, _)| *origin);
 
         reused.map(|(_, t)| t).or_else(|| {
             *self.metrics.layers_created.as_mut().unwrap() += 1;
-            Texture::new_empty_on_gpu(&self.canvas, size.width, size.height)
+            self.counts.layers_new += 1;
+            // (a size not seen before: room to grow, in steps of LAYER_STEP px)
+            let (w, h) = if self.layer_cache.with_entry(item_rc, |e| e.as_ref().map(|_| ())).is_some() {
+                ((size.width + LAYER_STEP).div_ceil(LAYER_STEP) * LAYER_STEP, (size.height + LAYER_STEP).div_ceil(LAYER_STEP) * LAYER_STEP)
+            } else {
+                (size.width, size.height)
+            };
+            Texture::new_empty_on_gpu(&self.canvas, w, h)
         })
     }
 
@@ -1087,7 +1112,11 @@ impl<'a, R: femtovg::Renderer + TextureImporter> LayerRenderer<'a> for GLItemRen
             scissor: bounding_rect,
             global_alpha: 1.,
             current_render_target: render_target,
-            cull: partial.flatten().map(|d| d.inflate(super::CULL_MARGIN, super::CULL_MARGIN)),
+            // (every child is drawn, the scissor below keeps the pixels to
+            // the damaged part: the layer's cache entry depends on what its
+            // drawing reads, and a child left out was then never watched, so
+            // a change to it kept the old texture: 18 Nov, the laptop)
+            cull: None,
         };
 
         {
@@ -1096,7 +1125,12 @@ impl<'a, R: femtovg::Renderer + TextureImporter> LayerRenderer<'a> for GLItemRen
             canvas.reset();
             match partial {
                 // (an empty damage: nothing in it changed on screen)
-                Some(None) => {}
+                // (its children are still walked, for the cache's tracking:
+                // nothing of them reaches the texture)
+                Some(None) => {
+                    canvas.translate(-physical_origin.x, -physical_origin.y);
+                    canvas.intersect_scissor(physical_origin.x, physical_origin.y, 0., 0.);
+                }
                 Some(Some(d)) => {
                     // the damaged part, in the texture's pixels, grown to whole ones
                     let r = (d.translate(-bounding_rect.origin.to_vector()) * self.scale_factor).round_out();

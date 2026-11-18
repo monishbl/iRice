@@ -38,6 +38,18 @@ pub fn script(name: &str) -> String {
     crate::util::script(name)
 }
 
+/// Sandbox only (TESSERA_SANDBOX=1 and TESSERA_FAKE_ACCOUNTS=<folder>): the
+/// accounts' helper is sandbox/tools/fake-accounts.py over that folder's
+/// fixtures (`which`: "google" | "cloud"), never a real account
+pub fn fake_accounts(which: &str) -> Option<Vec<String>> {
+    if !tessera_core::env::sandboxed() {
+        return None;
+    }
+    let dir = tessera_core::env::var("FAKE_ACCOUNTS").filter(|d| !d.is_empty())?;
+    let fake = crate::util::root().join("sandbox/tools/fake-accounts.py").to_string_lossy().into_owned();
+    Some(vec!["python3".into(), "-I".into(), fake, which.into(), dir])
+}
+
 /// RootHelper.pick: the helper that's there (Tessera's, else iRice's) as $h
 pub const ROOT_PICK: &str = "h=/usr/lib/tessera/tessera-root; policy=/usr/share/polkit-1/actions/org.tessera.root.policy; if [ ! -x \"$h\" ] && [ -x /usr/lib/irice/irice-root ]; then h=/usr/lib/irice/irice-root; policy=/usr/share/polkit-1/actions/org.irice.root.policy; fi; ";
 

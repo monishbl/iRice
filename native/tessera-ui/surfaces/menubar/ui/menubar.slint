@@ -345,6 +345,7 @@ export component Bar inherits Window {
     in property <image> logo-image; // the distro's logo (menuIcon "distro")
     in property <bool> has-logo-image;
     in property <bool> island-art;
+    in property <image> island-art-img;
     in property <bool> app-menu: true;
     in property <string> app-name: "Desktop";
     in property <bool> window-menu: true;
@@ -392,6 +393,12 @@ export component Bar inherits Window {
     out property <length> isl-x: island.x + island.shape-x;
     out property <length> isl-y: island.y + island.shape-y;
     out property <length> isl-w: island.shape-w;
+    // the island's size: where it's going (Island.want-*), and where its
+    // spring has it now (Rust: menubar spring.rs)
+    out property <length> isl-want-w: island.want-w;
+    out property <length> isl-want-h: island.want-h;
+    in property <length> isl-spring-w: -1px;
+    in property <length> isl-spring-h: -1px;
     out property <length> isl-h: island.shape-h;
     out property <length> isl-r: island.shape-r;
     out property <float> isl-fade: island.fade;
@@ -425,6 +432,7 @@ export component Bar inherits Window {
     in property <bool> reduce-motion;
     in property <[LevelRow]> levels;
     in property <bool> levels-open;
+    in property <float> hud-level;
     in property <bool> alerts-below;
     callback level-pick(string);
     callback level-set(string, float);
@@ -688,6 +696,8 @@ export component Bar inherits Window {
     // ── The island (taller than the bar: it opens below it)
     island := Island {
         visible: island-on;
+        spring-w: root.isl-spring-w;
+        spring-h: root.isl-spring-h;
         x: 0;
         y: content.y;
         width: root.width;
@@ -716,9 +726,11 @@ export component Bar inherits Window {
         card-on: root.card-on;
         all-mode: root.all-mode;
         island-art: root.island-art;
+        island-art-img: root.island-art-img;
         reduce-motion: root.reduce-motion;
         levels: root.levels;
         levels-open: root.levels-open;
+        hud-level: root.hud-level;
         alerts-below: root.alerts-below;
         level-pick(id) => { root.level-pick(id); }
         level-set(id, v) => { root.level-set(id, v); }

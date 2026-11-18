@@ -111,8 +111,8 @@ pub fn page(cx: &mut Ctx, p: &mut Page) {
         }
     }
 
-    // ── To-dos: where new ones go (Google Tasks or Microsoft To Do) ──
-    if connected || microsoft {
+    // ── To-dos: where new ones go (Google Tasks, Microsoft To Do, iCloud Reminders) ──
+    if connected || microsoft || !arr(&c["taskLists"]).is_empty() {
         let lists: Vec<(String, String)> = arr(&g["taskLists"]).iter().map(|l| (s(&l["account"]), s(&l["id"]))).collect();
         let mut values = vec![String::new()];
         let mut labels = vec!["This computer only".to_string()];
@@ -122,13 +122,13 @@ pub fn page(cx: &mut Ctx, p: &mut Page) {
         }
         for l in arr(&c["taskLists"]) {
             values.push(format!("cloud|{}|{}", s(&l["account"]), s(&l["id"])));
-            labels.push(format!("{} · To Do", s(&l["title"])));
+            labels.push(format!("{} · {}", s(&l["title"]), if provider_of(&s(&l["account"])) == "iCloud" { "Reminders" } else { "To Do" }));
         }
         let cur = task_value(&cx.s("google.taskListId"), &lists);
         let index = values.iter().position(|v| *v == cur).map_or(-1, |i| i as i32);
         let pick = cx.pick_values("google.taskListId", values.into_iter().map(Value::from).collect());
         p.group("To-dos")
-            .footer("Tasks from your accounts appear in To-do with your local reminders. Changes show at once and reach Google or Microsoft in the background; deleting can be undone for 8 seconds. Google Tasks has due dates but not times. If a task changes on another device before your change reaches Google, Google's version is kept and a notification shows what you had.")
+            .footer("Tasks from your accounts appear in To-do, Reminders and Today with your local ones. Changes show at once and reach your account in the background, also after you were offline; deleting can be undone for 8 seconds. Google Tasks and Microsoft To Do keep due dates but not times; iCloud Reminders keep both. If a task changes on another device before your change arrives, that version is kept and a notification says so.")
             .row(Row::new("New to-dos go to").choice(&labels, index, pick).width(260.0));
     }
 
