@@ -73,7 +73,7 @@ pub struct TesseraUpdate {
 impl Default for TesseraUpdate {
     fn default() -> Self {
         Self {
-            repo: std::env::var("TESSERA_UPDATE_REPO").or_else(|_| std::env::var("IRICE_UPDATE_REPO")).unwrap_or_default(),
+            repo: std::env::var("TESSERA_UPDATE_REPO").unwrap_or_default(),
             source_ready: false,
             pending_check: false,
             report: None,
@@ -155,7 +155,7 @@ impl TesseraUpdate {
     }
     /// Never from the dev sandbox on its own copy: it would update the developer's working tree
     pub fn allowed(&self) -> bool {
-        !helpers::env_is("SANDBOX") || std::env::var("TESSERA_UPDATE_REPO").or_else(|_| std::env::var("IRICE_UPDATE_REPO")).map(|v| !v.is_empty()).unwrap_or(false)
+        !helpers::env_is("SANDBOX") || std::env::var("TESSERA_UPDATE_REPO").map(|v| !v.is_empty()).unwrap_or(false)
     }
     pub fn available(&self) -> bool {
         self.report.as_ref().is_some_and(|r| r["available"] == true && (r["error"].is_null() || r["error"] == "" || r["error"] == false))
@@ -189,13 +189,11 @@ impl TesseraUpdate {
             t(Box::new(Ev::Source(out.trim().to_string())));
         });
         // After the restart: what the last install did, for Software Update
-        // (the update that renamed iRice to Tessera ran iRice's script, which
-        // left its result under the old name)
         let t = tx.clone();
         std::thread::spawn(move || {
             let run = std::env::var("XDG_RUNTIME_DIR").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| "/tmp".into());
             let mut found = None;
-            for name in ["tessera-update-result.json", "irice-update-result.json"] {
+            for name in ["tessera-update-result.json"] {
                 let p = format!("{run}/{name}");
                 if let Ok(s) = std::fs::read_to_string(&p) {
                     let v = serde_json::from_str::<Value>(&s).ok();
@@ -253,7 +251,8 @@ impl TesseraUpdate {
     fn look(&self, h: &Host) -> Value {
         let c = h.cfg()["appearance"]["menuIcon"].as_str().unwrap_or("tessera");
         let name = match c {
-            "tessera" | "irice" | "circle" => "circle-wavy",
+            "tessera" | "circle" => "circle-wavy",
+            v if v == tessera_core::old_names::SETTING_VALUE => "circle-wavy",
             "linux" | "distro" => "linux-logo",
             "command" => "command",
             "terminal" => "terminal-window",

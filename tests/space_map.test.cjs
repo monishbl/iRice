@@ -130,8 +130,8 @@ test("plugged back in: the new empty space Hyprland gave it is renumbered, its s
 });
 
 test("the sandbox's test output plays the built-in panel", () => {
-    assert.strictEqual(M.isBuiltin("IRICE-TEST", true), true);
-    assert.strictEqual(M.isBuiltin("IRICE-TEST", false), false);
+    assert.strictEqual(M.isBuiltin("TESSERA-TEST", true), true);
+    assert.strictEqual(M.isBuiltin("TESSERA-TEST", false), false);
     assert.strictEqual(M.isBuiltin("eDP-1", false), true);
     assert.strictEqual(M.keyOf({ name: "DP-9", description: "" }), "name:DP-9");
 });

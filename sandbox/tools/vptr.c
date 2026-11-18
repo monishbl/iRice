@@ -1,6 +1,6 @@
 // vptr: drive a virtual pointer in the sandbox compositor (wlr-virtual-pointer),
 // so tests can hover, click, drag and scroll. Coordinates are local to one
-// output (default IRICE-TEST, the headless test screen).
+// output (default TESSERA-TEST, the headless test screen).
 //
 //   vptr [-o OUTPUT] move X Y | click [left|right|middle] | down [btn] | up [btn]
 //        | scroll DY | swipe DY MS | glide X Y MS | sleep MS   (any number of commands in a row)
@@ -74,7 +74,7 @@ static uint32_t button(const char *s) {
 }
 
 int main(int argc, char **argv) {
-    const char *want = "IRICE-TEST";
+    const char *want = "TESSERA-TEST";
     int i = 1;
     if (argc > 2 && !strcmp(argv[1], "-o")) {
         want = argv[2];

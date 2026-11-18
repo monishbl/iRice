@@ -10,7 +10,7 @@ pub const STRIDE: i32 = 100;
 
 /// The laptop's own panel (in the nested sandbox, its test output plays it)
 pub fn is_builtin(name: &str, sandbox: bool) -> bool {
-    ["eDP-", "LVDS-", "DSI-"].iter().any(|p| name.starts_with(p)) || (sandbox && name == "IRICE-TEST")
+    ["eDP-", "LVDS-", "DSI-"].iter().any(|p| name.starts_with(p)) || (sandbox && name == "TESSERA-TEST")
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]

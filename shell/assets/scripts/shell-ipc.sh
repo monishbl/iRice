@@ -14,7 +14,6 @@ if [[ "${1:-}" == call ]]; then
     sock="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/tessera/ipc.sock"
     if [[ -S "$sock" ]]; then
         cfg="${XDG_CONFIG_HOME:-$HOME/.config}/tessera/config.json"
-        [[ -f "$cfg" ]] || cfg="${XDG_CONFIG_HOME:-$HOME/.config}/irice/config.json"
         if [[ "${TESSERA_STANDALONE:-}" == 1 ]] || ! python3 -I -c 'import json, sys; sys.exit(0 if json.load(open(sys.argv[1])).get("rust", {}).get("standalone") is False else 1)' "$cfg" 2>/dev/null; then
             for ui in "${TESSERA_UI:-}" "${XDG_DATA_HOME:-$HOME/.local/share}/tessera/bin/tessera-ui" "$HOME/.local/share/tessera/bin/tessera-ui" "$(command -v tessera-ui 2>/dev/null)"; do
                 [[ -n "$ui" && -x "$ui" ]] && exec "$ui" ipc "$@"
@@ -22,17 +21,14 @@ if [[ "${1:-}" == call ]]; then
         fi
     fi
 fi
-# Tessera's folder under $1, or iRice's while it hasn't been moved yet (the
-# shell moves it as it starts: migrate-names.py)
-app_dir() { if [[ ! -e "$1/tessera" && -d "$1/irice" ]]; then echo "$1/irice"; else echo "$1/tessera"; fi; }
+app_dir() { echo "$1/tessera"; }
 MATERIAL_ROOT="$(app_dir "${XDG_CACHE_HOME:-$HOME/.cache}")/material-shell"
 
 # The same Quickshell the shell runs on (Tessera's own build when there is
 # one; see launch-shell.sh): asking it over IPC needs the same version
 if [[ -z "${QS:-}" ]]; then
     QS=qs
-    # (…/irice: Tessera's folder from before it was renamed, not moved yet)
-    for d in "${XDG_DATA_HOME:-}/tessera" "$HOME/.local/share/tessera" "${XDG_DATA_HOME:-}/irice" "$HOME/.local/share/irice"; do
+    for d in "${XDG_DATA_HOME:-}/tessera" "$HOME/.local/share/tessera"; do
         if [[ -n "$d" && -x "$d/quickshell/bin/qs" && -d "$d/quickshell/lib/qt6/qml/Quickshell" ]]; then
             QS="$d/quickshell/bin/qs"
             export QML_IMPORT_PATH="$d/quickshell/lib/qt6/qml${QML_IMPORT_PATH:+:$QML_IMPORT_PATH}"

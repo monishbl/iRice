@@ -18,7 +18,7 @@ Singleton {
     id: root
 
     // (TESSERA_UPDATE_REPO: another checkout to update, for testing the updater)
-    property string repo: (Quickshell.env("TESSERA_UPDATE_REPO") || Quickshell.env("IRICE_UPDATE_REPO")) || ""
+    property string repo: Quickshell.env("TESSERA_UPDATE_REPO") || ""
     property bool sourceReady: false
     property bool pendingCheck: false
     Process {
@@ -107,8 +107,8 @@ Singleton {
     }
     // Never from the dev sandbox on its own copy: it would update the
     // developer's working tree
-    readonly property bool allowed: (Quickshell.env("TESSERA_SANDBOX") || Quickshell.env("IRICE_SANDBOX")) !== "1" || (Quickshell.env("TESSERA_UPDATE_REPO") || Quickshell.env("IRICE_UPDATE_REPO") || "") !== "" // (unset is undefined, not "")
-    readonly property bool tty: (Quickshell.env("TESSERA_TTY") || Quickshell.env("IRICE_TTY")) === "1"
+    readonly property bool allowed: Quickshell.env("TESSERA_SANDBOX") !== "1" || (Quickshell.env("TESSERA_UPDATE_REPO") || "") !== "" // (unset is undefined, not "")
+    readonly property bool tty: Quickshell.env("TESSERA_TTY") === "1"
 
     property var report: null // the helper's check result
     property bool checking: false
@@ -191,7 +191,7 @@ Singleton {
     // The menu icon (as the menu bar draws it: MenuBar.qml's system menu)
     function look() {
         const c = Config.options.appearance.menuIcon;
-        const names = { tessera: "circle-wavy", irice: "circle-wavy", linux: "linux-logo", distro: "linux-logo", command: "command", terminal: "terminal-window", cpu: "cpu", atom: "atom", planet: "planet", rocket: "rocket-launch", star: "star-four", lightning: "lightning", flame: "flame", leaf: "leaf", snowflake: "snowflake", moon: "moon-stars", cat: "cat", ghost: "ghost", alien: "alien", circle: "circle-wavy" };
+        const names = { tessera: "circle-wavy", [OldNames.settingValue]: "circle-wavy", linux: "linux-logo", distro: "linux-logo", command: "command", terminal: "terminal-window", cpu: "cpu", atom: "atom", planet: "planet", rocket: "rocket-launch", star: "star-four", lightning: "lightning", flame: "flame", leaf: "leaf", snowflake: "snowflake", moon: "moon-stars", cat: "cat", ghost: "ghost", alien: "alien", circle: "circle-wavy" };
         const image = c === "distro" && SystemInfo.osLogo !== "" ? Quickshell.iconPath(SystemInfo.osLogo, true) : "";
         return { glyph: Phosphor.glyphs[names[c] ?? "circle-wavy"] ?? "", image: image.replace("file://", "") };
     }
@@ -256,10 +256,6 @@ Singleton {
         path: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/tessera-update-result.json"
         blockLoading: false
         printErrors: false
-        // (the update that renamed iRice to Tessera ran iRice's script, which
-        // left its result under the old name)
-        onLoadFailed: if (path.endsWith("/tessera-update-result.json"))
-            path = (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/irice-update-result.json"
         onLoaded: {
             try {
                 const r = JSON.parse(text());

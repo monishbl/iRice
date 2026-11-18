@@ -40,7 +40,7 @@ else
 fi
 
 # Quickshell: Tessera's own build, or the system one
-if [[ -x "$HOME/.local/share/tessera/quickshell/bin/qs" || -x "$HOME/.local/share/irice/quickshell/bin/qs" ]]; then
+if [[ -x "$HOME/.local/share/tessera/quickshell/bin/qs" ]]; then
     ok "Quickshell (Tessera build)"
 elif command -v qs >/dev/null; then
     ok "Quickshell ($(qs --version 2>/dev/null | head -1))"
@@ -104,7 +104,7 @@ code=$?
 
 # Anything the demo started that outlived the session
 for p in $(pgrep -f "sandbox/demo-extras.sh|sandbox/tools/fakeplayer.py"); do
-    tr '\0' '\n' <"/proc/$p/environ" 2>/dev/null | grep -qx -e "TESSERA_DEMO=1" -e "IRICE_DEMO=1" && kill "$p" 2>/dev/null
+    tr '\0' '\n' <"/proc/$p/environ" 2>/dev/null | grep -qx -e "TESSERA_DEMO=1" && kill "$p" 2>/dev/null
 done
 
 echo

@@ -2,7 +2,7 @@ look material
 setup python3 -I -c "import json,os;p=os.path.expanduser('~/.config/tessera/config.json');c=json.load(open(p));c.setdefault('controlCenter',{})['layout']=[];json.dump(c,open(p,'w'),indent=4)"
 wait 2
 setup sh -c 'systemctl --user stop bluetooth 2>/dev/null; rfkill block bluetooth 2>/dev/null'
-ipc panels open controlCenter IRICE-TEST
+ipc panels open controlCenter TESSERA-TEST
 wait 1
 ptr move 1555 166 sleep 50 down sleep 1100 up
 wait 0.6

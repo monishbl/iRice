@@ -12,8 +12,9 @@
   },
   "routes": [
     { "pattern": "tessera.monishbl.in", "custom_domain": true },
-    // (the address until 17 Nov 2026: installs and links made before still
-    // fetch /get and /config from it, so it serves the same files)
+    // (the address under Tessera's old name, until 17 Nov 2026: links made
+    // before still fetch /get and /config from it, so it serves the same
+    // files. REMOVE AFTER 2027-02-01, with docs/rename-to-tessera.md's list)
     { "pattern": "irice.monishbl.in", "custom_domain": true }
   ]
 }

@@ -193,9 +193,8 @@ pub fn note_recent(recent: &mut Vec<String>, id: &str) -> bool {
 /// The shell's remembered recent apps ($XDG_STATE_HOME/tessera/state.json)
 pub fn read_recent() -> Vec<String> {
     let base = std::env::var("XDG_STATE_HOME").ok().filter(|s| !s.is_empty()).map(std::path::PathBuf::from).unwrap_or_else(|| std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".local/state"));
-    ["tessera", "irice"]
-        .iter()
-        .find_map(|d| std::fs::read_to_string(base.join(d).join("state.json")).ok())
+    std::fs::read_to_string(base.join("tessera").join("state.json"))
+        .ok()
         .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
         .and_then(|v| v["recentApps"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()))
         .unwrap_or_default()

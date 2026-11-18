@@ -33,8 +33,8 @@ Material tile. Rust: `QsTile` (surfaces/controlcenter/ui/controlcenter.slint ~82
 Arena with the user's settings: copy `tools/live-scenarios.sh`, run with
 `--arena N --only rust --bin <this worktree>/native/tessera-ui/target/release/tessera-ui`,
 both `--look material` and `--look glass`; the QML for comparison with `--only qml`.
-Open the Control Center: `ipc panels open controlCenter IRICE-TEST`; read
-rectangles from a `dev shot` first. Pointer: `dev pointer -o IRICE-TEST move|glide|click|down|up|scroll`;
+Open the Control Center: `ipc panels open controlCenter TESSERA-TEST`; read
+rectangles from a `dev shot` first. Pointer: `dev pointer -o TESSERA-TEST move|glide|click|down|up|scroll`;
 keys: `dev run wtype …`.
 
 1. Material, open CC. Click a toggle tile: on/off flips, corner rounds to 36 on; record the press: corner shrinks to ×0.7 and springs back.

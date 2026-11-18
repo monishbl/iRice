@@ -52,7 +52,7 @@ async def main():
     discovery = None
     # (TESSERA_QS_NO_MDNS=1: tests, which mustn't announce on the real network)
     try:
-        if (os.environ.get("TESSERA_QS_NO_MDNS") or os.environ.get("IRICE_QS_NO_MDNS")) == "1":
+        if os.environ.get("TESSERA_QS_NO_MDNS") == "1":
             raise ImportError
         from nearby.avahi import Avahi, AvahiUnavailable
         try:
@@ -68,13 +68,13 @@ async def main():
         pass
     # Bluetooth LE (TESSERA_QS_NO_BLE=1, and the tests' TESSERA_QS_NO_MDNS=1: off)
     ble = bus = None
-    if (os.environ.get("TESSERA_QS_NO_BLE") or os.environ.get("IRICE_QS_NO_BLE")) != "1" and (os.environ.get("TESSERA_QS_NO_MDNS") or os.environ.get("IRICE_QS_NO_MDNS")) != "1":
+    if os.environ.get("TESSERA_QS_NO_BLE") != "1" and os.environ.get("TESSERA_QS_NO_MDNS") != "1":
         try:
             from nearby.bluez import Bluetooth
             from nearby.gbus import BusUnavailable, GioBus
             try:
                 bus = GioBus(loop)
-                ble = Bluetooth(bus, scan_uuids=(os.environ.get("TESSERA_QS_BLE_SCAN") or os.environ.get("IRICE_QS_BLE_SCAN")) == "uuids")
+                ble = Bluetooth(bus, scan_uuids=os.environ.get("TESSERA_QS_BLE_SCAN") == "uuids")
                 if not await ble.start():
                     debuglog.log("daemon", "no Bluetooth adapter (yet)")
             except BusUnavailable as e:

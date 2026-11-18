@@ -106,7 +106,7 @@ fn write_models(list: &[Model], extra: &[Value]) -> Vec<Value> {
 /// A saved credential that can't come back (Ai.qml's AiKeys.clear): the keyring entry and the file's
 fn clear_credential(slot: String) {
     std::thread::spawn(move || {
-        for app in ["tessera", "irice"] {
+        for app in ["tessera", tessera_core::old_names::KEYRING_APP] {
             let _ = std::process::Command::new("secret-tool")
                 .args(["clear", "application", app, "provider", &slot])
                 .stdin(std::process::Stdio::null())

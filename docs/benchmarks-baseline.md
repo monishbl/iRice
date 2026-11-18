@@ -4,7 +4,7 @@ Measured 3 November 2026 on the real laptop (Intel Alder Lake, 16 GB), Material 
 
 | What | Processes | Resident memory | CPU (lifetime average) |
 |---|---:|---:|---:|
-| The shell (`irice-shell`, Quickshell/QML) | 1 | 462 MB | 2.7 % |
+| The shell (`tessera-shell`, Quickshell/QML) | 1 | 462 MB | 2.7 % |
 | Python helpers (Quick Share daemon, sharing, captions, etc.) | 6 | ~150 MB | ~0.1 % |
 | Watchers and monitors (bash `watch.sh` wrappers, gdbus/udevadm/pactl monitors, nmcli, adb, systemd-inhibit) | 33 | ~150 MB | ~0 % |
 | **Everything the shell runs** | **40** | **~765 MB** | |
@@ -13,7 +13,7 @@ RSS counts shared libraries in each process, so the total overstates real memory
 
 ## How to measure again
 ```
-P=<irice-shell pid in the session>
+P=<tessera-shell pid in the session>
 ps -o pid=,rss=,pcpu=,etimes=,comm= -p $P            # the shell
 # its helpers, recursively: ps --ppid, then each child's children
 ```

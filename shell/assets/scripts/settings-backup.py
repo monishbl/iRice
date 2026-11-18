@@ -52,6 +52,17 @@ LOCAL_KEYS = (("sharing", "name"), ("ai", "extraModels"))
 WALLPAPER_KEYS = ("path", "lightPath", "darkPath")
 PICTURE_EXT = (".jpg", ".jpeg", ".png", ".webp", ".jxl", ".avif", ".bmp", ".gif")
 
+def _old_names():
+    """Tessera's old name (migrate-names.py: the one place that knows it)."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("migrate_names", os.path.join(os.path.dirname(os.path.realpath(__file__)), "migrate-names.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+OLD = _old_names()
+
 
 class Refused(Exception):
     """A file or a request this won't act on; the message says how to fix it."""
@@ -338,8 +349,8 @@ def unpack(path):
         config = json.loads(members.get("config.json", b""))
     except ValueError:
         raise Refused(NOT_TESSERA)
-    # ("iRice": made before iRice became Tessera, the same settings)
-    if not isinstance(manifest, dict) or manifest.get("app") not in ("Tessera", "iRice") or not isinstance(config, dict):
+    # (or made under the old name: the same settings)
+    if not isinstance(manifest, dict) or manifest.get("app") not in ("Tessera", OLD.OLD_BACKUP_APP) or not isinstance(config, dict):
         raise Refused(NOT_TESSERA)
     if not isinstance(manifest.get("format"), int) or manifest["format"] > FORMAT:
         raise Refused("That file was made by a newer Tessera. Update Tessera (Settings → Software Update), then try again.")

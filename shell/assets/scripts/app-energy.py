@@ -24,10 +24,8 @@ import time
 
 
 def app_dir(base):
-    """Tessera's folder under base, or iRice's while it hasn't been moved yet
-    (the shell moves it as it starts: migrate-names.py)."""
-    new, old = os.path.join(base, "tessera"), os.path.join(base, "irice")
-    return old if not os.path.exists(new) and os.path.isdir(old) else new
+    """Tessera's folder under base."""
+    return os.path.join(base, "tessera")
 
 HOUR = 3600
 TICK = os.sysconf("SC_CLK_TCK")

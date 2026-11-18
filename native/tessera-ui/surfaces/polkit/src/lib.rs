@@ -8,7 +8,7 @@
 //!   The polkit agent on the SYSTEM bus (agent.rs: register with polkit's
 //!     Authority for this session, polkit's own helper for the
 //!     conversation): only when real: not `--demo` (nor TESSERA_UI_DEMO=1)
-//!     and not a sandbox (TESSERA_SANDBOX / IRICE_SANDBOX ≠ 1), and only
+//!     and not a sandbox (TESSERA_SANDBOX ≠ 1), and only
 //!     for the session's shell: `--standalone`, or started by the QML shell
 //!     naming "polkit" in `--surfaces` (stdin its pipe: tessera-ui run by
 //!     hand never registers). Polkit.qml

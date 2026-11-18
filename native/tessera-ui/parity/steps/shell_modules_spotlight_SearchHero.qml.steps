@@ -1,7 +1,7 @@
 look material
 # NOTE: click on layer surfaces may not register in the harness
 # NOTE: earlier result: Material tertiary/primary container palette differed (Rust peach vs QML light yellow); fixed? report if still different.
-ipc panels open spotlight IRICE-TEST
+ipc panels open spotlight TESSERA-TEST
 wait 1
 key 9*9
 wait 1
@@ -25,7 +25,7 @@ ptr move 1272 328 up
 wait 1
 shot sh-go-copied
 note Release copies 81 and closes Search.
-ipc panels open spotlight IRICE-TEST
+ipc panels open spotlight TESSERA-TEST
 wait 1
 key foot
 wait 1

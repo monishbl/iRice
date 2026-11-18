@@ -12,15 +12,15 @@
 #   keys <name> <n>                 record while pressing Down n times (1.3 s apart)
 #   run '<shell>'                   anything in the arena (P = pointer, key = wtype, ipc)
 #   log | down
-# Coordinates are IRICE-TEST's (1920x1080 at scale 1).
+# Coordinates are TESSERA-TEST's (1920x1080 at scale 1).
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-export IRICE_ARENA=${ARENA:-${IRICE_ARENA:-8}}
+export TESSERA_ARENA=${ARENA:-${TESSERA_ARENA:-8}}
 . "$ROOT/site/film/tessera/capture/lib.sh"
-OUT=${OUT:-$HOME/tessera-verify/settings-a$IRICE_ARENA}; mkdir -p "$OUT"
+OUT=${OUT:-$HOME/tessera-verify/settings-a$TESSERA_ARENA}; mkdir -p "$OUT"
 CFG="$HOMEDIR/.config/tessera/config.json"
-USERCFG=${USERCFG:-$HOME/iRice/.sandbox/home/.config/tessera/config.json}
-LOG=/tmp/tessera-ui-a$IRICE_ARENA.log
+USERCFG=${USERCFG:-$HOME/tessera/.sandbox/home/.config/tessera/config.json}
+LOG=/tmp/tessera-ui-a$TESSERA_ARENA.log
 step=${1:-help}; shift || true
 case $step in
 setup)
@@ -32,8 +32,8 @@ setup)
     chmod +x "$HOMEDIR/.local/share/tessera/bin/tessera-ui"
     dev hyprctl eval 'hl.monitor({ output = "WAYLAND-1", disabled = true })' >/dev/null 2>&1
     dev reload </dev/null >/dev/null 2>&1; sleep 16
-    dev hyprctl eval 'hl.monitor({ output = "IRICE-TEST", mode = "1920x1080@60", position = "20000x20000", scale = 1 })' >/dev/null 2>&1
-    dev hyprctl dispatch 'hl.dsp.focus({ monitor = "IRICE-TEST" })' >/dev/null 2>&1
+    dev hyprctl eval 'hl.monitor({ output = "TESSERA-TEST", mode = "1920x1080@60", position = "20000x20000", scale = 1 })' >/dev/null 2>&1
+    dev hyprctl dispatch 'hl.dsp.focus({ monitor = "TESSERA-TEST" })' >/dev/null 2>&1
     inbox 'ipc lock unlock; ipc panels close; ipc island dismissNewest' </dev/null >/dev/null 2>&1; sleep 2
     inbox 'ipc panels settings appearance' </dev/null >/dev/null 2>&1; sleep 3
     # (where the window is: the clicks below assume it centred, 440,205 for Material's 1040x700)

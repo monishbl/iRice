@@ -87,8 +87,8 @@ pub fn runtime_dir() -> std::path::PathBuf {
     std::env::var_os("XDG_RUNTIME_DIR").filter(|v| !v.is_empty()).map(Into::into).unwrap_or_else(|| format!("/run/user/{}", unsafe { libc::getuid() }).into())
 }
 
-/// ~/.config/tessera-or-irice style state dir for files the QML keeps under
-/// ~/.local/state/<name> (callers pass the same leaf the QML used)
+/// $XDG_STATE_HOME, for files the QML keeps under ~/.local/state/<name>
+/// (callers pass the same leaf the QML used)
 pub fn state_dir() -> std::path::PathBuf {
     tessera_core::util::xdg("XDG_STATE_HOME", ".local/state")
 }

@@ -182,12 +182,9 @@ pub fn notify_live(app: &str, icon: &str, urgency: &str, live: &Live, title: &st
     });
 }
 
-/// $XDG_STATE_HOME/tessera, as shell/common/Paths.qml's `state` (iRice's
-/// folder while only that one has settings: the shell hasn't moved them yet)
+/// $XDG_STATE_HOME/tessera, as shell/common/Paths.qml's `state`
 pub fn state_dir() -> PathBuf {
-    let base = xdg("XDG_STATE_HOME", ".local/state");
-    let old = crate::theme::config_path().parent().and_then(|p| p.file_name()).is_some_and(|n| n == "irice");
-    base.join(if old { "irice" } else { "tessera" })
+    xdg("XDG_STATE_HOME", ".local/state").join("tessera")
 }
 
 /// Write a file whole (a temporary file renamed over it), so a reader never

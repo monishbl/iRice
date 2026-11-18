@@ -34,8 +34,7 @@ class GlassSync : public QQuickItem {
     Q_PROPERTY(bool active READ active WRITE setActive NOTIFY activeChanged)
     // Plugin version: 2+ takes gloss (a 19th number per shape)
     Q_PROPERTY(int version READ version WRITE setVersion NOTIFY versionChanged)
-    // The name the loaded plugin answers to (services/GlassPlugin.qml: a
-    // plugin built before iRice became Tessera knows only irice-glass)
+    // The name the loaded plugin answers to (services/GlassPlugin.qml)
     Q_PROPERTY(QString plugin READ plugin WRITE setPlugin NOTIFY pluginChanged)
     // Requests sent so far (diagnostics)
     Q_PROPERTY(int sent READ sent NOTIFY sentChanged)

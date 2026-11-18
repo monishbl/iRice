@@ -1,19 +1,19 @@
 # Screen toolbar. Dock on with 48 px icons assumed: bar y 934..998 (centre 966), all tools about 1041 wide at x about 440. Check in each look.
 # Tool centres x: 504 Capture Screen, 612, 741 Copy Text, 849, 957, 1086 Record Screen, 1194, 1302, Options about 1424.
 wait 3
-rec tb-first 1 ipc panels open screenTools IRICE-TEST
+rec tb-first 1 ipc panels open screenTools TESSERA-TEST
 note First frame with the bar: Rust no later than QML (+-1 frame).
 wait 1
 rec tb-close0 0.5 key -k Escape
 note Escape closes the toolbar.
 wait 1
-rec tb-open 1 ipc panels open screenTools IRICE-TEST
+rec tb-open 1 ipc panels open screenTools TESSERA-TEST
 note The bar rises 12 px and fades in over 220 ms; compare the frame strip with QML.
 wait 1
 rec tb-close 0.5 key -k Escape
 note Exit takes 220 ms (frame strip vs QML).
 wait 1
-ipc panels open screenTools IRICE-TEST
+ipc panels open screenTools TESSERA-TEST
 wait 1
 ptr glide 741 966 300
 wait 1

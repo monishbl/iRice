@@ -297,8 +297,7 @@ pub fn focus_workspace(id: i32) {
 
 // ── the glass plugin ────────────────────────────────────────────────────────
 
-/// The plugin's command: `tessera-glass`, or `irice-glass` from a plugin built
-/// before the rename (which knows only that name); set once it answers
+/// The plugin's command (`tessera-glass`), set once it answers
 static GLASS_CMD: std::sync::OnceLock<&'static str> = std::sync::OnceLock::new();
 fn glass_cmd() -> &'static str {
     GLASS_CMD.get().copied().unwrap_or("tessera-glass")
@@ -326,7 +325,7 @@ fn version_of(answer: &str) -> i64 {
 
 /// Which name the plugin answers to, if any (its `ping` replies with its name)
 pub fn find_plugin(ask: impl Fn(&str) -> Option<String>) -> Option<&'static str> {
-    ["tessera-glass", "irice-glass"].into_iter().find(|n| ask(&format!("{n} ping")).is_some_and(|a| a.starts_with(n)))
+    ["tessera-glass"].into_iter().find(|n| ask(&format!("{n} ping")).is_some_and(|a| a.starts_with(n)))
 }
 
 /// Sends glass shapes to the plugin: the newest per surface wins, several go
@@ -586,10 +585,7 @@ mod tests {
 
     #[test]
     fn finds_the_plugin_by_either_name() {
-        // Tessera's plugin answers to both names
         assert_eq!(find_plugin(|c| c.starts_with("tessera-glass").then(|| "tessera-glass 5".into())), Some("tessera-glass"));
-        // one built before the rename knows only irice-glass
-        assert_eq!(find_plugin(|c| c.starts_with("irice-glass").then(|| "irice-glass 5".into())), Some("irice-glass"));
         // Hyprland without the plugin answers an unknown command with an error
         assert_eq!(find_plugin(|_| Some("unknown request".into())), None);
         assert_eq!(find_plugin(|_| None), None);

@@ -104,10 +104,10 @@ pub fn target(zone: &str, m: &Monitor, cfg: &Value) -> Option<Rect> {
 }
 
 /// One of the glass plugin's drag lines: `tessera-drag>>zone,MON,ZONE,ADDR`
-/// (or `drop`, or irice-drag from a plugin built before the rename):
+/// (or `drop`):
 /// (kind, monitor, zone)
 pub fn drag_event(line: &str) -> Option<(String, String, String)> {
-    let data = line.strip_prefix("tessera-drag>>").or_else(|| line.strip_prefix("irice-drag>>"))?;
+    let data = line.strip_prefix("tessera-drag>>")?;
     let mut f = data.trim_end().split(',');
     Some((f.next()?.to_string(), f.next().unwrap_or("").to_string(), f.next().unwrap_or("none").to_string()))
 }
@@ -145,7 +145,6 @@ mod tests {
     #[test]
     fn reads_the_plugins_lines() {
         assert_eq!(drag_event("tessera-drag>>zone,DP-1,left,0x55\n"), Some(("zone".into(), "DP-1".into(), "left".into())));
-        assert_eq!(drag_event("irice-drag>>drop,DP-1,none,0x55"), Some(("drop".into(), "DP-1".into(), "none".into())));
         assert_eq!(drag_event("openwindow>>55,1,foot,foot"), None);
         let m: Vec<Monitor> = serde_json::from_str(r#"[{"name":"DP-1","x":0,"y":0,"width":1920,"height":1080,"scale":1.0,"reserved":[0,32,0,0],"focused":true}]"#).unwrap();
         assert_eq!(m[0].reserved, [0, 32, 0, 0]);

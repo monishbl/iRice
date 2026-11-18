@@ -11,10 +11,10 @@
 # pointed at a mock).
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-export IRICE_ARENA=9
+export TESSERA_ARENA=9
 . "$HERE/../../site/film/tessera/capture/lib.sh"
 # (the film's photos stay in the main checkout: not in git)
-[[ -f $WALLS/wall-alpine-lake.jpg ]] || WALLS=/home/user/Projects/Personal/iRice/site/film/tessera/capture/seed/photos
+[[ -f $WALLS/wall-alpine-lake.jpg ]] || WALLS="$(git -C "$(dirname "$0")" rev-parse --path-format=absolute --git-common-dir | xargs dirname)/site/film/tessera/capture/seed/photos"
 look=$1 which=$2 wall=${3:-$WALLS/wall-alpine-lake.jpg}
 OUT="$HERE/review/sidebar"
 PORT=47391
@@ -36,7 +36,7 @@ chmod +x "$BIN"
 
 # Settings for a take (the shell reads config.json live)
 cfg() {
-    python3 -I - "$HOMEDIR/.config/irice/config.json" "$which" "$1" $PORT <<'EOF'
+    python3 -I - "$HOMEDIR/.config/tessera/config.json" "$which" "$1" $PORT <<'EOF'
 import json, sys
 path, which, model, port = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 def m(id, name, endpoint, auth):
@@ -67,7 +67,7 @@ new_chat() { inbox 'key "/new"; key -k Return'; sleep 1; }
 
 cfg atlas
 sleep 6
-open_sb() { inbox "ipc panels tab ${1:-0}; ipc panels open sidebar IRICE-TEST"; sleep 2; }
+open_sb() { inbox "ipc panels tab ${1:-0}; ipc panels open sidebar TESSERA-TEST"; sleep 2; }
 close_sb() { inbox 'ipc panels close'; sleep 1.5; }
 
 open_sb 0
@@ -129,7 +129,7 @@ fi
 
 # (this arena's tessera-ui: its log, then off again)
 inbox 'tail -n 15 $XDG_RUNTIME_DIR/quickshell.log 2>/dev/null | grep -i tessera-ui'
-python3 -I - "$HOMEDIR/.config/irice/config.json" <<'EOF'
+python3 -I - "$HOMEDIR/.config/tessera/config.json" <<'EOF'
 import json, sys
 c = json.load(open(sys.argv[1])); c.setdefault("rust", {})["surfaces"] = []
 json.dump(c, open(sys.argv[1], "w"), indent=4)

@@ -56,7 +56,7 @@ ShellRoot {
     // Don't restart the whole shell whenever a file in its folder changes
     // (a session running straight from the repo would reload on every edit);
     // reload by hand instead (tessera repair). TESSERA_LIVE_RELOAD=1 turns it on.
-    settings.watchFiles: (Quickshell.env("TESSERA_LIVE_RELOAD") || Quickshell.env("IRICE_LIVE_RELOAD")) === "1"
+    settings.watchFiles: Quickshell.env("TESSERA_LIVE_RELOAD") === "1"
 
     // Escape hatch (Super+Escape): close every panel, overlay and selection,
     // in case something is stuck holding the keyboard or pointer
@@ -356,7 +356,7 @@ ShellRoot {
     }
 
     LazyLoader {
-        active: (Quickshell.env("TESSERA_LAB") || Quickshell.env("IRICE_LAB")) === "1"
+        active: Quickshell.env("TESSERA_LAB") === "1"
         component: GlassLab {}
     }
 }

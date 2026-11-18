@@ -1,5 +1,5 @@
 # EmojiSlots: reopen latency. Panel centred x 750..1170, y 326..754.
-ipc panels open emoji IRICE-TEST
+ipc panels open emoji TESSERA-TEST
 wait 1
 key -k Escape
 wait 60

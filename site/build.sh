@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds the site's downloadable settings package from your current iRice
+# Builds the site's downloadable settings package from your current Tessera
 # settings (the ones ./dev.sh tty uses): settings and look only, no personal
 # data, keys, widget layout or wallpapers (the macOS ones are Apple's).
 #   site/build.sh [config.json]    then: npx wrangler deploy --config site/wrangler.jsonc
@@ -8,12 +8,12 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # Your settings when there are any here (and the cleaned copy is kept in
 # site/package/config.json, which is what GitHub's deploy builds from)
 SAVED="$HERE/package/config.json"
-SRC="${1:-$HERE/../.sandbox/home/.config/irice/config.json}"
+SRC="${1:-$HERE/../.sandbox/home/.config/tessera/config.json}"
 [[ -f "$SRC" ]] || SRC="$SAVED"
 OUT="$HERE/public/config"
 work=$(mktemp -d)
-mkdir -p "$work/irice-config" "$OUT"
-python3 - "$SRC" "$work/irice-config/config.json" <<'PY'
+mkdir -p "$work/tessera-config" "$OUT"
+python3 - "$SRC" "$work/tessera-config/config.json" <<'PY'
 import json, sys
 d = json.load(open(sys.argv[1]))
 d.get("desktop", {}).pop("widgets", None)
@@ -31,9 +31,9 @@ json.dump(d, open(sys.argv[2], "w"), indent=2)
 text = json.dumps(d)
 assert "/home/" not in text, "a home path slipped into the shared settings"
 PY
-[[ "$SRC" == "$SAVED" ]] || cp "$work/irice-config/config.json" "$SAVED"
-cp "$HERE/package/import.sh" "$HERE/package/README.txt" "$work/irice-config/"
-chmod +x "$work/irice-config/import.sh"
-tar czf "$OUT/irice-config.tar.gz" -C "$work" irice-config
+[[ "$SRC" == "$SAVED" ]] || cp "$work/tessera-config/config.json" "$SAVED"
+cp "$HERE/package/import.sh" "$HERE/package/README.txt" "$work/tessera-config/"
+chmod +x "$work/tessera-config/import.sh"
+tar czf "$OUT/tessera-config.tar.gz" -C "$work" tessera-config
 rm -rf "$work"
-echo "Built $OUT/irice-config.tar.gz"
+echo "Built $OUT/tessera-config.tar.gz"

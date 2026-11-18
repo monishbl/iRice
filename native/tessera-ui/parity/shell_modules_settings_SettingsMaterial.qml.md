@@ -61,7 +61,7 @@ M2 Cookie: Settings open on Appearance, pointer parked off the window, record 3 
 copy it out with `dev run cat`). PASS: the cookie turns about 45° in 3 s
 (24 s a round) in both; Rust changes ≤ 13 times a second. Then send SIGUSR1 to
 the arena's tessera-ui (its PID from `pgrep -x tessera-ui.real` whose
-/proc/PID/environ has XDG_RUNTIME_DIR=/tmp/irice-rt-N; `kill -USR1 PID` twice,
+/proc/PID/environ has XDG_RUNTIME_DIR=/tmp/tessera-rt-N; `kill -USR1 PID` twice,
 3 s apart, idle) and read the log line `stats {"surface":"settings","frames":…}`:
 PASS ≤ 45 frames in 3 s (was ~180).
 

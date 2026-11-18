@@ -18,7 +18,7 @@
 
 ## Test plan
 
-### Geometry (the user's settings, 1920x1080 IRICE-TEST, scale 1, no windows open)
+### Geometry (the user's settings, 1920x1080 TESSERA-TEST, scale 1, no windows open)
 Items: Apps button | Downloads, Trash (pinned is empty; the divider before Downloads).
 - Glass (icon 48, gap 9, pad 12, bar 72, bottom gap 6, magnification ×1.6): pill x 857..1063, y 1002..1074; icon centres x Apps 894, Downloads 970, Trash 1027; y 1038. Hover band y 961..1074.
 - Material (icon 48, pad 8, gap 9, bar 64, bottom gap 16): pill x 861..1059, y 1000..1064; icon centres x 894, 970, 1027; y 1032.
@@ -31,5 +31,5 @@ Use `P glide` (not jumps) so hover enters/leaves. Record with wf-recorder at 60 
 4. Keys: open the Trash menu, Down/Down/Up moves the highlight skipping the separator; Return chooses.
 5. App menu: with foot running, right-click foot → "New Window / — / Keep in Dock / — / Quit". Keep in Dock → config dock.pinned gains "foot". Quit → foot windows close.
 6. A left click anywhere outside closes the menu; a right click outside also closes it.
-7. Opening a panel while the menu is open (`ipc panels open controlCenter IRICE-TEST`) closes the menu.
+7. Opening a panel while the menu is open (`ipc panels open controlCenter TESSERA-TEST`) closes the menu.
 8. **Trash state (batch-1 failure)**: in the arena home `mkdir -p ~/.local/share/Trash/files && echo x > ~/.local/share/Trash/files/a.txt` (both shells read this). Both: the full-trash icon and "Empty Trash…" red/enabled, confirm reads "Delete 1 item for good". Remove the folder entirely: Rust empty/greyed; the QML may show "full" counting its working folder (Qt's FolderListModel fallback): note it, not a Rust failure.

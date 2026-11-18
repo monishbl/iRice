@@ -39,7 +39,7 @@ level (core `services::audio` / `services::brightness`) and hushes the OSD.
 ## Tester plan
 
 Arena with the user's settings, Glass: `tools/live-scenarios.sh --arena N --look glass --only rust --bin <worktree>/native/tessera-ui/target/release/tessera-ui`
-(copy it; add the steps). Open the Control Center: `ipc panels open controlCenter IRICE-TEST`.
+(copy it; add the steps). Open the Control Center: `ipc panels open controlCenter TESSERA-TEST`.
 Find the Sound slider (default layout: the row under the toggles; take a
 `dev shot` and read its rectangle). Volume readings: `dev run wpctl get-volume @DEFAULT_AUDIO_SINK@`.
 

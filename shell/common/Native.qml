@@ -10,11 +10,10 @@ Singleton {
 
     // Tessera.Native's GlassSync: glass kept in step from C++ (glass/GlassWindow.qml)
     property bool glassSync: false
-    // Which module: Tessera.Native, or IRice.Native when it was built before
-    // Tessera was called iRice (until shell/native/build.sh runs again)
+    // Which module: Tessera.Native, when it's built
     property string module: ""
     Component.onCompleted: {
-        for (const m of ["Tessera.Native", "IRice.Native"]) {
+        for (const m of ["Tessera.Native"]) {
             try {
                 const probe = Qt.createQmlObject("import " + m + "\nGlassSync {}", root, "native-probe");
                 probe.destroy();

@@ -8,5 +8,5 @@ Spotlight.qml only picks the look's drawing: SpotlightGlass (Glass) or SearchVie
 | 2 | Opening draws at once | — (PanelLoader builds it on first open) | the window is now made 1.5 s after start (`M::Prepare`) and kept | better than QML (was made on the first open) |
 
 ## Test plan (tester)
-1. Both looks: `inbox 'ipc panels open spotlight IRICE-TEST'` → Glass: the floating glass field; Material: the 56 px pill in the docked view. Switch look and reopen: the other drawing.
-2. Right after `dev reload` + 3 s: `rec sp-first 1 "ipc panels open spotlight IRICE-TEST"` — first moving frame no later than on a second open, and no later than QML's (`anim-timing.py`).
+1. Both looks: `inbox 'ipc panels open spotlight TESSERA-TEST'` → Glass: the floating glass field; Material: the 56 px pill in the docked view. Switch look and reopen: the other drawing.
+2. Right after `dev reload` + 3 s: `rec sp-first 1 "ipc panels open spotlight TESSERA-TEST"` — first moving frame no later than on a second open, and no later than QML's (`anim-timing.py`).

@@ -568,16 +568,16 @@ impl Service for Input {
     fn start(&mut self, h: &mut Host) {
         self.home = crate::util::home().to_string_lossy().into_owned();
         // $MOD is Super, except in the nested sandbox (Alt)
-        self.km.mod_key = if tessera_core::env::sandboxed() && std::env::var("TESSERA_TTY").or_else(|_| std::env::var("IRICE_TTY")).as_deref() != Ok("1") { "ALT".into() } else { "SUPER".into() };
+        self.km.mod_key = if tessera_core::env::sandboxed() && std::env::var("TESSERA_TTY").as_deref() != Ok("1") { "ALT".into() } else { "SUPER".into() };
         self.user_path = tessera_core::theme::config_path().with_file_name("keybinds.json");
         // The hypr data: $TESSERA_ROOT/hypr/tessera; else the repo next to the
         // shell when keymap.json is there; else the installed copy
-        let env_root = std::env::var("TESSERA_ROOT").or_else(|_| std::env::var("IRICE_ROOT")).ok().filter(|r| !r.is_empty());
+        let env_root = std::env::var("TESSERA_ROOT").ok().filter(|r| !r.is_empty());
         let cfg_home = std::env::var("XDG_CONFIG_HOME").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| format!("{}/.config", self.home));
         self.hypr_dir = match env_root {
             Some(r) => format!("{r}/hypr/tessera"),
             None => {
-                let cands = [crate::util::root().join("hypr/tessera").to_string_lossy().into_owned(), format!("{cfg_home}/hypr/tessera"), format!("{cfg_home}/hypr/irice")];
+                let cands = [crate::util::root().join("hypr/tessera").to_string_lossy().into_owned(), format!("{cfg_home}/hypr/tessera")];
                 cands.iter().find(|d| std::path::Path::new(d).join("keymap.json").is_file()).cloned().unwrap_or_else(|| cands[1].clone())
             }
         };

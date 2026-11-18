@@ -14,7 +14,7 @@
 | 10 | Results reach the view without remaking every row | (QML ListView over a new JS array remakes its delegates) | **was** a new model on every keystroke; now one `Rows` set by position | **fixed** (better than QML) |
 
 ## Test plan (tester)
-Both looks; `inbox 'ipc panels open spotlight IRICE-TEST'`.
+Both looks; `inbox 'ipc panels open spotlight TESSERA-TEST'`.
 1. `rec sp-type 1 "wtype fir"` → results within one frame of the last key; first changed frame after the last key: Rust not later than QML. Selection on row 0.
 2. `wtype -k Down -k Down` → row 2; `-k Up` ×5 → row 0 (no wrap); `-k Tab` repeatedly → wraps to 0 after the last.
 3. Type `2+2` → answer "4" first; `-k Return` → `wl-paste` gives 4, Search closed.

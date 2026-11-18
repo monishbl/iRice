@@ -114,10 +114,10 @@ fn tty() -> bool {
     helpers::env_is("TTY")
 }
 
-fn lock_marks() -> (String, String) {
+fn lock_mark() -> String {
     let run = std::env::var("XDG_RUNTIME_DIR").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| "/tmp".into());
     let sig = std::env::var("HYPRLAND_INSTANCE_SIGNATURE").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| "none".into());
-    (format!("{run}/tessera-locked-{sig}"), format!("{run}/irice-locked-{sig}"))
+    format!("{run}/tessera-locked-{sig}")
 }
 
 fn gap_levels(name: &str) -> (i64, i64) {
@@ -244,11 +244,11 @@ impl System {
         }
         // remembered for this Hyprland session, so a shell that restarts while
         // the screen is locked locks again straight away
-        let (mark, old) = lock_marks();
+        let mark = lock_mark();
         if on {
             tessera_core::services::bridge::run(&["touch", &mark]);
         } else {
-            tessera_core::services::bridge::run(&["rm", "-f", &mark, &old]);
+            tessera_core::services::bridge::run(&["rm", "-f", &mark]);
         }
         // (the lock screen follows System.locked)
         h.ask("lock.set", json!([on]));
@@ -455,8 +455,8 @@ impl Service for System {
             }
         }
         // A shell that restarts while the screen is locked locks again
-        let (mark, old) = lock_marks();
-        if std::path::Path::new(&mark).exists() || std::path::Path::new(&old).exists() {
+        let mark = lock_mark();
+        if std::path::Path::new(&mark).exists() {
             self.locked = true;
             h.ask("lock.set", json!([true]));
         }

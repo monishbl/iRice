@@ -8,7 +8,7 @@ use std::process::{Command, Stdio};
 
 // ── Paths.qml ───────────────────────────────────────────────────────────────
 
-/// $XDG_CONFIG_HOME/tessera (Tessera's settings folder; iRice's while only that one has them)
+/// $XDG_CONFIG_HOME/tessera (Tessera's settings folder)
 pub fn config_dir() -> PathBuf {
     tessera_core::theme::config_path().parent().map(Path::to_path_buf).unwrap_or_default()
 }
@@ -25,9 +25,7 @@ pub fn cache_dir() -> PathBuf {
 
 /// $XDG_DATA_HOME/tessera
 pub fn data_dir() -> PathBuf {
-    let base = tessera_core::util::xdg("XDG_DATA_HOME", ".local/share");
-    let old = config_dir().file_name().is_some_and(|n| n == "irice");
-    base.join(if old { "irice" } else { "tessera" })
+    tessera_core::util::xdg("XDG_DATA_HOME", ".local/share").join("tessera")
 }
 
 pub fn home() -> PathBuf {
@@ -106,13 +104,13 @@ pub fn upgrade_config() {
     if !cfg.is_object() {
         return;
     }
-    // Config.qml's onLoaded, on every load: names from before (iRice's, the
-    // badge's own "circle"), and the display switch cue from before it had
-    // styles (Empty: from dimOthers)
-    if ["irice", "circle"].contains(&cfg_str(&cfg, "appearance.menuIcon", "")) {
+    // Config.qml's onLoaded, on every load: names from before (the old
+    // name's, the badge's own "circle"), and the display switch cue from
+    // before it had styles (Empty: from dimOthers)
+    if [tessera_core::old_names::SETTING_VALUE, "circle"].contains(&cfg_str(&cfg, "appearance.menuIcon", "")) {
         set_config("appearance.menuIcon", json!("tessera"));
     }
-    if cfg_str(&cfg, "screenshot.editor", "") == "irice" {
+    if cfg_str(&cfg, "screenshot.editor", "") == tessera_core::old_names::SETTING_VALUE {
         set_config("screenshot.editor", json!("tessera"));
     }
     if cfg["workspaces"]["switchCue"].as_str() == Some("") {
@@ -206,7 +204,7 @@ fn scrub() -> Vec<String> {
         return Vec::new();
     }
     let mut v = vec!["env".to_string()];
-    for k in ["XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME", "TESSERA_SANDBOX", "TESSERA_ROOT", "TESSERA_TTY", "IRICE_SANDBOX", "IRICE_ROOT", "IRICE_TTY", "QML_IMPORT_PATH", "QML2_IMPORT_PATH"] {
+    for k in ["XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME", "TESSERA_SANDBOX", "TESSERA_ROOT", "TESSERA_TTY", "QML_IMPORT_PATH", "QML2_IMPORT_PATH"] {
         v.push("-u".into());
         v.push(k.into());
     }

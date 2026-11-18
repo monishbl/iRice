@@ -77,7 +77,7 @@ impl Sharing {
         // (100: no systemd user manager. A unit left over, restarting or
         // stopping, is cleared first: one copy only)
         let cmd = crate::proc::s(&["sh", "-c", "systemctl --user show-environment >/dev/null 2>&1 || exit 100; \
-            systemctl --user stop \"$1\" irice-airplay 2>/dev/null; systemctl --user reset-failed \"$1\" 2>/dev/null; \
+            systemctl --user stop \"$1\" 2>/dev/null; systemctl --user reset-failed \"$1\" 2>/dev/null; \
             exec systemd-run --user --quiet --collect --unit=\"$1\" -p Restart=on-failure -p RestartSec=5 pipewire -c \"$2\"", "sh", UNIT, &conf]);
         self.run(h, Job::AirStart, &cmd, None);
     }
@@ -113,8 +113,7 @@ impl Sharing {
     }
     fn air_stop(&mut self) {
         self.air.child.signal(libc::SIGTERM);
-        // (irice-airplay: its unit when it was started before iRice became Tessera)
-        crate::proc::detach(&["systemctl", "--user", "stop", UNIT, "irice-airplay"]);
+        crate::proc::detach(&["systemctl", "--user", "stop", UNIT]);
         self.air.running = false;
     }
     /// pipewire-zeroconf, through Software Update's job

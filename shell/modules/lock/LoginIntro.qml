@@ -133,7 +133,7 @@ Scope {
     }
     // Everything moves by `t` alone, so it can be slowed as a whole
     // (TESSERA_INTRO_PACE=10: a tenth of the speed, to record it frame by frame)
-    readonly property real pace: Math.max(1, Number((Quickshell.env("TESSERA_INTRO_PACE") || Quickshell.env("IRICE_INTRO_PACE"))) || 1)
+    readonly property real pace: Math.max(1, Number(Quickshell.env("TESSERA_INTRO_PACE")) || 1)
     NumberAnimation {
         id: clock
         target: root

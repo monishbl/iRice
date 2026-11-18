@@ -1,13 +1,13 @@
 look material
 # View x600..1320 top y216; bar centre (960,244); Clear ~(1236,244), Ask ~(1280,244); results from y~280.
 # NOTE: click on layer surfaces may not register in the harness
-rec sp-m-open 1 ipc panels open spotlight IRICE-TEST
+rec sp-m-open 1 ipc panels open spotlight TESSERA-TEST
 note Track the view's top edge/width: QML and Rust settle in about 0.3 s with overshoot at most 2 percent (before Rust bounced visibly to 0.45 s). Rust first moving frame earlier than QML earlier.
 wait 1
 rec sp-m-close 0.6 key -k Escape
 note Escape closes in about 154 ms.
 wait 1
-ipc panels open spotlight IRICE-TEST
+ipc panels open spotlight TESSERA-TEST
 wait 1
 rec sp-m-grow 1 key f
 note View springs to the list's height in about 0.3 s; height curve QML vs Rust within 1 frame.

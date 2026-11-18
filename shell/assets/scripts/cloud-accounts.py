@@ -61,11 +61,19 @@ from datetime import datetime, timedelta, timezone
 
 
 def app_dir(base):
-    """Tessera's folder under base, or iRice's while it hasn't been moved yet
-    (the shell moves it as it starts: migrate-names.py)."""
-    new, old = os.path.join(base, "tessera"), os.path.join(base, "irice")
-    return old if not os.path.exists(new) and os.path.isdir(old) else new
+    """Tessera's folder under base."""
+    return os.path.join(base, "tessera")
 
+def _old_names():
+    """Tessera's old name (migrate-names.py: the one place that knows it)."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("migrate_names", os.path.join(os.path.dirname(os.path.realpath(__file__)), "migrate-names.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+OLD = _old_names()
 ICLOUD = "https://caldav.icloud.com/"
 ICLOUD_CARD = "https://contacts.icloud.com/"
 GRAPH = "https://graph.microsoft.com/v1.0"
@@ -136,8 +144,8 @@ class Secrets:
     def lookup(self, account):
         if self.file:
             return self._load().get(account)
-        # (irice-icloud: kept while Tessera was called iRice)
-        for service in ("tessera-icloud", "irice-icloud"):
+        # (or kept under the old name)
+        for service in ("tessera-icloud", OLD.OLD_ICLOUD_SERVICE):
             r = subprocess.run(["secret-tool", "lookup", "service", service, "account", account],
                                capture_output=True, text=True, timeout=60)
             if r.returncode == 0 and r.stdout:
@@ -151,7 +159,7 @@ class Secrets:
             with open(self.file, "w") as f:
                 json.dump(d, f)
             return
-        for service in ("tessera-icloud", "irice-icloud"):
+        for service in ("tessera-icloud", OLD.OLD_ICLOUD_SERVICE):
             subprocess.run(["secret-tool", "clear", "service", service, "account", account],
                            capture_output=True, timeout=60)
 

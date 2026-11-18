@@ -8,7 +8,7 @@
 # The lock command and the grace come from the files start-idle.sh writes
 # next to its hypridle config ($TESSERA_IDLE_DIR).
 set -uo pipefail
-dir=${TESSERA_IDLE_DIR:-${IRICE_IDLE_DIR:-}}
+dir=${TESSERA_IDLE_DIR:-}
 
 # On the charger? A computer with no mains supply at all (a desktop) counts
 # as on the charger.

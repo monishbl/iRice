@@ -478,8 +478,8 @@ impl Sharing {
     // you (Tessera's root helper: quickshare-trust). Turning it on or off
     // asks once. /etc/tessera/quickshare-trusted (readable by all) says it's on.
     pub fn quick_check_trust(&mut self) {
-        // (/etc/irice: turned on before iRice became Tessera, until the root setup moves it)
-        self.quick.trusted = std::path::Path::new("/etc/tessera/quickshare-trusted").exists() || std::path::Path::new("/etc/irice/quickshare-trusted").exists();
+        // (the old name's folder: turned on before the rename, until the root setup moves it)
+        self.quick.trusted = std::path::Path::new("/etc/tessera/quickshare-trusted").exists() || std::path::Path::new(tessera_core::old_names::ETC).join("quickshare-trusted").exists();
     }
     pub fn quick_set_trusted(&mut self, h: &mut Host, on: bool) {
         if self.quick.trust_busy {
@@ -497,7 +497,7 @@ impl Sharing {
     pub fn quick_trust_done(&mut self, stderr: &str, code: i32) {
         self.quick.trust_busy = false;
         if code != 0 && code != 126 {
-            let said = stderr.trim().trim_start_matches("tessera-root: ").trim_start_matches("irice-root: ").trim().to_string();
+            let said = tessera_core::old_names::without_helper_prefix(stderr.trim()).trim().to_string();
             self.quick.trust_error = if code == 127 {
                 "Not allowed (an administrator's password is needed).".into()
             } else if said.is_empty() {

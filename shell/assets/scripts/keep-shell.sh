@@ -15,10 +15,9 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 running() {
     local p
-    for p in $(pgrep -x tessera-shell; pgrep -x irice-shell; pgrep -x qs; pgrep -x quickshell); do
+    for p in $(pgrep -x tessera-shell; pgrep -x qs; pgrep -x quickshell); do
         { tr '\0' '\n' <"/proc/$p/environ"; } 2>/dev/null | grep -qx "HYPRLAND_INSTANCE_SIGNATURE=$SIG" || continue
-        # (-c tessera, or -c irice: started before iRice became Tessera)
-        tr '\0' ' ' <"/proc/$p/cmdline" 2>/dev/null | grep -qi -e tessera -e irice && return 0
+        tr '\0' ' ' <"/proc/$p/cmdline" 2>/dev/null | grep -qi -e tessera && return 0
     done
     # Standalone (rust.standalone): tessera-ui is the shell. Only one started
     # with --standalone counts: the one the QML shell starts as its helper ends with it.
@@ -31,10 +30,6 @@ running() {
 
 exec 9>"$DIR/tessera-shell.lock"
 flock -n 9 || exit 0 # a start or a repair is under way
-# (also the lock's name from before iRice became Tessera: a repair started
-# by the old scripts may still run in this session)
-exec 6>"$DIR/irice-shell.lock"
-flock -n 6 || exit 0
 if running; then
     rm -f "$DIR/tessera-shell.missing"
     exit 0

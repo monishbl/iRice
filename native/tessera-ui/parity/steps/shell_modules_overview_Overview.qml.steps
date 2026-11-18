@@ -3,7 +3,7 @@
 setup foot -T A & sleep 1; foot -T B & sleep 1; foot -T C & sleep 1; hyprctl dispatch 'hl.dsp.workspace(2)'; sleep 1; foot -T D & sleep 1; hyprctl dispatch 'hl.dsp.workspace(1)'
 wait 6
 ptr move 100 900
-rec ov-open 1.5 ipc panels open overview IRICE-TEST
+rec ov-open 1.5 ipc panels open overview TESSERA-TEST
 note Open: first moving frame not later than QML, duration to settle same, content scale overshoot (Glass about 8 %: the bar slides past and back a little); bar y over the first 400 ms within 2 frames of QML.
 wait 1
 shot open
@@ -11,7 +11,7 @@ note Overview open: tiles 170x96 at y 26..122 (top edge y 26, not 37), titles y 
 rec ov-close 1 ipc panels close
 note Close fades in about 154 ms; same as QML.
 wait 1
-ipc panels open overview IRICE-TEST
+ipc panels open overview TESSERA-TEST
 wait 1
 # NOTE: click on layer surfaces may not register in the harness
 ptr move 766 74 sleep 200 glide 766 74 300 sleep 400
@@ -23,13 +23,13 @@ wait 1
 shot after-tile
 note Space 2 is shown (window D) and the overview is closed.
 setup hyprctl dispatch 'hl.dsp.workspace(1)'
-ipc panels open overview IRICE-TEST
+ipc panels open overview TESSERA-TEST
 wait 1
 ptr move 572 74 sleep 200 click
 wait 1
 shot miniature
 note Click on a miniature in tile 1 (inside x 487..657, y 26..122; its exact centre is read from the shot): that window is focused and the overview closed. (The click above lands on the tile centre.)
-ipc panels open overview IRICE-TEST
+ipc panels open overview TESSERA-TEST
 wait 1
 ptr move 572 74 sleep 200 down glide 1154 74 600 sleep 200
 shot drag-window
@@ -39,7 +39,7 @@ wait 1
 setup hyprctl clients | grep -E 'workspace: |title: ' | head -20
 shot drag-window-drop
 note After releasing over tile 4 the window moved to space 4 (miniature now in tile 4); QML and Rust same result.
-ipc panels open overview IRICE-TEST
+ipc panels open overview TESSERA-TEST
 wait 1
 ptr move 1154 74 sleep 200 down glide 766 74 600 sleep 200
 shot drag-space
@@ -49,7 +49,7 @@ wait 1
 shot drag-space-drop
 note Space order changed after the drop (QML and Rust same result). Dragging by the title at (1154, 128) works the same.
 # MANUAL: right-click a tile at (960, 74): menu at the pointer ("Only one display is connected" with one display); Down / Escape close it and typing works again (ptr has no right button)
-ipc panels open overview IRICE-TEST
+ipc panels open overview TESSERA-TEST
 wait 1
 ptr move 1874 74 sleep 200 glide 1874 74 300 sleep 400
 shot plus-hover
@@ -57,7 +57,7 @@ note Hover on the + button: Glass fill / Material 8 % layer. Same as QML.
 rec ov-plus 0.6 ptr move 1874 74 sleep 100 down sleep 200 up
 note Material: pressing + squares it to radius 12 over 100 ms; release closes the overview and makes a new empty space. Compare QML.
 wait 1
-ipc panels open overview IRICE-TEST
+ipc panels open overview TESSERA-TEST
 wait 1
 key fo
 wait 1
@@ -75,13 +75,13 @@ key -k Escape
 wait 1
 shot search-closed
 note Second Escape closes the overview.
-ipc panels open overview IRICE-TEST
+ipc panels open overview TESSERA-TEST
 wait 1
 ptr move 960 800 sleep 200 click
 wait 1
 shot bg-click
 note Click on the background (960, 800) closes the overview.
-ipc panels open overview IRICE-TEST
+ipc panels open overview TESSERA-TEST
 wait 1
 ptr move 960 150 sleep 200 click
 wait 1

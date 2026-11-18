@@ -48,13 +48,11 @@ import time
 
 
 def app_dir(base):
-    """Tessera's folder under base, or iRice's while it hasn't been moved yet
-    (the shell moves it as it starts: migrate-names.py)."""
-    new, old = os.path.join(base, "tessera"), os.path.join(base, "irice")
-    return old if not os.path.exists(new) and os.path.isdir(old) else new
+    """Tessera's folder under base."""
+    return os.path.join(base, "tessera")
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-DESKTOPS = {"hyprland", "tessera", "irice"}  # (irice: autostart entries written for it before the rename)
+DESKTOPS = {"hyprland", "tessera"}
 # Entries Tessera runs itself or that would conflict, matched against the file
 # name (without .desktop) and the program's name; "x*" matches anything
 # starting with x, "*x*" anything with x in it
@@ -92,7 +90,7 @@ def apps_config_home():
     (TESSERA_TTY: tty-shell.sh), never the apps (common/Launch.qml, child_env
     below): Settings → Login Items, run from the shell, read an empty folder
     of its own while login started the apps' (seen on a real laptop)."""
-    if (os.environ.get("TESSERA_TTY") or os.environ.get("IRICE_TTY")) == "1":
+    if os.environ.get("TESSERA_TTY") == "1":
         return os.path.join(os.path.expanduser("~"), ".config")
     return config_home()
 
@@ -104,7 +102,7 @@ def user_dir():
 def tessera_dir():
     """Tessera's own settings: TESSERA_USER_DIR when the session says (the tty
     session keeps them apart), else $XDG_CONFIG_HOME/tessera."""
-    return (os.environ.get("TESSERA_USER_DIR") or os.environ.get("IRICE_USER_DIR")) or app_dir(config_home())
+    return os.environ.get("TESSERA_USER_DIR") or app_dir(config_home())
 
 
 def system_dirs():
@@ -293,10 +291,9 @@ def child_env():
     """As the shell starts apps (common/Launch.qml): in the tty test session,
     without its sandbox folders."""
     env = dict(os.environ)
-    if (env.get("TESSERA_TTY") or env.get("IRICE_TTY")) == "1":
-        # (IRICE_*: the same, from a session started before iRice became Tessera)
+    if env.get("TESSERA_TTY") == "1":
         for k in ("XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME", "TESSERA_SANDBOX",
-                  "TESSERA_ROOT", "TESSERA_TTY", "IRICE_SANDBOX", "IRICE_ROOT", "IRICE_TTY", "QML_IMPORT_PATH", "QML2_IMPORT_PATH"):
+                  "TESSERA_ROOT", "TESSERA_TTY", "QML_IMPORT_PATH", "QML2_IMPORT_PATH"):
             env.pop(k, None)
     return env
 

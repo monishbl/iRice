@@ -31,4 +31,4 @@ Rust shell only (this file has no QML-side UI); the QML pass is the reference fo
    Control opens with only foot windows and "foot" + "N windows" on top.
 4. **Lock** (T2): hold Alt+Tab (strip shown), then `inbox 'ipc lock lock'` → the strip is gone at once
    (keyboard taken), and after unlocking Alt+Tab works again. Note the time between lock and the strip vanishing.
-5. **Log** (T10): `dev run bash -c 'grep "no wm call" /tmp/irice-rt*/tessera-ui*.log'` — empty after 1–4.
+5. **Log** (T10): `dev run bash -c 'grep "no wm call" /tmp/tessera-rt*/tessera-ui*.log'` — empty after 1–4.

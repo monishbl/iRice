@@ -26,7 +26,7 @@ pub fn menu_icon(cfg: &Value) -> &'static str {
         "cat" => "\u{e748}",
         "ghost" => "\u{e62a}",
         "alien" => "\u{e8a6}",
-        // tessera (the Badge), and iRice's names for it
+        // tessera (the Badge), and its older names
         _ => "\u{e604}",
     }
 }
@@ -192,7 +192,7 @@ mod tests {
 
     #[test]
     fn the_badge_by_default_and_for_old_names() {
-        for v in [json!({}), json!({"appearance": {"menuIcon": "tessera"}}), json!({"appearance": {"menuIcon": "circle"}}), json!({"appearance": {"menuIcon": "irice"}})] {
+        for v in [json!({}), json!({"appearance": {"menuIcon": "tessera"}}), json!({"appearance": {"menuIcon": "circle"}}), json!({"appearance": {"menuIcon": tessera_core::old_names::SETTING_VALUE}})] {
             assert_eq!(menu_icon(&v), "\u{e604}");
         }
         assert_eq!(menu_icon(&json!({"appearance": {"menuIcon": "leaf"}})), "\u{e2da}");

@@ -17,9 +17,9 @@ them again onto the screenshot's pixels to save (`draw::flatten`, tiny-skia + re
 | 9 | Flattened output at native resolution, crop applied | ShotEditorWindow 200-205 | `draw::flatten` on a thread | same (vector marks redrawn; antialiasing may differ by ≤ 1 px on edges) |
 
 ## Test plan (tester)
-Arena IRICE-TEST 1920×1080, both shells (`--only qml` / `--only rust`), both looks. Make a test picture with text:
+Arena TESSERA-TEST 1920×1080, both shells (`--only qml` / `--only rust`), both looks. Make a test picture with text:
 `inbox 'magick -size 1600x900 xc:white -fill black -pointsize 48 -annotate +100+200 "Invoice total 42.00" -annotate +100+320 "https://example.com/pay" /tmp/t.png'`
-(no magick: `grim -o IRICE-TEST /tmp/t.png` after opening a terminal with some text). Open the editor:
+(no magick: `grim -o TESSERA-TEST /tmp/t.png` after opening a terminal with some text). Open the editor:
 `inbox 'ipc shotEditor edit /tmp/t.png'`, wait 1 s.
 Geometry (1600×900 picture): Glass canvas x 280..1640, y 157..923 (fit 0.851); Material canvas x 301..1619, y 169..911 (fit 0.824).
 Tool keys: P pen, H highlighter, A arrow, R rectangle, O ellipse, T text, B redact, C crop.

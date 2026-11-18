@@ -1,136 +1,123 @@
 # iRice is now Tessera
 
-Renamed 4 November 2026. Everything that said iRice says Tessera, and its
-mark is the **Badge** (Phosphor's `circle-wavy`), the wavy seal that was
-the last menu-icon choice in Settings → Appearance. It's the default menu
-icon now, and it's in the boot animations, the look switch and the login
-intro.
-
-A desktop set up while it was called iRice keeps working on the old system
-pieces until you run the two setup steps below, and on the new ones after.
+Renamed 4 November 2026; its mark is the **Badge** (Phosphor's
+`circle-wavy`). The repository (`monishbl/iRice` → `monishbl/tessera`) and
+the website (`irice.monishbl.in` → `tessera.monishbl.in`) followed on 17 Nov,
+and on 18 Nov everything else: the checkout folder on installed machines,
+the bug report service, the development sandbox and every file in the
+repository. This page is the one place that lists the old names: what they
+were, where the few still needed are kept, and when those go.
 
 ## What moved
 
-| Before | Now |
+| Before | Now | When |
+| --- | --- | --- |
+| the `irice` command | `tessera` | 4 Nov |
+| `~/.config/irice`, `~/.local/share/irice`, `~/.local/state/irice`, `~/.cache/irice` | `…/tessera` | 4 Nov (moved at the shell's start) |
+| `/usr/lib/irice/irice-root`, polkit `org.irice.root.*`, `49-irice.rules`, `49-irice-quickshare.rules` | `/usr/lib/tessera/tessera-root`, `org.tessera.root.*`, `49-tessera.rules`, `49-tessera-quickshare.rules` | 4 Nov (moved by the root setup) |
+| `/etc/irice`, `/var/lib/irice`, `/etc/ananicy.d/irice.rules`, drop-ins `irice-*.conf`, Plymouth `irice-<id>` | `tessera` | 4 Nov (root setup) |
+| `/usr/share/irice` (the login screen), `irice.desktop` | `/usr/share/tessera`, `tessera.desktop` | 4 Nov (`./install.sh --only=login`); 18 Nov: the root setup renames the session entry too |
+| the shell's process `irice-shell`, the glass plugin `irice-glass`, `irice-events`, `IRice.Native` | `tessera-shell`, `tessera-glass`, `tessera-events`, `Tessera.Native` | 4 Nov; 18 Nov: the old ones are no longer recognised |
+| `IRICE_*` environment names | `TESSERA_*` | 4 Nov; the old ones count until 1 Feb 2027 |
+| github.com/monishbl/iRice, irice.monishbl.in | github.com/monishbl/tessera, tessera.monishbl.in | 17 Nov |
+| the checkout `~/iRice` | `~/tessera` (`~/iRice` a link to it for now) | 18 Nov (at the shell's next start after the update) |
+| the bug report service `irice-bugs.monishbl.in` (Worker `irice-bugs`, D1 `irice`) | `tessera-bugs.monishbl.in` (Worker `tessera-bugs`, D1 `tessera-bugs`) | 18 Nov (site/bugs/README.md, "Moving from the old name") |
+| the dev sandbox: distrobox `irice`, `/tmp/irice-rt-N`, the `IRICE-TEST` output | `tessera`, `/tmp/tessera-rt-N`, `TESSERA-TEST` | 18 Nov |
+
+## What an installed machine goes through
+
+Nothing to do by hand except the root step, which Software Update offers.
+
+1. **The update itself** (Software Update, or `tessera update`) takes the new
+   version. An update run by a copy from before 18 Nov is that old copy's
+   code; the new code runs from the shell's restart that ends it.
+2. **The shell's start** (`launch-shell.sh`, also the console session's
+   `sandbox/tty-shell.sh`) runs `shell/assets/scripts/migrate-names.py`
+   before anything reads a setting, only while something is left to move
+   (`old_names_pending`: a cheap check, so starts stay fast). Once:
+   - `…/irice` folders still there (your session's XDG folders and your
+     home's own, when a console session points XDG elsewhere) move to
+     `…/tessera`; both there: what's only in the old one moves over, the rest
+     is kept as `irice.before-tessera`. Links inside that pointed into the
+     old folder point into the new one. A note, `RENAMED.txt`, says what moved
+     (the 4 Nov note, `MOVED-FROM-IRICE.txt`, is folded into it).
+   - **The checkout `~/iRice` becomes `~/tessera`**, with `~/iRice` left as a
+     link to it (running programs, the login screen's entry and Hyprland's
+     config path keep working through it). Paths to it saved in your settings
+     (wallpapers), the console session's home (`.sandbox/home/.config`), the
+     installer's `…/tessera/source`, your user units and desktop entries point
+     at `~/tessera`; worktrees are repaired (`git worktree repair`). A
+     remote at `github.com/monishbl/iRice` (or GitLab's) points at
+     `monishbl/tessera`. Software Update also does all this at the end of an
+     update run by the new copy.
+   - Values saved under the old name take the new one: the menu icon and the
+     screenshot editor (`"irice"`), shortcuts that run `$IRICE_SHELL/…`,
+     `state.json`'s `_irice_revisions`, `spaces.lua`'s `IRICE_SPACE_BASES`,
+     autostart entries for the `irice` desktop, KDE's colour scheme `iRice…`.
+   - Files the installer and the shell made under the old name are renamed or
+     replaced: `hypr/irice`, `hypr.pre-irice` backups, fish snippets, the
+     apps' `irice-colors` includes and files, file-manager menus
+     (`irice-share`), the battery guard's `irice-battery-guard.service`, the
+     `irice` command; builds nothing runs any more go (`irice-glass.so`; the
+     events helper takes Tessera's name when there's no newer one).
+   - An old-name link (`…/irice`, `~/iRice`, `hypr/irice`) goes once it's at
+     least 14 days old and nothing uses it: no process of yours has it as its
+     folder or program, on its command line or in its environment, and no
+     session entry, Hyprland file or user unit names it. So `~/iRice` stays
+     while the session started from it runs and while the login screen's
+     entry still names it.
+3. **The root step** (Software Update offers "Tessera's system helper" while
+   the installed one isn't this version's; or by hand,
+   `sudo /usr/bin/python3 -I ~/tessera/shell/assets/scripts/tessera-root.py setup ~/tessera/shell`)
+   installs Tessera's helper first, then moves what the old one installed:
+   `/etc/irice`, `/var/lib/irice`, drop-ins, module options, PAM marks, Quick
+   Share's trust rule, the boot animation in use, root's `.pre-irice` backups;
+   **the login screen's entry**: `irice.desktop` (starting
+   `sandbox/irice-session.sh`) becomes `tessera.desktop`, and an entry that
+   starts the checkout through `~/iRice` starts `~/tessera` (only an entry
+   that already starts that same checkout's session script); then the old
+   helper, its polkit files and ananicy rule and the old boot animations go.
+   Until it has run, the shell keeps using the old helper and those files
+   (no new password prompts).
+4. **The login screen's copy** (`/usr/share/irice`, greetd only) moves with
+   `./install.sh --only=login`; until then it keeps working.
+5. **Log out and in**: the session starts from `~/tessera`, and two weeks
+   later the `~/iRice` link goes by itself.
+
+A machine still on a version from before 4 Nov goes through the same steps;
+processes of its running session from before then (a watchdog, an update
+screen) aren't recognised by the new names, so log out and in after that
+update.
+
+## The old names still in the code, and why
+
+Only where an installed machine needs them to update itself across the
+rename, each set in one place per language, all to be removed after
+**1 February 2027**:
+
+| Where | What it keeps, and why |
 | --- | --- |
-| the `irice` command | `tessera` (the installer removes `irice`) |
-| `~/.config/irice`, `~/.local/share/irice`, `~/.local/state/irice`, `~/.cache/irice` | `…/tessera` |
-| `/usr/lib/irice/irice-root`, polkit `org.irice.root.*`, `49-irice.rules` | `/usr/lib/tessera/tessera-root`, `org.tessera.root.*`, `49-tessera.rules` |
-| `/etc/irice`, `/var/lib/irice` | `/etc/tessera`, `/var/lib/tessera` |
-| `/etc/ananicy.d/irice.rules` | `/etc/ananicy.d/tessera.rules` (matches `tessera-shell` and `irice-shell`) |
-| the shell's process name `irice-shell` | `tessera-shell` |
-| `/usr/share/irice` (the login screen), `irice.desktop` | `/usr/share/tessera`, `tessera.desktop` |
-| Plymouth themes `irice-<id>` | `tessera-<id>` |
-| the glass plugin `irice-glass.so` (`hyprctl irice-glass`) | `tessera-glass.so` (`hyprctl tessera-glass`; it still answers to `irice-glass`) |
-| `irice-events`, `IRice.Native` | `tessera-events`, `Tessera.Native` |
-| `IRICE_*` environment names | `TESSERA_*` |
-| `hypr/irice`, layer namespaces `irice:*`, polkit, drop-ins, file names | `tessera` |
+| `shell/assets/scripts/migrate-names.py` (Python) | the moves above; the old root helper while only it is installed (sharing check, Quick Share's Wi-Fi helper, fingerprint), its folder `/etc/irice` and D-Bus rule, the PAM mark, nftables drop-ins; keyring entries saved as `application irice` / `irice-icloud`; settings backups `*.irice` (`"app": "iRice"`); the updater's `hypr/irice/keymap.json` for a version from before |
+| `tessera-root.py`'s section "Tessera's old name" (the root helper) | what setup moves (above) and what other subcommands recognise until then (the old ananicy rule, PAM marks, firewall tags `irice sharing`, the old boot animations). The helper is one file installed as root's own, so it never loads the user side's module |
+| `shell/assets/scripts/old-names.sh` (bash) | `IRICE_*` environment names (`old_names_env`, at the shell's, the session's and `dev.sh`'s start), the pending check, the old system paths for the installer and uninstaller, the old session entry, the dev container `irice` until it's renamed |
+| `native/tessera-ui/core/src/old_names.rs` (Rust) | `IRICE_*` names (`env::var`), the old root helper and its polkit file, `/etc/irice`, the ananicy rule, Plymouth `irice-<id>`, `/usr/share/irice`, keyring `application irice`, `*.irice` backups, exported `irice-keybinds`, the old menu icon value |
+| `shell/common/OldNames.qml` (QML) | the same, for the QML shell |
+| `sandbox/irice-session.sh` | the file `irice.desktop` starts, until the root setup replaces that entry |
+| `site/wrangler.jsonc`, `site/bugs/wrangler.jsonc` | the old addresses `irice.monishbl.in` and `irice-bugs.monishbl.in`, which installs and issues from before still use |
+| `CHANGELOG.md` | two headings from before (Software Update matches its "What's new" by heading: a renamed one would show again) |
+| this page, the migration tests (`tests/test_rename_tessera.py`) | the record |
 
-On 17 Nov 2026 the rest followed: the GitHub repository `monishbl/iRice` →
-`monishbl/tessera` (GitHub redirects the old address; installs that still have
-it as their origin count it as the same repository) and the website
-`irice.monishbl.in` → `tessera.monishbl.in` (the old address serves the same
-files, for installs and links made before). The remaining old names (the bug
-report service, the checkout folder, the dev sandbox's machine-wide names) are
-renamed with a migration that keeps older installs working.
-
-## What happens by itself
-
-- **Your settings and data move at the shell's next start**, once
-  (`shell/assets/scripts/migrate-names.py`, run by `launch-shell.sh`; the
-  installer and the build scripts run it too). Each `…/irice` folder is
-  renamed to `…/tessera`, and the old name becomes a link to the new one,
-  so anything still using it finds the same files. If both exist, what's
-  only in the old one moves over and the rest is kept as
-  `irice.before-tessera`. A note, `MOVED-FROM-IRICE.txt`, says what moved.
-  A shell that reloaded in place before restarting keeps reading the old
-  folders until it restarts.
-- **The root helper:** until the root setup has run, the shell uses the
-  old `/usr/lib/irice/irice-root` with its own polkit actions, so nothing
-  asks for a password that didn't before. Once Tessera's helper is
-  installed it uses that one.
-- **The shell's name:** it keeps running as `irice-shell` while only the
-  old ananicy rule is installed (or a watchdog or update screen from before
-  the rename watches it), so its priority stays the same; it's
-  `tessera-shell` once the root setup has installed the new rule, which
-  matches both names.
-- **The glass plugin:** Hyprland loads whichever build is there: the repo's
-  `tessera-glass.so`, else the one built before the rename. The running
-  session keeps the one it loaded until you log out. Tessera's plugin also
-  answers to `irice-glass`, and the shell finds either.
-- **Old environment names** (`IRICE_ROOT`, `IRICE_TTY`, `IRICE_SANDBOX`,
-  `IRICE_USER_DIR`, `IRICE_ARENA`…) still work everywhere the new ones do;
-  the new name wins when both are set.
-- **The session's lock, watchdog and idle timers** from before the rename
-  are recognised and never doubled.
-- **The login screen's entry** (`irice.desktop`) still works: it starts
-  `sandbox/irice-session.sh`, which starts `tessera-session.sh`.
-- Kept values: API keys in the keyring (`application irice`), iCloud
-  passwords, settings backups (`.irice`), exported shortcuts, Quick Share
-  trust and the boot animation in use are all read under either name.
-
-## The one-time setup, with your password
-
-From `~/iRice`, after the update is in. Software Update restarts the shell
-by itself; after a pull by hand, restart it (Super+Ctrl+Alt+R in the
-console session, or Super+Ctrl+Escape), so it moves your folders and runs
-the new code with Hyprland's reloaded config. Then:
-
-1. **The root setup**, which installs Tessera's helper, polkit action and
-   rule and ananicy rule, moves `/etc/irice` to `/etc/tessera`, renames the
-   drop-ins, fingerprint marks, Quick Share's trust rule and the boot
-   animation in use, then removes the old helper, its polkit files, its
-   ananicy rule and the old boot animations:
-
-   ```
-   sudo /usr/bin/python3 -I ~/iRice/shell/assets/scripts/tessera-root.py setup ~/iRice/shell
-   ```
-
-   (Software Update does the same in its root step.)
-
-2. **The login screen**, which installs `/usr/share/tessera`, points greetd
-   at it, removes `/usr/share/irice`, replaces `irice.desktop` with
-   `tessera.desktop` and the Plymouth drop-in with Tessera's:
-
-   ```
-   ~/iRice/install.sh --only=login
-   ```
-
-3. **Log out and in.** The new session starts as Tessera: the shell named
-   `tessera-shell`, the new plugin if you rebuilt it
-   (`~/iRice/tools/build-plugin.sh`), and Hyprland's own config read
-   afresh.
-
-Optional, when convenient: `~/iRice/tools/build-native.sh` and
-`~/iRice/shell/native/build.sh` rebuild `tessera-events` and
-`Tessera.Native` under their new names (the old builds keep working until
-then).
-
-## If you never run them
-
-Everything keeps working on the old system pieces: the shell uses
-`/usr/lib/irice/irice-root` and its polkit rule (no new password prompts),
-keeps the name `irice-shell` that `/etc/ananicy.d/irice.rules` matches,
-greetd keeps starting the login screen in `/usr/share/irice` (its look and
-wallpaper are still written there), and `irice.desktop` keeps starting the
-session. Only the names in those system places stay old.
-
-## The checkout folder
-
-`~/iRice` keeps its name. To rename it later, move it and point the login
-screen's entry at the new place; nothing else stores the folder's path:
-
-```
-mv ~/iRice ~/Tessera && ~/Tessera/tools/setup-session.sh
-```
-
-(`setup-session.sh` rewrites `/usr/share/wayland-sessions/tessera.desktop`,
-whose `Exec` is the session script's full path.)
+The modules' own tests fail after 1 February 2027 (`old_names.rs`,
+`tests/test_rename_tessera.py`), as a reminder: then delete those files and
+the lines that use them, and the old routes in the two `wrangler.jsonc`.
 
 ## For developers
 
-`./dev.sh` reads `TESSERA_ARENA`, `TESSERA_VISIBLE` and the rest, and
-still `IRICE_ARENA` and friends. The arenas keep `/tmp/irice-rt-N` and the
-`IRICE-TEST` output, so a checkout from before the rename and one from
-after never start two sandboxes for the same arena. `tools/smoke-looks.sh`
-works with the main checkout's `dev.sh` from either side of the rename.
+- The sandbox: `./dev.sh` uses the distrobox `tessera`; until it exists, the
+  old `irice` one. Rename it once: `podman rename irice tessera` (or
+  `docker rename`), with it stopped (`distrobox stop irice`). Arenas run in
+  `/tmp/tessera-rt-N` on the headless output `TESSERA-TEST`; a checkout from
+  before 18 Nov uses `/tmp/irice-rt-N`, so don't run the same arena from both.
+- `IRICE_ARENA` and the rest still work (`old_names_env`) until 1 Feb 2027.
+- Tools that read the live install's settings (`tools/parity-run.sh`,
+  `tools/visual-compare.sh`…) read them from `~/tessera`.

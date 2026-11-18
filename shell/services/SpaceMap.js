@@ -15,7 +15,7 @@ var STRIDE = 100;
 
 // The laptop's own panel (in the nested sandbox, its test output plays it)
 function isBuiltin(name, sandbox) {
-    return /^(eDP|LVDS|DSI)-/.test(name || "") || (!!sandbox && name === "IRICE-TEST");
+    return /^(eDP|LVDS|DSI)-/.test(name || "") || (!!sandbox && name === "TESSERA-TEST");
 }
 
 // A display's identity: its description (make, model, serial), else its

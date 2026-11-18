@@ -13,7 +13,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-QS = next((q for q in (Path.home() / '.local/share/tessera/quickshell/bin/qs', Path.home() / '.local/share/irice/quickshell/bin/qs') if q.exists()), Path.home() / '.local/share/tessera/quickshell/bin/qs')  # (irice: built before the rename)
+QS = Path.home() / '.local/share/tessera/quickshell/bin/qs'
 
 THEME = '''pragma Singleton
 import QtQuick

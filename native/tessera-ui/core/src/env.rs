@@ -1,10 +1,10 @@
-//! Tessera's environment names (`TESSERA_DEBUG`, `TESSERA_ROOT`, …): the name
-//! from before the rename (`IRICE_…`) still works, the new one wins when both
-//! are set (docs/rename-to-tessera.md).
+//! Tessera's environment names (`TESSERA_DEBUG`, `TESSERA_ROOT`, …): the
+//! name from before Tessera's rename still works for one release
+//! (old_names.rs), the new one wins when both are set.
 
-/// `TESSERA_<name>`, else `IRICE_<name>`
+/// `TESSERA_<name>` (else its old name, until old_names goes)
 pub fn var(name: &str) -> Option<String> {
-    std::env::var(format!("TESSERA_{name}")).ok().or_else(|| std::env::var(format!("IRICE_{name}")).ok())
+    std::env::var(format!("TESSERA_{name}")).ok().or_else(|| crate::old_names::env_var(name))
 }
 
 /// Set, under either name
@@ -44,7 +44,7 @@ pub fn root() -> std::path::PathBuf {
         let home = std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".local/share");
         let sources: Vec<std::path::PathBuf> = [&data, &home]
             .iter()
-            .flat_map(|d| ["tessera/source", "irice/source"].map(|f| d.join(f)))
+            .map(|d| d.join("tessera/source"))
             .filter_map(|f| std::fs::read_to_string(f).ok())
             .map(|s| std::path::PathBuf::from(s.trim()))
             .collect();
@@ -78,10 +78,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn new_name_wins_and_old_name_still_works() {
+    fn set_or_not() {
         // (names of their own: tests run on threads, the environment is shared)
-        std::env::set_var("IRICE_ENVTEST_A", "old");
-        assert_eq!(var("ENVTEST_A").as_deref(), Some("old"));
         std::env::set_var("TESSERA_ENVTEST_A", "new");
         assert_eq!(var("ENVTEST_A").as_deref(), Some("new"));
         assert!(is_set("ENVTEST_A"));

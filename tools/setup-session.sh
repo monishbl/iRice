@@ -5,9 +5,10 @@
 #   tools/setup-session.sh            add (or update) the entry
 #   tools/setup-session.sh --remove   take it off the login screen
 set -euo pipefail
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 FILE=/usr/share/wayland-sessions/tessera.desktop
-OLD=/usr/share/wayland-sessions/irice.desktop # (its name before iRice became Tessera)
+source "$ROOT/shell/assets/scripts/old-names.sh"
+OLD=$OLD_SESSION_ENTRY # (the entry under Tessera's old name)
 
 if [[ "${1:-}" == "--remove" ]]; then
     sudo rm -f "$FILE" "$OLD"

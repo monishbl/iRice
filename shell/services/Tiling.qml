@@ -67,7 +67,7 @@ Singleton {
                 }
                 return;
             }
-            if (event.name !== "tessera-drag" && event.name !== "irice-drag") // (irice: a glass plugin built before the rename)
+            if (event.name !== "tessera-drag")
                 return;
             const [kind, mon, zone, addr] = event.data.split(",");
             if (kind === "zone") {

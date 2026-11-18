@@ -8,7 +8,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SB="$ROOT/.sandbox/home"
 export XDG_CONFIG_HOME="$SB/.config" XDG_STATE_HOME="$SB/.local/state" XDG_CACHE_HOME="$SB/.cache" XDG_DATA_HOME="$SB/.local/share"
 QS=qs
-for d in tessera irice; do # (irice: built before the rename)
+for d in tessera; do
     [[ -x "$HOME/.local/share/$d/quickshell/bin/qs" ]] && { QS="$HOME/.local/share/$d/quickshell/bin/qs"; break; }
 done
 

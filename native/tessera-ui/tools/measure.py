@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Measures one bar in a sandbox arena, the same way for both (docs/rust-ui-spike-slint.md).
-Run inside the sandbox:  IRICE_ARENA=4 ./dev.sh run python3 measure.py slint|qml [out.json]
+Run inside the sandbox:  TESSERA_ARENA=4 ./dev.sh run python3 measure.py slint|qml [out.json]
 
-  start-up   exec -> the bar's layer is mapped on IRICE-TEST (Hyprland's layer
+  start-up   exec -> the bar's layer is mapped on TESSERA-TEST (Hyprland's layer
              list polled every 2 ms), and the bar's own first-frame log line
   memory     VmRSS, PSS and private memory of the process after 60 s
   idle CPU   utime+stime over the next 60 s, % of one core
@@ -22,7 +22,7 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 CRATE = os.path.dirname(HERE)
 ROOT = os.path.abspath(os.path.join(CRATE, "../.."))
-VPTR = os.environ.get("VPTR", "/home/user/Projects/Personal/iRice/.sandbox/bin/vptr")
+VPTR = os.environ.get("VPTR", os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../../.sandbox/bin/vptr"))
 RT = os.environ["XDG_RUNTIME_DIR"]
 SOCK = os.path.join(RT, "hypr", os.environ["HYPRLAND_INSTANCE_SIGNATURE"], ".socket.sock")
 TICK = os.sysconf("SC_CLK_TCK")
@@ -34,7 +34,7 @@ if which == "slint":
     ns = "tessera:bar"
 else:
     cmd = ["qs", "-p", os.path.join(CRATE, "qml-baseline/shell.qml")]
-    ns = "irice:qmlbar"
+    ns = "tessera:qmlbar"
 log_path = os.path.join(RT, f"measure-{which}.log")
 
 
@@ -57,7 +57,7 @@ def mapped():
         layers = json.loads(hypr("j/layers"))
     except Exception:
         return False
-    mon = layers.get("IRICE-TEST", {})
+    mon = layers.get("TESSERA-TEST", {})
     return any(l.get("namespace") == ns for lv in mon.get("levels", {}).values() for l in lv)
 
 
@@ -120,10 +120,10 @@ res["idle_cpu_ticks"] = c1 - c0
 
 
 def compositor():
-    # the irice-glass plugin's frame pacing on IRICE-TEST (when it's loaded), then reset
-    r = subprocess.run(["hyprctl", "irice-glass", "frametimes"], capture_output=True, text=True, timeout=20).stdout
-    run("hyprctl", "irice-glass", "frametimes", "reset")
-    return next((l for l in r.splitlines() if l.startswith("IRICE-TEST")), r.strip())
+    # the glass plugin's frame pacing on TESSERA-TEST (when it's loaded), then reset
+    r = subprocess.run(["hyprctl", "tessera-glass", "frametimes"], capture_output=True, text=True, timeout=20).stdout
+    run("hyprctl", "tessera-glass", "frametimes", "reset")
+    return next((l for l in r.splitlines() if l.startswith("TESSERA-TEST")), r.strip())
 
 
 def stats():
@@ -145,7 +145,7 @@ compositor()
 # Menu: open with a click on the logo, close with Esc
 c0, w0 = cpu_ticks(p.pid), time.time()
 for i in range(10):
-    run(VPTR, "-o", "IRICE-TEST", "move", "70", "15", "glide", "25", "15", "120", "click")
+    run(VPTR, "-o", "TESSERA-TEST", "move", "70", "15", "glide", "25", "15", "120", "click")
     time.sleep(0.9)
     run("wtype", "-k", "Escape")
     time.sleep(0.7)

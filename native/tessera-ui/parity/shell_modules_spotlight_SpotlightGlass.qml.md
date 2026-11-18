@@ -16,7 +16,7 @@
 
 ## Test plan (tester)
 Glass look. Geometry 1920×1080: field x 620..1300, y 216..272 (centre (960, 244)); Clear ≈ (1252, 244), Ask ≈ (1280, 244) (Ask alone ≈ (1272, 244)); results from y 280, rows 40 px, first row centre ≈ (960, 310) under a heading.
-1. `rec sp-g-open 1 "ipc panels open spotlight IRICE-TEST"`: 220 ms, slides 10 px down while fading; `-k Escape` closes in 220 ms (exit curve). QML/Rust frame counts ±1.
+1. `rec sp-g-open 1 "ipc panels open spotlight TESSERA-TEST"`: 220 ms, slides 10 px down while fading; `-k Escape` closes in 220 ms (exit curve). QML/Rust frame counts ±1.
 2. `wtype foot` → results glass below; heading in caption type; selected row accent-filled.
 3. `P glide 1280 244 300` → Ask turns secondary; glide to Clear → same; click Clear → field empty, typing goes to the field.
 4. Keys: with ≥ 2 results `-k Tab` moves the selection; with 1 result `-k Tab` → Clear ringed, again → Ask, again → field. `-M shift -k Tab -m shift` from the field → Ask, → Clear, → field. `-k space` on Clear clears.

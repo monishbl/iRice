@@ -8,6 +8,6 @@
 | 4 | Tells saved / failed paths | 40-50 | `saved` / `failed` | same |
 
 ## Test plan (tester)
-1. Open the quick note (`inbox 'ipc panels open quickNote IRICE-TEST'`): the footer shows the notes folder with `~`.
+1. Open the quick note (`inbox 'ipc panels open quickNote TESSERA-TEST'`): the footer shows the notes folder with `~`.
 2. Type text, Ctrl+Enter → a new file in that folder; the dialog closes.
 3. Click the folder line → the folder opens in the file manager, the dialog closes.

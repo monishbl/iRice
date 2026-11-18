@@ -1,20 +1,25 @@
-// iRice bug reports: a Worker of its own (not part of the site Worker, which
-// GitHub deploys on every push to site/), with a D1 database. Deployed by
-// hand, once its database and secrets exist. See README.md here.
+// Tessera bug reports: a Worker of its own (not part of the site Worker), with
+// a D1 database. Deployed by hand, once its database and secrets exist. See
+// README.md here (and its "Moving from the old name" for the switch-over).
 {
-  "name": "irice-bugs",
+  "name": "tessera-bugs",
   "account_id": "fc02bfeb77675c77175d0d20804ca5e2",
   "main": "src/index.js",
   "compatibility_date": "2026-10-01",
   "routes": [
+    { "pattern": "tessera-bugs.monishbl.in", "custom_domain": true },
+    // (the address under Tessera's old name: installs from before still post
+    // there, and older issues link their screenshots there. REMOVE AFTER
+    // 2027-02-01, with docs/rename-to-tessera.md's list)
     { "pattern": "irice-bugs.monishbl.in", "custom_domain": true }
   ],
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "irice",
-      // From `npx wrangler d1 create irice-bugs` (README.md, step 1)
-      "database_id": "060067a4-73b9-4ba7-a07b-4e41b425007d",
+      "database_name": "tessera-bugs",
+      // From `npx wrangler d1 create tessera-bugs` (README.md, "Moving from
+      // the old name", step 1): put the id it prints here before deploying
+      "database_id": "SET-FROM-wrangler-d1-create-tessera-bugs",
       "migrations_dir": "migrations"
     }
   ]

@@ -4,14 +4,8 @@
 -- pressed twice within 3 s ends the session; Super+Ctrl+Alt+R force-restarts a frozen shell. If the
 -- whole session hangs, run `./dev.sh tty-stop` from another console.
 
-local root = (os.getenv("TESSERA_ROOT") or os.getenv("IRICE_ROOT"))
--- Tessera's folder under base, or iRice's while it hasn't been moved yet
--- (the shell moves it at its next start: migrate-names.py)
+local root = os.getenv("TESSERA_ROOT")
 local function appDir(base)
-    local f = io.open(base .. "/tessera/config.json", "r")
-    if f then f:close(); return base .. "/tessera" end
-    f = io.open(base .. "/irice/config.json", "r")
-    if f then f:close(); return base .. "/irice" end
     return base .. "/tessera"
 end
 TESSERA_MOD = "SUPER"
@@ -37,9 +31,8 @@ hl.config({
 -- localectl), else the one tools/setup-tty.sh wrote for this folder
 do
     local cfg = (os.getenv("XDG_CONFIG_HOME") ~= nil and os.getenv("XDG_CONFIG_HOME") ~= "") and os.getenv("XDG_CONFIG_HOME") or (os.getenv("HOME") .. "/.config")
-    -- (hypr/irice: an installer from before iRice became Tessera wrote them there)
-    if not pcall(dofile, cfg .. "/hypr/tessera/keyboard.lua") and not pcall(dofile, cfg .. "/hypr/irice/keyboard.lua") then pcall(dofile, root .. "/.sandbox/keyboard.lua") end
-    if not pcall(dofile, cfg .. "/hypr/tessera/gpu.lua") then pcall(dofile, cfg .. "/hypr/irice/gpu.lua") end -- NVIDIA's settings, when the installer wrote them
+    if not pcall(dofile, cfg .. "/hypr/tessera/keyboard.lua") then pcall(dofile, root .. "/.sandbox/keyboard.lua") end
+    pcall(dofile, cfg .. "/hypr/tessera/gpu.lua") -- NVIDIA's settings, when the installer wrote them
 end
 
 dofile(root .. "/hypr/tessera/look.lua")
@@ -53,8 +46,7 @@ dofile(root .. "/hypr/tessera/keybinds.lua")
 dofile(root .. "/hypr/tessera/gestures.lua")
 pcall(dofile, root .. "/hypr/tessera/titlebars.lua") -- only with the hyprbars plugin
 -- Liquid Glass plugin straight from the repo build (make -C hypr/plugin/tessera-glass)
--- (or the one built there while Tessera was called iRice, until it's rebuilt)
-TESSERA_GLASS_PLUGIN = { root .. "/hypr/plugin/tessera-glass/tessera-glass.so", root .. "/hypr/plugin/irice-glass/irice-glass.so" }
+TESSERA_GLASS_PLUGIN = { root .. "/hypr/plugin/tessera-glass/tessera-glass.so" }
 pcall(dofile, root .. "/hypr/tessera/glass.lua")
 
 -- The shell runs on the host's Quickshell via tty-shell.sh, with config,
@@ -81,7 +73,7 @@ hl.on("hyprland.start", function()
     -- (the switch in Settings → Login Items is in this session's own Tessera settings)
     hl.exec_cmd("TESSERA_USER_DIR='" .. TESSERA_USER_DIR .. "' python3 -I " .. root .. "/shell/assets/scripts/xdg-autostart.py --wait-tray 15")
     -- ./demo.sh: a playing track and a few notifications once the shell is up
-    if (os.getenv("TESSERA_DEMO") or os.getenv("IRICE_DEMO")) == "1" then
+    if os.getenv("TESSERA_DEMO") == "1" then
         hl.exec_cmd(root .. "/sandbox/demo-extras.sh")
     end
 end)

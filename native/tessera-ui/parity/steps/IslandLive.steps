@@ -1,4 +1,4 @@
-# IslandLive: steps from parity/shell_modules_menubar_IslandLive.qml.md (batches 1-5). Screen IRICE-TEST 1920x1080 scale 1;
+# IslandLive: steps from parity/shell_modules_menubar_IslandLive.qml.md (batches 1-5). Screen TESSERA-TEST 1920x1080 scale 1;
 # the island is centred at x 960 (closed y ~14, open ~392 wide); the bar is 30 px tall.
 # Each block runs in both looks: the file runs top to bottom, Material first, then Glass.
 

@@ -1,5 +1,5 @@
 # About dialog. Check in each look.
-rec ab-open 1 ipc panels open about IRICE-TEST
+rec ab-open 1 ipc panels open about TESSERA-TEST
 note Compare the open curve with QML (same curve as the session dialog: Material about 0.3 s, Glass about 0.4 s).
 wait 1
 shot ab-shot

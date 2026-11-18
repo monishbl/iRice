@@ -62,7 +62,7 @@ Scope {
     Process {
         id: copyWallpaper
         command: root.passwordless ? RootHelper.command(["wallpaper", Wallpaper.path])
-            : ["sh", "-c", "d=/usr/share/tessera; [ -d \"$d\" ] || d=/usr/share/irice; exec pkexec cp \"$1\" \"$d/wallpaper.jpg\"", "sh", Wallpaper.path]
+            : ["sh", "-c", "d=/usr/share/tessera; [ -d \"$d\" ] || d=\"$2\"; exec pkexec cp \"$1\" \"$d/wallpaper.jpg\"", "sh", Wallpaper.path, OldNames.loginShare]
         onExited: code => root.loginStatus = code === 0 ? "The login screen now uses this wallpaper."
             : root.passwordless ? "Didn't change the login screen. Pick a JPEG, PNG or WebP wallpaper and try again."
             : "Didn't change the login screen. Approve the password prompt to try again."
@@ -94,7 +94,7 @@ Scope {
             EmojiFont.install(String(args[0] ?? EmojiFont.style));
             break;
         case "buildPlugin":
-            Launch.terminal(["sh", "-c", "\"$1\" --load", "sh", ((Quickshell.env("TESSERA_ROOT") || Quickshell.env("IRICE_ROOT")) || Paths.data + "/src") + "/tools/build-plugin.sh"], true);
+            Launch.terminal(["sh", "-c", "\"$1\" --load", "sh", (Quickshell.env("TESSERA_ROOT") || Paths.data + "/src") + "/tools/build-plugin.sh"], true);
             break;
         case "setWallpaper":
             if (typeof args[0] === "string" && args[0].startsWith("/"))

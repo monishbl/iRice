@@ -183,9 +183,9 @@ Column {
         footer: installed ? status : "Install the Tessera login screen with ./install.sh --greeter."
         Process {
             running: true
-            // (/usr/share/irice: installed before iRice became Tessera, until
+            // (or the old name's copy: installed before the rename, until
             // ./install.sh --only=login runs again)
-            command: ["sh", "-c", "[ -d /usr/share/tessera ] || [ -d /usr/share/irice ]"]
+            command: ["sh", "-c", "[ -d /usr/share/tessera ] || [ -d \"$1\" ]", "sh", OldNames.loginShare]
             onExited: code => loginGroup.installed = code === 0
         }
         Process {
@@ -198,7 +198,7 @@ Column {
         Process {
             id: copyWallpaper
             command: loginGroup.passwordless ? RootHelper.command(["wallpaper", Wallpaper.path])
-                : ["sh", "-c", "d=/usr/share/tessera; [ -d \"$d\" ] || d=/usr/share/irice; exec pkexec cp \"$1\" \"$d/wallpaper.jpg\"", "sh", Wallpaper.path]
+                : ["sh", "-c", "d=/usr/share/tessera; [ -d \"$d\" ] || d=\"$2\"; exec pkexec cp \"$1\" \"$d/wallpaper.jpg\"", "sh", Wallpaper.path, OldNames.loginShare]
             onExited: code => loginGroup.status = code === 0 ? "The login screen now uses this wallpaper."
                 : loginGroup.passwordless ? "Didn't change the login screen. Pick a JPEG, PNG or WebP wallpaper and try again."
                 : "Didn't change the login screen. Approve the password prompt to try again."

@@ -106,8 +106,7 @@ struct Ids {
     threads: HashMap<String, (u32, i64)>,
 }
 
-/// Tessera's state folder ($XDG_STATE_HOME/tessera, or irice while the
-/// settings haven't moved: Paths.qml's `state`)
+/// Tessera's state folder ($XDG_STATE_HOME/tessera: Paths.qml's `state`)
 pub fn state_dir() -> PathBuf {
     let base = crate::util::xdg("XDG_STATE_HOME", ".local/state");
     let name = crate::theme::config_path().parent().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "tessera".into());

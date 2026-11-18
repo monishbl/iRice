@@ -11,8 +11,8 @@
 | 7 | Hovering a choice makes it current | 150-160 | `M::Hover` | **was** made the five choices again on every hover (a press under the pointer restarted); now one `Rows`, set in place |
 
 ## Test plan (tester)
-Both looks. Open: `inbox 'ipc panels open session IRICE-TEST'`. Do NOT press Enter on Sleep/Log Out/Restart/Shut Down in the arena unless it's sandboxed; use Esc.
-1. `rec ses-open 1 "ipc panels open session IRICE-TEST"`: compare the open curve with QML (Material ≈ 0.3 s, Glass ≈ 0.4 s).
+Both looks. Open: `inbox 'ipc panels open session TESSERA-TEST'`. Do NOT press Enter on Sleep/Log Out/Restart/Shut Down in the arena unless it's sandboxed; use Esc.
+1. `rec ses-open 1 "ipc panels open session TESSERA-TEST"`: compare the open curve with QML (Material ≈ 0.3 s, Glass ≈ 0.4 s).
 2. `-k Right` ×6 → stops at Shut Down; `-k Left` ×6 → Lock. The current one is accent (Glass) / its shape filled (Material).
 3. Glide across the five → the current follows the pointer; then `P down` on one and hold while gliding a few px → the swell (Material) / 94 % (Glass) stays, doesn't restart.
 4. `-k Escape` → closes in 192 ms.

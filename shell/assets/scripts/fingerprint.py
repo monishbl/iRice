@@ -40,8 +40,18 @@ DRIVERS = {f"0a5c:{p}": ("Broadcom ControlVault 3", ["libfprint-tod", "libfprint
            for p in ("5841", "5842", "5843", "5844", "5845")}
 FINGERS = ["right-index-finger", "left-index-finger", "right-thumb", "left-thumb", "right-middle-finger",
            "left-middle-finger", "right-ring-finger", "left-ring-finger", "right-little-finger", "left-little-finger"]
+def _old_names():
+    """Tessera's old name (migrate-names.py: the one place that knows it)."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("migrate_names", os.path.join(os.path.dirname(os.path.realpath(__file__)), "migrate-names.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+OLD = _old_names()
 MARK = "# Tessera fingerprint"
-OLD_MARK = "# iRice fingerprint"  # (marked before iRice became Tessera, until the root setup runs)
+OLD_MARK = OLD.OLD_FP_MARK  # (marked under the old name, until the root setup runs)
 # Where a finger may be accepted (tessera-root.py fingerprint): the PAM file of each
 PAM_FILES = {"polkit": ["polkit-1"], "sudo": ["sudo"], "login": ["greetd", "ly", "sddm", "lightdm", "lxdm"]}
 # Makers of fingerprint readers (USB): one of theirs that libfprint doesn't
@@ -278,7 +288,7 @@ def fix():
     spec.loader.exec_module(root)
     helper = path("/usr/lib/tessera/tessera-root")
     if not os.access(helper, os.X_OK):
-        helper = path("/usr/lib/irice/irice-root")  # (installed before iRice became Tessera)
+        helper = path(OLD.OLD_ROOT_HELPER)  # (until the root setup installs Tessera's)
     try:
         p = None
         if os.access(helper, os.X_OK):

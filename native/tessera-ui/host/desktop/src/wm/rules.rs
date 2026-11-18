@@ -135,10 +135,7 @@ pub fn spec(r: Option<&Rule>) -> String {
 }
 
 /// Replaces an app's rule: disables the one it had (if any), adds the new
-/// (and, once, the rules made while Tessera was called iRice, under the old names)
-const PRELUDE: &str = "if IRICE_WINDOW_RULES then for _, r in pairs(IRICE_WINDOW_RULES) do pcall(function() r:set_enabled(false) end) end IRICE_WINDOW_RULES = nil end\n\
-for _, k in ipairs({ \"IRICE_DEFAULT_LAYOUT\", \"IRICE_NO_SELF_MAXIMIZE\" }) do local r = rawget(_G, k) if r then pcall(function() r:set_enabled(false) end) end _G[k] = nil end\n\
-TESSERA_WINDOW_RULES = TESSERA_WINDOW_RULES or {}\n\
+const PRELUDE: &str = "TESSERA_WINDOW_RULES = TESSERA_WINDOW_RULES or {}\n\
 local function tessera_rule(key, spec)\n\
     local old = TESSERA_WINDOW_RULES[key]\n\
     if old then pcall(function() old:set_enabled(false) end) end\n\

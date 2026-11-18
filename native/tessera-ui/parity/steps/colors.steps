@@ -3,11 +3,11 @@
 look glass
 setup python3 -I -c "import json,os;p=os.path.expanduser('~/.config/tessera/config.json');c=json.load(open(p));c['appearance']['accent']='wallpaper';json.dump(c,open(p,'w'),indent=4)"
 wait 3
-ipc panels open overview IRICE-TEST
+ipc panels open overview TESSERA-TEST
 wait 1.5
 shot accent-overview
 ipc panels close
-ipc panels open missionControl IRICE-TEST
+ipc panels open missionControl TESSERA-TEST
 wait 1.5
 shot accent-missioncontrol
 ipc panels close
@@ -21,13 +21,13 @@ setup p=$(python3 -I -c "import json,os;print(json.load(open(os.path.expanduser(
 note /tmp/core-seed-qml.json (source_color) and /tmp/core-seed-rust.txt must be the same colour
 look material
 wait 3
-ipc panels open spotlight IRICE-TEST
+ipc panels open spotlight TESSERA-TEST
 wait 1
 key 12*12
 wait 1
 shot material-spotlight-calculator
 key -k Escape
-ipc panels open controlCenter IRICE-TEST
+ipc panels open controlCenter TESSERA-TEST
 wait 1.5
 shot material-controlcenter
 ipc panels close

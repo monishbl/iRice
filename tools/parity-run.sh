@@ -33,13 +33,13 @@
 #   static <name> x y w h     the region didn't change in recording <name>
 #   note <text>               what to check, for the reviewer
 #
-# Never your screen: the arena's headless IRICE-TEST only. Takes a while: run
+# Never your screen: the arena's headless TESSERA-TEST only. Takes a while: run
 # it when you're not using the laptop for anything heavy.
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SHARD="" MAXWAIT="" REPORT_ONLY="" PX="" PY="" ARENA=7 BIN="" ONLY="*" LOOKS="material,glass" STEPDIRS=()
 OUT="$HOME/tessera-verify/parity-$(date +%Y%m%d-%H%M)"
-USERCFG="$HOME/iRice/.sandbox/home/.config/tessera/config.json"
+USERCFG="$HOME/tessera/.sandbox/home/.config/tessera/config.json"
 while (($#)); do
     case "$1" in
         --bin) BIN=$2; shift ;;
@@ -64,7 +64,7 @@ if ((${#STEPDIRS[@]} == 0)); then
         [[ -d $d && $d != *"/worktrees/int/"* ]] && STEPDIRS+=("$d")
     done
 fi
-export IRICE_ARENA=$ARENA
+export TESSERA_ARENA=$ARENA
 # shellcheck source=/dev/null
 . "$ROOT/site/film/tessera/capture/lib.sh"
 CFG="$HOMEDIR/.config/tessera/config.json"
@@ -122,7 +122,7 @@ fresh() { # between files: settings as they were, no panels, no lock, no test wi
     inbox 'ipc panels close; ipc lock unlock; wtype -k Escape; wtype -k Escape
         for a in $(hyprctl clients -j | jq -r ".[].address"); do hyprctl dispatch "hl.dsp.window.close({ window = \"address:$a\" })" >/dev/null; done
         pkill -x fakeplayer.py 2>/dev/null; true' </dev/null >/dev/null 2>&1
-    dev pointer -o IRICE-TEST move 1500 600 </dev/null >/dev/null 2>&1
+    dev pointer -o TESSERA-TEST move 1500 600 </dev/null >/dev/null 2>&1
     PX=1500 PY=600
     sleep 1
 }
@@ -133,7 +133,7 @@ do_step() { # verb args… (ipc/ptr/key/setup: one action)
         ptr) # (each vptr call starts at the screen centre: start where the last one ended)
             local a=("$@") i
             [[ -n $PX ]] && a=(move "$PX" "$PY" "${a[@]}")
-            dev pointer -o IRICE-TEST "${a[@]}" </dev/null >/dev/null 2>&1
+            dev pointer -o TESSERA-TEST "${a[@]}" </dev/null >/dev/null 2>&1
             for ((i = 0; i < ${#a[@]}; i++)); do
                 case "${a[i]}" in move|glide) PX=${a[i+1]} PY=${a[i+2]} ;; esac
             done ;;
@@ -168,7 +168,7 @@ run_file() { # name look pass
             rec)
                 read -r n s rest <<<"$rest"
                 local mp4="/tmp/parity-rec-$ARENA-$n.mp4"
-                inbox "rm -f $mp4; wf-recorder -o IRICE-TEST -r 60 -f $mp4 >/dev/null 2>&1 & echo \$! > /tmp/parity-rec-$ARENA.pid" </dev/null >/dev/null 2>&1
+                inbox "rm -f $mp4; wf-recorder -o TESSERA-TEST -r 60 -f $mp4 >/dev/null 2>&1 & echo \$! > /tmp/parity-rec-$ARENA.pid" </dev/null >/dev/null 2>&1
                 sleep 0.6
                 # shellcheck disable=SC2086
                 do_step $rest

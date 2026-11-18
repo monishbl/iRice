@@ -218,8 +218,7 @@ pub fn shell_dir() -> PathBuf {
     candidates.into_iter().flatten().find(|d| d.join("shell.qml").exists()).unwrap_or_else(|| PathBuf::from("/usr/share/tessera/shell"))
 }
 
-/// $XDG_CACHE_HOME/tessera (iRice's folder while the settings still live there,
-/// as Paths.qml)
+/// $XDG_CACHE_HOME/tessera (as Paths.qml)
 pub fn cache_dir() -> PathBuf {
     let base = crate::util::xdg("XDG_CACHE_HOME", ".cache");
     let name = crate::theme::config_path().parent().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "tessera".into());

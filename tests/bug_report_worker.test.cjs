@@ -61,7 +61,7 @@ test.before(async () => {
 
 const PNG = Buffer.from("89504e470d0a1a0a0000000d49484452", "hex").toString("base64");
 const post = (body, ip = "203.0.113.7") =>
-    new Request("https://irice-bugs.monishbl.in/api/bug-reports", {
+    new Request("https://tessera-bugs.monishbl.in/api/bug-reports", {
         method: "POST",
         headers: { "Content-Type": "application/json", "CF-Connecting-IP": ip },
         body: typeof body === "string" ? body : JSON.stringify(body),
@@ -85,7 +85,7 @@ test("a report is stored and filed as an issue, without the sender's IP", async 
         title: "Dock vanishes",
         happened: "After waking, the dock is gone. cc @someone",
         steps: "1. Sleep 2. Wake",
-        sysinfo: { iRice: "abc123", Hyprland: "0.56.2" },
+        sysinfo: { Tessera: "abc123", Hyprland: "0.56.2" },
         log: "line 1\n~~~~ fence\nline 3",
         screenshot: { type: "image/png", data: PNG },
     }), env);
@@ -116,12 +116,12 @@ test("the screenshot is served by its id, and only by it", async t => {
     fakeGithub(t);
     const env = { DB: new FakeD1(), GITHUB_TOKEN: "x" };
     const { id } = await (await worker.fetch(post({ title: "T", happened: "H", screenshot: { type: "image/png", data: PNG } }), env)).json();
-    const shot = await worker.fetch(new Request(`https://irice-bugs.monishbl.in/api/bug-reports/${id}/screenshot`), env);
+    const shot = await worker.fetch(new Request(`https://tessera-bugs.monishbl.in/api/bug-reports/${id}/screenshot`), env);
     assert.equal(shot.status, 200);
     assert.equal(shot.headers.get("Content-Type"), "image/png");
     assert.equal(Buffer.from(await shot.arrayBuffer()).toString("base64"), PNG);
     for (const bad of ["0".repeat(32), "../../etc", id.slice(0, 31)]) {
-        const r = await worker.fetch(new Request(`https://irice-bugs.monishbl.in/api/bug-reports/${bad}/screenshot`), env);
+        const r = await worker.fetch(new Request(`https://tessera-bugs.monishbl.in/api/bug-reports/${bad}/screenshot`), env);
         assert.equal(r.status, 404, bad);
     }
 });
@@ -176,13 +176,13 @@ test("without a GitHub token, or when GitHub fails, the report is still kept", a
 
 test("other paths and methods are not found or not allowed", async () => {
     const env = { DB: new FakeD1() };
-    assert.equal((await worker.fetch(new Request("https://irice-bugs.monishbl.in/api/bug-reports"), env)).status, 405);
-    assert.equal((await worker.fetch(new Request("https://irice-bugs.monishbl.in/"), env)).status, 404);
+    assert.equal((await worker.fetch(new Request("https://tessera-bugs.monishbl.in/api/bug-reports"), env)).status, 405);
+    assert.equal((await worker.fetch(new Request("https://tessera-bugs.monishbl.in/"), env)).status, 404);
 });
 
 test("a long log is cut from the start to fit GitHub's issue size", () => {
     const r = validate({ title: "T", happened: "H", log: "old\n" + "x".repeat(150000) + "\nnewest line" });
-    const body = issueBody(r, "a".repeat(32), "https://irice-bugs.monishbl.in");
+    const body = issueBody(r, "a".repeat(32), "https://tessera-bugs.monishbl.in");
     assert.ok(body.length < 65536);
     assert.ok(body.includes("newest line"));
     assert.ok(!body.includes("old\n"));

@@ -86,12 +86,12 @@ sandbox (pointer/keyboard, both looks).
 
 ## The sandbox, with the user's settings
 
-- Your own arena (given in your brief): `IRICE_ARENA=N ./dev.sh up/down/reload/shot/run/pointer`.
+- Your own arena (given in your brief): `TESSERA_ARENA=N ./dev.sh up/down/reload/shot/run/pointer`.
   `tools/live-scenarios.sh --arena N` sets an arena up with the user's
   config.json (Material dark, Colloid icons, expressive motion, their widgets;
   accounts and keys left out) and runs both shells. Copy it to your scratch
   dir and add your scenarios; run `--only qml` / `--only rust`.
-- Pointer: `IRICE_ARENA=N ./dev.sh pointer -o IRICE-TEST move X Y | glide X Y MS | click | down | up | scroll`
+- Pointer: `TESSERA_ARENA=N ./dev.sh pointer -o TESSERA-TEST move X Y | glide X Y MS | click | down | up | scroll`
   (glides produce hover enter/leave; jumps may not). Each vptr process starts
   at the screen centre, so put a whole path in ONE call
   (`P move X Y sleep 400 move X2 Y2 click`), not one call per step.
@@ -116,14 +116,14 @@ Build when you need to check behaviour, not after every edit.
 - Never run tessera-ui, tests or anything graphical with the host's display
   (outside dev.sh: `env -u WAYLAND_DISPLAY -u WAYLAND_SOCKET -u DISPLAY`).
 - Never screenshot or record the host; only `./dev.sh shot` / wf-recorder
-  inside an arena on IRICE-TEST.
+  inside an arena on TESSERA-TEST.
 - Never pkill/killall (the container shares PIDs with the user's desktop,
   whose shell IS tessera-ui): kill exact PIDs after checking
   /proc/PID/environ has your arena's XDG_RUNTIME_DIR. Never run
   repair-shell.sh, update-run.sh or anything that looks for "the shell"
   from inside an arena (it can see and stop the user's live one).
-- Never touch ~/iRice (the user's live install) or arena 1, 6, 7.
-- Never set IRICE_VISIBLE=1 or IRICE_HOST_AUDIO=1. Arenas stay hidden;
+- Never touch ~/tessera (the user's live install) or arena 1, 6, 7.
+- Never set TESSERA_VISIBLE=1 or TESSERA_HOST_AUDIO=1. Arenas stay hidden;
   `./dev.sh down` when you finish.
 - Never commit screenshots/recordings. No company trademarks in UI text.
 - Commit on your worktree branch; messages end with

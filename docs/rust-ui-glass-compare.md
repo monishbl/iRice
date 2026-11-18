@@ -9,14 +9,14 @@ Measured 5 November 2026 in sandbox arena 7, main at `b8adf2d` (tessera-ui relea
 - **CPU per interaction: Rust is about 1.5 to 2 times cheaper for the bar, island, dock, OSD, emoji and clipboard** (the QML shell plus Hyprland against tessera-ui plus the QML shell plus Hyprland). **It is dearer for the full-screen surfaces**: Today 599 against 360 ms per open and close, background 512 against 368 ms per wallpaper change, desktop 257 against 151 ms per menu, the wallpaper picker 437 against 187 ms. Most of that is Hyprland's own CPU (up to 3.4 times the QML case), which points at full-surface damage on large surfaces and extra full-screen layers.
 - **Memory goes up, not down, for now:** with all nine surfaces in Rust the QML shell stays at 387 MB resident (408 MB with everything in QML), and tessera-ui adds 135 MB: 521 MB together, +28%. The QML shell keeps its services and singletons loaded when its surfaces step aside.
 - **Start-up of tessera-ui:** first frame 107 ms after exec, the bar mapped at 36 ms, the wallpaper at 167 ms (medians of 3). Idle CPU is at the floor for all processes (0.1 to 0.2% of a core).
-- **Frame pacing** (the plugin's `frametimes` on IRICE-TEST) is the same or better in Rust for 8 of 11 interactions; worse for Today (5.5% of frames late against 0.4%).
+- **Frame pacing** (the plugin's `frametimes` on TESSERA-TEST) is the same or better in Rust for 8 of 11 interactions; worse for Today (5.5% of frames late against 0.4%).
 
 ## Setup
 
 | | |
 |---|---|
-| Arena | 7 (hidden, silent: KWin virtual display, private PipeWire), IRICE-TEST 1920×1080 at scale 1, WAYLAND-1 disabled |
-| Compositor | Hyprland 0.56.2 in the `irice` container, the repo's `hypr/plugin/tessera-glass` built with `make` against it |
+| Arena | 7 (hidden, silent: KWin virtual display, private PipeWire), TESSERA-TEST 1920×1080 at scale 1, WAYLAND-1 disabled |
+| Compositor | Hyprland 0.56.2 in the `tessera` container, the repo's `hypr/plugin/tessera-glass` built with `make` against it |
 | Look | Glass, dark, accent blue, motion subtle, wallpaper `site/film/tessera/capture/seed/photos/wall-tiles.jpg` for every shot |
 | Glass | `appearance.glass: "custom"`, `glassLens: 1` (the "100% glass" knob, at its maximum; `glassSolid: 0`), `glassFrost: 0.25`, `glassTint: 1`, `glassIor: 1.33`; refraction band 1, dispersion 0.35, depth auto (defaults) |
 | Other | dock magnification on at 1.45 (the default; this arena's seed had 1.15), island HUD on (the OSD capsule states turn it off), desktop widgets off except for the desktop states and the memory runs (then Config.qml's default four widgets and the desktop files) |
@@ -26,7 +26,7 @@ Measured 5 November 2026 in sandbox arena 7, main at `b8adf2d` (tessera-ui relea
 
 Every CPU and frame measurement ran under the lead's `quiet.sh` (all build slots held, so no agent compiled meanwhile), in holds of about two minutes, released between.
 
-Measurement scripts (session scratchpad, not committed): `a7/perf.py` (CPU per cycle from `/proc/PID/stat` of the QML shell, tessera-ui and the nested Hyprland; frame pacing from `hyprctl tessera-glass frametimes`, reset before each test; memory from `/proc/PID/status` and `smaps_rollup`; tessera-ui start-up by polling Hyprland's layer list every 2 ms), `a7/shots.sh` (every state, `grim` on IRICE-TEST), `a7/compare.py` (pairs, differences, 2× crops), `a7/flick.sh` and `a7/cold.sh` (60 fps recordings of opening, `a7/frames.py` finds the onset, flicker and settling).
+Measurement scripts (session scratchpad, not committed): `a7/perf.py` (CPU per cycle from `/proc/PID/stat` of the QML shell, tessera-ui and the nested Hyprland; frame pacing from `hyprctl tessera-glass frametimes`, reset before each test; memory from `/proc/PID/status` and `smaps_rollup`; tessera-ui start-up by polling Hyprland's layer list every 2 ms), `a7/shots.sh` (every state, `grim` on TESSERA-TEST), `a7/compare.py` (pairs, differences, 2× crops), `a7/flick.sh` and `a7/cold.sh` (60 fps recordings of opening, `a7/frames.py` finds the onset, flicker and settling).
 
 ## Performance
 
@@ -56,7 +56,7 @@ Notes:
 
 ### Frame pacing (compositor side)
 
-The plugin's `frametimes` for IRICE-TEST over each test's ten cycles: frames on time / one vsync missed / two missed / longer (gaps over 250 ms between animations are left out by the plugin), worst interval, and the share of frames late. Medians of three rounds.
+The plugin's `frametimes` for TESSERA-TEST over each test's ten cycles: frames on time / one vsync missed / two missed / longer (gaps over 250 ms between animations are left out by the plugin), worst interval, and the share of frames late. Medians of three rounds.
 
 | Interaction | QML | Rust |
 |---|---|---|

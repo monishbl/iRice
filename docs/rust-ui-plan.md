@@ -11,7 +11,7 @@ Decided 4 November 2026: Tessera's interface moves from Quickshell/QML to Rust, 
 
 - **Piece by piece, side by side.** A Rust shell process (`tessera-ui`) runs next to the QML shell. Each piece (a "surface": menu bar, dock, notifications, OSD, Control Center, Search, App Drawer, lock, Settings, …) moves when its Rust version matches in both looks; the QML shell then stops drawing it (one switch per surface). Until then the QML one stays.
 - **Same settings, same commands.** `tessera-ui` reads and writes the same config.json and state files, answers the same IPC commands (shell-ipc.sh, the smoke check), and uses the same glass plugin protocol, so nothing about your setup changes as pieces move.
-- **Services first where shared.** System services (battery, network, sound, Bluetooth, notifications server, tray, MPRIS, Hyprland state) are written once in Rust and serve every Rust surface; irice-events is the start of that layer.
+- **Services first where shared.** System services (battery, network, sound, Bluetooth, notifications server, tray, MPRIS, Hyprland state) are written once in Rust and serve every Rust surface; tessera-events is the start of that layer.
 - **The lock screen moves last** (it's the security boundary), with its own review.
 - Each moved surface: tests, the smoke check in both looks, sandbox screenshots shown to you before it reaches your laptop.
 

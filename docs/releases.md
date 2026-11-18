@@ -262,7 +262,7 @@ the releases API (the first beta release went out this way on 17 November
 For `main`, `beta` and every `v*` tag, each run:
 
 1. Fetches them from GitHub (https, the public repository) into its own clean
-   clone, `~/tessera-release/src` (never `~/iRice`, `~/tessera-build` or the
+   clone, `~/tessera-release/src` (never `~/tessera`, `~/tessera-build` or the
    agents' `~/tb-*`).
 2. Names the build by `git rev-parse <commit>:native`. Nothing to do when the
    release already has that tree's manifest (GitHub, asked anonymously), or a
@@ -320,7 +320,7 @@ user@server1`):
    input, never written or logged anywhere else), the signed comment naming
    the file, the tree and the commit (what installs check), and checks every
    signature against `tools/tessera-ui.pub` of that commit: from the checkout
-   here (`TESSERA_REPO`, default `~/Projects/Personal/iRice`), else that
+   here (`TESSERA_REPO`, which `install-publisher.sh` sets to the checkout it was installed from), else that
    commit's file on GitHub, never server1's copy. A key and public key that
    don't belong together never get published.
 4. Publishes with `gh` to its release (created the first time as the workflow
@@ -427,7 +427,7 @@ for one run, and `setup.sh` carries a copy, kept the same by
 | Order | Source | Used for |
 |---|---|---|
 | 1 | `https://github.com/monishbl/tessera.git` | everything (today's only source) |
-| 2 | `https://gitlab.com/monishbl/tessera.git` | the code (git), and the builds from its generic package registry: `https://gitlab.com/api/v4/projects/monishbl%2FiRice/packages/generic/tessera-ui/<tag>/<file>` |
+| 2 | `https://gitlab.com/monishbl/tessera.git` | the code (git), and the builds from its generic package registry: `https://gitlab.com/api/v4/projects/monishbl%2Ftessera/packages/generic/tessera-ui/<tag>/<file>` |
 | 3 | `https://codeload.github.com/monishbl/tessera/tar.gz/refs/heads/<branch>` | a fresh install only: the files without git history (Software Update can't update such a copy until `setup.sh` is run again) |
 
 - **setup.sh** clones from the first that works; a source is looked at first

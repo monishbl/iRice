@@ -30,7 +30,6 @@ from pathlib import Path
 LABEL = "Send to a nearby device…"
 SCRIPT = Path(__file__).resolve().parent / "share-files.sh"
 UCA_ID = "tessera-share"  # our action's unique id in Thunar's uca.xml
-OLD_UCA_ID = "irice-share"  # (its id while Tessera was called iRice)
 
 
 # The file managers' own folders. In the Tessera login session (TESSERA_TTY=1)
@@ -38,30 +37,15 @@ OLD_UCA_ID = "irice-share"  # (its id while Tessera was called iRice)
 # apps it starts get the usual ones (Launch.qml leaves out XDG_*_HOME), so
 # that's where their menus go.
 def data_home():
-    if (os.environ.get("TESSERA_TTY") or os.environ.get("IRICE_TTY")) == "1":
+    if os.environ.get("TESSERA_TTY") == "1":
         return Path.home() / ".local/share"
     return Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share")
 
 
 def config_home():
-    if (os.environ.get("TESSERA_TTY") or os.environ.get("IRICE_TTY")) == "1":
+    if os.environ.get("TESSERA_TTY") == "1":
         return Path.home() / ".config"
     return Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
-
-
-def renamed_menus():
-    """Menus written while Tessera was called iRice (irice-share…): written
-    again under Tessera's name, so a file manager never shows both."""
-    for k, m in MANAGERS.items():
-        olds = [p.with_name(p.name.replace("tessera-share", "irice-share")) for p in m["paths"]()]
-        olds = [p for p in olds if p.name.startswith("irice-share") and p.exists()]
-        if olds:
-            m["install"]()
-            for p in olds:
-                p.unlink()
-    with contextlib.suppress(SystemExit, OSError):
-        if uca_path().exists() and any((a.findtext("unique-id") or "") == OLD_UCA_ID for a in uca_load().getroot().findall("action")):
-            thunar_install()
 
 
 def move_old_menus():
@@ -193,7 +177,7 @@ def uca_load():
 
 
 def uca_ours(tree):
-    return [a for a in tree.getroot().findall("action") if (a.findtext("unique-id") or "") in (UCA_ID, OLD_UCA_ID)]
+    return [a for a in tree.getroot().findall("action") if (a.findtext("unique-id") or "") == UCA_ID]
 
 
 def uca_save(tree):
@@ -270,7 +254,6 @@ def main(argv):
         return 2
     cmd, names = argv[0], argv[1:]
     move_old_menus()
-    renamed_menus()
     if cmd == "status":
         print(json.dumps(status()))
         return 0

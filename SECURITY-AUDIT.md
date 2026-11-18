@@ -1,4 +1,4 @@
-# iRice security and legal audit
+# Tessera security and legal audit
 
 Date: 2026-11-03. Branch: `worktree-agent-aca1efca23f50246d`, starting from `60cebd4`.
 
@@ -37,7 +37,7 @@ Status: **Fixed** means fixed in this branch. **Decide** means it needs your dec
 | # | Finding | Where | Status |
 |---|---|---|---|
 | H1 | **The Wi-Fi helper (root) trusted the phone's DHCP answer.** When joining a phone's Wi-Fi Direct group or hotspot, it ran `ip addr add <ip>/<prefix>`, with the address and mask taken from the phone. A phone could answer mask `0.0.0.0` (`/0`) or `128.0.0.0` (`/1`), or give an address inside your home or VPN network. The kernel's link route (metric 0) would then send this computer's internet, LAN or VPN traffic to the phone. Who can do this: the device you send to, and it can run without a password if "Fast transfers without asking" is on. | `qs-wifi-helper.py` `join` and `_join_as_client` (before the fix: around lines 821 and 867) | **Fixed.** New `lease_network()` accepts only a private IPv4 address, at most a /24, and never one that overlaps a network another interface uses. Otherwise it refuses, and the transfer stays on Bluetooth. |
-| H2 | **A received share changes the firewall permanently, without asking.** When a Bluetooth transfer is accepted and a hotspot would help, the Quick Share daemon runs the Settings → Sharing firewall fix by itself (`allow_hotspot`). That fix runs without a password (`49-irice.rules`). It opens 53317–53320/tcp, 53317/udp, 5353/udp and 67/udp **from every source on every interface, permanently**: ufw `allow` with no `from`, firewalld's default zone with `--permanent`, nftables rules first in every input chain. Any program in your session can also trigger it silently (`pkexec /usr/lib/irice/irice-root fix firewall`). | `nearby/service.py:414-418, 887-896`; `irice-root.py:126-198`; `49-irice.rules:9-24` | **Decide** (R1, R2) |
+| H2 | **A received share changes the firewall permanently, without asking.** When a Bluetooth transfer is accepted and a hotspot would help, the Quick Share daemon runs the Settings → Sharing firewall fix by itself (`allow_hotspot`). That fix runs without a password (`49-tessera.rules`). It opens 53317–53320/tcp, 53317/udp, 5353/udp and 67/udp **from every source on every interface, permanently**: ufw `allow` with no `from`, firewalld's default zone with `--permanent`, nftables rules first in every input chain. Any program in your session can also trigger it silently (`pkexec /usr/lib/tessera/tessera-root fix firewall`). | `nearby/service.py:414-418, 887-896`; `tessera-root.py:126-198`; `49-tessera.rules:9-24` | **Decide** (R1, R2) |
 | H3 | **The installer downloads Apple's copyrighted wallpapers by default and makes them the first wallpaper.** The source is an unofficial GitHub mirror, and the prompt defaults to "y". | `install.sh:605-618`; `tools/get-wallpapers.sh:2-23` | **Decide** (L1) |
 | H4 | **The repository has no licence.** Without one it is "all rights reserved", so nobody may legally fork or redistribute it. The third-party notices are also incomplete (section 6). | repo root | **Decide** (L2) |
 
@@ -49,10 +49,10 @@ Status: **Fixed** means fixed in this branch. **Decide** means it needs your dec
 | M2 | **Notification bodies and links.** The body was StyledText with no sanitiser, so `<img>` from any app or web notification loaded from the network. Body links opened **any scheme** through `xdg-open`: `file:///…/x.desktop`, `smb://`, custom handlers. The same applied to AI chat links, AUR homepages and booru pages. The island also un-escaped `&lt;`/`&gt;`, which turned an app's escaped text back into live tags. | `NotificationCard.qml:126-133`; `MaterialNotificationCard.qml:187-198`; `Notifications.qml:126`; `ChatMessage.qml`; `AppStoreWindow.qml`; `Booru.qml`; `UpdateNotes.qml` | **Fixed.** `Notifications.safeMarkup()` keeps only b/i/u/br and http(s)/mailto links. `Launch.openLink()` opens only http(s) and mailto, and every `onLinkActivated` uses it. The island text is now plain. |
 | M3 | **Screen text reached `trans` as options.** OCR'd text (Translate a region) and typed text were passed with no `--`. On-screen text such as `-i=/home/you/.ssh/id_ed25519` would make translate-shell **read that file and send it to the translation service**; `-o=FILE` would write a file. The target language was also quoted without escaping. | `ScreenTools.qml:202`; `Translator.qml:50` (both looks) | **Fixed.** Both values are quoted, and `--` comes first. |
 | M4 | **AUR packages install and update with no review.** The flags are `--noconfirm --answerdiff None --answerclean None --answeredit None` (paru: `--skipreview`). AUR scripts are user-uploaded and unchecked. A hijacked AUR package (several are themes from small maintainers) becomes code in the next update, built as you and installed by pacman as root. | `install.sh:440,456`; `tools/setup-tty.sh:51`; `sysupdate.py:851-855` | **Decide** (R4) |
-| M5 | **"Fast transfers without asking" (off by default).** It installs a rule letting any process in your session start the root Wi-Fi helper without a password. The helper's interface is narrow and strictly checked (host, join, stop; SSID, passphrase and channel validated; H1 now fixed). While a link exists, though, it accepts **all** traffic on the link interface (firewalld `trusted` zone, nft `iifname accept`, `iptables -j ACCEPT`), not just DHCP and the transfer port. | `irice-root.py:506-546`; `qs-wifi-helper.py:649-667` | **Decide** (R3) |
-| M6 | **Code fetched without a pinned signature.** `bash <(curl …/get)` clones GitHub over HTTPS. `--with-settings` downloads a tarball and **runs its `import.sh`** with no checksum. Self-update is `git pull`, and the update then installs the root helper and polkit rules from that checkout (after your password). Anyone who controls the GitHub account or the site's host controls root on the next update. | `site/public/get:47-56`; `setup.sh:4,35`; `irice-root.py:769-795` | **Decide** (R5) |
+| M5 | **"Fast transfers without asking" (off by default).** It installs a rule letting any process in your session start the root Wi-Fi helper without a password. The helper's interface is narrow and strictly checked (host, join, stop; SSID, passphrase and channel validated; H1 now fixed). While a link exists, though, it accepts **all** traffic on the link interface (firewalld `trusted` zone, nft `iifname accept`, `iptables -j ACCEPT`), not just DHCP and the transfer port. | `tessera-root.py:506-546`; `qs-wifi-helper.py:649-667` | **Decide** (R3) |
+| M6 | **Code fetched without a pinned signature.** `bash <(curl …/get)` clones GitHub over HTTPS. `--with-settings` downloads a tarball and **runs its `import.sh`** with no checksum. Self-update is `git pull`, and the update then installs the root helper and polkit rules from that checkout (after your password). Anyone who controls the GitHub account or the site's host controls root on the next update. | `site/public/get:47-56`; `setup.sh:4,35`; `tessera-root.py:769-795` | **Decide** (R5) |
 | M7 | **Google Lens uploads the selected screen area to a public file host** (uguu.se) before opening Lens. A comment in the code says so; the UI label doesn't. | `lens-search.sh:3,14`; label at `shell.qml:167` | **Fixed** (4 Nov). The picture goes straight to Google Lens (`lens-upload.py`, no cookies), as circle to search's "Search the web" does; nothing goes to a file host. |
-| M8 | **Other companies' trademarks are used as iRice feature names**, most of all in the site's marketing (section 7). | UI and `site/public/index.html` | **Decide** (L3) |
+| M8 | **Other companies' trademarks are used as Tessera feature names**, most of all in the site's marketing (section 7). | UI and `site/public/index.html` | **Decide** (L3) |
 
 ### Low
 
@@ -61,7 +61,7 @@ Status: **Fixed** means fixed in this branch. **Decide** means it needs your dec
 | L1 | **LocalSend saved and showed the sender's file names almost raw** (`basename` only). Control characters and bidi overrides got through (`invoice‮gpj.exe` reads as "invoiceexe.jpg"), as did hidden dot-files and names too long to save. | `localsend.py:370` | **Fixed.** `clean_name()` follows the same rules as Quick Share. You're asked about the cleaned names, and those are what land. |
 | L2 | **Link sharing had three gaps.** It had no free-space check, so a phone holding the link could upload up to 200 × 4 GB. `os.rename` could replace a file that appeared between the name check and the rename. `private()` accepted `0.0.0.0` (listening there means every network) and documentation ranges. | `link-share.py:71-77, 309-352` | **Fixed.** It keeps 512 MB free, publishes with a hard link (never replacing a file), and accepts only RFC 1918 addresses. |
 | L3 | **Cast passed a link to `yt-dlp` with no `--`**, so a link like `--exec=…` became an option. The file server also listened on every interface. | `cast.py:211-224, 353` | **Fixed.** Only http(s) links are taken, they come after `--`, and the server binds to the address the device reaches. |
-| L4 | **The Quick Share debug log could fall back to `/tmp`.** With no `$XDG_RUNTIME_DIR`, another user's `/tmp/irice-quickshare.debug` switched the log on, and a symlink in place of the log was followed. | `nearby/debuglog.py:13-30` | **Fixed.** Only a private runtime folder is used, opened with `O_NOFOLLOW`. |
+| L4 | **The Quick Share debug log could fall back to `/tmp`.** With no `$XDG_RUNTIME_DIR`, another user's `/tmp/tessera-quickshare.debug` switched the log on, and a symlink in place of the log was followed. | `nearby/debuglog.py:13-30` | **Fixed.** Only a private runtime folder is used, opened with `O_NOFOLLOW`. |
 | L5 | **Received files opened as `"file://" + path` without URL-encoding.** A name containing `%`, `#` or `?` opened a different path from the one shown. | `QuickShare.qml:312`; `LinkShare.qml:83`; `IncomingCard.qml:240` (both looks) | **Fixed.** They now use `Files.open(path)`, which passes the path as `$1`. |
 | L6 | **Calendar invitation titles and synced reminder titles reached `notify-send` as options**, so a title starting with `-` was read as a flag. | `Calendar.qml:261`; `Todos.qml:197` | **Fixed.** `--` comes first. |
 | L7 | **LocalSend's HTTPS server always listens on 53317.** `/info` and `/register` answer with your name and fingerprint even when receiving is off. Anyone on the network can register a peer under any name; this is inherent to LocalSend's trust-on-first-use. | `localsend.py:304-330, 486-494` | **Decide** (R7) |
@@ -70,7 +70,7 @@ Status: **Fixed** means fixed in this branch. **Decide** means it needs your dec
 | L10 | **`/tmp` fallbacks when `$XDG_RUNTIME_DIR` is unset** (never the case under logind). | `Clipboard.qml:21`; `ScreenTools.qml:17,109`; `Sharing.qml:70`; `Dictation.qml:96`; `wifi.py:380`; `link-share.py:360` (O_EXCL, random name); `xdg-autostart.py:260` and others | Noted |
 | L11 | **Without the installed helper, Wi-Fi Direct falls back to `pkexec python3 -I <script in your home>`.** It needs the password, but the prompt names python. | `nearby/wifi.py:301-304` | **Decide** (R3) |
 | L12 | **The D-Bus "shield" can be left behind.** It is a mandatory deny of wpa_supplicant `RemoveInterface`, for everyone, while a group is hosted. It stays if the helper is SIGKILLed, until the helper next starts. wpa_supplicant's log level is raised to `debug` while a link exists; keys are not logged at that level. | `qs-wifi-helper.py:162-176, 768-777, 908` | Noted |
-| L13 | **`update --downgrade` accepts package files from `~/.cache/yay` and `~/.cache/paru`**, which you can write to. The path is checked through `realpath`, then given to pacman as root. You could swap the file in between, but you already gave the admin password for this step. | `irice-root.py:831-853` | Noted |
+| L13 | **`update --downgrade` accepts package files from `~/.cache/yay` and `~/.cache/paru`**, which you can write to. The path is checked through `realpath`, then given to pacman as root. You could swap the file in between, but you already gave the admin password for this step. | `tessera-root.py:831-853` | Noted |
 | L14 | **Test fixtures look like real GitHub tokens** (`ghp_AbC123…`), so they may trip secret scanners. | `tests/test_bug_report.py:30,49` | Noted |
 
 ### Checked and fine (secure by default)
@@ -115,7 +115,7 @@ Status: **Fixed** means fixed in this branch. **Decide** means it needs your dec
 - **Backups.**
   - No keys, tokens, passwords, accounts, displays or sharing name leave the computer.
   - The file is 0600, and calendar subscriptions aren't included.
-  - Restore refuses tar members that aren't iRice's.
+  - Restore refuses tar members that aren't Tessera's.
   - A new test also fails if a new setting ends in key, token, secret or password and the scrubber wouldn't catch it.
   - *Tested.*
 - **Wi-Fi QR.** The password comes from NetworkManager and goes to `qrencode` on stdin, never on a command line. The code file is 0600 in a 0700 runtime folder, and `forget` removes only its own codes. *Tested.*
@@ -198,7 +198,7 @@ Status: **Fixed** means fixed in this branch. **Decide** means it needs your dec
 **R2. Stop the silent, automatic firewall change.**
 
 - Remove `allow_hotspot()`'s automatic run from Quick Share (`service.py:414-418`). Instead, show "Allow Quick Share through the firewall" as a button in the transfer.
-- Remove `org.irice.root.fix` from the passwordless set (`49-irice.rules`). At least split `firewall` out of it: system services can stay silent, firewall changes ask once (`auth_admin_keep`).
+- Remove `org.tessera.root.fix` from the passwordless set (`49-tessera.rules`). At least split `firewall` out of it: system services can stay silent, firewall changes ask once (`auth_admin_keep`).
 
 **R3. Fast transfers without asking.**
 
@@ -207,13 +207,13 @@ Status: **Fixed** means fixed in this branch. **Decide** means it needs your dec
 
 **R4. AUR safety.**
 
-- Show PKGBUILD diffs for anything not already reviewed, or pin iRice's AUR set to known-good versions or a vetted list.
-- Don't run `yay -Sua` over all of the user's AUR packages inside iRice's update. Update only iRice's own extras, and say plainly that AUR packages are unreviewed.
+- Show PKGBUILD diffs for anything not already reviewed, or pin Tessera's AUR set to known-good versions or a vetted list.
+- Don't run `yay -Sua` over all of the user's AUR packages inside Tessera's update. Update only Tessera's own extras, and say plainly that AUR packages are unreviewed.
 
 **R5. Supply chain.**
 
-- Sign release tags (or commits) and have `irice update` verify them (`git verify-tag`) before running `setup`.
-- Publish a SHA-256 for the `get` script and for `irice-config.tar.gz`, and check it in `get` before running `import.sh`. Better still, ship `import.sh` in the repo, so only data is downloaded.
+- Sign release tags (or commits) and have `tessera update` verify them (`git verify-tag`) before running `setup`.
+- Publish a SHA-256 for the `get` script and for `tessera-config.tar.gz`, and check it in `get` before running `import.sh`. Better still, ship `import.sh` in the repo, so only data is downloaded.
 
 **R6. Google Lens.** Change the label to say the selected area is uploaded to a public file host, or ask the first time it's used. Better, use Lens's own upload endpoint if one becomes available.
 
@@ -229,22 +229,22 @@ Status: **Fixed** means fixed in this branch. **Decide** means it needs your dec
 
 ## 6. Licence checklist
 
-**Status (3 Nov 2026):** iRice is now GPL-3.0-or-later (`LICENSE`), with `THIRD_PARTY_NOTICES.md` and the licence texts in `LICENSES/`; the MaterialColor.js path and the Material Symbols modification notice are fixed. The Material sound pack's source is still unknown (PENDING.md).
+**Status (3 Nov 2026):** Tessera is now GPL-3.0-or-later (`LICENSE`), with `THIRD_PARTY_NOTICES.md` and the licence texts in `LICENSES/`; the MaterialColor.js path and the Material Symbols modification notice are fixed. The Material sound pack's source is still unknown (PENDING.md).
 
 | Item | Licence | In the repo | What it needs | Status |
 |---|---|---|---|---|
-| **iRice itself** | none | no `LICENSE` at the root; the README states none | choose a licence (GPL-3.0, to match end4 and Hyprland plugins, or MIT/BSD) | **Missing (L2)** |
+| **Tessera itself** | none | no `LICENSE` at the root; the README states none | choose a licence (GPL-3.0, to match end4 and Hyprland plugins, or MIT/BSD) | **Missing (L2)** |
 | Third-party notices file | — | none | one `THIRD-PARTY-NOTICES` covering everything below | **Missing** |
 | Phosphor icons (`shell/assets/fonts/Phosphor*.ttf`, `site/film/hero/assets`) | MIT | `LICENSE-phosphor` next to both | keep the notice | OK |
-| Google Sans Flex, renamed "iRice Sans Flex" (`material/assets/fonts/GoogleSansFlex.ttf`) | SIL OFL 1.1 | `LICENSE-google-sans-flex` (OFL and TRADEMARKS.md) | **No Reserved Font Name is declared**, so renaming isn't required by OFL §3 but is allowed. The rename fits Google's TRADEMARKS.md ("Google Sans" may not name a product). Keep the OFL text and copyright (both kept in the name table). | OK. Tidy-ups: the named-instance PostScript names still read `GoogleSansFlex-*`, and the file name too; the `gen-material.sh:7` comment still says "unchanged". |
-| Material Symbols Rounded, subset and renamed "iRice Symbols" | Apache-2.0 | `LICENSE-material-symbols` | §4(b): modified files must say they were changed. Add a line such as "subset to 404 icons and renamed by iRice". The licence text is there, and Apache-2.0 has no NOTICE file for this font. | Needs a modification notice |
+| Google Sans Flex, renamed "Tessera Sans Flex" (`material/assets/fonts/GoogleSansFlex.ttf`) | SIL OFL 1.1 | `LICENSE-google-sans-flex` (OFL and TRADEMARKS.md) | **No Reserved Font Name is declared**, so renaming isn't required by OFL §3 but is allowed. The rename fits Google's TRADEMARKS.md ("Google Sans" may not name a product). Keep the OFL text and copyright (both kept in the name table). | OK. Tidy-ups: the named-instance PostScript names still read `GoogleSansFlex-*`, and the file name too; the `gen-material.sh:7` comment still says "unchanged". |
+| Material Symbols Rounded, subset and renamed "Tessera Symbols" | Apache-2.0 | `LICENSE-material-symbols` | §4(b): modified files must say they were changed. Add a line such as "subset to 404 icons and renamed by Tessera". The licence text is there, and Apache-2.0 has no NOTICE file for this font. | Needs a modification notice |
 | material-color-utilities 0.4.0 (`shell/common/MaterialColor.js`) | Apache-2.0 | header points to `shell/assets/fonts/LICENSE-material-symbols`, **a path that doesn't exist** (the file is under `material/`); built with `--legal-comments=none` | fix the header path, or put the Apache text under `shell/`; keep upstream's copyright line | **Fix the path** |
 | Google Nearby and UKEY2 `.proto` files (`shell/assets/quickshare/proto/`) | Apache-2.0, © Google | `NOTICE` links the licence URL; headers kept; generated `*_pb2.py` committed | include the Apache-2.0 text (a URL is weaker than the text); list in third-party notices | Mostly OK |
 | Emoji data (`shell/assets/data/emoji.json`, `shell/common/emoji.js`): Unicode `emoji-test.txt`, CLDR 49, emojibase-data 18 | Unicode License v3; MIT | none | both ask for their notice to be included | **Missing** |
 | Film engine (`site/film/engine`) | MIT | `LICENSE` (mentions `references/analyses/*.md`, which isn't here) | fine; trim the stale line | OK |
 | Geist and Geist Mono (`site/film/engine/fonts`) | OFL 1.1 | `OFL-Geist.txt` | — | OK |
 | Website fonts (Inter, JetBrains Mono) | OFL | loaded from Google Fonts, not shipped | — | OK |
-| Hyprland plugin (`hypr/plugin/irice-glass`) | iRice's (none stated) | includes Hyprland's BSD-3 headers only; built locally | add the project licence header | Follows the project licence |
+| Hyprland plugin (`hypr/plugin/tessera-glass`) | Tessera's (none stated) | includes Hyprland's BSD-3 headers only; built locally | add the project licence header | Follows the project licence |
 | end4 keybind and gesture layout (`gen-keymap.py`, `keybinds.lua`) | GPL-3.0 upstream | a data layout, not code | credit end4 in notices (already "follows end4" in comments) | Low risk |
 | RQuickShare's 24-byte `WAKE_DATA` (`bluez.py:59-64`) | GPL-3.0 upstream | an interoperability constant | credit it in notices | Low risk |
 | Wallpapers `tahoe-*.jpg` (Glass), `material-*.jpg` | original (generators in `tools/`) | — | rename away from "Tahoe" (trademark, section 7) | OK (name aside) |
@@ -266,9 +266,9 @@ Status: **Fixed** means fixed in this branch. **Decide** means it needs your dec
 
 **Logos.** No Apple, Google or Microsoft logos are used. Only Phosphor's `github-logo` (a link to GitHub) and `linux-logo` appear.
 
-**How to read the table.** Using a mark to say what iRice works with is generally fine ("works with Android's Quick Share", "Sign in to Google", "AirPlay speakers"). Calling iRice's own feature by another company's product name is the risky case.
+**How to read the table.** Using a mark to say what Tessera works with is generally fine ("works with Android's Quick Share", "Sign in to Google", "AirPlay speakers"). Calling Tessera's own feature by another company's product name is the risky case.
 
-### iRice features named with another company's mark (rename suggested; I renamed nothing)
+### Tessera features named with another company's mark (rename suggested; I renamed nothing)
 
 | Mark (owner) | Where (examples) | Suggested neutral name |
 |---|---|---|
@@ -280,12 +280,12 @@ Status: **Fixed** means fixed in this branch. **Decide** means it needs your dec
 | **StandBy** (Apple) | `settings/pages/lock.qml:42,45,105,151,163-164` | "Bedside clock" or "Charging clock" |
 | **Smart Stack** (Apple) | `desktop/WidgetDefs.qml:23`; `WidgetOptions.qml:49,122`; site 552 | "Widget stack" |
 | **Quick Look** (Apple) | `desktop/DesktopIcons.qml:166`; `spotlight/ResultRow.qml:91` | "Preview" |
-| **App Store** (Apple) | `appstore/AppStoreWindow.qml:20`; `services/Apps.qml:54`; `Search.qml:214,367`; `appstore.py:87` (User-Agent "iRice App Store"); site 441-444 | "Software" or "Get apps" |
+| **App Store** (Apple) | `appstore/AppStoreWindow.qml:20`; `services/Apps.qml:54`; `Search.qml:214,367`; `appstore.py:87` (User-Agent "Tessera App Store"); site 441-444 | "Software" or "Get apps" |
 | **Control Center** (Apple) | `settings/pages/menubar.qml:76,195`; `SettingsMap.js:39,56`; `controlcenter.qml:14`; README:41 | "Controls" (lower risk; widely generic) |
 | **Dynamic Island** (Apple) | `power-cooldown.qml:25` | "Island" (already used elsewhere) |
 | **Finder** (Apple) | `appearance-windows.qml:118,122` (tab style); `DesktopIcons.qml:153` (`notify-send -a Finder`) | "Tabs with icons"; app name "Files" |
 | **Liquid Glass** (Apple) | `lookswitch/shell.qml:171`; `appearance.qml:25`; `update.qml:139`; `health-check.py:437-441`; `install.sh:460,465,840,845,922`; site 316 | **Glass** ("glass plugin") |
-| **Tahoe** (Apple's macOS 26 name) | `wallpaper.qml:124-149` ("Built-in Tahoe set"); `Welcome.qml:115,320`; `controlcenter.qml:17`; `install.sh:429,436,918,933` (banner "iRice  macOS Tahoe for Hyprland"); file names `tahoe-*.jpg`; **site title and `<h1>` "Tahoe, on Hyprland."** (lines 8, 315) | "Built-in Dawn/Day/Dusk/Night"; files `default-*.jpg`; tagline "A glass desktop for Hyprland" |
+| **Tahoe** (Apple's macOS 26 name) | `wallpaper.qml:124-149` ("Built-in Tahoe set"); `Welcome.qml:115,320`; `controlcenter.qml:17`; `install.sh:429,436,918,933` (banner "Tessera  macOS Tahoe for Hyprland"); file names `tahoe-*.jpg`; **site title and `<h1>` "Tahoe, on Hyprland."** (lines 8, 315) | "Built-in Dawn/Day/Dusk/Night"; files `default-*.jpg`; tagline "A glass desktop for Hyprland" |
 | **macOS** as option names (Apple) | `appearance-windows.qml:45,75` (cursor and overview style "macOS") | "Classic pointer"; "Strip" |
 | **Apple / Android / Windows** as emoji style names | `appearance.qml:228-229`; `EmojiFont.qml:14-16` | name the fonts: "Noto", "Apple Color Emoji", "Fluent" |
 | **Material You / Material 3 Expressive** (Google) | `lookswitch/shell.qml:171`; `Welcome.qml:320`; `appearance.qml:25`; `material/.../appearance.qml:17,168` | "Material (experimental)", "Colours from your wallpaper". Lower risk: these describe Google's design system. |
@@ -304,7 +304,7 @@ Status: **Fixed** means fixed in this branch. **Decide** means it needs your dec
 - LocalSend;
 - "like macOS" and "like iOS 26" comparisons.
 
-**For the site and README**, add: *"macOS, AirPlay, iCloud and iPhone are trademarks of Apple Inc.; Android, Quick Share, Fast Pair, Chromecast and Material You are trademarks of Google LLC. iRice is not affiliated with or endorsed by them."* The footer (`index.html:642`) already says "Not affiliated with Apple, Google or any device maker".
+**For the site and README**, add: *"macOS, AirPlay, iCloud and iPhone are trademarks of Apple Inc.; Android, Quick Share, Fast Pair, Chromecast and Material You are trademarks of Google LLC. Tessera is not affiliated with or endorsed by them."* The footer (`index.html:642`) already says "Not affiliated with Apple, Google or any device maker".
 
 ---
 

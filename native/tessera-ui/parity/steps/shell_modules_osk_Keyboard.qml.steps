@@ -1,7 +1,7 @@
 # OSK keyboard. Both looks. Focus a foot window first.
 setup foot &
 wait 2
-ipc panels open keyboard IRICE-TEST
+ipc panels open keyboard TESSERA-TEST
 wait 1
 shot open
 note Rows of keys at the bottom of the screen; with a 1920 px screen unit = 58 so letter keys are 52 px. Same as QML.

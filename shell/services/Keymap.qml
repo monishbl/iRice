@@ -26,15 +26,14 @@ Singleton {
     readonly property string configHome: Quickshell.env("XDG_CONFIG_HOME") || Quickshell.env("HOME") + "/.config"
     // The hypr data: $TESSERA_ROOT/hypr/tessera; else the repo next to the shell
     // (shell/ and hypr/ are siblings) when keymap.json is there; else the
-    // installed copy in ~/.config/hypr/tessera (hypr/irice: installed before
-    // iRice became Tessera, until the installer runs again). Empty until that's known.
+    // installed copy in ~/.config/hypr/tessera. Empty until that's known.
     // (Quickshell.shellDir, not a relative URL: those can't leave the shell folder)
     readonly property string repoHyprDir: Quickshell.shellDir.replace(/\/[^\/]*\/?$/, "") + "/hypr/tessera"
     property string probedHyprDir: ""
-    readonly property string hyprDir: (Quickshell.env("TESSERA_ROOT") || Quickshell.env("IRICE_ROOT")) ? (Quickshell.env("TESSERA_ROOT") || Quickshell.env("IRICE_ROOT")) + "/hypr/tessera" : probedHyprDir
+    readonly property string hyprDir: Quickshell.env("TESSERA_ROOT") ? Quickshell.env("TESSERA_ROOT") + "/hypr/tessera" : probedHyprDir
     Process {
-        running: !(Quickshell.env("TESSERA_ROOT") || Quickshell.env("IRICE_ROOT"))
-        command: ["sh", "-c", "for d; do [ -f \"$d/keymap.json\" ] && { echo \"$d\"; exit 0; }; done; echo \"$2\"", "sh", root.repoHyprDir, root.configHome + "/hypr/tessera", root.configHome + "/hypr/irice"]
+        running: !Quickshell.env("TESSERA_ROOT")
+        command: ["sh", "-c", "for d; do [ -f \"$d/keymap.json\" ] && { echo \"$d\"; exit 0; }; done; echo \"$2\"", "sh", root.repoHyprDir, root.configHome + "/hypr/tessera"]
         stdout: StdioCollector {
             onStreamFinished: root.probedHyprDir = text.trim()
         }
@@ -43,7 +42,7 @@ Singleton {
     readonly property string home: Quickshell.env("HOME")
     readonly property string scriptsDir: decodeURIComponent(Qt.resolvedUrl("../assets/scripts").toString().replace("file://", ""))
     // $MOD is Super, except in the nested sandbox (Alt)
-    readonly property string modKey: (Quickshell.env("TESSERA_SANDBOX") || Quickshell.env("IRICE_SANDBOX")) === "1" && !Launch.tty ? "ALT" : "SUPER"
+    readonly property string modKey: Quickshell.env("TESSERA_SANDBOX") === "1" && !Launch.tty ? "ALT" : "SUPER"
 
     // ── State ────────────────────────────────────────────────────────────
     property var defaults: []
@@ -200,7 +199,7 @@ Singleton {
             return "Opens " + (e?.name ?? a.desktop);
         }
         if (a.exec !== undefined)
-            return "Runs " + String(a.exec).replace("$TESSERA_SHELL/assets/scripts/", "").replace("$IRICE_SHELL/assets/scripts/", "");
+            return "Runs " + String(a.exec).replace("$TESSERA_SHELL/assets/scripts/", "");
         if (a.zoom !== undefined)
             return a.zoom > 0 ? "Zooms in" : "Zooms out";
         if (a.space !== undefined) {
@@ -923,8 +922,8 @@ Singleton {
         } catch (e) {
             return { error: "That file isn't valid JSON (" + e.message + "). Export it again from Tessera, or fix it in a text editor." };
         }
-        // ("irice-keybinds": exported before iRice became Tessera, the same format)
-        if (!data || typeof data !== "object" || (data["tessera-keybinds"] === undefined && data["irice-keybinds"] === undefined))
+        // (or exported under the old name: the same format)
+        if (!data || typeof data !== "object" || (data["tessera-keybinds"] === undefined && data[OldNames.keybindsKey] === undefined))
             return { error: "That isn't a Tessera shortcuts file. Choose a file made with Export here." };
         const has = { keybinds: data.keybinds !== undefined, shortcuts: data.shortcuts !== undefined, gestures: data.gestures !== undefined };
         const wanted = sections.filter(s => has[s]);

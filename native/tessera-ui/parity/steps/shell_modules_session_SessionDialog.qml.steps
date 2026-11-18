@@ -1,5 +1,5 @@
 # Session dialog (Lock, Sleep, Log Out, Restart, Shut Down). Do NOT press Return on Sleep/Log Out/Restart/Shut Down. Check in each look.
-rec ses-open 1 ipc panels open session IRICE-TEST
+rec ses-open 1 ipc panels open session TESSERA-TEST
 note Open curve compared with QML: Material about 0.3 s, Glass about 0.4 s.
 wait 1
 key -k Right -k Right -k Right -k Right -k Right -k Right

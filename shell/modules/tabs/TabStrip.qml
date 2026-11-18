@@ -92,10 +92,10 @@ Variants {
         Connections {
             target: Hyprland
             function onRawEvent(event) {
-                const moving = ["workspace", "workspacev2", "movewindow", "movewindowv2", "changefloatingmode", "fullscreen", "openwindow", "closewindow", "tessera-drag", "irice-drag", "moveworkspace", "moveworkspacev2", "configreloaded", "monitoradded", "monitorremoved"].includes(event.name);
+                const moving = ["workspace", "workspacev2", "movewindow", "movewindowv2", "changefloatingmode", "fullscreen", "openwindow", "closewindow", "tessera-drag", "moveworkspace", "moveworkspacev2", "configreloaded", "monitoradded", "monitorremoved"].includes(event.name);
                 const grouping = ["togglegroup", "moveintogroup", "moveoutofgroup", "activewindow", "activewindowv2", "lockgroups", "ignoregrouplock"].includes(event.name);
                 if (moving || grouping)
-                    win.refresh(moving && !((event.name === "tessera-drag" || event.name === "irice-drag") && event.data.startsWith("drop")));
+                    win.refresh(moving && !(event.name === "tessera-drag" && event.data.startsWith("drop")));
             }
         }
 

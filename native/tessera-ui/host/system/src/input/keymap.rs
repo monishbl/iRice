@@ -492,7 +492,7 @@ impl Keymap {
             Ok(d) => d,
             Err(e) => return json!({"error": format!("That file isn't valid JSON ({e}). Export it again from Tessera, or fix it in a text editor.")}),
         };
-        if !data.is_object() || (data.get("tessera-keybinds").is_none() && data.get("irice-keybinds").is_none()) {
+        if !data.is_object() || (data.get("tessera-keybinds").is_none() && data.get(tessera_core::old_names::KEYBINDS_KEY).is_none()) {
             return json!({"error": "That isn't a Tessera shortcuts file. Choose a file made with Export here."});
         }
         let has = |s: &str| data.get(s).is_some_and(|v| !v.is_null());

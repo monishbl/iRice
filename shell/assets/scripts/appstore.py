@@ -49,10 +49,8 @@ import xml.etree.ElementTree as ET
 
 
 def app_dir(base):
-    """Tessera's folder under base, or iRice's while it hasn't been moved yet
-    (the shell moves it as it starts: migrate-names.py)."""
-    new, old = os.path.join(base, "tessera"), os.path.join(base, "irice")
-    return old if not os.path.exists(new) and os.path.isdir(old) else new
+    """Tessera's folder under base."""
+    return os.path.join(base, "tessera")
 
 # (TESSERA_APPSTREAM: another folder holding xml/ and icons/, for tests)
 _AS = os.environ.get("TESSERA_APPSTREAM")

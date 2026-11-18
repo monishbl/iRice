@@ -189,7 +189,7 @@ pub fn page(cx: &mut Ctx, p: &mut Page) {
             cx.local_set("about.backup.choosing", file.clone());
             cx.spawn("about.backup.inspect", move || helper(vec!["inspect".into(), file]));
         } else {
-            cx.choose_file(&a.id, false, "Choose a Tessera settings file", "~/Documents", "Tessera settings|*.tessera *.irice");
+            cx.choose_file(&a.id, false, "Choose a Tessera settings file", "~/Documents", &format!("Tessera settings|*.tessera *.{}", tessera_core::old_names::BACKUP_EXT));
         }
     });
     let decide = {

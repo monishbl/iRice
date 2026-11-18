@@ -8,22 +8,13 @@
 # with the new list. A hypridle.conf of your own still wins over all of it.
 # The loop ends with its compositor.
 set -euo pipefail
-[[ ${TESSERA_SANDBOX:-${IRICE_SANDBOX:-0}} != 1 || ${TESSERA_TTY:-${IRICE_TTY:-0}} == 1 ]] || exit 0
+[[ ${TESSERA_SANDBOX:-0} != 1 || ${TESSERA_TTY:-0} == 1 ]] || exit 0
 command -v hypridle >/dev/null || exit 0
 runtime=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
 instance=${HYPRLAND_INSTANCE_SIGNATURE:?}
 idle_dir="$runtime/tessera-idle-$instance"
 umask 077
 mkdir -p "$idle_dir"
-# One started before iRice became Tessera (its folder: irice-idle-…) is
-# replaced: two would each dim, lock and sleep
-old_dir="$runtime/irice-idle-$instance"
-if [[ -e "$old_dir/lock" ]] && command -v fuser >/dev/null; then
-    for p in $(fuser "$old_dir/lock" 2>/dev/null); do
-        if [[ $p != "$$" ]]; then kill "$p" 2>/dev/null || true; fi
-    done
-    rm -rf "$old_dir"
-fi
 exec 9>"$idle_dir/lock"
 if ! flock -n 9; then
     # One runs already. One from before shell-ipc.sh locks through a single
@@ -44,9 +35,7 @@ printf -v lock_command 'QS=%q %q call lock lock' "${1:-qs}" "$shell_dir/assets/s
 printf '%s\n' "$lock_command" >"$idle_dir/lock-command"
 export TESSERA_IDLE_DIR="$idle_dir"
 user_config="${XDG_CONFIG_HOME:-$HOME/.config}/hypr/hypridle.conf"
-# (…/irice: Tessera's folder from before it was renamed, not moved yet)
 listeners="${XDG_CONFIG_HOME:-$HOME/.config}/tessera/idle-listeners"
-[[ ! -e "${XDG_CONFIG_HOME:-$HOME/.config}/tessera" && -d "${XDG_CONFIG_HOME:-$HOME/.config}/irice" ]] && listeners="${XDG_CONFIG_HOME:-$HOME/.config}/irice/idle-listeners"
 
 write_config() {
     local grace=0

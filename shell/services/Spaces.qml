@@ -33,7 +33,7 @@ import "SpaceMap.js" as Map
 Singleton {
     id: root
 
-    readonly property bool sandbox: (Quickshell.env("TESSERA_SANDBOX") || Quickshell.env("IRICE_SANDBOX")) === "1"
+    readonly property bool sandbox: Quickshell.env("TESSERA_SANDBOX") === "1"
     readonly property var store: UiState.data.spaces ?? ({})
     // Connected displays: connector -> base (set from Hyprland's own lists)
     property var bases: ({})

@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
 # Shared helpers for the film's capture scripts. Everything happens in one
-# hidden, silent sandbox arena (./dev.sh with IRICE_ARENA), never on the
+# hidden, silent sandbox arena (./dev.sh with TESSERA_ARENA), never on the
 # real screen. Source it: . capture/lib.sh
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
 CAP="$ROOT/site/film/tessera/capture"
-export IRICE_ARENA="${IRICE_ARENA:-7}"
-HOMEDIR="$ROOT/.sandbox/arena-$IRICE_ARENA/home"
-[[ $IRICE_ARENA == 1 ]] && HOMEDIR="$ROOT/.sandbox/home"
+export TESSERA_ARENA="${TESSERA_ARENA:-7}"
+HOMEDIR="$ROOT/.sandbox/arena-$TESSERA_ARENA/home"
+[[ $TESSERA_ARENA == 1 ]] && HOMEDIR="$ROOT/.sandbox/home"
 WALLS="$CAP/seed/photos"
 dev() { "$ROOT/dev.sh" "$@"; }
 
 # The prelude every in-sandbox script gets: ipc, the virtual pointer, keys
 PRELUDE='
 ipc() { QS=qs '"$ROOT"'/shell/assets/scripts/shell-ipc.sh call "$@" >/dev/null 2>&1; }
-P() { '"$ROOT"'/.sandbox/bin/vptr -o IRICE-TEST "$@" >/dev/null 2>&1; }
+P() { '"$ROOT"'/.sandbox/bin/vptr -o TESSERA-TEST "$@" >/dev/null 2>&1; }
 key() { wtype "$@" 2>/dev/null; }
 '
 inbox() { dev run bash -c "$PRELUDE$1"; }
@@ -34,9 +34,9 @@ setup() {
     dev reload >/dev/null 2>&1
     sleep 18
     [[ -n $mode ]] || { [[ $scale == 2 ]] && mode="3840x2160@60" || mode="1920x1080@60"; }
-    dev hyprctl eval "hl.monitor({ output = \"IRICE-TEST\", mode = \"$mode\", position = \"20000x20000\", scale = $scale })" >/dev/null
+    dev hyprctl eval "hl.monitor({ output = \"TESSERA-TEST\", mode = \"$mode\", position = \"20000x20000\", scale = $scale })" >/dev/null
     dev hyprctl eval 'hl.monitor({ output = "WAYLAND-1", disabled = true })' >/dev/null
-    dev hyprctl dispatch 'hl.dsp.focus({ monitor = "IRICE-TEST" })' >/dev/null
+    dev hyprctl dispatch 'hl.dsp.focus({ monitor = "TESSERA-TEST" })' >/dev/null
     sleep 4
     inbox 'ipc island dismissNewest; ipc island clearHistory; ipc panels close'
     sleep 2

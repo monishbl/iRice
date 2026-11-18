@@ -64,10 +64,10 @@ a separate element made at the drag's start at 1.04 (no grow). Small; flag if th
 
 ## Test plan (tester)
 
-IRICE-TEST is 1920×1080. Run QML then Rust (`--only qml|rust`), Glass (`--look glass`, the user's)
+TESSERA-TEST is 1920×1080. Run QML then Rust (`--only qml|rust`), Glass (`--look glass`, the user's)
 and Material. Prepare: `inbox 'ipc lock unlock; ipc panels close'`; open 3 foot windows on space 1
 (`foot -T A`, `-T B`, `-T C`, 1 s apart), 1 on space 2 (`hyprctl dispatch 'hl.dsp.workspace(2)'`,
-`foot -T D`, back to 1). Pointer parked at (100, 900). Open with `inbox 'ipc panels open overview IRICE-TEST'`;
+`foot -T D`, back to 1). Pointer parked at (100, 900). Open with `inbox 'ipc panels open overview TESSERA-TEST'`;
 close with `ipc panels close`.
 
 ### macos style (the user's: config overview.style = "macos", the default in the script's copy)
@@ -76,7 +76,7 @@ Geometry with 5 spaces (count 5): tiles 170×96, x0 = 487, 194 apart → tile ce
 **(572, 74) (766, 74) (960, 74) (1154, 74) (1348, 74)**; titles at y ≈ 128; **+ at (1874, 74)**;
 field 560×52 at (680, 389); bar height 166. (If fewer spaces show, recompute: x0 = (1920 − n·170 − (n−1)·24)/2.)
 
-1. **Open timing** (T3): `rec ov-open 1.5 "ipc panels open overview IRICE-TEST"`, `anim-timing.py`:
+1. **Open timing** (T3): `rec ov-open 1.5 "ipc panels open overview TESSERA-TEST"`, `anim-timing.py`:
    first moving frame after the command (Rust not later than QML), duration to settle,
    and look for the overshoot of the content scale (Glass ~8 %: the bar slides past and back a little).
    Compare frame-by-frame the bar's y over the first 400 ms: within 2 frames of QML.
@@ -129,7 +129,7 @@ field at (680, 84) 560×52.
 18. **Space drag** (T39): down on cell 4's empty area (or its title at (1284, 621)), glide to (636, 528),
     up → reordered.
 
-### each / zones (needs two displays: `hyprctl output create headless IRICE-B` in the arena, if the
+### each / zones (needs two displays: `hyprctl output create headless TESSERA-B` in the arena, if the
 arena allows; otherwise mark 43–46 "not testable here")
 
 19. A zone pill shows on the edge facing the other display; drag a window onto it and hold 600 ms →

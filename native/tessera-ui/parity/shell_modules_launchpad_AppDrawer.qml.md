@@ -44,7 +44,7 @@ Rust: surfaces/launchpad/src/lib.rs (state, keys, glide), ui/launchpad.slint
 | More: FabMenu (Get apps, Show A to Z / folders, settings) | 611-620 | FAB + fab items | same (items a kept `Rows`) |
 | App menu (shortcuts, Open, Keep in / Remove from Dock), keys ↑↓ Enter Esc | 106-123 | WMenu, menu_for, key() | same (rows a kept `Rows`) |
 
-## Test plan (Material look, user's settings; both shells; 1920x1080 IRICE-TEST)
+## Test plan (Material look, user's settings; both shells; 1920x1080 TESSERA-TEST)
 
 Geometry (both shells should match): sheet x 400, y 150, 1120×780; search
 pill x 424–1220, y 174–230; Categories/All apps group x 1236–1496, y 178–226.
@@ -53,7 +53,7 @@ A–Z grid: 8 columns, tile i centred at (488 + 129·(i mod 8), 308 + 120·row);
 letter scrubber x 1468–1496.
 
 1. Pointer at (1700, 900). Record 1.2 s while `ipc panels open launchpad
-   IRICE-TEST`. anim-timing on it: QML springDefault rise (sheet 0.94→1
+   TESSERA-TEST`. anim-timing on it: QML springDefault rise (sheet 0.94→1
    from its bottom, 96 px up, opacity ×1.6), settles ≈ 270 ms after the
    first moving frame with no visible overshoot. Rust must start no later
    and settle within ±40 ms of QML.

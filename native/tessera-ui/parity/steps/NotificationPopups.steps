@@ -7,7 +7,7 @@ setup notify-send -a Files -i org.gnome.Nautilus -A open=Open 'Copied' '3 files'
 wait 0.5
 shot stack
 note click '2 more' (pill under the stack) to expand
-ipc panels open notificationCenter IRICE-TEST
+ipc panels open notificationCenter TESSERA-TEST
 wait 1
 ipc panels close
 wait 8

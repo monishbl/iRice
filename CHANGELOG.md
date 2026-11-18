@@ -1,17 +1,24 @@
 # Tessera changelog
 
+## Tessera's name, all the way · 2026-11-18
+
+- **The folder Tessera runs from moves to `~/tessera`** by itself, at the shell's next start after this update (or during the update): the old folder name stays behind as a link for now, and settings that pointed into it (wallpapers, the battery guard, your apps' colours) point at the new place. The link goes by itself once nothing uses it, at the earliest two weeks later.
+- **Software Update's root step finishes the move:** the system helper, its permissions, its priority rule, the boot animation and the login screen's entry ("Tessera", starting the new folder) all take Tessera's name, and the old ones go. Until it has run, everything keeps working as before.
+- **Bug reports go to `tessera-bugs.monishbl.in`.** The old address still answers.
+- Settings, shortcuts and files saved under the old name (API keys in the keyring, iCloud passwords, settings backups, exported shortcuts) are still read; environment names from before still count, until February 2027.
+
 ## iRice is now Tessera · 2026-11-04
 
 - **A new name, everywhere:** the desktop, its settings, its command (`tessera doctor`, `tessera update`…), its login screen and its boot animations. Its mark is the **Badge**, the wavy seal that was the last menu icon in Settings → Appearance; it's the menu bar's default now, and it's in the boot animations, the look switch and the login intro. The separate Badge choice is now that default.
-- **Nothing to redo:** your settings, to-dos, chats, models and the rest move from the `irice` folders to `tessera` ones by themselves the next time the shell starts, and the old names stay behind as links. API keys, iCloud passwords, backups and exported shortcuts made before still work.
-- **Everything keeps working before the one-time setup:** until you run it, Tessera uses iRice's system helper and its permissions, its priority rule, its login screen and its session entry, exactly as before. Two commands with your password then move those to Tessera's names and remove iRice's; `docs/rename-to-tessera.md` lists them.
-- Older names still count where scripts or a running session use them (`IRICE_ROOT`, `IRICE_TTY`…), and a glass plugin, `irice-events` or native helpers built before keep working until they're rebuilt.
+- **Nothing to redo:** your settings, to-dos, chats, models and the rest move from the old name's folders to `tessera` ones by themselves the next time the shell starts, and the old names stay behind as links. API keys, iCloud passwords, backups and exported shortcuts made before still work.
+- **Everything keeps working before the one-time setup:** until you run it, Tessera uses the old system helper and its permissions, its priority rule, its login screen and its session entry, exactly as before. Two commands with your password then move those to Tessera's names and remove the old ones; `docs/rename-to-tessera.md` lists them.
+- Older names still count where scripts or a running session use them, and a glass plugin, events helper or native helpers built before keep working until they're rebuilt.
 
 ## One process follows the system instead of about thirty · 2026-11-04
 
-- **irice-events**, iRice's first part written in Rust, now does what about thirty small background processes did: it notices sleep and the lid, USB devices and drives, mice coming and going, sound changes, network changes, app badges, Cast devices, and apps using the camera, your location or your screen. It also notices copies in progress and new clipboard history. It holds the "keep awake" and lid settings with logind itself. In the sandbox, the processes under the shell went from 25 (112 MB) to 2 (8 MB); see `docs/benchmarks-events.md`.
-- **Nothing changes in what you see.** Badges, the island's alerts, the privacy dots and the volume all behave as before. If irice-events isn't there (not built yet) or keeps stopping, the shell uses its older watchers, as before.
-- **The installer builds it**, and so do `irice update` and `irice rebuild` (`tools/build-native.sh`, into `~/.local/share/irice/bin`). This needs Rust, which is now among the build packages.
+- **tessera-events**, Tessera's first part written in Rust, now does what about thirty small background processes did: it notices sleep and the lid, USB devices and drives, mice coming and going, sound changes, network changes, app badges, Cast devices, and apps using the camera, your location or your screen. It also notices copies in progress and new clipboard history. It holds the "keep awake" and lid settings with logind itself. In the sandbox, the processes under the shell went from 25 (112 MB) to 2 (8 MB); see `docs/benchmarks-events.md`.
+- **Nothing changes in what you see.** Badges, the island's alerts, the privacy dots and the volume all behave as before. If tessera-events isn't there (not built yet) or keeps stopping, the shell uses its older watchers, as before.
+- **The installer builds it**, and so do `tessera update` and `tessera rebuild` (`tools/build-native.sh`, into `~/.local/share/tessera/bin`). This needs Rust, which is now among the build packages.
 
 ## Past chats in the AI sidebar · 2026-11-04
 
@@ -19,7 +26,7 @@
 - **Search** finds chats by their title or anything said in them.
 - **Rename, Pin and Delete** from a chat's "…" button, a right-click or a long press. Rename happens in place (Enter keeps it, Esc cancels). Delete acts at once and offers **Undo** for 8 seconds; deleting the open chat starts a new one.
 - **By keyboard:** Up and Down move, Enter opens, Delete deletes, F2 renames, the Menu key opens the menu, typing searches, Escape goes back to the chat.
-- **What's saved, and where:** a chat is kept once you've sent something in it, as owner-only files in `~/.local/state/irice/ai-chats`. Pictures are never saved, only a note that there were some. Titles are your first question, cut to a line; no model is asked to write them. Your one chat from before becomes the first past chat.
+- **What's saved, and where:** a chat is kept once you've sent something in it, as owner-only files in `~/.local/state/tessera/ai-chats`. Pictures are never saved, only a note that there were some. Titles are your first question, cut to a line; no model is asked to write them. Your one chat from before becomes the first past chat.
 - **Settings → AI → Chat history:** turn **Keep chat history** off and nothing is saved (a chat is forgotten a minute after the sidebar closes, and the clock goes away); **Delete chats older than** 30 or 90 days, pinned chats always kept; **Delete all chats** asks first, saying how many, pinned ones included, since it can't be undone.
 
 ## App Drawer A–Z picks a whole letter · 2026-11-04
@@ -37,7 +44,7 @@
 
 ## A quiet start, and any username at login · 2026-11-04
 
-- **No more console text between the boot splash and your desktop.** The splash's last frame stays until the login screen draws, the login screen's compositor logs to the journal (`journalctl -t irice-greeter`) instead of onto the screen, and the console is cleared with its cursor hidden. On GRUB, `quiet` is added to the kernel line, so boot messages stay off the screen too (`/etc/default/grub` is kept as `.pre-irice`; other boot loaders get a note). Run `./install.sh --only=login` once to get it; `irice uninstall` puts it all back.
+- **No more console text between the boot splash and your desktop.** The splash's last frame stays until the login screen draws, the login screen's compositor logs to the journal (`journalctl -t tessera-greeter`) instead of onto the screen, and the console is cleared with its cursor hidden. On GRUB, `quiet` is added to the kernel line, so boot messages stay off the screen too (`/etc/default/grub` is kept as `.pre-tessera`; other boot loaders get a note). Run `./install.sh --only=login` once to get it; `tessera uninstall` puts it all back.
 - **Log in as anyone:** on the Glass, Material and plain login screens your name is text that turns into a field when you click it (hovered, it shows a pencil), or press **Switch user** beside it. Type any username; Enter or Tab goes on to the password, Esc goes back. A typed name that's on the list is that person again, with their picture. The text login screen types the login straight in, as in ly. The login screen remembers a typed name for next time.
 
 ## Material and Glass, side by side · 2026-11-04
@@ -52,31 +59,31 @@
 
 - **Select the text in a screenshot or picture**, like on a phone: the screenshot editor's Select text tool (S) and Quick Preview's Text button (T) let you drag across words, double-click a line, copy with Ctrl+C or Copy text, or take everything with Copy all text. The floating thumbnail has Copy text too. Tesseract reads it on this computer; nothing is uploaded.
 - **One-tap chips for what's in it:** links open in your browser (web links only), addresses start an email, numbers are copied (or called, when an app handles phone links), a Wi-Fi code offers to join. Nothing found in a picture ever runs as a command.
-- **Search finds screenshots by their words**, with the shot as the row's picture and the words around the match; opening one shows it in Quick Preview with those words selected. The words are read in the background, one low-priority job at a time, only for new screenshots, and not on battery below 30% or in power saver; they're kept owner-only in `~/.local/state/irice`, and turning it off (Settings → Keyboard → More options → Text in screenshots) deletes them.
+- **Search finds screenshots by their words**, with the shot as the row's picture and the words around the match; opening one shows it in Quick Preview with those words selected. The words are read in the background, one low-priority job at a time, only for new screenshots, and not on battery below 30% or in power saver; they're kept owner-only in `~/.local/state/tessera`, and turning it off (Settings → Keyboard → More options → Text in screenshots) deletes them.
 - **Your languages:** besides the system's, text is read in your keyboard layouts' languages (German for `de`, Hindi for `in`, …) once their data is installed. The same settings group lists them with Install buttons, through Software Update.
 
 ## Sharing's firewall ports open only while you're visible · 2026-11-04
 
 - **With a firewall on, sharing's ports are open only while they're needed:** while you're visible to others in Quick Share or receiving with LocalSend, while the share sheet looks for devices, and while a QR-code share or a cast serves a file. They close a few seconds after. Only what's needed opens (Quick Share's ports, DHCP and mDNS; LocalSend's 53317; 53319–53320 for QR-code shares and casting).
-- **Nothing stays open for good.** The rules last until the next restart (firewalld, nftables, iptables), and the shell opens them again if you're still visible. ufw has no such rules, so iRice removes its own when you stop being visible. The permanent rules from the old **Allow through firewall** button are removed automatically.
+- **Nothing stays open for good.** The rules last until the next restart (firewalld, nftables, iptables), and the shell opens them again if you're still visible. ufw has no such rules, so Tessera removes its own when you stop being visible. The permanent rules from the old **Allow through firewall** button are removed automatically.
 - **No password for an administrator at the computer**, as with the other fixed system jobs. System health and Settings → Privacy & Security → Firewall show what's open now, and why. They warn only when the ports didn't open (or close) as asked.
 
 ## Boot animations and a login intro · 2026-11-04
 
-- **Pick what shows while your computer starts** (Settings → Lock & Login Screen → Starting up): your system's own animation (the default, as before), one of four of iRice's, or none (the boot messages as text). **Breathe**: the drop with a soft glow and a thin line that fills as it starts. **Orbit**: the drop in a thin ring with a light chasing round it. **Frost** (for Glass): the drop on a frosted glass tile with soft lights behind it. **Bloom** (for Material): the drop on a shape that morphs through Material's loading shapes. Each fits any screen, shows disk passwords and messages, and says when it's shutting down, restarting or installing updates. Changing it asks for your password and takes about a minute (the boot image is rebuilt); if the rebuild fails, nothing changes and Settings says why. Without Plymouth, Settings says how to get it.
-- **Login intro** (off unless you turn it on): as your desktop first appears after you log in, with the startup sound. Glass: the wallpaper comes into focus and the menu bar and dock settle in. Material: the iRice shape opens onto your desktop. Never on a shell restart, never with Reduce motion, and it never stops you clicking or typing. Play Intro shows it.
+- **Pick what shows while your computer starts** (Settings → Lock & Login Screen → Starting up): your system's own animation (the default, as before), one of four of Tessera's, or none (the boot messages as text). **Breathe**: the drop with a soft glow and a thin line that fills as it starts. **Orbit**: the drop in a thin ring with a light chasing round it. **Frost** (for Glass): the drop on a frosted glass tile with soft lights behind it. **Bloom** (for Material): the drop on a shape that morphs through Material's loading shapes. Each fits any screen, shows disk passwords and messages, and says when it's shutting down, restarting or installing updates. Changing it asks for your password and takes about a minute (the boot image is rebuilt); if the rebuild fails, nothing changes and Settings says why. Without Plymouth, Settings says how to get it.
+- **Login intro** (off unless you turn it on): as your desktop first appears after you log in, with the startup sound. Glass: the wallpaper comes into focus and the menu bar and dock settle in. Material: the Tessera shape opens onto your desktop. Never on a shell restart, never with Reduce motion, and it never stops you clicking or typing. Play Intro shows it.
 
 ## One codebase for both looks · 2026-11-03
 
 - **Glass and Material are now one codebase.** Material used to copy 151 of Glass's files and change a few lines in each (31,938 lines repeated). Now each screen exists once, and where the looks differ it says so in place or picks its look's own view; Material shares 55 lines with Glass, in 2 files kept apart on purpose. A fix made once now reaches both looks, and a test keeps new copies out.
 - **Material fixes that came with it:** the screen tools bar, the password prompt, the translation card and the overlay toolbar drew their Material background in the wrong place (nothing at all); Settings search in Material no longer lists rows Material doesn't show.
 - **Old compiled shaders are cleaned up** on update, so a stale copy can't shadow the shared one.
-- **For development:** `IRICE_ARENA=2 ./dev.sh up` runs another identical sandbox beside the first (up to 9), and `tools/smoke-looks.sh` uses whichever is free, so checks run side by side. It now also fails when the shell stops drawing or answering, and says whether the compositor or the shell was stuck.
+- **For development:** `TESSERA_ARENA=2 ./dev.sh up` runs another identical sandbox beside the first (up to 9), and `tools/smoke-looks.sh` uses whichever is free, so checks run side by side. It now also fails when the shell stops drawing or answering, and says whether the compositor or the shell was stuck.
 
 ## Licence, and names of our own · 2026-11-03
 
-- **iRice is GPL-3.0-or-later.** The licence is in LICENSE; THIRD_PARTY_NOTICES.md lists the fonts, icons, protocol definitions and data that come from others, with their licence texts in LICENSES/.
-- **Features renamed** so iRice no longer uses other companies' product names for its own features. Settings search still finds the old names, and nothing about your settings, shortcuts or IPC changes:
+- **Tessera is GPL-3.0-or-later.** The licence is in LICENSE; THIRD_PARTY_NOTICES.md lists the fonts, icons, protocol definitions and data that come from others, with their licence texts in LICENSES/.
+- **Features renamed** so Tessera no longer uses other companies' product names for its own features. Settings search still finds the old names, and nothing about your settings, shortcuts or IPC changes:
 
   | Was | Now |
   |---|---|
@@ -92,13 +99,13 @@
   | Control Center | Quick Settings (as in the Material look) |
   | Liquid Glass | Glass |
   | Overview style "macOS", lock layouts "iOS" / "macOS" | "Strip"; "Widgets" / "Classic" |
-  | Window tabs "Finder", emoji styles "Android" / "Windows" | "iRice"; "Noto" / "Fluent" |
+  | Window tabs "Finder", emoji styles "Android" / "Windows" | "Tessera"; "Noto" / "Fluent" |
   | the built-in "Tahoe" wallpapers | the built-in set (Day, Dusk, Night) |
 
 ## Faster Quick Share, iPhones by QR code, apps' own logos · 2026-11-03
 
 - **Quick Share takes the fastest way first.** Before any file moves it checks the link: a shared Wi-Fi that's on the busy 2.4 GHz band or answers slowly gives way to a direct Wi-Fi link (Wi-Fi Direct, next to your own Wi-Fi). A link that fails gets a second try before the next one, and one that keeps failing with a phone is skipped for that phone for a day. Tested with a phone on a router that keeps devices apart: 500 MB in under a minute one way and about ten seconds the other, where it crawled at 0.3 MB/s before.
-- **It keeps going when the network won't.** A phone the Wi-Fi can't reach is found over Bluetooth instead; when the phone asks for a faster link mid-transfer, iRice now gives it one; a phone that's also plugged in by USB isn't sent files over the slow cable.
+- **It keeps going when the network won't.** A phone the Wi-Fi can't reach is found over Bluetooth instead; when the phone asks for a faster link mid-transfer, Tessera now gives it one; a phone that's also plugged in by USB isn't sent files over the slow cable.
 - **Fewer alerts.** You hear from Quick Share when someone wants to send you something, when it's done, and when it fails (saying how to fix it). Switching links, a Wi-Fi pause and the PIN while they decide show quietly in the transfer's line in the island.
 - **iPhones and any other phone, by QR code.** Share → Share with a QR code: the iPhone's camera opens a page that saves the files. Settings → Phone & Sharing → Receive from iPhone: the page takes photos and files from it. Only on your own network, with a secret link that stops working after 10 minutes or when you close the card.
 - **Apps' own logos.** Icons are each app's original logo, restyled to match: clear glass in the Glass look, Material You themed in the Material look. Icon themes (Colloid, Tela circle, Papirus and others) are optional, in Settings → Appearance. GTK apps use Adwaita, and the pointer is Bibata in both looks.
@@ -119,10 +126,10 @@
 - **24-hour time everywhere.** Settings → Appearance → 24-hour time: the menu bar, the lock and StandBy clocks, widgets, events, alarms, timers and status lines follow it.
 - **Split buttons, FAB menus and floating toolbars.** The screenshot editor's Save, the recorder's Record and the App Store's Install/Open are split buttons with the other choices in their menu; Quick Note and the app drawer have FAB menus; the clipboard's actions float over the list.
 - **No more flash of the bundled wallpaper at start.** The desktop waited for nothing: before your settings were read it showed the default Tahoe picture for a moment, then yours. It now fades in straight to your own wallpaper.
-- **Login screens, four ways.** Settings → Lock Screen → Login screen: your look (Glass, or Material with your clock and colours, whichever you used last), Text (like ly: a box of text, keyboard first) or Plain (black, your picture and the field). The Glass and Material ones have no wallpaper either, just a clean background, the clock a little lower. A fingerprint works at all of them where the reader is set up; if a style ever fails to start, the text one comes up instead. Preview shows each on your screen without logging out. (It's used once the iRice login screen is installed: ./install.sh --greeter.)
+- **Login screens, four ways.** Settings → Lock Screen → Login screen: your look (Glass, or Material with your clock and colours, whichever you used last), Text (like ly: a box of text, keyboard first) or Plain (black, your picture and the field). The Glass and Material ones have no wallpaper either, just a clean background, the clock a little lower. A fingerprint works at all of them where the reader is set up; if a style ever fails to start, the text one comes up instead. Preview shows each on your screen without logging out. (It's used once the Tessera login screen is installed: ./install.sh --greeter.)
 - **Settings' icons match** in the Material look: one tone, all filled, and Software Update's is an arrow, not a dot.
 - **Material window controls.** In the Material look the controls at the top of each window (Settings → Appearance → Windows → window controls) are round icon buttons on a tonal pill: minimize, maximize and close, close turning red under the pointer. Glass keeps its traffic lights; switching looks switches them. (The compositor plugin is rebuilt with the update.)
-- **A welcome screen.** On a new setup iRice asks three things: Glass or Material, light or dark, and a wallpaper. Settings → About shows it again.
+- **A welcome screen.** On a new setup Tessera asks three things: Glass or Material, light or dark, and a wallpaper. Settings → About shows it again.
 - **Back up and restore your settings.** Settings → About → Back up and restore saves your setup (settings, shortcuts, Focus modes and your wallpapers) to one file, without passwords, keys or accounts, and loads it on another computer; restoring keeps an Undo copy.
 - **Fixed:** a half-typed password stayed in the lock screen's field after unlocking with a finger or a face, and showed again at the next lock.
 
@@ -138,12 +145,12 @@
 
 - **The Material look's lock screen is quieter.** The clock is about a third smaller, and Now Playing, your picture, the name, the field and the fingerprint button are all more compact. The fingerprint is offered once, by its button: the field says "Enter password", and the line under it only appears when there's news (a finger that didn't match, the face camera looking).
 - **The island stays dark in dark mode (Material look).** An alert in it (a notification, the charger, Wi-Fi) turned it the inverse colour, like an Android snackbar: a white island under a dark menu bar. It now goes a shade lighter instead, in the same colours.
-- **Software Update works in the Material look.** It said "The installation source is missing": the Material look runs from a folder of links in your cache, and Software Update looked for iRice beside that folder. It (and the system part of the update, and the health check) now follows the links back to your iRice folder.
+- **Software Update works in the Material look.** It said "The installation source is missing": the Material look runs from a folder of links in your cache, and Software Update looked for Tessera beside that folder. It (and the system part of the update, and the health check) now follows the links back to your Tessera folder.
 - **Quick Settings' Edit controls no longer closes when you click the brightness or volume row** (or any empty part of the panel). Those clicks went through the panel and counted as a click outside it.
 
 ## Smooth while apps are busy · 2026-11-02
 
-- **The shell no longer stutters while other apps work hard.** CachyOS's process tuner (ananicy-cpp) files every program named "qs" as a background service and lowers its priority below apps like VS Code, so panels and animations stuttered whenever anything else was busy. The shell now runs as "irice-shell", which that rule doesn't match. Software Update's system step also installs iRice's own rule (where ananicy-cpp is installed), which gives it the same interactive priority as GNOME Shell and KWin. That step runs before the new version arrives, so the rule comes with the update after this one. This takes effect the next time the shell starts after the update (log in again, or press Super+Ctrl+Escape).
+- **The shell no longer stutters while other apps work hard.** CachyOS's process tuner (ananicy-cpp) files every program named "qs" as a background service and lowers its priority below apps like VS Code, so panels and animations stuttered whenever anything else was busy. The shell now runs as "tessera-shell", which that rule doesn't match. Software Update's system step also installs Tessera's own rule (where ananicy-cpp is installed), which gives it the same interactive priority as GNOME Shell and KWin. That step runs before the new version arrives, so the rule comes with the update after this one. This takes effect the next time the shell starts after the update (log in again, or press Super+Ctrl+Escape).
 
 ## The fingerprint works after sleep · 2026-11-02
 
@@ -195,14 +202,14 @@
 - **The drop shelf opens every time, and from the top edge too.** A drag of files swallows the mouse button's release, and Hyprland handed it over at the next press, so after the first drag the shelf thought each new drag had already ended and never opened again. That stale release is now ignored, and each press gets fresh drop targets. Holding a file drag at the top edge opens the shelf on the nearer side.
 - **The calendar doesn't dot every day for daily events.** Something that repeats every day (on at least 80% of a week or more of days) is listed once as "Every day: …" under the month, instead of a dot on every date. It still shows in each day's list.
 - **The drop shelf opens only when you're dragging files.** It used to treat any held button moved about as a drag, so selecting text, moving a scrollbar or slider, or dragging an image or link in the browser near a screen edge could pop it up. Now, while a button is held, invisible drop targets sit at the screen edges and under the pointer after a shake, and only a drag carrying files opens the shelf. Text and links can still be dropped on it once it's open.
-- **No company logos in the menu icon picker.** Apple, Windows, Android, Steam and GitHub marks are gone. Tux, your distro's own logo and iRice's symbols remain, and an old choice of a removed mark shows the iRice drop. Auto shortcut symbols follow Command (⌘ ⌃ ⌥ ⇧), else Super Ctrl Alt.
+- **No company logos in the menu icon picker.** Apple, Windows, Android, Steam and GitHub marks are gone. Tux, your distro's own logo and Tessera's symbols remain, and an old choice of a removed mark shows the Tessera drop. Auto shortcut symbols follow Command (⌘ ⌃ ⌥ ⇧), else Super Ctrl Alt.
 - **Microphone in Control Center.** A new "Microphone level" slider is in Edit Controls (not added to your layout). Its arrow opens a Microphone page with the level and the inputs, each with its device's picture. The Sound menu (Control Center and the menu bar) shows the same microphone section under the outputs and apps, and Settings → Sound → "Microphone in the Sound menu" turns that off. The Sound page's outputs show device pictures too.
 - **The volume, microphone and brightness bar works with the mouse.** Point at it and it stays up. Click, drag or scroll along it to set the level, and click its icon to mute. The button at its end opens a list underneath:
   - **Volume:** the outputs, with their device pictures and a tick on the current one, plus App volumes › (each app playing, with its own level) and Sound settings.
   - **Microphone:** the inputs.
   - **Brightness:** each display with its own level, built-in and external (DDC).
   It works the same in the island and in the separate capsule.
-- **The volume and brightness bar no longer pops up for iRice's own sliders** (Control Center, the Sound menu, the island's player, the overlay mixer, Settings) or its mute buttons. Keys, scrolling on the menu bar, Spotlight and other apps still show it.
+- **The volume and brightness bar no longer pops up for Tessera's own sliders** (Control Center, the Sound menu, the island's player, the overlay mixer, Settings) or its mute buttons. Keys, scrolling on the menu bar, Spotlight and other apps still show it.
 - **Bluetooth cards show a picture of the device.** Earbuds, over-ear headphones, a speaker, a soundbar, a phone, a watch, a game controller, a keyboard, a mouse or a laptop, chosen from the kind of device Bluetooth reports and its name (earbuds and over-ear headphones report the same kind, so "Buds" or "WH-" in the name decides). Anything else gets a Bluetooth tag. They show on connect and disconnect, batteries, and Fast Pair's card from Connect to Connected, in place of the coloured icon. The drawings are made by `tools/device-pictures.py`.
 - **Touchpad scrolling glides after your fingers lift,** as on macOS, everywhere that scrolls: Settings, Spotlight, Notification Center, Control Center, the clipboard, emoji and app lists, and the rest. A slow scroll or a pause before lifting stops where you left it, and a mouse wheel works as before. (Qt on Wayland stops dead when the fingers lift; libinput leaves the glide to the app.)
 - **Leaks and stray processes, found by checking a running session:**
@@ -220,7 +227,7 @@
 
 - **Album art in the island loads reliably.** Browsers like Zen save each video's picture under the same file name, so the island sometimes kept the previous picture or showed none. Each track now loads its own picture, a failed load is retried, and the picture is read again a moment after the track changes. The same fix applies to the lock screen, Control Center, the desktop widget and Now Playing.
 - **Album art no longer goes missing after a browser restarts a video.** Zen can leave its old player behind, still saying it's playing, with its picture deleted, and the island showed that one. It now shows the newest player that's playing.
-- **Album art (and the island's black) no longer vanish after the island closes and opens again.** The rounded-corner effect cutting the island to shape stopped drawing after the island shrank and grew. A small shader of iRice's own does that job now.
+- **Album art (and the island's black) no longer vanish after the island closes and opens again.** The rounded-corner effect cutting the island to shape stopped drawing after the island shrank and grew. A small shader of Tessera's own does that job now.
 - **Alerts no longer take over the open island.** When the island is open (pointed at or pinned) and an alert arrives, the island stays as it is, and the alert drops in as a card just under it. Newest on top; up to two more peek out behind it, with a count of any others. Pointing at the card holds their time. When the island is closed, alerts show in the island as before.
 - **No more tall empty island** when an alert arrived while Recent was open.
 - **Album art shows even when the browser stops sending it.** Zen sometimes drops a video's picture from what it tells the system (after a pause or a seek), or deletes the picture file. The island now keeps the picture it had for that track, and for YouTube videos falls back to the video's own thumbnail. Every place that shows album art uses this.
@@ -259,15 +266,15 @@
   - A version you went back from is skipped by later updates until a newer one comes out. You can include it anyway, per package.
   - If some earlier versions are gone from your computer, the page says which ones and nothing is changed.
 - **When the desktop won't start after an update:**
-  - If iRice's shell stops three times within 15 minutes, and an update ran in the last 3 days, a recovery window opens. It offers to go back to before that update, start the desktop again, or open a terminal.
-  - From a text console (Ctrl+Alt+F3), `irice undo-update` does the same.
+  - If Tessera's shell stops three times within 15 minutes, and an update ran in the last 3 days, a recovery window opens. It offers to go back to before that update, start the desktop again, or open a terminal.
+  - From a text console (Ctrl+Alt+F3), `tessera undo-update` does the same.
 - **Shake to find the pointer.** Move the mouse (or your finger on the trackpad) quickly back and forth: the pointer grows for a moment and a ring closes in on it. Ordinary fast movement, dragging and drawing don't set it off. Turn it off in Settings → Mouse. Hyprland checks the pointer's position 5 times a second while it's still, and 25 times a second while it moves.
 - **Sharing looks like AirDrop on iOS, in glass:**
   - **The share sheet** shows a preview of what you're sharing, nearby devices as round avatars in a row, and Copy and Show in Files as a grouped list. Under each avatar it says Waiting…, then Sending… as a ring fills, then Sent ✓ or Declined.
   - **Someone sending to you** gets an AirDrop-style card in the middle of the screen. It shows who it is, what they're sending, and the PIN their phone shows, with Decline and Accept. Accept, and a ring fills around them as it arrives. When it's done: Open or Show in Files. Hide leaves the transfer to the island.
   - Quick Share and LocalSend look the same.
-- **"Allow through firewall" works again**, and every update now brings iRice's system helper up to date with it:
-  - **Why it seemed broken:** an update installed the system helper before downloading the new iRice, so the helper stayed one update behind. Its firewall fix only knew the older rules, said "done", and added nothing new.
+- **"Allow through firewall" works again**, and every update now brings Tessera's system helper up to date with it:
+  - **Why it seemed broken:** an update installed the system helper before downloading the new Tessera, so the helper stayed one update behind. Its firewall fix only knew the older rules, said "done", and added nothing new.
   - **What changed:** the update now installs the helper from the version it's downloading. An outdated helper alone also counts as something to update, so it can be brought up to date right away.
   - **Until then:** Settings → Sharing uses the current fix, with your password.
 - **Smaller things:**
@@ -320,7 +327,7 @@
   - The phone's webcam builds its virtual camera for whichever kernel you run (linux, linux-lts, linux-zen…, with its headers) when the kernel doesn't include it.
   - Face unlock finds infrared cameras that don't say "IR" in their name (they're the ones that only see in greyscale), and says how to switch on an IR light that stays off (linux-enable-ir-emitter).
   - Fingerprint works with LightDM and LXDM login screens too (GDM already asks for a finger by itself), and a reader without a Linux driver is named as such instead of not shown.
-  - Pages say what's missing on your system and offer to install it or turn it on: network discovery (avahi) for casting, AirPlay and phone pairing; a keyring for iCloud; GNOME Online Accounts and iRice's sign-in helper for Microsoft 365 (built from the page); qrencode for Wi-Fi codes; wtype for dictation. AirPlay says when the sound isn't going through PipeWire, and Miracast when NetworkManager isn't running.
+  - Pages say what's missing on your system and offer to install it or turn it on: network discovery (avahi) for casting, AirPlay and phone pairing; a keyring for iCloud; GNOME Online Accounts and Tessera's sign-in helper for Microsoft 365 (built from the page); qrencode for Wi-Fi codes; wtype for dictation. AirPlay says when the sound isn't going through PipeWire, and Miracast when NetworkManager isn't running.
   - Dictation records with PulseAudio's or ALSA's recorder when PipeWire's isn't there.
 - **AirPlay speakers.** HomePods, Apple TVs and AirPlay speakers on your network can play this computer's sound: turn on **AirPlay speakers** in the new **Settings → Sound** page (it installs PipeWire's AirPlay support the first time, one password). They then appear as outputs there and in Control Center. Sound reaches them about 2 seconds late, which is fine for music but not for videos or calls. Some AirPlay 2-only speakers, and speakers with a password, may not accept it.
 - **Settings → Sound**: the output and input you use, their volumes, AirPlay, and a way to the sound effects.
@@ -347,9 +354,9 @@
 
 Tested with a real Android phone, both ways, on the same Wi-Fi and without one.
 
-- **Sending to a phone works again.** iRice never found phones to send to: it asked Bluetooth for devices that list Quick Share's service, and phones only carry it as data inside their announcement, so none ever matched. Phones on their Quick Share Receive screen now show up in a moment.
+- **Sending to a phone works again.** Tessera never found phones to send to: it asked Bluetooth for devices that list Quick Share's service, and phones only carry it as data inside their announcement, so none ever matched. Phones on their Quick Share Receive screen now show up in a moment.
 - **Fast without a shared Wi-Fi, no password.** When the phone and this computer aren't on the same network, the transfer still starts over Bluetooth and then moves to a direct Wi-Fi link: this computer joins the phone's own link when sending, or makes a short-lived hotspot the phone joins when receiving. Your Wi-Fi pauses during that transfer (the internet too) and comes back by itself straight after. Small shares (a link, a small photo) stay on Bluetooth and don't pause anything. Turn it off in Settings → Sharing → **Fast transfers without a shared Wi-Fi**; transfers then stay on Bluetooth, which is slow.
-- Fixed: sending to a phone over its direct Wi-Fi link failed right after the file went: the phone turns off Quick Share's own encryption on that link (the link is encrypted already), and iRice kept using it.
+- Fixed: sending to a phone over its direct Wi-Fi link failed right after the file went: the phone turns off Quick Share's own encryption on that link (the link is encrypted already), and Tessera kept using it.
 - Your firewall needs to let phones get an address from the hotspot (DHCP). **Allow through firewall** in Settings → Sharing now opens that too (port 67/udp, as well as Quick Share's and LocalSend's ports), and Quick Share runs it for you, without a password, the first time a phone needs it. System health says when it's missing.
 - Phones find this computer more reliably over Bluetooth: it advertises more often, marked as discoverable like phones do, and starts afresh after every phone that connected (some Bluetooth chips stopped advertising after the first one).
 - A phone that retries a Bluetooth connection is no longer turned away while its first attempt hangs on.
@@ -365,9 +372,9 @@ Tested with a real Android phone, both ways, on the same Wi-Fi and without one.
 ## Fewer password prompts · 2026-10-30
 
 - Software Update asks for your password once, when you press **Update**, and never again in the middle: AUR updates no longer ask at each step.
-- Your next update also installs a small iRice system helper (one password, as part of that update). From then on, these no longer ask for your password: the fixes in System health and Settings → Sharing, and using your wallpaper on the login screen. Quick Share's faster Wi-Fi links ask once as they start, never during a transfer. This only applies to an administrator's account, at the computer.
+- Your next update also installs a small Tessera system helper (one password, as part of that update). From then on, these no longer ask for your password: the fixes in System health and Settings → Sharing, and using your wallpaper on the login screen. Quick Share's faster Wi-Fi links ask once as they start, never during a transfer. This only applies to an administrator's account, at the computer.
 - Until that update, everything asks for your password as before.
-- **Settings → Login Items** shows the apps that start when you log in (your own and the system's), with a switch each, and why iRice skips the ones it does (it does their job itself, they're for another desktop, or they aren't installed). **Add app…** picks from your installed apps, **Remove** takes out one you added, **Start now** runs one straight away, and every change can be undone from the toast. **Start them when you log in** turns them all off at once.
+- **Settings → Login Items** shows the apps that start when you log in (your own and the system's), with a switch each, and why Tessera skips the ones it does (it does their job itself, they're for another desktop, or they aren't installed). **Add app…** picks from your installed apps, **Remove** takes out one you added, **Start now** runs one straight away, and every change can be undone from the toast. **Start them when you log in** turns them all off at once.
 - The "Running hot" warning no longer goes off for a few seconds of high load: it waits until the CPU has averaged above your limit for about 30 seconds, and it ends once it has averaged 5 °C below it for a minute (it used to need 3 minutes 10 °C below, so it could stay forever).
 - Plugging in or unplugging a display is smooth: the screen you're using no longer goes dark, and a new display starts its connect animation sooner.
 - Each display has its own spaces, numbered from 1, like on a Mac. Super+1…9 (and Super+Shift / Super+Alt with a number to take a window along) go to that space on the display you're on, and the menu bar, Overview, Mission Control and the window switcher all show each display's own numbers. A monitor keeps its spaces by what it is, not which port it's in. Your existing spaces stay where they are, windows and all.
@@ -379,7 +386,7 @@ Tested with a real Android phone, both ways, on the same Wi-Fi and without one.
 - Overview: moving a window or a space to another display (dragging it to that display's edge zone, or right-click → Move to) no longer acts as if you'd switched displays: the display cue no longer plays, and focus and the pointer stay where you are. Dragging a window or a space against the screen edge that faces another display now moves it there too (the edge display lights up while you hold it there), and the dragged item stays at the edge instead of disappearing behind it. Moves land in one step instead of the miniatures jumping a few times, and windows in a space glide to their new places.
 - Island alerts can be put away: swipe one up (drag it, or scroll up over it), use the small × that appears over it, or press Esc while the pointer is on it. Resting the pointer on alerts keeps them up; when it leaves they carry on, with a second to spare.
 - Low battery and **Running hot** stay up until you plug in or the CPU cools down (or you dismiss them). A finished download and a newly connected drive stay up for 10 minutes. Everything else goes away as before.
-- Island alerts are kept: Notification Center has an **iRice** group with every alert that wasn't already a notification (devices with their battery, drives, displays, sound output, charging, low battery, running hot, downloads, Wi-Fi and VPN…). Remove one with its ×, the group with its own ×, or everything with **Clear all**. The same alert again within a minute updates its line instead of adding another. They're kept when the shell reloads, like notifications.
+- Island alerts are kept: Notification Center has an **Tessera** group with every alert that wasn't already a notification (devices with their battery, drives, displays, sound output, charging, low battery, running hot, downloads, Wi-Fi and VPN…). Remove one with its ×, the group with its own ×, or everything with **Clear all**. The same alert again within a minute updates its line instead of adding another. They're kept when the shell reloads, like notifications.
 - The open island has a **Recent** list of the last few alerts. Swipe a line sideways (or use its ×) to remove it, or **Clear** them all. While something is live (music, a timer), **Recent** opens the list in its place.
 - The album art in the open island now follows the island's own rounded corners exactly, with no second, rounder corner or inner outline showing at the edges.
 - Incoming calls (Discord, WhatsApp, any app) open the island as a call card, like on an iPhone: the caller's photo with a soft pulsing ring, their name, the app, and round red **Decline** and green **Answer** buttons. A ringtone plays while it rings (for about 30 seconds, following your notification sound setting). The card stays until you answer or decline (Esc declines too), or the caller hangs up; a stray swipe or scroll doesn't put it away.
@@ -387,22 +394,22 @@ Tested with a real Android phone, both ways, on the same Wi-Fi and without one.
 - A call you didn't answer goes into the island's Recent list and Notification Center as **Missed call**, with the caller's name and a button to open the app.
 - After you answer, a small **Call** live activity with the app's icon and the time shows while the call's window is open (or the app is using the microphone).
 - With the island switched off (or its Calls alert off in Settings → Menu bar), calls show as a banner that stays until you answer, decline or dismiss it, as before.
-- Apps run natively on Wayland again, as they did before iRice: WhatsApp, Discord, Claude, Slack and other Electron apps take files dragged in from Dolphin and behave like other windows. Log out and back in once for it to apply.
+- Apps run natively on Wayland again, as they did before Tessera: WhatsApp, Discord, Claude, Slack and other Electron apps take files dragged in from Dolphin and behave like other windows. Log out and back in once for it to apply.
 
 - Dock and app icons in the Clear and Tinted styles are the same size: every logo is placed by what it really draws and drawn at the same height, a little smaller than before, so a row of them lines up top and bottom and wide logos (Webex) and small ones (Zen) match, and none overflow their tile. VS Code no longer shows a box inside its tile, and logos are brighter on dark glass.
 - **Reduce motion** in Settings → Appearance → Accessibility: fades instead of movement for island alerts, connecting a display and the morning screen.
 - App icons always get their tile after you plug in or unplug a display (one could stay unstyled until a restart).
 - Claude Desktop: its Quick Entry shows just its prompt bar (no blurred panel around it) and stays open while you move the pointer, until you send or press Esc. It no longer asks for your wallet password every time it starts (sign in to Claude once more after updating).
-- Report a Bug works: reports go to iRice's issue tracker.
+- Report a Bug works: reports go to Tessera's issue tracker.
 - Buttons, text fields, list rows, Settings groups, menu highlights, search fields and cards now have the same smooth, continuous corners as the glass (round pills and circles stay round). Control Center's tiles and sliders also show their colours as intended: a little lighter on dark glass and whiter in Light mode (they came out darker than meant before).
 - The display connect animation waits until both screens show a picture again (a monitor takes a moment to switch on), so you see it play instead of it finishing on dark screens.
 - In a fullscreen app (a video, a game), an incoming call shows as a banner above it, since the island is hidden there.
 - A monitor with speakers is listed in Control Center → Sound while it's plugged in (e.g. **BenQ GW2786TC speakers**): picking it moves sound to the monitor, and **Built-in speakers** brings it back. The laptop's microphone stays on.
-- The installer checks which Hyprland your system is about to get. When it's newer than this iRice is tested with (Arch has 0.57 while iRice is tested with 0.56), it says so and lets you continue anyway (the default) or stop before anything changes. `irice doctor` and System health then point it out until an iRice update supports it.
-- Your keyboard layout is kept: the installer uses the one your system is set to (`localectl`), instead of always US. The iRice test session uses it too.
+- The installer checks which Hyprland your system is about to get. When it's newer than this Tessera is tested with (Arch has 0.57 while Tessera is tested with 0.56), it says so and lets you continue anyway (the default) or stop before anything changes. `tessera doctor` and System health then point it out until an Tessera update supports it.
+- Your keyboard layout is kept: the installer uses the one your system is set to (`localectl`), instead of always US. The Tessera test session uses it too.
 - The idle sliders in Settings → Battery & Power work after installing: the installer no longer puts a hypridle.conf of its own in `~/.config/hypr` (which made Settings think you had your own, and replaced yours). If an earlier install left its copy there unchanged, it's taken out the next time you install or update; a hypridle.conf you wrote yourself is kept and still wins.
-- When your repositories don't have Quickshell, or only an older one, the installer builds iRice its own instead of stopping. On Manjaro, a Hyprland that's too old comes with a note on why (its stable branch lags behind Arch) and what to do.
-- System health's Quickshell fix now names the build script to run (Software Update doesn't rebuild Quickshell), and an installed iRice reads its tested versions again.
+- When your repositories don't have Quickshell, or only an older one, the installer builds Tessera its own instead of stopping. On Manjaro, a Hyprland that's too old comes with a note on why (its stable branch lags behind Arch) and what to do.
+- System health's Quickshell fix now names the build script to run (Software Update doesn't rebuild Quickshell), and an installed Tessera reads its tested versions again.
 - Replacing PulseAudio no longer fails when only part of it is installed.
 - With no login screen, Hyprland starts from tty1 whichever shell you log in with: bash, zsh, fish or sh (it used to be bash only).
 - TLP, auto-cpufreq and tuned are left in charge: neither the installer nor Software Update adds power-profiles-daemon next to them (TLP's package would have been removed), and System health shows energy modes as managed by them instead of broken.
@@ -415,38 +422,38 @@ Tested with a real Android phone, both ways, on the same Wi-Fi and without one.
 - Wi-Fi, VPN and Ethernet alerts in the island work without NetworkManager too (they watch the network interfaces, including WireGuard, Tailscale and other tunnels). With nothing to watch them with, the option in Settings → Menu bar is greyed out and says why.
 - With TLP, auto-cpufreq, TuneD or system76-power in charge (or no power-profiles-daemon), Battery & Power, the battery menu and Control Center say "Managed by TLP" (or what to install) instead of showing energy modes that do nothing; the battery saver, Game Mode and cool-down no longer claim to switch to Low Power.
 - Bluetooth says what's wrong: no adapter, BlueZ not installed, the Bluetooth service stopped (with **Start Bluetooth**), or blocked with rfkill as in flight mode (with **Unblock Bluetooth**, no password needed).
-- About 10 seconds after iRice starts, one island alert names anything else doing its jobs: another bar (waybar…), another notification daemon (mako, dunst…), a second hypridle or clipboard recorder, or user services that start them. **Review** opens System health, which lists each with how to stop it; **Don't show again** remembers it per thing.
+- About 10 seconds after Tessera starts, one island alert names anything else doing its jobs: another bar (waybar…), another notification daemon (mako, dunst…), a second hypridle or clipboard recorder, or user services that start them. **Review** opens System health, which lists each with how to stop it; **Don't show again** remembers it per thing.
 - Commands that open in a terminal (installing an emoji font, Spotlight's commands, terminal apps) use the terminal chosen in Settings → Default apps, else $TERMINAL, else the first one installed: kitty, foot, Alacritty, WezTerm, Ghostty, Konsole, GNOME Terminal, Console, Ptyxis, Xfce Terminal or xterm, each started the way it expects. They no longer assume kitty.
 - On a desktop without adjustable display brightness, the brightness keys and menu bar scrolling no longer show a brightness slider that does nothing, and Spotlight answers "No adjustable display brightness". With several backlights, the one that drives the panel is used.
 - Night Light only appears in Control Center when hyprsunset is installed. Emoji fonts install with yay or paru, whichever you have. Recording's microphone list works without pactl. Without NetworkManager, Settings → Network leaves out the Wi-Fi security it can't know instead of guessing. Installed tools are looked for again when System health refreshes and after an update.
 - Overview with **Each its own**: every screen shows the other displays as small labelled targets on the edge that faces them (a display to the right sits at the right edge). Drop a window on one to move it to the space that display is showing, or hold it there a moment to pick one of its spaces. Drag a space onto one to move it there with all its windows, as that display's next space. Both screens' Overviews update right away.
 - Right-click a window in the Overview for **Move to** another display (or one of its spaces), and a space for **Move space to** another display. It works with a row per display too.
-- Screen recording on a computer without hardware video encoding (Intel without intel-media-driver, NVIDIA without libva-nvidia-driver) no longer just fails: iRice records again with the CPU and says which package brings hardware encoding back.
+- Screen recording on a computer without hardware video encoding (Intel without intel-media-driver, NVIDIA without libva-nvidia-driver) no longer just fails: Tessera records again with the CPU and says which package brings hardware encoding back.
 - External monitors' brightness: with ddcutil installed, the brightness keys, the Control Center slider and the OSD change the brightness of the external display you're working on (DDC/CI), and Settings → Displays has a slider for it. When ddcutil can't reach the displays (i2c-dev not loaded, no access to /dev/i2c-*), Settings → Displays says how to fix it.
 - The GPU graph works on NVIDIA's driver (through nvidia-smi, only while a graph shows, without waking a sleeping GPU) and shows its temperature.
 - Volume and brightness without media keys: Super+F11/F12 lower and raise the volume, Super+F1/F2 the brightness (Settings → Keyboard Shortcuts, Media).
 - The lock screen says "Too many attempts: try again in about 10 minutes" (with the real time left) when too many wrong passwords have locked the account, instead of "Incorrect password" for a password that was right.
 - Text Capture reads your system language as well as English when its tesseract-data package is installed (German with tesseract-data-deu, say), and tells you which package to install when it isn't.
 - Sharing behind an nftables or iptables firewall: System health and Settings → Sharing notice it, and the fix lets LocalSend and Quick Share through (kept across restarts when nftables reads /etc/nftables.d, otherwise until the next restart, which System health says). Quick Share's direct Wi-Fi links get through nftables too.
-- Your keyring unlocks with your login password at the iRice login screen and on the console (gnome-keyring's PAM lines, added once by the installer, taken out by irice uninstall). Not next to KWallet.
-- Apps that start with your session (~/.config/autostart, /etc/xdg/autostart) now do, once per session, after the menu bar's tray is up. iRice leaves out the ones it does itself (keyring, password prompts, notifications, other bars).
-- NVIDIA: the installer writes the environment Hyprland's wiki asks for (~/.config/hypr/irice/gpu.lua; only suggestions on hybrid graphics), and installs the video drivers for recording and playback: intel-media-driver for Intel, libva-nvidia-driver for NVIDIA.
-- Your old hyprland.conf: after installing, iRice says what it had (displays, keyboard, env lines, programs) and puts them, turned off, in ~/.config/hypr/irice/from-your-old-config.lua: remove "-- " to use one.
+- Your keyring unlocks with your login password at the Tessera login screen and on the console (gnome-keyring's PAM lines, added once by the installer, taken out by tessera uninstall). Not next to KWallet.
+- Apps that start with your session (~/.config/autostart, /etc/xdg/autostart) now do, once per session, after the menu bar's tray is up. Tessera leaves out the ones it does itself (keyring, password prompts, notifications, other bars).
+- NVIDIA: the installer writes the environment Hyprland's wiki asks for (~/.config/hypr/tessera/gpu.lua; only suggestions on hybrid graphics), and installs the video drivers for recording and playback: intel-media-driver for Intel, libva-nvidia-driver for NVIDIA.
+- Your old hyprland.conf: after installing, Tessera says what it had (displays, keyboard, env lines, programs) and puts them, turned off, in ~/.config/hypr/tessera/from-your-old-config.lua: remove "-- " to use one.
 - Bug reports also leave out Wi-Fi names iwd knows. Quick Share under iwd says Wi-Fi Direct needs wpa_supplicant instead of asking for a password for nothing.
 - System health finds any Bluetooth adapter (not only the first), says to install bluez when it's missing, and counts PipeWire without pipewire-pulse as a warning. qt6ct is used when you've set it up and KDE's theme isn't installed or your environment.d asks for it. The installer uses paru when you have it, and on Manjaro builds yay only when you say so.
 - LocalSend keeps finding nearby devices after a malformed message from the network; before, one bad message stopped discovery until the shell restarted.
 - LocalSend: a request nobody answered now says "Request from <name> expired · Nothing was received", and declining one yourself shows nothing extra. "They declined" is only for files you sent.
-- Leftover watchers from a crashed shell are only ended when they're provably iRice's: each watcher group now carries its own random mark, and after its leader has gone only processes with that mark are stopped. Nothing else in a reused group is ever touched.
-- Calendar subscriptions show more repeating events on the right days: "the 4th Thursday of November" (Thanksgiving), "the last (or first) weekday of the month", every-other-week events with a week start other than Monday, and daily events on weekdays only. An event that repeats in a way iRice can't follow yet shows only its first date, and its details say so, instead of landing on wrong days.
+- Leftover watchers from a crashed shell are only ended when they're provably Tessera's: each watcher group now carries its own random mark, and after its leader has gone only processes with that mark are stopped. Nothing else in a reused group is ever touched.
+- Calendar subscriptions show more repeating events on the right days: "the 4th Thursday of November" (Thanksgiving), "the last (or first) weekday of the month", every-other-week events with a week start other than Monday, and daily events on weekdays only. An event that repeats in a way Tessera can't follow yet shows only its first date, and its details say so, instead of landing on wrong days.
 - The app icon list notices icons added inside icon theme folders that are links to another theme (MacTahoe-dark and others), instead of staying out of date for a week.
 
 ## Sharing and spaces fixes · 2026-10-30
 
-- Phones show up when you send: while iRice looks for devices it tells phones nearby that someone is sharing, so they make themselves visible (as one phone does for another).
+- Phones show up when you send: while Tessera looks for devices it tells phones nearby that someone is sharing, so they make themselves visible (as one phone does for another).
 - "Send to a nearby device…" appears in Dolphin and other file managers again (it was added where they didn't look).
 - **Send files…** in Control Center: on the Sharing page and in the Sharing tile's right-click menu.
 - An empty space between two in use (say 6, between 5 and 7) keeps its chip in the menu bar and its place in Overview, so you can still go to it.
-- Fewer warnings in iRice's log (notification banners, the window snap outline, saved settings).
+- Fewer warnings in Tessera's log (notification banners, the window snap outline, saved settings).
 - Updates run in the background at low priority, so the desktop stays smooth while packages install or AUR software compiles.
 - One island alert per thing: headphones whose battery shows up a moment later, or a device that reconnects, update the alert already showing instead of adding a second.
 
@@ -468,11 +475,11 @@ Tested with a real Android phone, both ways, on the same Wi-Fi and without one.
 - Choose when the screen dims, turns off and locks, and when the computer sleeps, separately on battery and on the charger.
 - Closing the lid: sleep, lock or do nothing, on battery, on the charger, or with another display connected. Choose when the password is needed after sleep.
 - One energy mode, with the reason shown: Cool-down, the battery saver, your choice and Game Mode no longer fight each other.
-- At 20% the island offers Low Power (or turns it on by itself if you choose). Warnings at 10% and 5%, and the computer sleeps at 3%, even with Caffeine on or if iRice isn't running.
+- At 20% the island offers Low Power (or turns it on by itself if you choose). Warnings at 10% and 5%, and the computer sleeps at 3%, even with Caffeine on or if Tessera isn't running.
 - See which apps used the most energy in the last hour, and quit them.
 
 **System health** (Settings → About)
-- Checks every service iRice relies on (sound, network, Bluetooth, sharing, power, portals, the glass plugin…) and says how to fix what's broken. Fix restarts things for you, and asks for your password when it needs to change system services.
+- Checks every service Tessera relies on (sound, network, Bluetooth, sharing, power, portals, the glass plugin…) and says how to fix what's broken. Fix restarts things for you, and asks for your password when it needs to change system services.
 
 **Notifications**
 - Reply to messages (Discord, Telegram, Signal, KDE Connect…) right from the banner, Notification Center or the island. Super+Ctrl+N replies to the newest message.
@@ -507,7 +514,7 @@ Tested with a real Android phone, both ways, on the same Wi-Fi and without one.
 ## Quick Share over Bluetooth fixed, apps come forward · 2026-10-29
 
 **Quick Share**
-- Phones sending over Bluetooth disconnected after two seconds and reported "failed". iRice now answers the phone's connection in time, and its Bluetooth announcement fits your Bluetooth chip.
+- Phones sending over Bluetooth disconnected after two seconds and reported "failed". Tessera now answers the phone's connection in time, and its Bluetooth announcement fits your Bluetooth chip.
 - If a phone paired with this computer during an earlier try, remove that pairing on both devices first; Quick Share doesn't need it.
 
 **Apps come forward**
@@ -518,7 +525,7 @@ Tested with a real Android phone, both ways, on the same Wi-Fi and without one.
 ## iRice's own Quick Share, enterprise Wi-Fi · 2026-10-29
 
 **Quick Share with Android, built in**
-- iRice has its own Quick Share; no extra app is needed. Turn it on in Settings → Sharing or in Control Center: No one, Everyone for 10 minutes, or Everyone.
+- Tessera has its own Quick Share; no extra app is needed. Turn it on in Settings → Sharing or in Control Center: No one, Everyone for 10 minutes, or Everyone.
 - Works like it does between phones: nearby phones find this computer over Bluetooth, even without the same Wi-Fi, and files then move over a fast direct Wi-Fi link while your normal Wi-Fi stays connected. On the same Wi-Fi, they simply use that.
 - You're asked in the island before anything is saved, with the same PIN the phone shows. Files, links, text and Wi-Fi networks all work.
 - A direct Wi-Fi link needs your password once; if you skip it, the transfer still finishes over Bluetooth, slowly.
@@ -531,7 +538,7 @@ Tested with a real Android phone, both ways, on the same Wi-Fi and without one.
 - Share selected text with Super+Ctrl+S.
 
 **Report a bug**
-- Settings → Report a bug, or from Spotlight, a shortcut or a gesture. Add a screenshot (with Mark up… to hide anything), the iRice log and system info, and see exactly what will be sent first. Personal details like your name, paths, network names and addresses are removed from the log.
+- Settings → Report a bug, or from Spotlight, a shortcut or a gesture. Add a screenshot (with Mark up… to hide anything), the Tessera log and system info, and see exactly what will be sent first. Personal details like your name, paths, network names and addresses are removed from the log.
 
 **Google**
 - Connect Google account opens your browser and comes back connected; no detour through GNOME Settings.
@@ -601,7 +608,7 @@ After updating, run Update again so it installs the new packages (`iw`, `wpa_sup
 
 **Lock and sleep**
 - The screen locks immediately, before any animation, and Sleep waits until the lock is really in place.
-- Locking and sleeping when idle now works in every iRice session.
+- Locking and sleeping when idle now works in every Tessera session.
 
 **Your data**
 - Settings and UI state survive crashes and two shells writing at once. Notes are saved safely and you're told if a save fails.
@@ -641,7 +648,7 @@ After updating, run Update once more so it installs `openssl` and `plasma-integr
 
 ## Dolphin colors and easier file sharing · 2026-10-28
 
-- Dolphin's text and background now follow iRice's light/dark mode even with Match apps off. KDE and Qt palettes stay consistent, including after turning accent matching off.
+- Dolphin's text and background now follow Tessera's light/dark mode even with Match apps off. KDE and Qt palettes stay consistent, including after turning accent matching off.
 - Settings → Sharing now has a Send files button with multiple-file selection. Spotlight also has a Send Files action. LocalSend sending works independently of receiving.
 - Added optional Android Quick Share / Nearby Share integration through Packet, available from the share sheet, Sharing settings and Spotlight. Packet handles device selection, confirmation and progress; it requires Bluetooth and the same Wi-Fi network.
 
@@ -689,15 +696,15 @@ After updating, run Update once more so it installs `openssl` and `plasma-integr
 ## Cooler, safer updates, and fixes · 2026-10-28
 
 **Battery and heat**
-- Fixed: the screen-sharing detector kept a CPU core busy, and every shell restart left another copy running, which made the laptop hot. It now costs almost nothing, and nothing iRice starts in the background outlives the shell any more. A new shell also ends anything an earlier one left behind.
+- Fixed: the screen-sharing detector kept a CPU core busy, and every shell restart left another copy running, which made the laptop hot. It now costs almost nothing, and nothing Tessera starts in the background outlives the shell any more. A new shell also ends anything an earlier one left behind.
 - Lighter background checks for the camera, location and file copies.
 - Stage Manager previews pause when hidden and are capped at 5 frames a second. A live wallpaper pauses when the screen is locked or idle.
 - The island's music bars and heat ripples redraw less often, and pause when hidden or locked. The ripples stop entirely during Cool-down.
 - The whole shell now idles below 1% of one core.
 
 **Software Update**
-- Only one update runs at a time, across every iRice session.
-- A failed iRice update puts everything back exactly as it was, your own changes included.
+- Only one update runs at a time, across every Tessera session.
+- A failed Tessera update puts everything back exactly as it was, your own changes included.
 - Package lists from an update are checked as plain text and never run. Only valid package names reach pacman.
 - AUR updates are now a choice in the plan (off by default), because AUR packages are built from user-submitted scripts.
 - Once your password is accepted, a system update can't be cut off halfway by the shell restarting or closing.
@@ -759,15 +766,15 @@ After updating, run Update once more so it installs `openssl` and `plasma-integr
 ## One update for everything, a screen recorder, iOS-style Control Center · 2026-10-28
 
 **Software Update**
-- One **Update** button now updates your system and iRice together, in a safe order:
+- One **Update** button now updates your system and Tessera together, in a safe order:
   1. a snapshot first, if snapper or Timeshift is set up;
-  2. your system (`pacman -Syu`), with the packages iRice needs;
+  2. your system (`pacman -Syu`), with the packages Tessera needs;
   3. AUR packages, if you use yay or paru;
-  4. iRice itself, rebuilt for the Hyprland you now have.
-- Your password is asked in iRice's own dialog. No terminal opens, and the update keeps going if you close Settings.
+  4. Tessera itself, rebuilt for the Hyprland you now have.
+- Your password is asked in Tessera's own dialog. No terminal opens, and the update keeps going if you close Settings.
 - **Show details** shows the full output while it runs. The island shows progress.
 - Nothing is checked on its own any more. Press **Check for updates** when you want to.
-- If Arch has a newer Hyprland than iRice is tested with, you choose each time: keep the current one for now, or update anyway.
+- If Arch has a newer Hyprland than Tessera is tested with, you choose each time: keep the current one for now, or update anyway.
 - These notes, and a list of the packages each update touches.
 
 **Screen recording**
@@ -775,7 +782,7 @@ After updating, run Update once more so it installs `openssl` and `plasma-integr
 - Options: a microphone (pick which one), system audio, the mouse pointer, and a 3 or 5 second countdown.
 - While recording, the island shows the time with Stop. Open it for Pause, Mic mute with a level meter, and Discard (8 s to undo).
 - Recordings are saved to `~/Videos/Screen Recordings` as MP4 at 60 fps. Change this in Settings → Desktop & Widgets → Screen recording.
-- Uses [gpu-screen-recorder](https://git.dec05eba.com/gpu-screen-recorder/about/), which encodes on the graphics card. Without it iRice falls back to wf-recorder: no pause, one audio source.
+- Uses [gpu-screen-recorder](https://git.dec05eba.com/gpu-screen-recorder/about/), which encodes on the graphics card. Without it Tessera falls back to wf-recorder: no pause, one audio source.
 
 **Control Center**
 - Wi-Fi, Bluetooth and the other wide controls are pills. When on, the button turns white with a coloured icon.
@@ -810,8 +817,8 @@ After updating, run Update once more so it installs `openssl` and `plasma-integr
 - Clear and tinted icons lift each logo off its tile, with a contrast slider.
 
 **Fixes**
-- The clipboard panel was empty in the iRice login session. It now shows your history.
-- The screen-sharing dot no longer flickers when iRice draws its own window previews.
+- The clipboard panel was empty in the Tessera login session. It now shows your history.
+- The screen-sharing dot no longer flickers when Tessera draws its own window previews.
 
 <!-- packages: +gpu-screen-recorder -->
 

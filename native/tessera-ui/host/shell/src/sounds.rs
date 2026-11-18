@@ -193,14 +193,10 @@ impl Sounds {
         let sig = std::env::var("HYPRLAND_INSTANCE_SIGNATURE").unwrap_or_else(|_| "none".into());
         let dir = runtime_dir();
         let mark = dir.join(format!("tessera-session-started-{sig}"));
-        let old = dir.join(format!("irice-session-started-{sig}"));
         if mark.exists() {
             return;
         }
         let _ = std::fs::write(&mark, b"");
-        if old.exists() {
-            return; // (a session that started before iRice became Tessera)
-        }
         self.play(h, "startup", false);
         h.ask("lock.sessionStarted", json!([]));
     }

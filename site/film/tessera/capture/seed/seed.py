@@ -18,10 +18,10 @@ repo = os.path.abspath(os.path.join(here, "../../../../.."))
 wall = sys.argv[3] if len(sys.argv) > 3 else os.path.join(here, "photos/wall-sunset-lake.jpg")
 assert os.path.isdir(os.path.join(home, ".config")) and "/.sandbox/" in os.path.abspath(home), "not an arena home: " + home
 
-# (Tessera's settings file; iRice's where an older home still has only that)
+# (Tessera's settings file; Tessera's where an older home still has only that)
 cfg_path = os.path.join(home, ".config/tessera/config.json")
 if not os.path.exists(cfg_path):
-    cfg_path = os.path.join(home, ".config/irice/config.json")
+    cfg_path = os.path.join(home, ".config/tessera/config.json")
 c = json.load(open(cfg_path))
 a = c.setdefault("appearance", {})
 a.update(look=look, mode=os.environ.get("MODE", "dark"), materialSeed="wallpaper", accent=os.environ.get("ACCENT", "wallpaper"), menuIcon="circle")  # (circle: the Badge, the new logo)
@@ -44,7 +44,7 @@ json.dump(c, open(cfg_path, "w"), indent=4)
 shutil.copy(os.path.join(here, "avatar.png"), os.path.join(home, ".face"))
 
 # Past chats, for the history view
-chats = os.path.join(home, ".local/state/irice/ai-chats")
+chats = os.path.join(home, ".local/state/tessera/ai-chats")
 shutil.rmtree(chats, ignore_errors=True)
 os.makedirs(chats, mode=0o700)
 now = int(time.time() * 1000)

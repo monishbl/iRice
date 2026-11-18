@@ -873,7 +873,7 @@ fn scrub_env() -> Vec<String> {
         return Vec::new();
     }
     let mut v = vec!["env".to_string()];
-    for k in ["XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME", "TESSERA_SANDBOX", "TESSERA_ROOT", "TESSERA_TTY", "IRICE_SANDBOX", "IRICE_ROOT", "IRICE_TTY"] {
+    for k in ["XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME", "TESSERA_SANDBOX", "TESSERA_ROOT", "TESSERA_TTY"] {
         v.push("-u".into());
         v.push(k.into());
     }
@@ -914,14 +914,14 @@ impl Service for Bridges {
         // Tessera's root helper installed? (the login screen's wallpaper goes through it)
         let send = h.sender("Bridges");
         std::thread::spawn(move || {
-            let ok = ["/usr/lib/tessera/tessera-root", "/usr/lib/irice/irice-root"].iter().any(|p| std::path::Path::new(p).exists());
+            let ok = ["/usr/lib/tessera/tessera-root", tessera_core::old_names::ROOT_HELPER].iter().any(|p| std::path::Path::new(p).exists());
             send(Box::new(Msg::RootHelper(ok)));
         });
         self.rescan_sets(h);
         // The login intro: the first start in this session, the setting on (the
         // session's mark is made by Sounds, which starts after this)
         let sig = std::env::var("HYPRLAND_INSTANCE_SIGNATURE").unwrap_or_else(|_| "none".into());
-        let started = runtime_dir().join(format!("tessera-session-started-{sig}")).exists() || runtime_dir().join(format!("irice-session-started-{sig}")).exists();
+        let started = runtime_dir().join(format!("tessera-session-started-{sig}")).exists();
         if !started && !self.locked && cfg_bool(h.cfg(), "lock.loginIntro", false) && !cfg_bool(h.cfg(), "appearance.reduceMotion", false) {
             self.arm_intro(h);
         }
@@ -1065,9 +1065,9 @@ impl Service for Bridges {
                         let helper = self.root_helper;
                         let send = h.sender("Bridges");
                         let cmd: Vec<String> = if helper {
-                            vec!["sh".into(), "-c".into(), "h=/usr/lib/tessera/tessera-root; [ -x \"$h\" ] || h=/usr/lib/irice/irice-root; exec pkexec \"$h\" \"$@\"".into(), "sh".into(), "wallpaper".into(), pic]
+                            vec!["sh".into(), "-c".into(), format!("h=/usr/lib/tessera/tessera-root; [ -x \"$h\" ] || h={}; exec pkexec \"$h\" \"$@\"", tessera_core::old_names::ROOT_HELPER), "sh".into(), "wallpaper".into(), pic]
                         } else {
-                            vec!["sh".into(), "-c".into(), "d=/usr/share/tessera; [ -d \"$d\" ] || d=/usr/share/irice; exec pkexec cp \"$1\" \"$d/wallpaper.jpg\"".into(), "sh".into(), pic]
+                            vec!["sh".into(), "-c".into(), format!("{}exec pkexec cp \"$1\" \"$d/wallpaper.jpg\"", tessera_core::old_names::login_share_pick()), "sh".into(), pic]
                         };
                         run_then(cmd, move |code, _| {
                             send(Box::new(Msg::LoginStatus(if code == 0 { "The login screen now uses this wallpaper.".into() } else if helper { "Didn't change the login screen. Pick a JPEG, PNG or WebP wallpaper and try again.".into() } else { "Didn't change the login screen. Approve the password prompt to try again.".into() })));

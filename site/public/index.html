@@ -588,7 +588,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space
       <p class="hint">Arch Linux or Arch-based (CachyOS, EndeavourOS). It asks before installing packages. Add <code class="inline">--with-settings</code> to start from the shared look.</p>
       <ol class="steps">
         <li><strong>Switch to a free console.</strong><span>Press <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>F3</kbd> and log in.</span></li>
-        <li><strong>Start Tessera.</strong><span>The check says what's missing, if anything.</span><pre>cd ~/iRice &amp;&amp; ./demo.sh --check &amp;&amp; ./dev.sh tty</pre></li>
+        <li><strong>Start Tessera.</strong><span>The check says what's missing, if anything.</span><pre>cd ~/tessera &amp;&amp; ./demo.sh --check &amp;&amp; ./dev.sh tty</pre></li>
         <li><strong>Leave when you like.</strong><span><kbd>Super</kbd> <kbd>Shift</kbd> <kbd>Esc</kbd> ends it. <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>F1</kbd> takes you back.</span></li>
       </ol>
     </div>
@@ -602,7 +602,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space
     <div class="faq reveal">
       <details>
         <summary>Why is it called Tessera now?</summary>
-        <div class="ans"><p>It was iRice. With a second look, Material, it needed a name of its own. A tessera is one tile of a mosaic: many small pieces that make one picture. Its mark is the Badge, the wavy seal. If you had iRice, the next update moves your settings by itself; <a href="https://github.com/monishbl/tessera/blob/main/docs/rename-to-tessera.md">the rename notes</a> list the one-time setup.</p></div>
+        <div class="ans"><p>It had a working name until November 2026. With a second look, Material, it needed a name of its own. A tessera is one tile of a mosaic: many small pieces that make one picture. Its mark is the Badge, the wavy seal. If you used it under the old name, the next update moves your settings and folders by itself; <a href="https://github.com/monishbl/tessera/blob/main/docs/rename-to-tessera.md">the rename notes</a> list the one-time setup.</p></div>
       </details>
       <details>
         <summary>What happens when an update conflicts with my changes?</summary>
@@ -628,12 +628,12 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space
       <details>
         <summary>How do I share my look with a friend?</summary>
         <div class="ans">
-          <p><a href="/config/irice-config.tar.gz">Download the shared look</a>, unpack it, and run <code class="inline">./import.sh --repo ~/iRice</code>. It carries glass, colours, menu bar and dock, and no personal data. Current settings are backed up first.</p>
+          <p><a href="/config/tessera-config.tar.gz">Download the shared look</a>, unpack it, and run <code class="inline">./import.sh --repo ~/tessera</code>. It carries glass, colours, menu bar and dock, and no personal data. Current settings are backed up first.</p>
         </div>
       </details>
       <details>
         <summary>The glass looks flat, not refractive</summary>
-        <div class="ans"><p>The glass plugin didn't build for your Hyprland. Run <code class="inline">~/iRice/tools/setup-tty.sh</code> again after a Hyprland update.</p></div>
+        <div class="ans"><p>The glass plugin didn't build for your Hyprland. Run <code class="inline">~/tessera/tools/setup-tty.sh</code> again after a Hyprland update.</p></div>
       </details>
       <details>
         <summary>Animations feel choppy on a laptop</summary>
@@ -641,11 +641,11 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space
       </details>
       <details>
         <summary>The screen froze</summary>
-        <div class="ans"><p>From another console (<kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>F4</kbd>), run <code class="inline">cd ~/iRice &amp;&amp; ./dev.sh tty-stop</code>.</p></div>
+        <div class="ans"><p>From another console (<kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>F4</kbd>), run <code class="inline">cd ~/tessera &amp;&amp; ./dev.sh tty-stop</code>.</p></div>
       </details>
       <details>
         <summary>How do I remove it?</summary>
-        <div class="ans"><p>Delete the <code class="inline">~/iRice</code> folder. Nothing else was changed.</p></div>
+        <div class="ans"><p>Delete the <code class="inline">~/tessera</code> folder. Nothing else was changed.</p></div>
       </details>
     </div>
   </section>

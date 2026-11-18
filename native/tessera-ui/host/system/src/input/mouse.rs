@@ -340,7 +340,7 @@ impl Service for Mouse {
         // the glass plugin: its name and version (a ping answers "<name> <version>")
         let send = h.sender("Mouse");
         std::thread::spawn(move || {
-            for n in ["tessera-glass", "irice-glass"] {
+            for n in ["tessera-glass"] {
                 if let Some((0, o)) = crate::util::capture(&["hyprctl", n, "ping"], std::time::Duration::from_secs(3)) {
                     if o.trim().starts_with(n) {
                         let v = o.split_whitespace().nth(1).and_then(|v| v.parse().ok()).unwrap_or(1);

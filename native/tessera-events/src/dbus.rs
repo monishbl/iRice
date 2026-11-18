@@ -501,9 +501,8 @@ pub fn inhibit(what: &str, why: &str, on: bool) {
         return;
     }
     // (the nested dev sandbox shares the real system bus: never inhibit
-    // from it; the console session is a real one, as System.qml has it;
-    // IRICE_*: a session started before iRice became Tessera)
-    let flag = |name: &str| std::env::var(format!("TESSERA_{name}")).or_else(|_| std::env::var(format!("IRICE_{name}"))).as_deref() == Ok("1");
+    // from it; the console session is a real one, as System.qml has it)
+    let flag = |name: &str| std::env::var(format!("TESSERA_{name}")).as_deref() == Ok("1");
     if flag("SANDBOX") && !flag("TTY") {
         emit(json!({"src": "inhibit", "what": what, "on": false, "error": "not in the sandbox"}));
         return;

@@ -45,9 +45,9 @@ Singleton {
 
     Process {
         running: true
-        // (/usr/share/irice: the login screen installed before iRice became
-        // Tessera, until ./install.sh --only=login runs again)
-        command: ["sh", "-c", "[ -d /usr/share/tessera/shell ] || [ -d /usr/share/irice/shell ] || exit 1; " + RootHelper.knows("login-look") + " && exit 0; exit 2"]
+        // (the old name's copy: the login screen installed before the
+        // rename, until ./install.sh --only=login runs again)
+        command: ["sh", "-c", "[ -d /usr/share/tessera/shell ] || [ -d " + OldNames.loginShare + "/shell ] || exit 1; " + RootHelper.knows("login-look") + " && exit 0; exit 2"]
         onExited: code => {
             root.hasCopy = code !== 1;
             root.canWrite = code === 0;
@@ -55,14 +55,14 @@ Singleton {
                 later.restart();
         }
     }
-    // The login screen's own copy: Tessera's, or iRice's until it's installed again
+    // The login screen's own copy: Tessera's, or the old name's until it's installed again
     property string share: "/usr/share/tessera"
     Process {
         running: true
-        command: ["sh", "-c", "[ -d /usr/share/tessera ] || [ ! -d /usr/share/irice ] || echo old"]
+        command: ["sh", "-c", "[ -d /usr/share/tessera ] || [ ! -d \"$1\" ] || echo old", "sh", OldNames.loginShare]
         stdout: StdioCollector {
             onStreamFinished: if (text.trim() === "old")
-                root.share = "/usr/share/irice"
+                root.share = OldNames.loginShare
         }
     }
     FileView {
@@ -96,6 +96,6 @@ Singleton {
     // (Glass, or the Material root), so "look" shows the look you're in.
     function preview() {
         const s = Config.options.lock.loginStyle ?? "look";
-        Quickshell.execDetached(["sh", "-c", "QS=qs; for d in \"${XDG_DATA_HOME:-}/tessera\" \"$HOME/.local/share/tessera\" \"${XDG_DATA_HOME:-}/irice\" \"$HOME/.local/share/irice\"; do if [ -x \"$d/quickshell/bin/qs\" ]; then QS=\"$d/quickshell/bin/qs\"; export QML_IMPORT_PATH=\"$d/quickshell/lib/qt6/qml${QML_IMPORT_PATH:+:$QML_IMPORT_PATH}\"; break; fi; done; TESSERA_GREETER_MOCK=1 TESSERA_GREETER_STYLE=\"$1\" TESSERA_GREETER_WALLPAPER=\"$2\" TESSERA_GREETER_CLOCK24=\"$4\" exec \"$QS\" -p \"$3/greeter.qml\"", "sh", s, Wallpaper.path, Quickshell.shellDir, Config.options.appearance.clock24 ? "1" : "0"]);
+        Quickshell.execDetached(["sh", "-c", "QS=qs; for d in \"${XDG_DATA_HOME:-}/tessera\" \"$HOME/.local/share/tessera\"; do if [ -x \"$d/quickshell/bin/qs\" ]; then QS=\"$d/quickshell/bin/qs\"; export QML_IMPORT_PATH=\"$d/quickshell/lib/qt6/qml${QML_IMPORT_PATH:+:$QML_IMPORT_PATH}\"; break; fi; done; TESSERA_GREETER_MOCK=1 TESSERA_GREETER_STYLE=\"$1\" TESSERA_GREETER_WALLPAPER=\"$2\" TESSERA_GREETER_CLOCK24=\"$4\" exec \"$QS\" -p \"$3/greeter.qml\"", "sh", s, Wallpaper.path, Quickshell.shellDir, Config.options.appearance.clock24 ? "1" : "0"]);
     }
 }

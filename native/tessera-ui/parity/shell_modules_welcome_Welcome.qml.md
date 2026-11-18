@@ -39,7 +39,7 @@ Rust: when and what's offered — host `bridges.rs` (`welcome_open`,
 
 ## Test plan (arena N, both looks)
 
-1. `IRICE_ARENA=N ./dev.sh ipc welcome open` (standalone); record 1 s. PASS: backdrop and card fade in over ~300 ms, card rises 12 px; no drop shadow under the card (FAIL if a dark halo is visible below it).
+1. `TESSERA_ARENA=N ./dev.sh ipc welcome open` (standalone); record 1 s. PASS: backdrop and card fade in over ~300 ms, card rises 12 px; no drop shadow under the card (FAIL if a dark halo is visible below it).
 2. Enter → step 2 slides in from the right (24 px, 250 ms) and fades (200 ms); Esc → step 1 slides in from the left.
 3. Tab to "Dark", Space → the desktop behind switches to dark at once (config.json `appearance.mode: "dark"`).
 4. Step 3: click "Dusk" → ring moves to it, wallpaper changes behind; hover another tile → faint ring (0.35). "Choose a picture…" opens the file picker (close it).

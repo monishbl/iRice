@@ -17,16 +17,16 @@ HZ=$(getconf CLK_TCK)
 hypr_pid() { pgrep -P "$("$DEV" status | grep -o '[0-9]\+')" -x Hyprland | head -1; }
 shell_pid() {
     local p
-    for p in $(pgrep -x tessera-shell; pgrep -x irice-shell; pgrep -x qs; pgrep -x quickshell); do
+    for p in $(pgrep -x tessera-shell; pgrep -x qs; pgrep -x quickshell); do
         tr '\0' ' ' <"/proc/$p/cmdline" 2>/dev/null | grep -q -- "-p $ROOT/shell" &&
-            tr '\0' '\n' <"/proc/$p/environ" 2>/dev/null | grep -qx "XDG_RUNTIME_DIR=/tmp/irice-rt" && { echo "$p"; return; }
+            tr '\0' '\n' <"/proc/$p/environ" 2>/dev/null | grep -qx "XDG_RUNTIME_DIR=/tmp/tessera-rt" && { echo "$p"; return; }
     done
 }
 ticks() { awk '{print $14 + $15}' "/proc/$1/stat" 2>/dev/null || echo 0; }
 rss_mb() { awk '/^VmRSS/ {printf "%.0f", $2 / 1024}' "/proc/$1/status" 2>/dev/null || echo 0; }
 stats() { "$DEV" hyprctl tessera-glass stats 2>/dev/null; }
 field() { grep -o "$1 [0-9]*" <<<"$2" | head -1 | awk '{print $2}'; }
-frames() { grep -o 'frames:IRICE-TEST [0-9]*' <<<"$1" | awk '{print $2}'; }
+frames() { grep -o 'frames:TESSERA-TEST [0-9]*' <<<"$1" | awk '{print $2}'; }
 # Whole-GPU busy share from the render engine's idle (RC6) time: includes your
 # own desktop, so compare phases rather than reading it as the shell's alone
 rc6() { cat /sys/class/drm/card*/power/rc6_residency_ms 2>/dev/null | head -1 || echo 0; }
@@ -39,13 +39,13 @@ start_phase() {
         island) ipc island demo burst ;;
         hot) ipc island hot true ;;
         music)
-            DBUS_SESSION_BUS_ADDRESS="$(cat /tmp/irice-rt/session-bus)" python3 "$ROOT/sandbox/tools/fakeplayer.py" >/dev/null 2>&1 &
+            DBUS_SESSION_BUS_ADDRESS="$(cat /tmp/tessera-rt/session-bus)" python3 "$ROOT/sandbox/tools/fakeplayer.py" >/dev/null 2>&1 &
             FAKE=$!
             ;;
         # an app redrawing every frame under the bar, the island and the dock
         # (a video, a scrolling page): what the glass costs under load
         load)
-            "$DEV" hyprctl dispatch 'hl.dsp.focus({monitor = "IRICE-TEST"})' >/dev/null 2>&1
+            "$DEV" hyprctl dispatch 'hl.dsp.focus({monitor = "TESSERA-TEST"})' >/dev/null 2>&1
             "$DEV" run python3 "$ROOT/sandbox/tools/redraw.py" >/dev/null 2>&1 &
             sleep 2.5
             ;;

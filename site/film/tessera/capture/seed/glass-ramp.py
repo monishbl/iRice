@@ -15,7 +15,7 @@ import time
 
 home = sys.argv[1]
 assert "/.sandbox/" in os.path.abspath(home), "not an arena home: " + home
-path = os.path.join(home, ".config/irice/config.json")
+path = os.path.join(home, ".config/tessera/config.json")
 
 # (key, from, to): the settings page's own ranges
 RAMP = [("glassLens", 0.0, 1.0), ("glassIor", 1.33, 2.0), ("glassRefraction", 0.4, 2.0), ("glassDispersion", 0.0, 1.0)]

@@ -25,12 +25,12 @@ setup sleep 0.3; notify-send -a Files 'Copied' '3 files' &
 rec notification 2.5 ptr move 1300 520
 static widgets-notification 30 50 720 540
 # panels open and close over the desktop
-rec nc-open 1.6 ipc panels open notificationCenter IRICE-TEST
+rec nc-open 1.6 ipc panels open notificationCenter TESSERA-TEST
 rec nc-close 1.4 ipc panels close
 static widgets-nc 30 50 720 540
-rec overview-open 1.6 ipc panels open overview IRICE-TEST
+rec overview-open 1.6 ipc panels open overview TESSERA-TEST
 rec overview-close 1.4 ipc panels close
-rec mc-open 1.6 ipc panels open missionControl IRICE-TEST
+rec mc-open 1.6 ipc panels open missionControl TESSERA-TEST
 rec mc-close 1.4 ipc panels close
 static widgets-mc 30 50 720 540
 # the last window goes

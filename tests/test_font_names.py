@@ -3,7 +3,7 @@
 The shell loads material/assets/fonts by file (FontLoader) and then asks for
 them by family name ("Tessera Symbols" for the icons, "Tessera Sans Flex"
 for the type). tools/gen-material.sh renames them in their name tables; a
-font left with an older name (as after the iRice → Tessera rename) makes
+font left with an older name (as after Tessera's rename) makes
 every Material icon fall back to an unrelated glyph and the type to the
 system font, with no error anywhere.
 """
@@ -12,6 +12,12 @@ import shutil
 import subprocess
 import unittest
 from pathlib import Path
+
+import importlib.util
+_spec = importlib.util.spec_from_file_location("migrate_names_fonts", Path(__file__).resolve().parent.parent / "shell/assets/scripts/migrate-names.py")
+_mod = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_mod)
+OLD_NAME = _mod.OLD_DISPLAY_NAME  # (Tessera's old name)
 
 ROOT = Path(__file__).resolve().parents[1]
 FONTS = ROOT / "material/assets/fonts"
@@ -44,7 +50,7 @@ class MaterialFontNames(unittest.TestCase):
     def test_no_font_keeps_an_old_name(self):
         for f in FONTS.glob("*.ttf"):
             for fam in families(f):
-                self.assertNotIn("iRice", fam, f"{f.name} is still called {fam!r}")
+                self.assertNotIn(OLD_NAME, fam, f"{f.name} is still called {fam!r}")
 
 
 if __name__ == "__main__":

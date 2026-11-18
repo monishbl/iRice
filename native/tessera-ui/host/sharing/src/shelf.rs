@@ -354,8 +354,7 @@ impl Sharing {
             self.shelf.from_drag = false; // (something landed: it stays)
         }
     }
-    /// The glass plugin says a window is being moved ("tessera-drag" /
-    /// "irice-drag", a plugin built before the rename)
+    /// The glass plugin says a window is being moved ("tessera-drag")
     pub fn shelf_window_move(&mut self) {
         if self.shelf.down {
             self.shelf.window_move = true;

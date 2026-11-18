@@ -109,15 +109,9 @@ With the password, once, at the start:
       (/usr/share/tessera/shell and material, and greeter.lua; only where
       ./install.sh --greeter made one) from the same version: the shell
       folder's checkout, or the update's staged one (<folder>/tree)
-      Tessera was called iRice: setup also moves what that name installed
-      to Tessera's (migrate_from_irice): /etc/irice to /etc/tessera, its
-      drop-ins and PAM marks renamed, Quick Share's trust rule and the boot
-      animation in use under the new name, then the old helper
-      (/usr/lib/irice), its polkit action and rule, its ananicy rule and its
-      boot animations' copies removed. Until then the shell keeps using that
-      old helper. The login screen's copy moves with ./install.sh
-      --only=login; until then wallpaper and login-look write to the old one
-      (/usr/share/irice), which setup leaves as it is
+      Tessera's old name: setup also moves what the helper installed under
+      it to Tessera's names (the section "Tessera's old name" below, the
+      one place here that knows it)
 
 Files are read as you (the person who started pkexec or sudo), never as
 root: a symlink in your home can't make root read anything you can't.
@@ -137,19 +131,201 @@ import sys
 import tempfile
 import time
 
+# ── Tessera's old name ───────────────────────────────────────────────────
+# Tessera was called iRice until 4 November 2026. This section is the one
+# place in the root helper that knows that name: what the helper installed
+# under it, which setup moves to Tessera's names once (it puts Tessera's
+# helper in place first, so there's never a moment without one), and what
+# other subcommands still recognise until then. (The helper is one file,
+# installed as root's own: it never loads the user side's migrate-names.py.)
+# REMOVE AFTER 2027-02-01, with migrate-names.py, old-names.sh, core's
+# old_names.rs and common/OldNames.qml (docs/rename-to-tessera.md).
+OLD_LOGIN_SHARE = "/usr/share/irice"  # (until ./install.sh --only=login installs Tessera's)
+OLD_ANANICY_RULE = "/etc/ananicy.d/irice.rules"
+OLD_DROPIN = "/etc/systemd/system/bluetooth.service.d/irice-no-rap.conf"
+OLD_FP_MARK = "# iRice fingerprint"  # (a PAM line marked under the old name: still ours)
+OLD_PORTS_TAG = "irice sharing"  # (sharing ports opened under the old name: closed alike)
+UFW_OLD = ("iRice sharing", "iRice sharing (LocalSend)", "iRice Quick Share hotspot (DHCP)")
+OLD_FIREWALLD_ADDED = "/run/irice/sharing-ports"
+NFT_OLD = ("/etc/nftables.d/irice.nft", "/etc/nftables.d/irice.conf")
+OLD_BOOTSPLASH_RECORD = "/etc/irice/bootsplash.json"
+OLD_PLYMOUTH_PREFIX = "irice-"
+OLD_SESSION_ENTRY = "/usr/share/wayland-sessions/irice.desktop"
+SESSION_ENTRY = "/usr/share/wayland-sessions/tessera.desktop"
+OLD_BACKUPS = ("/etc/greetd/config.toml.pre-irice", "/etc/default/grub.pre-irice", "/etc/pam.d/*.pre-irice")
+OLD_LIB = "/usr/lib/irice"
+OLD_FILES = ("/usr/share/polkit-1/actions/org.irice.root.policy", "/etc/polkit-1/rules.d/49-irice.rules",
+             "/etc/dbus-1/system.d/zzz-irice-quickshare.conf")  # (that one: left by a Wi-Fi helper that died)
+OLD_QS_TRUST_RULE = "/etc/polkit-1/rules.d/49-irice-quickshare.rules"
+OLD_FOLDERS = (("/etc/irice", "/etc/tessera"), ("/var/lib/irice", "/var/lib/tessera"))
+# Drop-ins and module options: the same content under Tessera's name
+RENAMED = (
+    (OLD_DROPIN, "/etc/systemd/system/bluetooth.service.d/tessera-no-rap.conf"),
+    ("/etc/systemd/system/fprintd.service.d/irice-timeout.conf", "/etc/systemd/system/fprintd.service.d/tessera-timeout.conf"),
+    ("/etc/systemd/system/plymouth-quit.service.d/irice.conf", "/etc/systemd/system/plymouth-quit.service.d/tessera.conf"),
+    ("/etc/modprobe.d/irice-phonecam.conf", "/etc/modprobe.d/tessera-phonecam.conf"),
+    ("/etc/modules-load.d/irice-phonecam.conf", "/etc/modules-load.d/tessera-phonecam.conf"),
+)
+
+
+def move_old_folders(prefix):
+    """/etc/irice and /var/lib/irice into Tessera's (what's in both stays
+    Tessera's). Returns what it moved."""
+    done = []
+    for old, new in OLD_FOLDERS:
+        o, n = (os.path.join(prefix, p.lstrip("/")) for p in (old, new))
+        if os.path.islink(o) or not os.path.isdir(o):
+            continue
+        os.makedirs(n, mode=0o755, exist_ok=True)
+        for name in os.listdir(o):
+            if not os.path.lexists(os.path.join(n, name)):
+                os.rename(os.path.join(o, name), os.path.join(n, name))
+        shutil.rmtree(o, ignore_errors=True)
+        done.append(new)
+    return done
+
+
+def migrate_old_names(prefix, run=subprocess.run, src=None):
+    """Everything else the helper left under the old name, now that
+    Tessera's is installed. Returns what it wrote or removed."""
+    def at(path):
+        return os.path.join(prefix, path.lstrip("/"))
+    done = session_entry(src, prefix)
+    # Backups the installer kept (greetd's, GRUB's, PAM's): the new suffix,
+    # unless Tessera's own is there already
+    for pattern in OLD_BACKUPS:
+        for p in glob.glob(at(pattern)):
+            n = p[:-len(".pre-irice")] + ".pre-tessera"
+            if not os.path.lexists(n) and not os.path.islink(p):
+                os.rename(p, n)
+                done.append(n)
+    # Quick Share's trust rule, for the same person, for Tessera's helper
+    old_rule = at(OLD_QS_TRUST_RULE)
+    if os.path.exists(old_rule):
+        user = (read_text(at(QS_TRUST_MARK)) or "").strip()
+        if not user:
+            m = re.search(r'subject\.user === "([^"]+)"', read_text(old_rule) or "")
+            user = m.group(1) if m else ""
+        with contextlib.suppress(Refused):
+            write_root(at(QS_TRUST_RULE), quickshare_trust_rule(user).encode(), 0o644)
+            write_root(at(QS_TRUST_MARK), (user + "\n").encode(), 0o644)
+            done.append(QS_TRUST_RULE)
+        os.unlink(old_rule)
+        done.append(OLD_QS_TRUST_RULE)
+    # Drop-ins and module options: renamed, same content
+    reload = False
+    for old, new in RENAMED:
+        o, n = at(old), at(new)
+        if os.path.isfile(o) and not os.path.islink(o):
+            if not os.path.exists(n):
+                with open(o, "rb") as f:
+                    write_root(n, f.read().replace(b"iRice", b"Tessera").replace(b"irice uninstall", b"tessera uninstall"), 0o644)
+                done.append(new)
+            os.unlink(o)
+            done.append(old)
+            reload = reload or "/systemd/" in old
+    # Fingerprint lines in PAM files: marked with Tessera's name
+    for names in FP_FILES.values():
+        for name in names:
+            p = os.path.join(at(PAM_ETC), name)
+            text = read_text(p)
+            if text and OLD_FP_MARK in text:
+                write_root(p, text.replace(OLD_FP_MARK, FP_MARK).encode(), 0o644)
+                done.append(os.path.join(PAM_ETC, name))
+    # The boot animation in use, under its new name (the boot image keeps
+    # the old copy, the same animation, until it's next rebuilt)
+    current = current_theme(prefix)
+    if current.startswith(OLD_PLYMOUTH_PREFIX) and current[len(OLD_PLYMOUTH_PREFIX):] in BOOTSPLASH_IDS:
+        target = "tessera-" + current[len(OLD_PLYMOUTH_PREFIX):]
+        src = at(os.path.join(PLYMOUTH_LIB, target))
+        try:
+            files = theme_files(src)
+        except (OSError, Refused):
+            files = {}
+        conf = at(PLYMOUTH_CONF)
+        text = read_text(conf) or ""
+        if f"{target}.plymouth" in files and re.search(r"^\s*Theme\s*=\s*" + re.escape(current) + r"\s*$", text, re.M):
+            write_tree(files, at(os.path.join(PLYMOUTH_THEMES, target)))
+            write_root(conf, re.sub(r"^(\s*Theme\s*=\s*)" + re.escape(current) + r"(\s*)$", r"\g<1>" + target + r"\g<2>", text, flags=re.M).encode(), 0o644)
+            done += [os.path.join(PLYMOUTH_THEMES, target), PLYMOUTH_CONF]
+            try:
+                record = json.loads(read_text(at(BOOTSPLASH_RECORD)) or "null")
+            except ValueError:
+                record = None
+            if isinstance(record, dict) and record.get("applied") == current:
+                record["applied"] = target
+                write_root(at(BOOTSPLASH_RECORD), json.dumps(record).encode(), 0o644)
+    # The old name's boot animations, unless one is still the one in use
+    current = current_theme(prefix)
+    for id in BOOTSPLASH_IDS:
+        old = at(os.path.join(PLYMOUTH_THEMES, OLD_PLYMOUTH_PREFIX + id))
+        if OLD_PLYMOUTH_PREFIX + id != current and os.path.isdir(old) and not os.path.islink(old):
+            shutil.rmtree(old, ignore_errors=True)
+            done.append(os.path.join(PLYMOUTH_THEMES, OLD_PLYMOUTH_PREFIX + id))
+    # The old helper, its polkit action and rule, its ananicy rule
+    for old in OLD_FILES + (OLD_ANANICY_RULE,):
+        if os.path.exists(at(old)):
+            os.unlink(at(old))
+            done.append(old)
+    if os.path.isdir(at(OLD_LIB)) and not os.path.islink(at(OLD_LIB)):
+        shutil.rmtree(at(OLD_LIB), ignore_errors=True)
+        done.append(OLD_LIB)
+    if reload and prefix == "/":
+        with contextlib.suppress(OSError, subprocess.SubprocessError):
+            run(["systemctl", "daemon-reload"], timeout=60, check=False)
+    return done
+
+
+def session_entry(src, prefix):
+    """The login screen's entry for a Tessera run from a checkout (tools/
+    setup-session.sh): the old name's (irice.desktop, starting
+    sandbox/irice-session.sh) becomes Tessera's, and an entry that starts the
+    checkout through its old folder name (~/iRice, a link to ~/tessera once
+    moved) starts it by its own path. Only for the checkout setup reads from
+    (<src>/..), and only an entry that already starts that same checkout's
+    session script: nothing new is offered at the login screen. Returns what
+    it wrote or removed."""
+    if not src:
+        return []
+    checkout = os.path.dirname(os.path.realpath(src))
+    script = os.path.join(checkout, "sandbox", "tessera-session.sh")
+    if not os.path.isfile(script) or "\n" in script or "\r" in script:
+        return []
+    done = []
+    for entry in (OLD_SESSION_ENTRY, SESSION_ENTRY):
+        p = os.path.join(prefix, entry.lstrip("/"))
+        text = read_text(p)
+        m = re.search(r"^Exec=(.*)$", text or "", re.M)
+        if not m:
+            continue
+        exe = m.group(1).strip()
+        if os.path.basename(exe) not in ("tessera-session.sh", "irice-session.sh"):
+            continue
+        if os.path.realpath(os.path.dirname(exe)) != os.path.dirname(script):
+            continue  # (another checkout's: not this setup's to change)
+        if entry == SESSION_ENTRY and exe == script:
+            continue
+        new = os.path.join(prefix, SESSION_ENTRY.lstrip("/"))
+        write_root(new, ("[Desktop Entry]\nName=Tessera\n"
+                         f"Comment=Tessera, the macOS-style Hyprland desktop, from {checkout}\n"
+                         f"Exec={script}\nType=Application\nDesktopNames=Hyprland\n").encode(), 0o644)
+        done.append(SESSION_ENTRY)
+        if entry == OLD_SESSION_ENTRY:
+            os.unlink(p)
+            done.append(OLD_SESSION_ENTRY)
+    return done
+
+
 LIB = "/usr/lib/tessera"
 PACMAN = "/usr/bin/pacman"
 LOGIN_SHARE = "/usr/share/tessera"  # the login screen's (./install.sh --greeter)
 LOGIN_WALLPAPER = LOGIN_SHARE + "/wallpaper.jpg"
 LOGIN_LOOK = LOGIN_SHARE + "/greeter.json"
-# The login screen installed while Tessera was called iRice, until
-# ./install.sh --only=login installs it again as Tessera's
-OLD_LOGIN_SHARE = "/usr/share/irice"
 
 
 def login_share(prefix="/"):
-    """The login screen's copy in use: Tessera's, else iRice's (still the
-    one greetd starts until the login screen is installed again)."""
+    """The login screen's copy in use: Tessera's, else the old name's (still
+    the one greetd starts until the login screen is installed again)."""
     new, old = (os.path.join(prefix, p.lstrip("/")) for p in (LOGIN_SHARE, OLD_LOGIN_SHARE))
     return old if not os.path.isdir(new) and os.path.isdir(old) else new
 MAX_IMAGE = 64 * 1024 * 1024
@@ -173,13 +349,10 @@ FILES = [
 ANANICY_RULE = "/etc/ananicy.d/tessera.rules"
 ANANICY_TEXT = b"""# Tessera's shell: interactive, so panels and animations stay smooth while
 # apps are busy (Tessera's root helper; Settings > Battery & Power turns it off).
-# irice-shell: its name while Tessera was called iRice, until it restarts;
 # tessera-ui: the shell itself since it runs standalone (rust.standalone)
 { "name": "tessera-shell", "type": "LowLatency_RT" }
-{ "name": "irice-shell", "type": "LowLatency_RT" }
 { "name": "tessera-ui", "type": "LowLatency_RT" }
 """
-OLD_ANANICY_RULE = "/etc/ananicy.d/irice.rules"  # (iRice's, replaced by this one)
 PRIORITY_OFF = "/etc/tessera/priority-off"
 
 
@@ -205,7 +378,6 @@ REFUSED_EXIT = 64  # (an older helper without that subcommand or fix: callers as
 # mcp: media control; bass: broadcast audio scan
 PLUGINS = ("rap", "vcp", "micp", "mcp", "bass")
 DROPIN = "/etc/systemd/system/bluetooth.service.d/tessera-no-rap.conf"
-OLD_DROPIN = "/etc/systemd/system/bluetooth.service.d/irice-no-rap.conf"  # (its name while Tessera was called iRice)
 PAIRING_SCRIPT = r'''set -e
 NOPLUGIN=@PLUGINS@
 exe=$(systemctl show -p ExecStart --value bluetooth | sed -n 's/.*path=\([^ ;]*\).*/\1/p')
@@ -332,7 +504,6 @@ def write_root(dest, data, mode):
 
 # ── fingerprint (Settings → Lock Screen → Fingerprint) ─────────────────
 FP_MARK = "# Tessera fingerprint"
-OLD_FP_MARK = "# iRice fingerprint"  # (a line marked before iRice became Tessera: still ours)
 # max-tries / timeout: a finger, or the password after a few seconds (PAM
 # asks one thing at a time; the login screen waits longest). Five tries: some
 # readers (Broadcom's) answer "no match" at once for a finger still resting
@@ -753,24 +924,19 @@ PORT_SETS = {
     "links": (("tcp", 53319, 53320),),
 }
 PORTS_TAG = "tessera sharing"  # (nftables' and iptables' comment on ours)
-OLD_PORTS_TAG = "irice sharing"  # (the same, opened while Tessera was called iRice: closed alike)
 PORTS_TAGS = "(?:" + PORTS_TAG + "|" + OLD_PORTS_TAG + ")"
 # ufw keeps its rules through a restart (it has no runtime ones), so ours
-# carry a comment and close takes out exactly those. The fix before this
-# left the same "iRice sharing", and these (ours from before iRice became
-# Tessera: the tags then)
+# carry a comment and close takes out exactly those (and the tags under the
+# old name: UFW_OLD)
 UFW_TAG = "Tessera sharing"
-UFW_OLD = ("iRice sharing", "iRice sharing (LocalSend)", "iRice Quick Share hotspot (DHCP)")
 UFW_RULE = re.compile(r"^\[\s*(\d+)\]\s+(\S+)(?: \(v6\))?\s+ALLOW(?: IN)?\s.*?(?:#\s*(.*?))?\s*$")
 # firewalld's ports have no comment: the ones we added, noted where a
 # restart clears it, as it clears them
 FIREWALLD_ADDED = "/run/tessera/sharing-ports"
-OLD_FIREWALLD_ADDED = "/run/irice/sharing-ports"  # (noted by the helper from before iRice became Tessera)
 # The fix before this, kept for good: firewalld's ports and services (the
 # services only where the zone doesn't come with them), nftables' drop-in
 FIREWALLD_OLD = ("53317-53320/tcp", "53317/udp")
 FIREWALLD_OLD_SERVICES = ("mdns", "dhcp")
-NFT_OLD = ("/etc/nftables.d/irice.nft", "/etc/nftables.d/irice.conf")  # (named while Tessera was called iRice)
 
 
 def _cmd(run, *cmd):
@@ -929,7 +1095,6 @@ PLYMOUTH_THEMES = "/usr/share/plymouth/themes"
 PLYMOUTH_CONF = "/etc/plymouth/plymouthd.conf"
 PLYMOUTH_DEFAULTS = "/usr/share/plymouth/plymouthd.defaults"
 BOOTSPLASH_RECORD = "/etc/tessera/bootsplash.json"  # {"original": the system's theme, "applied": Tessera's}
-OLD_BOOTSPLASH_RECORD = "/etc/irice/bootsplash.json"  # (until setup moves it)
 INITRAMFS_BACKUP = "/var/lib/tessera/initramfs-backup"
 THEME_NAME = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 
@@ -1072,7 +1237,7 @@ def bootsplash(choice, prefix=None, run=subprocess.run, which=shutil.which):
     # The system's own: the theme before Tessera first changed it, unless
     # someone has set another since (then that one)
     original = record["original"] if record and record["applied"] == current else current
-    if not THEME_NAME.match(original or "") or original.startswith(("tessera-", "irice-")):
+    if not THEME_NAME.match(original or "") or original.startswith(("tessera-", OLD_PLYMOUTH_PREFIX)):
         original = ini_value(read_text(at(PLYMOUTH_DEFAULTS)) or "", "Theme") or "text"
     target = {"system": original, "none": "text"}.get(choice, "tessera-" + choice)
 
@@ -1155,10 +1320,9 @@ def bootsplash(choice, prefix=None, run=subprocess.run, which=shutil.which):
         write_root(rec, json.dumps({"original": original, "applied": target}).encode(), 0o644)
     with contextlib.suppress(FileNotFoundError):
         os.unlink(at(OLD_BOOTSPLASH_RECORD))
-    # Tessera's other themes, no longer used (and iRice's: Tessera's before
-    # the rename)
+    # Tessera's other themes, no longer used (and under the old name)
     for id in BOOTSPLASH_IDS:
-        for name in ("tessera-" + id, "irice-" + id):
+        for name in ("tessera-" + id, OLD_PLYMOUTH_PREFIX + id):
             other = at(os.path.join(PLYMOUTH_THEMES, name))
             if name != target and os.path.isdir(other) and not os.path.islink(other):
                 shutil.rmtree(other, ignore_errors=True)
@@ -1314,8 +1478,8 @@ def refresh_login(src, uid, prefix=None):
     """The login screen's copy of Tessera, from the same checkout as setup's
     files, where ./install.sh --greeter made one. Returns what it wrote."""
     prefix = PREFIX if prefix is None else prefix
-    # (Tessera's only: iRice's, while greetd still starts that one, is left as
-    # it was installed, whole, until ./install.sh --only=login replaces it)
+    # (Tessera's only: the old name's, while greetd still starts that one, is
+    # left as it was installed, whole, until ./install.sh --only=login replaces it)
     share = os.path.join(prefix, LOGIN_SHARE.lstrip("/"))
     if os.path.islink(share) or os.path.islink(os.path.join(share, "shell")) or not os.path.isdir(os.path.join(share, "shell")):
         return []
@@ -1386,8 +1550,8 @@ def setup(src, uid, prefix=None, run=subprocess.run):
         if not same:
             write_root(dest, data, mode)
             written.append(dest)
-    # (iRice's /etc/irice first: its priority-off marker counts below)
-    written += move_folders_from_irice(prefix)
+    # (the old name's /etc folder first: its priority-off marker counts below)
+    written += move_old_folders(prefix)
     rule = os.path.join(prefix, ANANICY_RULE.lstrip("/"))
     if os.path.isdir(os.path.dirname(rule)) and not os.path.exists(os.path.join(prefix, PRIORITY_OFF.lstrip("/"))):
         try:
@@ -1400,130 +1564,12 @@ def setup(src, uid, prefix=None, run=subprocess.run):
             written.append(rule)
     written += install_themes(src, uid, prefix)
     written += refresh_login(src, uid, prefix)
-    written += migrate_from_irice(prefix, run)
+    written += migrate_old_names(prefix, run, src)
     # ananicy-cpp reads its rules as it starts
     if prefix == "/" and any(d.startswith("/etc/ananicy.d/") or d == OLD_ANANICY_RULE for d in written):
         with contextlib.suppress(OSError, subprocess.SubprocessError):
             run(["systemctl", "try-restart", "ananicy-cpp.service"], timeout=20, check=False)
     return written
-
-
-# ── iRice is now Tessera: what setup moves, once ───────────────────────
-# What the helper installed under iRice's name. setup puts Tessera's in
-# place first (FILES above), so there's never a moment without a helper.
-OLD_LIB = "/usr/lib/irice"
-OLD_FILES = ("/usr/share/polkit-1/actions/org.irice.root.policy", "/etc/polkit-1/rules.d/49-irice.rules",
-             "/etc/dbus-1/system.d/zzz-irice-quickshare.conf")  # (that one: left by a Wi-Fi helper that died)
-OLD_QS_TRUST_RULE = "/etc/polkit-1/rules.d/49-irice-quickshare.rules"
-OLD_FOLDERS = (("/etc/irice", "/etc/tessera"), ("/var/lib/irice", "/var/lib/tessera"))
-# Drop-ins and module options: the same content under Tessera's name
-RENAMED = (
-    (OLD_DROPIN, DROPIN),
-    ("/etc/systemd/system/fprintd.service.d/irice-timeout.conf", "/etc/systemd/system/fprintd.service.d/tessera-timeout.conf"),
-    ("/etc/systemd/system/plymouth-quit.service.d/irice.conf", "/etc/systemd/system/plymouth-quit.service.d/tessera.conf"),
-    ("/etc/modprobe.d/irice-phonecam.conf", PHONECAM_FILES[0]),
-    ("/etc/modules-load.d/irice-phonecam.conf", PHONECAM_FILES[1]),
-)
-
-
-def move_folders_from_irice(prefix):
-    """/etc/irice and /var/lib/irice into Tessera's (what's in both stays
-    Tessera's). Returns what it moved."""
-    done = []
-    for old, new in OLD_FOLDERS:
-        o, n = (os.path.join(prefix, p.lstrip("/")) for p in (old, new))
-        if os.path.islink(o) or not os.path.isdir(o):
-            continue
-        os.makedirs(n, mode=0o755, exist_ok=True)
-        for name in os.listdir(o):
-            if not os.path.lexists(os.path.join(n, name)):
-                os.rename(os.path.join(o, name), os.path.join(n, name))
-        shutil.rmtree(o, ignore_errors=True)
-        done.append(new)
-    return done
-
-
-def migrate_from_irice(prefix, run=subprocess.run):
-    """Everything else iRice's helper left under its name, now that
-    Tessera's is installed. Returns what it wrote or removed."""
-    def at(path):
-        return os.path.join(prefix, path.lstrip("/"))
-    done = []
-    # Quick Share's trust rule, for the same person, for Tessera's helper
-    old_rule = at(OLD_QS_TRUST_RULE)
-    if os.path.exists(old_rule):
-        user = (read_text(at(QS_TRUST_MARK)) or "").strip()
-        if not user:
-            m = re.search(r'subject\.user === "([^"]+)"', read_text(old_rule) or "")
-            user = m.group(1) if m else ""
-        with contextlib.suppress(Refused):
-            write_root(at(QS_TRUST_RULE), quickshare_trust_rule(user).encode(), 0o644)
-            write_root(at(QS_TRUST_MARK), (user + "\n").encode(), 0o644)
-            done.append(QS_TRUST_RULE)
-        os.unlink(old_rule)
-        done.append(OLD_QS_TRUST_RULE)
-    # Drop-ins and module options: renamed, same content
-    reload = False
-    for old, new in RENAMED:
-        o, n = at(old), at(new)
-        if os.path.isfile(o) and not os.path.islink(o):
-            if not os.path.exists(n):
-                with open(o, "rb") as f:
-                    write_root(n, f.read().replace(b"iRice", b"Tessera").replace(b"irice uninstall", b"tessera uninstall"), 0o644)
-                done.append(new)
-            os.unlink(o)
-            done.append(old)
-            reload = reload or "/systemd/" in old
-    # Fingerprint lines in PAM files: marked with Tessera's name
-    for names in FP_FILES.values():
-        for name in names:
-            p = os.path.join(at(PAM_ETC), name)
-            text = read_text(p)
-            if text and OLD_FP_MARK in text:
-                write_root(p, text.replace(OLD_FP_MARK, FP_MARK).encode(), 0o644)
-                done.append(os.path.join(PAM_ETC, name))
-    # The boot animation in use, under its new name (the boot image keeps
-    # the old copy, the same animation, until it's next rebuilt)
-    current = current_theme(prefix)
-    if current.startswith("irice-") and current[len("irice-"):] in BOOTSPLASH_IDS:
-        target = "tessera-" + current[len("irice-"):]
-        src = at(os.path.join(PLYMOUTH_LIB, target))
-        try:
-            files = theme_files(src)
-        except (OSError, Refused):
-            files = {}
-        conf = at(PLYMOUTH_CONF)
-        text = read_text(conf) or ""
-        if f"{target}.plymouth" in files and re.search(r"^\s*Theme\s*=\s*" + re.escape(current) + r"\s*$", text, re.M):
-            write_tree(files, at(os.path.join(PLYMOUTH_THEMES, target)))
-            write_root(conf, re.sub(r"^(\s*Theme\s*=\s*)" + re.escape(current) + r"(\s*)$", r"\g<1>" + target + r"\g<2>", text, flags=re.M).encode(), 0o644)
-            done += [os.path.join(PLYMOUTH_THEMES, target), PLYMOUTH_CONF]
-            try:
-                record = json.loads(read_text(at(BOOTSPLASH_RECORD)) or "null")
-            except ValueError:
-                record = None
-            if isinstance(record, dict) and record.get("applied") == current:
-                record["applied"] = target
-                write_root(at(BOOTSPLASH_RECORD), json.dumps(record).encode(), 0o644)
-    # iRice's boot animations, unless one is still the one in use
-    current = current_theme(prefix)
-    for id in BOOTSPLASH_IDS:
-        old = at(os.path.join(PLYMOUTH_THEMES, "irice-" + id))
-        if "irice-" + id != current and os.path.isdir(old) and not os.path.islink(old):
-            shutil.rmtree(old, ignore_errors=True)
-            done.append(os.path.join(PLYMOUTH_THEMES, "irice-" + id))
-    # The old helper, its polkit action and rule, its ananicy rule
-    for old in OLD_FILES + (OLD_ANANICY_RULE,):
-        if os.path.exists(at(old)):
-            os.unlink(at(old))
-            done.append(old)
-    if os.path.isdir(at(OLD_LIB)) and not os.path.islink(at(OLD_LIB)):
-        shutil.rmtree(at(OLD_LIB), ignore_errors=True)
-        done.append(OLD_LIB)
-    if reload and prefix == "/":
-        with contextlib.suppress(OSError, subprocess.SubprocessError):
-            run(["systemctl", "daemon-reload"], timeout=60, check=False)
-    return done
 
 
 # ── update: the system part, and the broker for the AUR step ────────────

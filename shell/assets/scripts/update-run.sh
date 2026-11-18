@@ -35,19 +35,18 @@ is_tessera() {
     local c
     c="$(tr '\0' ' ' <"/proc/$1/cmdline" 2>/dev/null)"
     # An update screen (this one's or another's) is never the shell
-    [[ "$c" == *"/tessera-update."* || "$c" == *"/irice-update."* || "$c" == *" -p $T/ui"* ]] && return 1
-    # (-c irice: installed before iRice became Tessera)
-    [[ "$c" =~ (^|[[:space:]])(-c|--config)[[:space:]]+(tessera|irice)([[:space:]]|$) ]] && return 0
+    [[ "$c" == *"/tessera-update."* || "$c" == *" -p $T/ui"* ]] && return 1
+    [[ "$c" =~ (^|[[:space:]])(-c|--config)[[:space:]]+tessera([[:space:]]|$) ]] && return 0
     [[ "$c" == *" -p $SHELL_DIR"* || "$c" == *" --path $SHELL_DIR"* ]] && return 0
     # (started by launch-shell.sh: the Material look runs from its own root)
-    env_of "$1" | grep -qx -e "TESSERA_SHELL=1" -e "IRICE_SHELL=1" && return 0
-    env_of "$1" | grep -qx -e "TESSERA_TTY=1" -e "IRICE_TTY=1"
+    env_of "$1" | grep -qx "TESSERA_SHELL=1" && return 0
+    env_of "$1" | grep -qx "TESSERA_TTY=1"
 }
 # This session's Tessera shells
 shells() {
     local p
     # (tessera-ui --standalone too: the shell itself since rust.standalone became the default)
-    for p in $(pgrep -x tessera-shell; pgrep -x irice-shell; pgrep -x qs; pgrep -x quickshell; for u in $(pgrep -x tessera-ui); do tr '\0' ' ' <"/proc/$u/cmdline" 2>/dev/null | grep -q -e ' --standalone' && echo "$u"; done); do
+    for p in $(pgrep -x tessera-shell; pgrep -x qs; pgrep -x quickshell; for u in $(pgrep -x tessera-ui); do tr '\0' ' ' <"/proc/$u/cmdline" 2>/dev/null | grep -q -e ' --standalone' && echo "$u"; done); do
         is_tessera "$p" && [[ "$(var_of "$p" HYPRLAND_INSTANCE_SIGNATURE)" == "$SIG" ]] && echo "$p"
     done | sort -n
 }
@@ -59,7 +58,7 @@ shells() {
 # the wait at the end), and "/tessera-update.", which every shell stopper skips.
 screen() {
     local b
-    for b in "${TESSERA_UI:-}" "${XDG_DATA_HOME:-$HOME/.local/share}/tessera/bin/tessera-ui" "$HOME/.local/share/tessera/bin/tessera-ui" "${XDG_DATA_HOME:-$HOME/.local/share}/irice/bin/tessera-ui" "$HOME/.local/share/irice/bin/tessera-ui"; do
+    for b in "${TESSERA_UI:-}" "${XDG_DATA_HOME:-$HOME/.local/share}/tessera/bin/tessera-ui" "$HOME/.local/share/tessera/bin/tessera-ui"; do
         [[ -n "$b" && -x "$b" ]] || continue
         if "$b" --update-screen --probe >/dev/null 2>&1 </dev/null; then
             SCREEN=("$b" --update-screen -p "$T/ui")
@@ -77,7 +76,7 @@ if ! flock -n 8; then
     status run 0 "Preparing"
     QS0="$(command -v qs || echo qs)"
     screen "$QS0"
-    env -u TESSERA_TTY -u IRICE_TTY setsid -f "${SCREEN[@]}" >"$T/ui.log" 2>&1 </dev/null
+    env -u TESSERA_TTY setsid -f "${SCREEN[@]}" >"$T/ui.log" 2>&1 </dev/null
     sleep 1.2
     status error 100 "Another update is running" "Tessera is already being updated (in another session or window). Wait for it to finish, then check again."
     echo "another update holds the repository lock"
@@ -107,26 +106,22 @@ else
     tcmd=()
 fi
 tty_ctl=""
-if [[ -n "$template" ]] && env_of "$template" | grep -qx -e "TESSERA_TTY=1" -e "IRICE_TTY=1"; then
+if [[ -n "$template" ]] && env_of "$template" | grep -qx "TESSERA_TTY=1"; then
     tty_ctl="$REPO/sandbox/tty-shell.sh"
 fi
 
 # The update screen, from its copy here
 status run 0 "Preparing"
-# (without TESSERA_TTY, or IRICE_TTY for a watchdog from before iRice became
-# Tessera: in the tty session it would pass for the shell)
+# (without TESSERA_TTY: in the tty session it would pass for the shell)
 screen "$QS"
-env -u TESSERA_TTY -u IRICE_TTY setsid -f "${SCREEN[@]}" >"$T/ui.log" 2>&1 </dev/null
+env -u TESSERA_TTY setsid -f "${SCREEN[@]}" >"$T/ui.log" 2>&1 </dev/null
 sleep 1.2 # (it fades in over the desktop before the shell goes)
 
 # Hold the shell lock, then stop the shell
 lockdir="$RUN/hypr/$SIG"
 mkdir -p "$lockdir"
 exec 9>"$lockdir/tessera-shell.lock"
-# (and the lock's name before iRice became Tessera, which a watchdog started
-# then still takes until the next login)
-exec 6>"$lockdir/irice-shell.lock"
-if ! flock -w 15 9 || ! flock -w 15 6; then
+if ! flock -w 15 9; then
     # Something (a shell restarting, a repair) holds it: stopping the shell
     # now could leave two running, or one reloading mid-update. Nothing has
     # been touched yet.
@@ -169,7 +164,6 @@ if [[ -z "$err" ]] && command -v dbus-update-activation-environment >/dev/null; 
 fi
 status restart 92 "Restarting"
 hyprctl tessera-glass clear >/dev/null 2>&1
-hyprctl irice-glass clear >/dev/null 2>&1 # (a plugin built before the rename)
 if [[ -n "$tty_ctl" ]]; then
     exec 9>&- 6>&- # the test session's starter takes the lock itself
     env -i "${tenv[@]}" "$tty_ctl" start

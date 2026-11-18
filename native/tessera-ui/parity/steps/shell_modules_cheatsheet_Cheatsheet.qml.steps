@@ -1,17 +1,17 @@
 # Cheatsheet: both looks (runner does both).
-ipc panels open cheatsheet IRICE-TEST
+ipc panels open cheatsheet TESSERA-TEST
 wait 1
 shot open
 note Cheatsheet open; same layout, groups and look as QML.
 ipc panels close
 wait 1
-rec open 1 ipc panels open cheatsheet IRICE-TEST
+rec open 1 ipc panels open cheatsheet TESSERA-TEST
 note Open curve: Material settles in about 0.3 s, Glass about 0.4 s; compare with QML within 1 frame.
 wait 1
 rec close 0.4 key -k Escape
 note Escape closes in 192 ms, same as QML.
 wait 1
-ipc panels open cheatsheet IRICE-TEST
+ipc panels open cheatsheet TESSERA-TEST
 wait 1
 # NOTE: click on layer surfaces may not register in the harness. "Periodic table" segment position is read from the shot (unknown here).
 # MANUAL: click "Periodic table" -> Material: the segment's inner corners round with a small overshoot in about 0.22 s; Glass: the pill slides in 220 ms

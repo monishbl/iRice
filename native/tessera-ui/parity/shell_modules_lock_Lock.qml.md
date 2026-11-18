@@ -47,7 +47,7 @@ Rust, standalone: the host half is `host/shell/src/bridges.rs` (`set_locked`,
 
 ## Test plan (arena N, both looks; never the host)
 
-Setup: `tools/live-scenarios.sh --arena N --bin <worktree>/native/tessera-ui/target/release/tessera-ui --look glass` (then `--look material`), or copy it and run only the steps below after `run_pass rust`'s setup. All commands are `IRICE_ARENA=N ./dev.sh …`.
+Setup: `tools/live-scenarios.sh --arena N --bin <worktree>/native/tessera-ui/target/release/tessera-ui --look glass` (then `--look material`), or copy it and run only the steps below after `run_pass rust`'s setup. All commands are `TESSERA_ARENA=N ./dev.sh …`.
 
 1. **Lock at once.** `ipc lock lock`; record 1 s (`wf-recorder` in the arena). PASS: the first frame after the command already covers the screen (no frame of the desktop without the lock); the content plays its entrance (zoom: wallpaper settles from 105 % over 450 ms, clock drops 20 px into place; Material: the black circle opens from the centre).
 2. **Wrong password.** `run wtype nope` then `run wtype -k Return`. PASS: field shows dots while typing; ~0.7 s spinner; then "Incorrect password. Try again." under the field (Glass, on one line) / in a red pill above it (Material), the field shakes (Glass 260 ms: +10, −10, +6, 0; Material: a decaying spring ~0.7 s), field empty again, focus still in it (type again without clicking).

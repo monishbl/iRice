@@ -11,7 +11,7 @@
 # when its compositor is gone, and shells of dead sessions are cleaned up,
 # otherwise they'd pile onto the next session as duplicate bars and docks.
 set -uo pipefail
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 SB="$ROOT/.sandbox/home"
 # A real desktop on this machine (./dev.sh tty, the demo, or "Tessera" on the
 # login screen): not TESSERA_SANDBOX, which is only for the nested test window
@@ -30,8 +30,7 @@ SHELL_DIR="$ROOT/shell"
 # The Quickshell the shell runs on (Tessera's own build when there is one; see
 # launch-shell.sh): asking it over IPC needs the same version
 QS=qs
-# (…/irice: Tessera's folder from before it was renamed, not moved yet)
-for d in "$XDG_DATA_HOME/tessera" "$HOME/.local/share/tessera" "$XDG_DATA_HOME/irice" "$HOME/.local/share/irice"; do
+for d in "$XDG_DATA_HOME/tessera" "$HOME/.local/share/tessera"; do
     [[ -x "$d/quickshell/bin/qs" && -d "$d/quickshell/lib/qt6/qml/Quickshell" ]] && { QS="$d/quickshell/bin/qs"; break; }
 done
 SIG="${HYPRLAND_INSTANCE_SIGNATURE:?not inside a Hyprland session}"
@@ -45,10 +44,9 @@ alive() {
 
 sig_of() { { tr '\0' '\n' <"/proc/$1/environ"; } 2>/dev/null | sed -n 's/^HYPRLAND_INSTANCE_SIGNATURE=//p'; }
 is_tty_shell() {
-    # (an update screen, "qs -p <…>/tessera-update.XXXX/ui", is never the
-    # shell; irice-update: one from before iRice became Tessera)
-    tr '\0' ' ' <"/proc/$1/cmdline" 2>/dev/null | grep -q -e '/tessera-update\.' -e '/irice-update\.' && return 1
-    { tr '\0' '\n' <"/proc/$1/environ"; } 2>/dev/null | grep -qx -e "TESSERA_TTY=1" -e "IRICE_TTY=1"
+    # (an update screen, "qs -p <…>/tessera-update.XXXX/ui", is never the shell)
+    tr '\0' ' ' <"/proc/$1/cmdline" 2>/dev/null | grep -q -e '/tessera-update\.' && return 1
+    { tr '\0' '\n' <"/proc/$1/environ"; } 2>/dev/null | grep -qx "TESSERA_TTY=1"
 }
 
 # Standalone (rust.standalone): tessera-ui is the shell. Only one started
@@ -65,7 +63,7 @@ is_standalone() { tr '\0' ' ' <"/proc/$1/cmdline" 2>/dev/null | grep -q -e '--st
 # This session's shells, oldest first
 shell_pids() {
     local p
-    for p in $(pgrep -x tessera-shell; pgrep -x irice-shell; pgrep -x qs; pgrep -x quickshell; standalone_pids); do
+    for p in $(pgrep -x tessera-shell; pgrep -x qs; pgrep -x quickshell; standalone_pids); do
         is_tty_shell "$p" && [[ "$(sig_of "$p")" == "$SIG" ]] && echo "$p"
     done | sort -n
     return 0
@@ -112,7 +110,7 @@ gone() {
 # Test-session shells whose compositor has gone (left over from earlier sessions)
 reap() {
     local p s
-    for p in $(pgrep -x tessera-shell; pgrep -x irice-shell; pgrep -x qs; pgrep -x quickshell; standalone_pids); do
+    for p in $(pgrep -x tessera-shell; pgrep -x qs; pgrep -x quickshell; standalone_pids); do
         is_tty_shell "$p" || continue
         s="$(sig_of "$p")"
         [[ -z "$s" || "$s" == "$SIG" ]] && continue
@@ -125,15 +123,12 @@ start() {
     alive || return 0
     (
         flock -n 9 || exit 0 # another start is running
-        # (also the lock a watchdog from before iRice became Tessera takes,
-        # until the next login)
-        flock -n 7 || exit 0
         [[ -n "$(shell_pids)" ]] && exit 0
         # The locks' descriptors must not leak into the shell (and the apps it
         # opens), or they'd hold the locks and block every later start
         setsid -f "$SHELL_DIR/assets/scripts/launch-shell.sh" -p "$SHELL_DIR" >/dev/null 2>&1 6>&- 7>&- 8>&- 9>&-
         sleep 2 # let it register before the lock is released
-    ) 9>"$LOCKDIR/tessera-shell.lock" 7>"$LOCKDIR/irice-shell.lock"
+    ) 9>"$LOCKDIR/tessera-shell.lock"
 }
 
 stop() {
@@ -160,12 +155,8 @@ case "${1:-start}" in
     watchdog)
         exec 8>"$LOCKDIR/tessera-watchdog.lock"
         flock -n 8 || exit 0 # this session already has one
-        # (or one from before iRice became Tessera, which keeps running until
-        # the next login: two would each start a shell)
-        exec 6>"$LOCKDIR/irice-watchdog.lock"
-        flock -n 6 || exit 0
-        # (this one finds the shell as "tessera-shell" and "irice-shell" too:
-        # launch-shell.sh uses those names only once the session's watchdog does)
+        # (this one finds the shell as "tessera-shell" too: launch-shell.sh
+        # uses that name only once the session's watchdog does)
         echo $$ >"$LOCKDIR/tessera-watchdog.names"
         reap
         sleep 20 # let it start

@@ -9,29 +9,29 @@ island-battery | ipc island demo battery
 island-download | ipc island demo download; sleep 1
 island-usb | ipc island demo usb
 osd-volume | ipc shortcut volumeUp
-panel-controlCenter | ipc panels open controlCenter IRICE-TEST
-panel-notificationCenter | ipc panels open notificationCenter IRICE-TEST
-panel-spotlight | ipc panels open spotlight IRICE-TEST
-panel-launchpad | ipc panels open launchpad IRICE-TEST
-panel-overview | ipc panels open overview IRICE-TEST
-panel-missionControl | ipc panels open missionControl IRICE-TEST
-panel-emoji | ipc panels open emoji IRICE-TEST
-panel-clipboard | ipc panels open clipboard IRICE-TEST
-panel-quickNote | ipc panels open quickNote IRICE-TEST
-panel-cheatsheet | ipc panels open cheatsheet IRICE-TEST
-panel-session | ipc panels open session IRICE-TEST
-panel-keyboard | ipc panels open keyboard IRICE-TEST
-panel-overlay | ipc panels open overlay IRICE-TEST
-panel-nowPlaying | ipc panels open nowPlaying IRICE-TEST
-panel-wifiMenu | ipc panels open wifiMenu IRICE-TEST
-panel-bluetoothMenu | ipc panels open bluetoothMenu IRICE-TEST
-panel-soundMenu | ipc panels open soundMenu IRICE-TEST
-panel-batteryMenu | ipc panels open batteryMenu IRICE-TEST
-panel-systemMenu | ipc panels open systemMenu IRICE-TEST
-panel-resourcesMenu | ipc panels open resourcesMenu IRICE-TEST
-panel-screenTools | ipc panels open screenTools IRICE-TEST
-panel-sidebar | ipc panels open sidebar IRICE-TEST
-panel-wallpaper | ipc panels open wallpaper IRICE-TEST
+panel-controlCenter | ipc panels open controlCenter TESSERA-TEST
+panel-notificationCenter | ipc panels open notificationCenter TESSERA-TEST
+panel-spotlight | ipc panels open spotlight TESSERA-TEST
+panel-launchpad | ipc panels open launchpad TESSERA-TEST
+panel-overview | ipc panels open overview TESSERA-TEST
+panel-missionControl | ipc panels open missionControl TESSERA-TEST
+panel-emoji | ipc panels open emoji TESSERA-TEST
+panel-clipboard | ipc panels open clipboard TESSERA-TEST
+panel-quickNote | ipc panels open quickNote TESSERA-TEST
+panel-cheatsheet | ipc panels open cheatsheet TESSERA-TEST
+panel-session | ipc panels open session TESSERA-TEST
+panel-keyboard | ipc panels open keyboard TESSERA-TEST
+panel-overlay | ipc panels open overlay TESSERA-TEST
+panel-nowPlaying | ipc panels open nowPlaying TESSERA-TEST
+panel-wifiMenu | ipc panels open wifiMenu TESSERA-TEST
+panel-bluetoothMenu | ipc panels open bluetoothMenu TESSERA-TEST
+panel-soundMenu | ipc panels open soundMenu TESSERA-TEST
+panel-batteryMenu | ipc panels open batteryMenu TESSERA-TEST
+panel-systemMenu | ipc panels open systemMenu TESSERA-TEST
+panel-resourcesMenu | ipc panels open resourcesMenu TESSERA-TEST
+panel-screenTools | ipc panels open screenTools TESSERA-TEST
+panel-sidebar | ipc panels open sidebar TESSERA-TEST
+panel-wallpaper | ipc panels open wallpaper TESSERA-TEST
 app-store | ipc panels appStore; sleep 2
 settings-about | ipc panels settings about; sleep 2
 settings-about-bugreport | ipc panels settings about/bugreport; sleep 2

@@ -13,8 +13,8 @@ import Quickshell
 Singleton {
     id: root
 
-    readonly property bool tty: (Quickshell.env("TESSERA_TTY") || Quickshell.env("IRICE_TTY")) === "1"
-    readonly property var scrub: tty ? ["env", "-u", "XDG_CONFIG_HOME", "-u", "XDG_DATA_HOME", "-u", "XDG_STATE_HOME", "-u", "XDG_CACHE_HOME", "-u", "TESSERA_SANDBOX", "-u", "TESSERA_ROOT", "-u", "TESSERA_TTY", "-u", "IRICE_SANDBOX", "-u", "IRICE_ROOT", "-u", "IRICE_TTY", "-u", "QML_IMPORT_PATH", "-u", "QML2_IMPORT_PATH"] : []
+    readonly property bool tty: Quickshell.env("TESSERA_TTY") === "1"
+    readonly property var scrub: tty ? ["env", "-u", "XDG_CONFIG_HOME", "-u", "XDG_DATA_HOME", "-u", "XDG_STATE_HOME", "-u", "XDG_CACHE_HOME", "-u", "TESSERA_SANDBOX", "-u", "TESSERA_ROOT", "-u", "TESSERA_TTY", "-u", "QML_IMPORT_PATH", "-u", "QML2_IMPORT_PATH"] : []
 
     // A command line for something that starts apps
     function wrap(cmd) {

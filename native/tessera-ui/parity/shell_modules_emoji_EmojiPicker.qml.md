@@ -12,5 +12,5 @@ EmojiPicker.qml stays in the shell when tessera-ui draws the picker: its GlobalS
 ## Test plan (tester)
 Arena 1920×1080; with no focused window the panel opens centred: x 750..1170, y 326..754.
 1. `rec em-ipc 1 "ipc emoji toggle"` → the picker opens (QML vs Rust: same place, same spring); `ipc emoji toggle` again closes; `ipc emoji close` when closed does nothing.
-2. `inbox 'ipc panels open emoji IRICE-TEST'` → opens; `wtype -k Escape` closes and Panels forgets it (a second `ipc emoji toggle` opens again, not closes).
+2. `inbox 'ipc panels open emoji TESSERA-TEST'` → opens; `wtype -k Escape` closes and Panels forgets it (a second `ipc emoji toggle` opens again, not closes).
 3. The shortcut: mark not testable here unless the arena's compositor binds `tessera:emoji`.

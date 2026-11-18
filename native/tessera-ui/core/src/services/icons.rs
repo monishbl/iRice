@@ -201,10 +201,8 @@ fn cache_base() -> PathBuf {
 /// icon-index.py's file, shared with the QML shell), and when it was written
 fn cached(theme: &str) -> Option<(HashMap<String, PathBuf>, std::time::SystemTime)> {
     let base = cache_base();
-    let (text, made) = ["tessera", "irice"].iter().find_map(|d| {
-        let f = base.join(d).join(format!("icon-index-{theme}.tsv"));
-        Some((std::fs::read_to_string(&f).ok()?, std::fs::metadata(&f).ok()?.modified().ok()?))
-    })?;
+    let f = base.join("tessera").join(format!("icon-index-{theme}.tsv"));
+    let (text, made) = (std::fs::read_to_string(&f).ok()?, std::fs::metadata(&f).ok()?.modified().ok()?);
     let map: HashMap<String, PathBuf> = text.lines().filter_map(|l| l.split_once('\t')).map(|(n, p)| (n.to_string(), PathBuf::from(p))).collect();
     (!map.is_empty()).then_some((map, made))
 }

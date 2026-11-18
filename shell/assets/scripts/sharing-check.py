@@ -52,24 +52,24 @@ import sys
 
 ROOT = os.environ.get("TESSERA_SYSTEM_ROOT", "/")
 _state = os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state")
-# (…/irice: Tessera's folder from before it was renamed, not moved yet)
-STATE = os.path.join(_state, "irice" if not os.path.exists(os.path.join(_state, "tessera")) and os.path.isdir(os.path.join(_state, "irice")) else "tessera")
+STATE = os.path.join(_state, "tessera")
 PORTS_NOTE = os.path.join(STATE, "sharing-ports.json")
 # The fixed scripts live in the root helper (tessera-root.py), which runs them
 # without a password once installed; until then they go through pkexec here
 _spec = importlib.util.spec_from_file_location("tessera_root", os.path.join(os.path.dirname(os.path.abspath(__file__)), "tessera-root.py"))
 tessera_root = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(tessera_root)
+# (Tessera's old name: migrate-names.py, the one place that knows it)
+_old_spec = importlib.util.spec_from_file_location("migrate_names", os.path.join(os.path.dirname(os.path.abspath(__file__)), "migrate-names.py"))
+OLD = importlib.util.module_from_spec(_old_spec)
+_old_spec.loader.exec_module(OLD)
 DROPIN = tessera_root.DROPIN
 PLUGINS = tessera_root.PLUGINS
 PAIRING_SCRIPT, PAIRING_SHOWN = tessera_root.PAIRING_SCRIPT, tessera_root.PAIRING_SHOWN
 # The installed helper (/usr/lib/tessera/tessera-root): its fixes don't ask.
-# Until the root setup installs it, the one from before Tessera was called
-# iRice (/usr/lib/irice/irice-root) does, through its own polkit rule.
-HELPER = os.path.join(ROOT, "usr/lib/tessera/tessera-root")
-OLD_HELPER = os.path.join(ROOT, "usr/lib/irice/irice-root")
-if not os.access(HELPER, os.X_OK) and os.access(OLD_HELPER, os.X_OK):
-    HELPER = OLD_HELPER
+# Until the root setup installs it, the one from before the rename does,
+# through its own polkit rule (migrate-names.py).
+HELPER = OLD.root_helper()
 
 
 def helper_installed():
@@ -191,7 +191,7 @@ def firewall():
         code, _ = _run("firewall-cmd", "--query-port=53318/tcp")
         allowed = {0: True, 1: False}.get(code)
     elif allowed is None and kind == "nftables":
-        if _read("/etc/nftables.d/irice.nft") is not None or _read("/etc/nftables.d/irice.conf") is not None:
+        if any(_read(p) is not None for p in OLD.OLD_NFT):
             allowed = True  # (the drop-in Tessera's earlier, permanent fix kept: sharing-ports takes it out)
         else:
             rules = _read("/etc/nftables.conf")
@@ -209,7 +209,7 @@ def firewall():
         # (NetworkManager puts its hotspot in firewalld's nm-shared zone, which allows DHCP)
         hotspot = True
     elif hotspot is None and kind == "nftables":
-        drop = _read("/etc/nftables.d/irice.nft") or _read("/etc/nftables.d/irice.conf")
+        drop = next((t for t in map(_read, OLD.OLD_NFT) if t), None)
         if drop is not None:
             hotspot = " 67 " in drop.replace("}", " ").replace(",", " ")
     elif hotspot is None and kind == "iptables":
@@ -283,7 +283,7 @@ def ports(sets, why=""):
                 error = "" if code == 0 else {
                     tessera_root.REFUSED_EXIT: "Tessera's system helper is from before this. Run Software Update once.",
                     126: "Cancelled: no password was given.", 127: "Not allowed: it needs an administrator's password.",
-                }.get(code) or (p.stderr or p.stdout).replace("tessera-root: ", "").replace("irice-root: ", "").strip()[:300] or "It didn't work."
+                }.get(code) or OLD.without_helper_prefix(p.stderr or p.stdout).strip()[:300] or "It didn't work."
             except subprocess.TimeoutExpired:
                 code, error = 1, "The firewall took too long to answer."
     # (what didn't change stays as it was: open until a close went through)

@@ -9,15 +9,6 @@ here=$(cd -- "$(dirname -- "$0")" && pwd)
 units="$HOME/.config/systemd/user" # the user manager's own folder, whatever the session's XDG_CONFIG_HOME
 unit="$units/tessera-battery-guard.service"
 command -v systemctl >/dev/null || { echo "no systemd"; exit 1; }
-# The unit's name while Tessera was called iRice: stopped and removed, so
-# the two never both act on a low battery
-old="$units/irice-battery-guard.service"
-if [[ -f $old ]]; then
-    systemctl --user disable --now irice-battery-guard.service >/dev/null 2>&1
-    rm -f "$old"
-    systemctl --user daemon-reload 2>/dev/null
-fi
-
 case "${1:-status}" in
     enable)
         mkdir -p "$units"

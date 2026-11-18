@@ -17,7 +17,7 @@
 | 13 | Crosshair cursor | 190 | `mouse-cursor: crosshair` | same |
 
 ## Test plan (tester)
-Arena 1920×1080, output IRICE-TEST, both shells, both looks. Open two windows first (`inbox 'foot -T A >/dev/null 2>&1 &'`, then `foot -T B`), wait 2 s, `P move 100 900`.
+Arena 1920×1080, output TESSERA-TEST, both shells, both looks. Open two windows first (`inbox 'foot -T A >/dev/null 2>&1 &'`, then `foot -T B`), wait 2 s, `P move 100 900`.
 1. **First selection is immediate** (row 2): fresh shell, wait 3 s, `rec rs-first 1 "inbox 'ipc screen region screenshot'"` → dim and hint no later in Rust than in QML (± 1 frame).
 2. **Drag** (rows 3, 4, 7): `inbox 'ipc screen region screenshot'`, `P glide 400 300 200`, `P down`, `P glide 900 650 400`, `shot rs-drag` → dim outside 400..900 × 300..650, square outline (1 px white / 2 px primary), readout "500 × 350" at (908, 658). Compare QML vs Rust. `rec rs-up 1 "P up"` → the overlay goes at once, the screenshot thumbnail appears ≈ 160 ms later.
 3. **Window click** (rows 9, 10): `inbox 'ipc screen region ocr'`, glide onto window A's centre → its rect outlined (r 12 Glass / 16 Material), the rest dimmed; hint "Drag to select an area to copy text, or click a window. Esc to cancel.". `wtype -k Escape`.

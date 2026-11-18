@@ -8,7 +8,7 @@ import qs.glass
 // Loaded only when TESSERA_LAB=1.
 GlassWindow {
     name: "lab"
-    screen: Quickshell.screens.find(s => s.name === "IRICE-TEST") ?? Quickshell.screens[0]
+    screen: Quickshell.screens.find(s => s.name === "TESSERA-TEST") ?? Quickshell.screens[0]
     anchors { top: true; bottom: true; left: true; right: true }
     WlrLayershell.layer: WlrLayer.Top
     mask: Region {}

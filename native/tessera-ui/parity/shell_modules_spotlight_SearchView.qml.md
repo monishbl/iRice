@@ -19,7 +19,7 @@ springDefault 6.08/0.5 → ω 19.5, ζ 0.80 → 322 ms, spring(0.2). springFast 
 
 ## Test plan (tester)
 Material (the user's look). Geometry 1920×1080: view x 600..1320, top y 216; bar centre (960, 244); Clear ≈ (1236, 244), Ask ≈ (1280, 244); results start y ≈ 280.
-1. **Open**: `rec sp-m-open 1 "ipc panels open spotlight IRICE-TEST"`; track the view's top edge / width over frames: QML and Rust settle in ≈ 0.3 s, overshoot ≤ 2 % (before, Rust bounced visibly ~0.45 s). `-k Escape` → 154 ms.
+1. **Open**: `rec sp-m-open 1 "ipc panels open spotlight TESSERA-TEST"`; track the view's top edge / width over frames: QML and Rust settle in ≈ 0.3 s, overshoot ≤ 2 % (before, Rust bounced visibly ~0.45 s). `-k Escape` → 154 ms.
 2. **View grows**: type `f` → view springs to the list's height in ≈ 0.3 s; compare the height curve QML vs Rust (± 1 frame).
 3. **Row entrance**: clear the field, type `fi` → rows rise and fade one after another (28 ms apart); compare frame strips.
 4. **Scrim click** at (960, 900) closes; a click inside the view doesn't.

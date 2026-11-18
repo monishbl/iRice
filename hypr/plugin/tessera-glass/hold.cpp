@@ -25,8 +25,7 @@ static void holdFire(SP<CEventLoopTimer>, void*) {
     const auto fingers = g_holdFingers;
     g_holdFingers      = 0;
     if (fingers >= 3)
-        // (IRICE_HOLD: a Hyprland config from before iRice became Tessera)
-        HyprlandAPI::invokeHyprctlCommand("eval", std::format("if TESSERA_HOLD then TESSERA_HOLD({0}) elseif IRICE_HOLD then IRICE_HOLD({0}) end", fingers));
+        HyprlandAPI::invokeHyprctlCommand("eval", std::format("if TESSERA_HOLD then TESSERA_HOLD({0}) end", fingers));
 }
 
 // Listens to every pointer's holds; again when the pointers change (a

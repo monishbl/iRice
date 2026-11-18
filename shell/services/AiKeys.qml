@@ -71,9 +71,8 @@ Singleton {
         const job = pending[0];
         pending = pending.slice(1);
         keyring.job = job;
-        // (clear: also the key kept while Tessera was called iRice, under
-        // application=irice, which lookups still find)
-        keyring.command = job.op === "clear" ? ["sh", "-c", "secret-tool clear application tessera provider \"$1\"; secret-tool clear application irice provider \"$1\"", "sh", job.slot]
+        // (clear: also the key kept under the old name, which lookups still find)
+        keyring.command = job.op === "clear" ? ["sh", "-c", "secret-tool clear application tessera provider \"$1\"; secret-tool clear application \"$2\" provider \"$1\"", "sh", job.slot, OldNames.keyringApp]
             : ["secret-tool", "store", "--label=Tessera · " + job.label, "application", "tessera", "provider", job.slot];
         keyring.stdinEnabled = job.op === "store";
         keyring.running = true;
@@ -152,8 +151,8 @@ Singleton {
             id: lookup
             required property string modelData
             running: true
-            // (else the key kept while Tessera was called iRice)
-            command: ["sh", "-c", "secret-tool lookup application tessera provider \"$1\" || secret-tool lookup application irice provider \"$1\"", "sh", lookup.modelData]
+            // (else the key kept under the old name)
+            command: ["sh", "-c", "secret-tool lookup application tessera provider \"$1\" || secret-tool lookup application \"$2\" provider \"$1\"", "sh", lookup.modelData, OldNames.keyringApp]
             stdout: StdioCollector {
                 onStreamFinished: {
                     if (text.trim() === "" || root.edited[lookup.modelData])

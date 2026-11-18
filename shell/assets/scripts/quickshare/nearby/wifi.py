@@ -32,10 +32,20 @@ from .transport import READ_LIMIT, StreamTransport
 
 UPGRADE_PORT = 53319  # next to the Quick Share port (53318), for firewall rules
 HELPER = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "qs-wifi-helper.py")
+def _old_names():
+    """Tessera's old name (migrate-names.py: the one place that knows it)."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("migrate_names", os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "migrate-names.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+OLD = _old_names()
 # Tessera's root helper, once installed (TESSERA_SYSTEM_ROOT: tests); until
-# the root setup installs it, the one from before iRice became Tessera
+# the root setup installs it, the one from before the rename
 ROOT_HELPER = os.path.join(os.environ.get("TESSERA_SYSTEM_ROOT", "/"), "usr/lib/tessera/tessera-root")
-OLD_ROOT_HELPER = os.path.join(os.environ.get("TESSERA_SYSTEM_ROOT", "/"), "usr/lib/irice/irice-root")
+OLD_ROOT_HELPER = OLD.system_path(OLD.OLD_ROOT_HELPER)
 
 
 def installed_root_helper():
@@ -204,8 +214,8 @@ def helper_shields():
     try:
         with open(helper_script()) as f:
             text = f.read()
-        # (zzz-irice-…: the copy installed before iRice became Tessera)
-        return "zzz-tessera-quickshare" in text or "zzz-irice-quickshare" in text
+        # (or the copy installed under the old name)
+        return "zzz-tessera-quickshare" in text or OLD.OLD_DBUS_CONF in text
     except OSError:
         return False
 

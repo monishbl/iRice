@@ -24,7 +24,7 @@ RESTORE = None  # (set below, after cfg)
 
 CLOSE_FOOT = "setup hyprctl dispatch 'hl.dsp.window.close({ window = \"class:foot\" })'"
 RESTORE = cfg("desktop.widgets", USER_WIDGETS)
-HEAD = ["# Arena IRICE-TEST 1920x1080 scale 1, the user's config (expressive motion, Colloid, their 4 widgets).",
+HEAD = ["# Arena TESSERA-TEST 1920x1080 scale 1, the user's config (expressive motion, Colloid, their 4 widgets).",
         "# Each file runs top to bottom from a fresh desktop. `static NAME x y w h`: that region must not change",
         "# from there until the next `shot`, `rec` or `look` (the no-reload blocks end with their last close).",
         "# Right-clicks: `ptr ... down up` lines marked (right button) need the runner's right button."]
@@ -231,8 +231,8 @@ def dock_y(lk):
 F("Dock", ["glass", "material"], lambda lk: [
     "shot dk-idle",
     "static dk-dock 820 940 280 140",
-    "ipc panels open controlCenter IRICE-TEST", "wait 1", "ipc panels close", "wait 1",
-    "ipc panels open launchpad IRICE-TEST", "wait 1", "ipc panels close", "wait 1",
+    "ipc panels open controlCenter TESSERA-TEST", "wait 1", "ipc panels close", "wait 1",
+    "ipc panels open launchpad TESSERA-TEST", "wait 1", "ipc panels close", "wait 1",
     "note the dock never vanishes or redraws from blank when other surfaces close",
     cfg("dock.enabled", False), "wait 1.5", "shot dk-off", cfg("dock.enabled", True), "wait 1.5", "shot dk-on",
 ])
@@ -264,7 +264,7 @@ F("DockLogic", ["glass", "material"], lambda lk: [
     "rec dl-autohide 3 ptr glide 960 1079 300 sleep 1200 glide 960 700 300 sleep 800",
     cfg("dock.autoHide", "off"), "wait 1",
     f"ptr move 1027 {dock_y(lk)}",
-    "note (right button, manual) right-click Trash to open its menu, then:", "ipc panels open controlCenter IRICE-TEST", "wait 0.5", "shot dl-menu-gone",
+    "note (right button, manual) right-click Trash to open its menu, then:", "ipc panels open controlCenter TESSERA-TEST", "wait 0.5", "shot dl-menu-gone",
     "note opening a panel closes the dock menu at once", "ipc panels close",
 ])
 F("DockMenu", ["glass", "material"], lambda lk: [
@@ -320,7 +320,7 @@ F("MaterialDownloadsStack", ["material"], lambda lk: [
 # ── launchpad and Today ─────────────────────────────────────────────────────
 F("AppDrawer", ["material"], lambda lk: [
     "ptr move 1700 900",
-    "rec ad-open 1.2 ipc panels open launchpad IRICE-TEST",
+    "rec ad-open 1.2 ipc panels open launchpad TESSERA-TEST",
     "note sheet rises 96 px from 0.94, settles ≈270 ms, no overshoot; cells come in one after another (14 ms apart)",
     "rec ad-hover 1.2 ptr move 531 346 glide 1387 346 600",
     "note each card turns secondaryContainer, corner 28→64 on a quick spring; no other card flickers",
@@ -329,7 +329,7 @@ F("AppDrawer", ["material"], lambda lk: [
     "note selection moves a row each; grid scrolls on a spring, settles ≈460 ms after the last key",
     "key fire", "wait 0.5", "shot ad-search", "key -k Escape", "rec ad-close 0.8 key -k Escape",
     "note close 192 ms on the exit curve",
-    "ipc panels open launchpad IRICE-TEST", "wait 0.8", "key -k Tab",
+    "ipc panels open launchpad TESSERA-TEST", "wait 0.8", "key -k Tab",
     "rec ad-fling 2.5 ptr move 900 500 scroll 0 30 sleep 10 scroll 0 30 sleep 10 scroll 0 30 sleep 10 scroll 0 30 sleep 10 scroll 0 30 sleep 10 scroll 0 30 sleep 10 scroll 0 30 sleep 10 scroll 0 30",
     "note keeps gliding after the last step, slowing steadily; glide length within ±15 % of QML",
     "rec ad-onestep 1.5 ptr scroll 0 30", "note a lone step moves 30 px and stops dead",
@@ -337,24 +337,24 @@ F("AppDrawer", ["material"], lambda lk: [
 ])
 F("AppLibraryGlass", ["glass"], lambda lk: [
     "ptr move 1700 900",
-    "rec alg-open 1.2 ipc panels open launchpad IRICE-TEST",
+    "rec alg-open 1.2 ipc panels open launchpad TESSERA-TEST",
     "note 0.96→1 and fade; expressive ≈450 ms with slight overshoot",
     "rec alg-hover 1.2 ptr move 512 294 glide 1408 294 600", "note fillHover + 2 px accent border at once",
     "rec alg-press 1 ptr move 512 294 down sleep 300 up", "note 0.97 in 100 ms linear",
     "key -k Tab", "rec alg-scrub 1 ptr move 1508 300 click", "note grid scrolls OutCubic 320 ms; F's apps lit",
     "key fire", "wait 0.5", "key -k Escape", "rec alg-close 0.8 key -k Escape",
-    "ipc panels open launchpad IRICE-TEST", "wait 0.8", "key -k Tab",
+    "ipc panels open launchpad TESSERA-TEST", "wait 0.8", "key -k Tab",
     "rec alg-fling 2.5 ptr move 900 500 scroll 0 30 sleep 10 scroll 0 30 sleep 10 scroll 0 30 sleep 10 scroll 0 30 sleep 10 scroll 0 30 sleep 10 scroll 0 30 sleep 10 scroll 0 30 sleep 10 scroll 0 30",
     "key -k Escape",
 ])
 F("AppLibraryModel", ["material", "glass"], lambda lk: [
-    "ipc panels open launchpad IRICE-TEST", "wait 1", "shot alm-folders",
+    "ipc panels open launchpad TESSERA-TEST", "wait 1", "shot alm-folders",
     "note same folders, order and counts as QML; every preview icon the app's coloured Colloid logo",
     "key term", "wait 0.6", "shot alm-search", "key -k Escape", "key -k Tab", "wait 0.5", "shot alm-az", "key -k Escape -k Escape",
 ])
 F("AppLibrary", ["material", "glass"], lambda lk: [
-    "ipc panels open launchpad IRICE-TEST", "wait 0.8", "ipc panels close", "wait 0.3",
-    "rec al-reopen 1 ipc panels open launchpad IRICE-TEST",
+    "ipc panels open launchpad TESSERA-TEST", "wait 0.8", "ipc panels close", "wait 0.3",
+    "rec al-reopen 1 ipc panels open launchpad TESSERA-TEST",
     "note the second open starts at once (no empty frame)", "ipc panels close",
 ])
 F("TodayScreen", ["glass", "material"], lambda lk: [
@@ -392,13 +392,13 @@ F("TodayOptions", ["glass", "material"], lambda lk: [
 
 # ── background and wallpaper ────────────────────────────────────────────────
 F("Background", ["material", "glass"], lambda lk: [
-    "ipc panels open wallpaper IRICE-TEST", "wait 1", "key -k Right -k Right",
+    "ipc panels open wallpaper TESSERA-TEST", "wait 1", "key -k Right -k Right",
     "rec bg-crossfade 1.6 key -k Return",
     "note new picture fades in over the old, 700 ms InOutQuad, no dark frame",
     "key -k Escape", "wait 0.5",
     "static bg-wall 1500 300 300 200",
     "setup foot &", "wait 1.5", CLOSE_FOOT, "wait 1.5",
-    "ipc panels open launchpad IRICE-TEST", "wait 1", "ipc panels close", "wait 1",
+    "ipc panels open launchpad TESSERA-TEST", "wait 1", "ipc panels close", "wait 1",
     "ipc lock lock", "wait 2",
     "rec bg-lock 1.5 ipc lock unlock",
     "note wallpaper starts 5 % larger and settles to 1.0 with the veil",
@@ -410,7 +410,7 @@ F("ScreenCorners", ["material"], lambda lk: [
 ])
 F("WallpaperPicker", ["material", "glass"], lambda lk: [
     "ptr move 1500 400",
-    "rec wp-open 1 ipc panels open wallpaper IRICE-TEST",
+    "rec wp-open 1 ipc panels open wallpaper TESSERA-TEST",
     "note opacity 0→1 and 16 px rise over 320 ms; thumbnails fade in 220 ms; applied one ringed",
     "key -k Right -k Right", "wait 0.4", "shot wp-keys",
     "rec wp-apply 1.6 key -k Return",

@@ -82,7 +82,7 @@ wait 1
 # 13 cancelled by another panel
 setup wtype -M alt -k Tab -s 4000 -m alt &
 wait 1
-ipc panels open controlCenter IRICE-TEST
+ipc panels open controlCenter TESSERA-TEST
 wait 1
 shot cancelled
 note The strip is gone as soon as Control Center opens; on release no window switch happens (focus unchanged).

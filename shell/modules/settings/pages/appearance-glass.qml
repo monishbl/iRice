@@ -373,7 +373,7 @@ Column {
                         id: buildMouse
                         anchors.fill: parent
                         hoverEnabled: true
-                        onClicked: Launch.terminal(["sh", "-c", "\"$1\" --load", "sh", ((Quickshell.env("TESSERA_ROOT") || Quickshell.env("IRICE_ROOT")) || Paths.data + "/src") + "/tools/build-plugin.sh"], true)
+                        onClicked: Launch.terminal(["sh", "-c", "\"$1\" --load", "sh", (Quickshell.env("TESSERA_ROOT") || Paths.data + "/src") + "/tools/build-plugin.sh"], true)
                     }
                 }
                 Icon {

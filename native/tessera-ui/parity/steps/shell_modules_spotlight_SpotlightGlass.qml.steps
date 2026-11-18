@@ -2,13 +2,13 @@ look glass
 # Field x620..1300 y216..272 (centre 960,244); Clear ~(1252,244), Ask ~(1280,244) (Ask alone ~1272); results from y280, rows 40 px, first row centre ~(960,310) under a heading.
 # NOTE: click on layer surfaces may not register in the harness
 # NOTE: earlier result: Glass accent was red-coral in Rust vs orange in QML (FAIL 1), icons monochrome (FAIL 2); re-check both.
-rec sp-g-open 1 ipc panels open spotlight IRICE-TEST
+rec sp-g-open 1 ipc panels open spotlight TESSERA-TEST
 note Opens in 220 ms, slides 10 px down while fading; QML/Rust frame counts within 1.
 wait 1
 rec sp-g-close 1 key -k Escape
 note Closes in 220 ms (exit curve); QML/Rust frame counts within 1.
 wait 1
-ipc panels open spotlight IRICE-TEST
+ipc panels open spotlight TESSERA-TEST
 wait 1
 key foot
 wait 1
@@ -53,7 +53,7 @@ ptr move 960 900 click
 wait 1
 shot sp-g-outside-click
 note Click at (960,900) closes Search.
-ipc panels open spotlight IRICE-TEST
+ipc panels open spotlight TESSERA-TEST
 wait 1
 ptr move 960 244 click
 wait 1

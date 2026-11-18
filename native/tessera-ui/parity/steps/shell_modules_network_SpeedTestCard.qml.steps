@@ -1,5 +1,5 @@
 # SpeedTestCard: at the bottom of the Wi-Fi menu; button at the card's right edge. Both looks.
-ipc panels open wifiMenu IRICE-TEST
+ipc panels open wifiMenu TESSERA-TEST
 wait 2
 shot card
 note Speed test card at the bottom of the menu: button "Test speed" (Material: filled primary 32 px pill; Glass: accent 28 px). Same as QML.

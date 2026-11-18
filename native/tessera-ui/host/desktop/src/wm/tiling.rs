@@ -216,7 +216,7 @@ impl Tiling {
             self.pipped.remove(&k);
             return;
         }
-        if name != "tessera-drag" && name != "irice-drag" {
+        if name != "tessera-drag" {
             return;
         }
         let p: Vec<&str> = data.split(',').collect();

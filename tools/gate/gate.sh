@@ -10,7 +10,7 @@
 set -uo pipefail
 ARENA=$1 BIN=$(realpath "$2") OUT=$3
 GATE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-export TESSERA_NO_BOX=${TESSERA_NO_BOX:-1} IRICE_ARENA=$ARENA TESSERA_ARENA=$ARENA
+export TESSERA_NO_BOX=${TESSERA_NO_BOX:-1} TESSERA_ARENA=$ARENA
 REPS=${GATE_REPS:-4} IDLE=${GATE_IDLE:-20:3}
 # (glibc's malloc: one arena per thread by default, and with ~60 threads
 # which ones get touched varies run to run: RssAnon of one binary differed

@@ -56,7 +56,7 @@ rec cheatsheet-open 1.6 key -M alt -k slash -m alt
 rec cheatsheet-close 1.4 key -k Escape
 wait 1
 # Quick Note: ALT + N with ALT (the bind names ALT twice: ALT + N); by IPC
-rec quicknote-open 1.6 ipc panels open quickNote IRICE-TEST
+rec quicknote-open 1.6 ipc panels open quickNote TESSERA-TEST
 rec quicknote-close 1.4 key -k Escape
 wait 1
 # Screen tools: ALT + Print
@@ -64,16 +64,16 @@ rec screentools-open 1.6 key -M alt -k Print -m alt
 rec screentools-close 1.4 key -k Escape
 wait 1
 # The status menus and the system menu (opened from the menu bar: by IPC here)
-rec sound-open 1.6 ipc panels open soundMenu IRICE-TEST
+rec sound-open 1.6 ipc panels open soundMenu TESSERA-TEST
 rec sound-close 1.4 ipc panels close
 wait 1
-rec battery-open 1.6 ipc panels open batteryMenu IRICE-TEST
+rec battery-open 1.6 ipc panels open batteryMenu TESSERA-TEST
 rec battery-close 1.4 ipc panels close
 wait 1
-rec bluetooth-open 1.6 ipc panels open bluetoothMenu IRICE-TEST
+rec bluetooth-open 1.6 ipc panels open bluetoothMenu TESSERA-TEST
 rec bluetooth-close 1.4 ipc panels close
 wait 1
-rec systemmenu-open 1.6 ipc panels open systemMenu IRICE-TEST
+rec systemmenu-open 1.6 ipc panels open systemMenu TESSERA-TEST
 rec systemmenu-close 1.4 ipc panels close
 wait 1
 # Clicks on the menu bar (check the coordinates with the first shot)

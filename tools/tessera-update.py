@@ -54,7 +54,6 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG_QML = "shell/common/Config.qml"
 THEME_QML = "shell/common/Theme.qml"
 KEYMAP = "hypr/tessera/keymap.json"
-OLD_KEYMAP = "hypr/irice/keymap.json"  # (where it was in a version from before iRice became Tessera)
 MIGRATIONS = "tools/settings-migrations.json"  # {"old.path": "new.path"}
 
 
@@ -77,6 +76,23 @@ def _load_sources():
 
 
 SOURCES = _load_sources()
+
+
+def _load_old_names():
+    # (Tessera's old name: shell/assets/scripts/migrate-names.py, the one place
+    # that knows it, by its path as above)
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("migrate_names", os.path.join(REPO, "shell", "assets", "scripts", "migrate-names.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+try:
+    OLD_NAMES = _load_old_names()
+except Exception:  # (gone after its removal date, or a copy without it)
+    OLD_NAMES = None
+OLD_KEYMAP = getattr(OLD_NAMES, "OLD_KEYMAP", None)  # (where the shortcuts were in a version from before the rename)
 
 
 def fetch_branch(remote, branch, target):
@@ -566,7 +582,7 @@ def check(config_dir, fetch=True, channel=None):
     user = load_json(os.path.join(config_dir, "keybinds.json"), {})
     overrides = user.get("keybinds", {}) if isinstance(user.get("keybinds"), dict) else {}
     custom = [s for s in user.get("shortcuts", []) if isinstance(s, dict)]
-    old_k, new_k = keymap(show(base, KEYMAP) or show(base, OLD_KEYMAP)), keymap(show(new, KEYMAP) or show(new, OLD_KEYMAP))
+    old_k, new_k = keymap(show(base, KEYMAP) or (OLD_KEYMAP and show(base, OLD_KEYMAP))), keymap(show(new, KEYMAP) or (OLD_KEYMAP and show(new, OLD_KEYMAP)))
     yours = {}  # canonical keys -> (kind, id, label) you chose
     for bid, c in overrides.items():
         if isinstance(c, dict) and c.get("keys") and not c.get("disabled"):
@@ -891,6 +907,15 @@ def apply(config_dir, choices, extra=(), channel=None):
     todo += [r for r in extra if r not in todo]
     built, failed = rebuild(todo)
     progress(85, "Finishing up")
+    # What this copy still keeps under Tessera's old name moves over now (its
+    # folder too, to ~/tessera, the old name left as a link; never fatal):
+    # the shell's restart after the update does it too, for an update run by
+    # an older copy (migrate-names.py)
+    try:
+        subprocess.run([sys.executable, "-I", os.path.join(REPO, "shell", "assets", "scripts", "migrate-names.py"), "--checkout", REPO],
+                       capture_output=True, timeout=120)
+    except (OSError, subprocess.SubprocessError):
+        pass
     # (the notes, for the new shell's "What's new")
     return {"applied": True, "backup": backup, "stash": stash, "built": built, "failed": failed, "ui": ui,
             "now": git("rev-parse", "--short", "HEAD").strip(),

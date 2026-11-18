@@ -1,6 +1,6 @@
 //! Credentials for the AI models, where shell/services/AiKeys.qml keeps them:
 //! an environment variable, else the system keyring (secret-tool, the
-//! attributes `application tessera provider <slot>`, or `application irice`
+//! attributes `application tessera provider <slot>`, or the old name's (old_names)
 //! from before the rename), else the private 0600 file
 //! $XDG_STATE_HOME/tessera/ai-keys.json when no keyring runs. Keys stay in
 //! memory and only ever go into request headers: never printed, logged or
@@ -74,7 +74,7 @@ impl Keys {
             }
         }
         for slot in slots {
-            for app in ["tessera", "irice"] {
+            for app in ["tessera", crate::old_names::KEYRING_APP] {
                 let out = Command::new("secret-tool").args(["lookup", "application", app, "provider", slot]).stdin(Stdio::null()).stderr(Stdio::null()).output();
                 let Ok(out) = out else { return k }; // (no secret-tool at all)
                 let v = String::from_utf8_lossy(&out.stdout).trim().to_string();

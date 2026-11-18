@@ -10,7 +10,7 @@
 | 6 | Glass: accent when latched, fill pressed / hover, toggle-off for modifiers and wide keys | 123-124 | background | same |
 
 ## Test plan (tester)
-Both looks. Open: `inbox 'ipc panels open keyboard IRICE-TEST'` (Search "On-Screen Keyboard" does the same). Focus a text field first (e.g. a foot window).
+Both looks. Open: `inbox 'ipc panels open keyboard TESSERA-TEST'` (Search "On-Screen Keyboard" does the same). Focus a text field first (e.g. a foot window).
 1. Shot: rows of keys at the bottom; with a 1920 px screen unit = 58 → letter keys 52 px.
 2. Click `a` → "a" typed in the focused window. Click Shift (latches: Material primary, fully round; Glass accent), then `a` → "A", Shift unlatches.
 3. Material: `rec osk-press 0.6 "P down"` on a letter → corners round in ≈ 0.22 s, ≈ 6 % swell with an overshoot; compare with QML ± 1 frame. Glass: 95 % in 100 ms.

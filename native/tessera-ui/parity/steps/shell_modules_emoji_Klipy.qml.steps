@@ -1,5 +1,5 @@
 # Klipy: no key in the sandbox.
-ipc panels open emoji IRICE-TEST
+ipc panels open emoji TESSERA-TEST
 wait 1
 # NOTE: click on layer surfaces may not register in the harness
 ptr move 1141 398 sleep 300 click

@@ -30,11 +30,11 @@
 
 Icons: the picker has no icon-theme icons (no Colloid lookup); thumbnails are the pictures themselves.
 
-## Test plan (Sonnet tester, arena 5, IRICE-TEST 1920x1080 scale 1, user's config: Material dark, expressive; then Glass; QML and Rust)
+## Test plan (Sonnet tester, arena 5, TESSERA-TEST 1920x1080 scale 1, user's config: Material dark, expressive; then Glass; QML and Rust)
 
 The panel is centred above the dock: 1248 wide (x 336..1584 incl. 24 px shadow room), thumbnails 220x124 with 12 px gaps, the strip about y 850..982 with a 48 px dock (find the exact row in the first shot).
 
-1. **Open.** Pointer at 1500,400. Record 1.0 s while `ipc panels open wallpaper IRICE-TEST`. anim-timing on the panel region (336,780 1248x250): opacity 0→1 and a 16 px rise over **320 ms**, Material emphasized-decelerate (0.05,0.7,0.1,1) / Glass (0.2,0.9,0.1,1). Thumbnails fade in over **220 ms** as they decode. The applied picture has a 3 px accent ring (Material: rounder, radius 28, with a 6 px gap inside) and sits in the middle if the list is long enough.
+1. **Open.** Pointer at 1500,400. Record 1.0 s while `ipc panels open wallpaper TESSERA-TEST`. anim-timing on the panel region (336,780 1248x250): opacity 0→1 and a 16 px rise over **320 ms**, Material emphasized-decelerate (0.05,0.7,0.1,1) / Glass (0.2,0.9,0.1,1). Thumbnails fade in over **220 ms** as they decode. The applied picture has a 3 px accent ring (Material: rounder, radius 28, with a 6 px gap inside) and sits in the middle if the list is long enough.
 2. **Hover.** Glide (`pointer glide X Y 400`) onto the second visible thumbnail centre: it scales to **1.03 over 150 ms**; glide off: back over 150 ms. Pointer cursor is a hand.
 3. **Keys.** Press Right twice: a 2 px ring (Material: secondary colour; Glass: label colour) moves one thumbnail per press; when it nears the edge the strip glides **220 ms** to keep it in the middle. Left goes back.
 4. **Apply (keys).** Press Return: the background crossfades (700 ms, see Background plan), the ring jumps to it. **Material**: the newly chosen thumbnail's corner rounds 16→28 critically damped (no overshoot) in about 250-300 ms to settle, the old one 28→16 the same way. Record 1.6 s and compare the radius curve with the QML pass (MaterialSpring default).

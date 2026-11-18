@@ -50,29 +50,30 @@ pub fn fake_accounts(which: &str) -> Option<Vec<String>> {
     Some(vec!["python3".into(), "-I".into(), fake, which.into(), dir])
 }
 
-/// RootHelper.pick: the helper that's there (Tessera's, else iRice's) as $h
-pub const ROOT_PICK: &str = "h=/usr/lib/tessera/tessera-root; policy=/usr/share/polkit-1/actions/org.tessera.root.policy; if [ ! -x \"$h\" ] && [ -x /usr/lib/irice/irice-root ]; then h=/usr/lib/irice/irice-root; policy=/usr/share/polkit-1/actions/org.irice.root.policy; fi; ";
+/// RootHelper.pick: the helper that's there (Tessera's, else the old one
+/// until the root setup) as $h
+pub fn root_pick() -> String {
+    tessera_core::old_names::root_pick("/usr/lib/tessera/tessera-root", "/usr/share/polkit-1/actions/org.tessera.root.policy")
+}
 
 /// RootHelper.command(args): ["sh", "-c", pick + 'exec pkexec "$h" "$@"', "sh", args…]
 /// (this only builds the command line; the QML runs it on the user's click)
 pub fn root_command(args: &[&str]) -> Vec<String> {
-    let mut v: Vec<String> = vec!["sh".into(), "-c".into(), format!("{ROOT_PICK}exec pkexec \"$h\" \"$@\""), "sh".into()];
+    let mut v: Vec<String> = vec!["sh".into(), "-c".into(), format!("{}exec pkexec \"$h\" \"$@\"", root_pick()), "sh".into()];
     v.extend(args.iter().map(|s| s.to_string()));
     v
 }
 
 /// RootHelper.knows(subcommand): a shell test, for `sh -c`
 pub fn root_knows(sub: &str) -> String {
-    format!("{ROOT_PICK}[ -x \"$h\" ] && grep -q \"\\.root\\.{sub}\\\"\" \"$policy\" 2>/dev/null")
+    format!("{}[ -x \"$h\" ] && grep -q \"\\.root\\.{sub}\\\"\" \"$policy\" 2>/dev/null", root_pick())
 }
 
-/// RootHelper.message: without the helper's "tessera-root: " (or "irice-root: ")
+/// RootHelper.message: without the helper's name in front
 pub fn root_message(text: &str) -> String {
     let t = text.trim();
-    for p in ["tessera-root: ", "irice-root: "] {
-        if let Some(r) = t.strip_prefix(p) {
-            return r.trim().to_string();
-        }
+    if t.starts_with("tessera-root: ") || t.starts_with(tessera_core::old_names::ROOT_PREFIX) {
+        return tessera_core::old_names::without_helper_prefix(t).trim().to_string();
     }
     t.to_string()
 }
@@ -285,7 +286,6 @@ mod tests {
     #[test]
     fn root_messages_lose_their_prefix() {
         assert_eq!(root_message("tessera-root: nope\n"), "nope");
-        assert_eq!(root_message("irice-root: nope"), "nope");
         assert_eq!(root_message(" plain "), "plain");
     }
     #[test]

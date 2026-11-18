@@ -58,12 +58,12 @@ Singleton {
                     adapter.appearance.cursor = "bibata";
                 adapter.defaultsVersion = 3;
             }
-            // 4 Nov: iRice is now Tessera, and its mark is the badge: the
-            // menu icon and the screenshot editor saved under the old name
-            // (or the badge's own choice, "circle") are Tessera's
-            if (["irice", "circle"].includes(adapter.appearance.menuIcon))
+            // 4 Nov: Tessera's mark is the badge: the menu icon and the
+            // screenshot editor saved under its old name (or the badge's own
+            // choice, "circle") are Tessera's
+            if ([OldNames.settingValue, "circle"].includes(adapter.appearance.menuIcon))
                 adapter.appearance.menuIcon = "tessera";
-            if (adapter.screenshot.editor === "irice")
+            if (adapter.screenshot.editor === OldNames.settingValue)
                 adapter.screenshot.editor = "tessera";
             root.ready = true;
         }

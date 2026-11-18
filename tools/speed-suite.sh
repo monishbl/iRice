@@ -16,11 +16,11 @@
 # pointer move: the harness's own start-up, to subtract.
 # Results: OUT/<side>-<look>.tsv (tools/speed-table.py makes the tables);
 # with --env TESSERA_DEBUG=1 the Rust stall lines per panel: OUT/<side>-<look>-perf.log.
-# Never your screen: the arena's IRICE-TEST only.
+# Never your screen: the arena's TESSERA-TEST only.
 set -uo pipefail
 TOOLS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SIDE="" ARENA="" LOOK=glass OUT="" CODE="" BIN="" REPS=3 ONLY="" ENVS=()
-USERCFG="$HOME/iRice/.sandbox/home/.config/tessera/config.json"
+USERCFG="$HOME/tessera/.sandbox/home/.config/tessera/config.json"
 while (($#)); do case "$1" in
     --side) SIDE=$2; shift;; --arena) ARENA=$2; shift;; --look) LOOK=$2; shift;; --out) OUT=$2; shift;;
     --code) CODE=$2; shift;; --bin) BIN=$2; shift;; --reps) REPS=$2; shift;; --only) ONLY=$2; shift;;
@@ -28,7 +28,7 @@ while (($#)); do case "$1" in
 [[ -n $SIDE && -n $ARENA && -n $OUT ]] || { sed -n 2,8p "$0"; exit 2; }
 [[ $ARENA == 1 ]] && { echo "never arena 1 (yours)"; exit 2; }
 CODE=${CODE:-$(cd "$TOOLS/.." && pwd)}
-export IRICE_ARENA=$ARENA
+export TESSERA_ARENA=$ARENA
 # shellcheck source=/dev/null
 . "$CODE/site/film/tessera/capture/lib.sh"   # (ROOT, HOMEDIR, dev, inbox, setup: that checkout's)
 CFG="$HOMEDIR/.config/tessera/config.json"
@@ -62,9 +62,9 @@ PANELS=(
     "spotlight|sc spotlight|key -k Escape"
     "overview|sc overview|key -k Escape"
     "missionControl|sc missionControl|key -k Escape"
-    "soundMenu|ipc panels open soundMenu IRICE-TEST|key -k Escape"
-    "batteryMenu|ipc panels open batteryMenu IRICE-TEST|key -k Escape"
-    "systemMenu|ipc panels open systemMenu IRICE-TEST|key -k Escape"
+    "soundMenu|ipc panels open soundMenu TESSERA-TEST|key -k Escape"
+    "batteryMenu|ipc panels open batteryMenu TESSERA-TEST|key -k Escape"
+    "systemMenu|ipc panels open systemMenu TESSERA-TEST|key -k Escape"
     "island|ipc island post bell Speed test|ipc island dismissNewest"
 )
 cmd_of() { [[ $1 == sc\ * ]] && echo "hyprctl dispatch 'hl.dsp.global(\"tessera:${1#sc }\")' >/dev/null" || echo "$1"; }

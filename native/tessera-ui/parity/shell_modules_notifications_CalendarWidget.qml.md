@@ -63,7 +63,7 @@ event can go to, the default alert, the Undo title).
 ## Tester plan
 
 Arena as usual, Rust only for the behaviour, QML for timing references. Open
-Notification Center with `ipc panels open notificationCenter IRICE-TEST`,
+Notification Center with `ipc panels open notificationCenter TESSERA-TEST`,
 Calendar tab. Below, (tx, ty) is the tab's top-left: the widgets card's top
 edge + the tabs row (Glass 12 + 28, Material 12 + 36 + 4) and the card's left
 edge; the month grid starts at tx + 12, ty + 12 + 26 (Material 32) + 8 + 16

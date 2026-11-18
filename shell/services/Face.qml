@@ -108,8 +108,8 @@ Singleton {
             } else if (code !== 126) { // (126: the password prompt was cancelled)
                 const said = (jobErr.text + "\n" + jobOut.text).trim().split("\n").filter(l => l.trim() !== "").pop() ?? "";
                 root.error = code === 127 ? "Not allowed (an administrator's password is needed)."
-                    : job === "add" ? "No face was found. Look at the camera, then try again. If the camera's infrared light stays off, it needs linux-enable-ir-emitter (AUR) set up once in a terminal: sudo linux-enable-ir-emitter configure." + (said ? " (" + said.replace(/^(tessera|irice)-root: /, "") + ")" : "")
-                    : said.replace(/^(tessera|irice)-root: /, "") || "That didn't work. Update Tessera, then try again.";
+                    : job === "add" ? "No face was found. Look at the camera, then try again. If the camera's infrared light stays off, it needs linux-enable-ir-emitter (AUR) set up once in a terminal: sudo linux-enable-ir-emitter configure." + (said ? " (" + OldNames.withoutHelperPrefix(said) + ")" : "")
+                    : OldNames.withoutHelperPrefix(said) || "That didn't work. Update Tessera, then try again.";
             }
             root.refresh();
         }

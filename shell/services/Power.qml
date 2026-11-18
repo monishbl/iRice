@@ -245,7 +245,7 @@ Singleton {
     function writeIdle() {
         const lines = Policy.idleListeners(cfg).map(l => l.source + " " + l.action + " " + l.timeout);
         lines.push("grace " + Math.max(0, cfg.passwordAfterSleep));
-        idleWriter.command = ["sh", "-c", "printf '%s\\n' \"$2\" > \"$1.tmp\" && mv \"$1.tmp\" \"$1\"; for n in tessera irice; do d=\"${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/$n-idle-$HYPRLAND_INSTANCE_SIGNATURE\"; p=$(cat \"$d/hypridle.pid\" 2>/dev/null); [ -n \"$p\" ] && [ \"$(cat /proc/$p/comm 2>/dev/null)\" = hypridle ] && kill \"$p\"; done; \"$4\" \"$3\" && echo own || echo ok", "sh", idleFile, lines.join("\n"), userHypridle, ownHypridleScript];
+        idleWriter.command = ["sh", "-c", "printf '%s\\n' \"$2\" > \"$1.tmp\" && mv \"$1.tmp\" \"$1\"; for n in tessera; do d=\"${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/$n-idle-$HYPRLAND_INSTANCE_SIGNATURE\"; p=$(cat \"$d/hypridle.pid\" 2>/dev/null); [ -n \"$p\" ] && [ \"$(cat /proc/$p/comm 2>/dev/null)\" = hypridle ] && kill \"$p\"; done; \"$4\" \"$3\" && echo own || echo ok", "sh", idleFile, lines.join("\n"), userHypridle, ownHypridleScript];
         idleWriter.running = true;
     }
     Process {

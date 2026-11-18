@@ -7,7 +7,7 @@
 | 3 | Esc or a click outside closes | 110-125 | keys, `dismissed` | same |
 
 ## Test plan (tester)
-Both looks. `inbox 'ipc panels open about IRICE-TEST'`.
+Both looks. `inbox 'ipc panels open about TESSERA-TEST'`.
 1. Shot vs QML: the same rows and values, labels left, values right.
 2. Record the open (1 s) and compare the curve as in SessionDialog.
 3. `-k Escape` closes.

@@ -3,7 +3,7 @@
 # expressive; the empty Clipboard's button presses as the QML's.
 look glass
 setup cliphist wipe 2>/dev/null; true
-ipc panels open clipboard IRICE-TEST
+ipc panels open clipboard TESSERA-TEST
 wait 1.5
 shot clipboard-empty
 note find the empty state's button in clipboard-empty; adjust the ptr steps
@@ -22,7 +22,7 @@ wait 3
 rec cc-subtle 1.6 key -M alt -k c -m alt
 rec cc-subtle-close 1.4 key -M alt -k c -m alt
 look material
-ipc panels open clipboard IRICE-TEST
+ipc panels open clipboard TESSERA-TEST
 wait 1.5
 rec textbutton-press-material 1.0 ptr move 960 600 down sleep 400 up
 ipc panels close

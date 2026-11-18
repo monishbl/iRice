@@ -10,11 +10,11 @@
   - Everything else, tonight's work included, is staged and not committed.
   - `.claude/` (Claude Code's scheduler lock file) is left out on purpose.
 
-## Performance: iRice vs end4
+## Performance: Tessera vs end4
 
-The run: 3 alternating rounds while plugged in, power profile Balanced throughout (logged every 10 s), the same test screen for both shells, and about the same frames rendered (end4 1,108 per run, iRice 1,134).
+The run: 3 alternating rounds while plugged in, power profile Balanced throughout (logged every 10 s), the same test screen for both shells, and about the same frames rendered (end4 1,108 per run, Tessera 1,134).
 
-| | end4 | iRice |
+| | end4 | Tessera |
 |---|---|---|
 | Shell CPU, idle | 0.37% | 0.32% |
 | Shell CPU, opening/closing 6 panels | 12.7% | 15.9% |
@@ -23,19 +23,19 @@ The run: 3 alternating rounds while plugged in, power profile Balanced throughou
 | Main thread blocked (panels) | 717 ms | 576 ms |
 | Memory (PSS) | 422 MB | 407 MB |
 
-iRice now wins or ties everywhere except panel animation CPU: +25%, down from +40%.
+Tessera now wins or ties everywhere except panel animation CPU: +25%, down from +40%.
 
 Two earlier rounds were thrown out:
 - Below 25% battery the system switched to power-saver. I couldn't find what did it.
 - After a sandbox restart, end4's panels opened on the wrong output, so it barely rendered. `bench-run.sh` now focuses the test screen first.
 
-### What made iRice faster
+### What made Tessera faster
 
 | Change | Where | Effect |
 |---|---|---|
 | Glass shapes cached as ready-to-send text; no JSON or closures per frame; preset cached | `glass/Glass.qml`, `GlassWindow.qml`, `services/GlassPlugin.qml` | Glass JS about 35% cheaper |
 | Blurred backdrop decoded once and shared (was about 110 decodes per test) | `glass/Backdrop.qml` | Image-reader thread 3.3% → 0 |
-| Plugin repaints only where glass was or is (was the whole screen about 60×/s during any glass animation) | `hypr/plugin/irice-glass/main.cpp` | Less GPU work. CPU is the same; watts not yet measured, see below |
+| Plugin repaints only where glass was or is (was the whole screen about 60×/s during any glass animation) | `hypr/plugin/tessera-glass/main.cpp` | Less GPU work. CPU is the same; watts not yet measured, see below |
 
 Same-conditions A/B of the shell changes: panels 45.8% → 41.3% CPU, typing 34.7% → 30.2%.
 
@@ -114,7 +114,7 @@ Same-conditions A/B of the shell changes: panels 45.8% → 41.3% CPU, typing 34.
    - (b) keep the most-used panels loaded after first open (fast, but more memory).
 8. **Cool-down after a shell crash.** The refresh rate and blur it saved are kept in memory only. If the shell restarts mid cool-down, 48 Hz and light blur stay until a Hyprland config reload. The fix is to save them to a state file and restore on start. Also, `hl.monitor` re-sends only mode, position, scale and rotation, so a VRR or bit-depth setting on the panel would reset. That doesn't affect your current setup.
 9. **Emoji search with hyphens** ("x-ray", "t-shirt") finds nothing. This predates tonight; the fix is to split on the hyphen rather than drop it.
-10. **Installing the new glass plugin into your live session.** Your session loads `~/.local/share/irice/irice-glass.so`; the new build is only in the repo and sandbox.
+10. **Installing the new glass plugin into your live session.** Your session loads `~/.local/share/tessera/tessera-glass.so`; the new build is only in the repo and sandbox.
 
 ## Not tested yet
 
@@ -125,8 +125,8 @@ Same-conditions A/B of the shell changes: panels 45.8% → 41.3% CPU, typing 34.
 
 ## Files
 
-- **QA reports and screenshots:** `/tmp/claude-1000/-home-user-Projects-Personal-iRice/d4a55d5f-cd31-430b-b979-3e7c3c9c0b54/scratchpad/qa/`. It contains `ui-report.md`, `ui2-report.md`, `review-report.md`, `review2-report.md` and `lint-report.md`. This is temporary storage; copy anything you want to keep.
-- **Benchmark scripts and raw results:** `/tmp/claude-1000/-home-user-Projects-Personal-iRice/d4a55d5f-cd31-430b-b979-3e7c3c9c0b54/scratchpad/bench/`. `report.py results-charging4.jsonl <start>` reproduces the table.
+- **QA reports and screenshots:** `/tmp/claude-1000/-home-user-Projects-Personal-Tessera/d4a55d5f-cd31-430b-b979-3e7c3c9c0b54/scratchpad/qa/`. It contains `ui-report.md`, `ui2-report.md`, `review-report.md`, `review2-report.md` and `lint-report.md`. This is temporary storage; copy anything you want to keep.
+- **Benchmark scripts and raw results:** `/tmp/claude-1000/-home-user-Projects-Personal-Tessera/d4a55d5f-cd31-430b-b979-3e7c3c9c0b54/scratchpad/bench/`. `report.py results-charging4.jsonl <start>` reproduces the table.
 
 ## Morning round (27 Oct, after your answers)
 
@@ -144,13 +144,13 @@ Everything below is verified in the sandbox unless marked otherwise. Final sweep
 | Cool-down survives a crash | What it changed is saved in the state file and restored on the next start | Blur 3 → 1 with cool-down on; shell restarted; back to 3, saved entry cleared |
 | Hyphen search | "x-ray", "t-shirt" find their emoji | Code (the keywords already split on hyphens) |
 | Panel CPU | Moved to `docs/todo.md` | |
-| Install plugin to live | New build copied atomically to `~/.local/share/irice/irice-glass.so` (nothing loads it until you run iRice live) | File in place |
+| Install plugin to live | New build copied atomically to `~/.local/share/tessera/tessera-glass.so` (nothing loads it until you run Tessera live) | File in place |
 | Demo script | `./demo.sh`: run it from a text console. It checks first, starts the real session (as `./dev.sh tty`) with a playing demo track and three notifications, and cleans up when you end it (Super+Shift+Escape). `./demo.sh --check` rehearses the checks from anywhere | `--check` passes; the notifications were checked in the sandbox; the track was checked on a private bus. The full tty session can't be started from here |
-| Final installer | `install.sh`: missing runtime dependencies added; the whole `hypr/irice` folder is copied (gestures.json and keymap.json were skipped before); bare metal was detected as a VM (software cursor), now fixed; optional Apple/Fluent emoji step; dry run writes nothing. `uninstall.sh` removes the plugin | `bash -n`, all dry runs, before/after file listing identical. A clean-container install wasn't run (it needs package downloads) |
+| Final installer | `install.sh`: missing runtime dependencies added; the whole `hypr/tessera` folder is copied (gestures.json and keymap.json were skipped before); bare metal was detected as a VM (software cursor), now fixed; optional Apple/Fluent emoji step; dry run writes nothing. `uninstall.sh` removes the plugin | `bash -n`, all dry runs, before/after file listing identical. A clean-container install wasn't run (it needs package downloads) |
 
 Also fixed along the way: alarms and timers weren't saved when they changed (UiState had no handler for them).
 
-**Done on your machine:** the Inter font (the shell's font) wasn't installed, so the demo would have used a fallback. I copied it from the dev container into `~/.local/share/fonts/irice-inter/`. Delete that folder to undo; installing `inter-font` with pacman is the clean alternative.
+**Done on your machine:** the Inter font (the shell's font) wasn't installed, so the demo would have used a fallback. I copied it from the dev container into `~/.local/share/fonts/tessera-inter/`. Delete that folder to undo; installing `inter-font` with pacman is the clean alternative.
 
 **Not tested:**
 - the demo inside a real tty session;
@@ -161,11 +161,11 @@ Also fixed along the way: alarms and timers weren't saved when they changed (UiS
 
 | Piece | What | Verified |
 |---|---|---|
-| Glass sync in C++ | `shell/native` builds the `IRice.Native` QML module. Each glass window's shapes are computed in C++ on frames it actually draws, then sent from a worker thread. The QML path is the fallback | Loads in the sandbox (log: "Glass sync: native"). Same shape sets as the fallback in every state. A full sweep of 30 panels, 17 pages and 40 rapid cycles: same PID, 0 errors. Also loads on the host's Qt (offscreen check) |
+| Glass sync in C++ | `shell/native` builds the `Tessera.Native` QML module. Each glass window's shapes are computed in C++ on frames it actually draws, then sent from a worker thread. The QML path is the fallback | Loads in the sandbox (log: "Glass sync: native"). Same shape sets as the fallback in every state. A full sweep of 30 panels, 17 pages and 40 rapid cycles: same PID, 0 errors. Also loads on the host's Qt (offscreen check) |
 | C glass helper | `shell/native/glass-ipc.c`, the same protocol as the Python one; used whenever it's built | Running in the sandbox; error path tested |
 | Skip unchanged frames | The QML fallback stops its per-frame sync after 8 idle frames | Code; covered by the fallback comparison |
 | Keep panels loaded | Settings → Appearance → Performance (off by default) | With it on, Spotlight's window stays alive across closes; turning it off unloads it |
-| Installer | Builds the native helpers (optional step; adds cmake and ninja); `irice rebuild` rebuilds them after Qt updates | Dry run |
+| Installer | Builds the native helpers (optional step; adds cmake and ninja); `tessera rebuild` rebuilds them after Qt updates | Dry run |
 
 **Not done yet:** the benchmark. You chose to wait until the laptop is plugged in. The command is in `docs/todo.md`.
 
@@ -195,7 +195,7 @@ From your report (real tty session) and a full sweep of the shell for the same k
 **Choppiness:**
 - On the shell's side, moving across the menu bar costs almost nothing: under 40 ms of script time per 18 s of hovering.
 - So the remaining choppiness is compositor or GPU work on your real hardware.
-- The plugin now records frame pacing (`hyprctl irice-glass frametimes`).
+- The plugin now records frame pacing (`hyprctl tessera-glass frametimes`).
 - The measurement script (scratchpad `bench/perf-tty.sh`) drives the real tty session from outside. It measures pacing, GPU busy % and CPU for Glass, Solid and no plugin.
 - It runs as soon as you start `./dev.sh tty` and leave it alone for about 6 minutes.
 

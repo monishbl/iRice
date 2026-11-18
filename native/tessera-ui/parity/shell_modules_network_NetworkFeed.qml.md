@@ -12,7 +12,7 @@ NetworkFeed.qml is the shell's half: it tells tessera-ui the Wi-Fi state and doe
 | 6 | Asks: speed test, switch, rescan, join, forget, Settings | 189-230 | `call` | same |
 
 ## Test plan (tester)
-Both looks; open `inbox 'ipc panels open wifiMenu IRICE-TEST'`.
+Both looks; open `inbox 'ipc panels open wifiMenu TESSERA-TEST'`.
 1. With Wi-Fi in the arena (else "not testable here"): rows sorted connected first. Keep the pointer on the menu 10 s while networks change: rows hold still; move off → they refresh within 4 s.
 2. Toggle the Wi-Fi switch → the list empties / comes back; no crash.
 3. The menu opens under the menu bar's Wi-Fi item.

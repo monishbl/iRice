@@ -38,9 +38,9 @@ pub fn place_at(point: (f32, f32), mon: (i32, i32), surface_w: f32) -> (i32, i32
     ((point.0 - mon.0 as f32 - surface_w / 2.0).round() as i32, (point.1 - mon.1 as f32 + 6.0 - M).round() as i32)
 }
 
-/// The plugin's line: `tessera-controls>>tile,ADDR,x,y` (or irice-controls)
+/// The plugin's line: `tessera-controls>>tile,ADDR,x,y`
 pub fn controls_event(line: &str) -> Option<(String, f32, f32)> {
-    let data = line.strip_prefix("tessera-controls>>").or_else(|| line.strip_prefix("irice-controls>>"))?;
+    let data = line.strip_prefix("tessera-controls>>")?;
     let f: Vec<&str> = data.trim_end().split(',').collect();
     if f.len() < 4 || f[0] != "tile" {
         return None;

@@ -1,24 +1,24 @@
 #!/usr/bin/env bash
-# Applies these iRice settings (look and behaviour, plus the wallpapers they
+# Applies these Tessera settings (look and behaviour, plus the wallpapers they
 # use). Your current settings are backed up first; nothing else is touched.
 #
-#   ./import.sh                 for an installed iRice (~/.config/irice)
-#   ./import.sh --repo <dir>    for iRice run from a repo with ./dev.sh tty
-#                               (settings in <dir>/.sandbox/home/.config/irice)
+#   ./import.sh                 for an installed Tessera (~/.config/tessera)
+#   ./import.sh --repo <dir>    for Tessera run from a repo with ./dev.sh tty
+#                               (settings in <dir>/.sandbox/home/.config/tessera)
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-CONF="${XDG_CONFIG_HOME:-$HOME/.config}/irice"
+CONF="${XDG_CONFIG_HOME:-$HOME/.config}/tessera"
 if [[ "${1:-}" == "--repo" ]]; then
-    [[ -d "${2:-}" ]] || { echo "Usage: ./import.sh --repo <path to the iRice repo>"; exit 1; }
-    CONF="$(cd "$2" && pwd)/.sandbox/home/.config/irice"
+    [[ -d "${2:-}" ]] || { echo "Usage: ./import.sh --repo <path to the Tessera repo>"; exit 1; }
+    CONF="$(cd "$2" && pwd)/.sandbox/home/.config/tessera"
 elif [[ -n "${1:-}" ]]; then
     sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'
     exit 0
 fi
 command -v python3 >/dev/null || { echo "This needs python3."; exit 1; }
 
-WALL="$HOME/Pictures/Wallpapers/iRice"
+WALL="$HOME/Pictures/Wallpapers/Tessera"
 mkdir -p "$CONF"
 [[ -d "$HERE/wallpapers" ]] && mkdir -p "$WALL"
 
@@ -61,5 +61,5 @@ os.replace(tmp, dst) # (whole file at once: a running shell never reads half of 
 EOF
 echo "Settings: $CONF/config.json"
 echo
-echo "Done. A running iRice picks them up by itself; if anything looks off, restart the shell (irice repair, or log out and in)."
+echo "Done. A running Tessera picks them up by itself; if anything looks off, restart the shell (tessera repair, or log out and in)."
 echo "To undo: copy the backup above back to config.json."

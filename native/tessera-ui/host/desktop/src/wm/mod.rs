@@ -116,7 +116,7 @@ fn follow_events(post: Post) {
     const WANTED: &[&str] = &[
         "openwindow", "closewindow", "movewindow", "movewindowv2", "activewindowv2", "workspace", "workspacev2", "focusedmonv2", "activespecial",
         "monitoraddedv2", "monitorremovedv2", "createworkspacev2", "destroyworkspacev2", "moveworkspacev2", "configreloaded", "changefloatingmode",
-        "tessera-drag", "irice-drag", "openlayer", "closelayer",
+        "tessera-drag", "openlayer", "closelayer",
     ];
     std::thread::spawn(move || loop {
         use std::io::{BufRead, BufReader};
@@ -201,7 +201,7 @@ impl Wm {
         // shelf stops following the held button (Shelf.qml heard this itself;
         // 17 Nov: standalone nothing told host-sharing, so the pointer follower
         // ran through every window drag and its probes went up)
-        if (name == "tessera-drag" || name == "irice-drag") && !data.starts_with("drop") {
+        if name == "tessera-drag" && !data.starts_with("drop") {
             h.ask("shelf.windowMove", serde_json::json!([]));
         }
     }

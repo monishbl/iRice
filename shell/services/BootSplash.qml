@@ -39,9 +39,8 @@ Singleton {
     // The system's own theme: as it was before Tessera, unless set since by hand
     readonly property string original: record && record.applied === theme ? record.original : theme
     readonly property string chosen: {
-        // (irice-<id>: set before iRice became Tessera, until the root setup renames it)
-        const m = /^(tessera|irice)-(.+)$/.exec(theme);
-        const id = m ? m[2] : "";
+        // (tessera-<id>, or the old name's until the root setup renames it)
+        const id = OldNames.plymouthId(theme);
         if (designs.some(d => d.id === id))
             return id;
         return theme === "text" && original !== "text" ? "none" : "system";
@@ -58,11 +57,11 @@ Singleton {
             "t=$(sed -n 's/^[[:space:]]*Theme[[:space:]]*=[[:space:]]*//p' /etc/plymouth/plymouthd.conf 2>/dev/null | tail -n 1)",
             "[ -n \"$t\" ] || t=$(sed -n 's/^[[:space:]]*Theme[[:space:]]*=[[:space:]]*//p' /usr/share/plymouth/plymouthd.defaults 2>/dev/null | tail -n 1)",
             "echo \"theme:$t\"",
-            "echo \"record:$(head -c 512 /etc/tessera/bootsplash.json 2>/dev/null || head -c 512 /etc/irice/bootsplash.json 2>/dev/null)\"",
+            "echo \"record:$(head -c 512 /etc/tessera/bootsplash.json 2>/dev/null || head -c 512 " + OldNames.etc + "/bootsplash.json 2>/dev/null)\"",
             "grep -qw splash /proc/cmdline && echo splash",
             "for b in mkinitcpio dracut booster; do command -v $b >/dev/null && { echo \"builder:$b\"; break; }; done",
             "grep -hE '^[[:space:]]*HOOKS[+]?=' /etc/mkinitcpio.conf /etc/mkinitcpio.conf.d/*.conf 2>/dev/null | grep -qw plymouth && echo hooked",
-            RootHelper.knows("bootsplash") + " && { test -d /usr/lib/tessera/plymouth/tessera-breathe || test -d /usr/lib/irice/plymouth/irice-breathe; } && echo helper",
+            RootHelper.knows("bootsplash") + " && { test -d /usr/lib/tessera/plymouth/tessera-breathe || test -d " + OldNames.plymouthBreathe + "; } && echo helper",
             ":"].join("; ")]
         stdout: StdioCollector {
             onStreamFinished: {
@@ -124,7 +123,7 @@ Singleton {
             // (126: the password prompt was dismissed; nothing changed)
             if (code !== 0 && code !== 126)
                 root.error = code === 127 ? "Not allowed: an administrator's password is needed."
-                    : (setErr.text.replace(/^(tessera|irice)-root: /, "").trim().replace(/^./, c => c.toUpperCase()) || "That didn't change. Update Tessera, then try again.");
+                    : (OldNames.withoutHelperPrefix(setErr.text).trim().replace(/^./, c => c.toUpperCase()) || "That didn't change. Update Tessera, then try again.");
             root.refresh();
         }
     }

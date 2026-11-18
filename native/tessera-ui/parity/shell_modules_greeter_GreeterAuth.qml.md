@@ -32,7 +32,7 @@ timers, requests, quit).
 
 ## Test plan (arena N; the greeter runs as a client of the arena's compositor)
 
-Run: `IRICE_ARENA=N ./dev.sh run env TESSERA_GREETER_MOCK=1 <bin> --greeter --style look --look glass` (preview: the password is **tessera**; Esc quits). For the greetd path: `python3 native/tessera-ui/tools/fake-greetd.py` in the arena (see its header for its socket), then `GREETD_SOCK=<sock> <bin> --greeter --demo users`.
+Run: `TESSERA_ARENA=N ./dev.sh run env TESSERA_GREETER_MOCK=1 <bin> --greeter --style look --look glass` (preview: the password is **tessera**; Esc quits). For the greetd path: `python3 native/tessera-ui/tools/fake-greetd.py` in the arena (see its header for its socket), then `GREETD_SOCK=<sock> <bin> --greeter --demo users`.
 1. Type `nope` + Return → field clears, shakes, "Incorrect password. Try again."; ~600 ms "Logging in…" first.
 2. Type `tessera` + Return → "logs in": the window quits ~1.2 s later; stderr says "would launch".
 3. Esc with an empty field and no power choice → quits (preview).

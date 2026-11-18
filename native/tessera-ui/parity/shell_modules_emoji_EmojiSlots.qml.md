@@ -8,5 +8,5 @@
 
 ## Test plan (tester)
 Arena 1920×1080, panel centred x 750..1170, y 326..754.
-1. Open (`inbox 'ipc panels open emoji IRICE-TEST'`), `wtype -k Escape`, wait 60 s, `rec em-reopen 0.6 "ipc emoji open"` → the first frame with the panel comes within ≈ 1 frame of the command and the spring starts at once (before: after 10 s closed, the reopen waited for a warm-up frame, ≥ 1 extra frame and sometimes a visible hitch). Compare with QML (also instant within 5 min).
+1. Open (`inbox 'ipc panels open emoji TESSERA-TEST'`), `wtype -k Escape`, wait 60 s, `rec em-reopen 0.6 "ipc emoji open"` → the first frame with the panel comes within ≈ 1 frame of the command and the spring starts at once (before: after 10 s closed, the reopen waited for a warm-up frame, ≥ 1 extra frame and sometimes a visible hitch). Compare with QML (also instant within 5 min).
 2. Wait 6 minutes closed, reopen: both QML and Rust make the window again (a short wait is expected in both).

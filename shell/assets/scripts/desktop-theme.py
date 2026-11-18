@@ -70,9 +70,8 @@ def current(path, group, key):
 
 
 # Schemes Tessera may switch between; anything else was chosen by the user and
-# is left alone (a palette set in KDE's settings or qt6ct isn't ours to undo;
-# iRice…: ours from before iRice became Tessera)
-OURS = re.compile(r"^(BreezeDark|BreezeLight|Breeze|Tessera.*|iRice.*)?$")
+# is left alone (a palette set in KDE's settings or qt6ct isn't ours to undo)
+OURS = re.compile(r"^(BreezeDark|BreezeLight|Breeze|Tessera.*)?$")
 
 
 def fallback_scheme(path, dark):
@@ -142,7 +141,7 @@ def apply_kde(mode, scheme=None):
     # qt6ct: only when no palette is chosen, or one of ours (Tessera.conf from
     # Match apps, or this one)
     chosen = current(cfg / "qt6ct/qt6ct.conf", "Appearance", "color_scheme_path")
-    if not chosen or Path(chosen).name.startswith(("Tessera", "iRice")):
+    if not chosen or Path(chosen).name.startswith("Tessera"):
         changed |= update_ini(qt_palette, {"ColorScheme": {"active_colors": ", ".join(colors), "inactive_colors": ", ".join(colors), "disabled_colors": ", ".join(disabled)}})
         changed |= update_ini(cfg / "qt6ct/qt6ct.conf", {"Appearance": {"custom_palette": "true", "color_scheme_path": str(qt_palette)}})
     # Existing KDE apps that watch the desktop palette can reload it.

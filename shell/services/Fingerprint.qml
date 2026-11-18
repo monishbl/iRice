@@ -192,7 +192,7 @@ Singleton {
         onExited: code => {
             if (code !== 0 && code !== 126)
                 root.pamError = code === 127 ? "Not allowed (an administrator's password is needed)."
-                    : (pamErr.text.replace(/^(tessera|irice)-root: /, "").trim() || "That didn't change. Update Tessera, then try again.");
+                    : (OldNames.withoutHelperPrefix(pamErr.text).trim() || "That didn't change. Update Tessera, then try again.");
             root.pamBusy = "";
             root.refresh();
         }

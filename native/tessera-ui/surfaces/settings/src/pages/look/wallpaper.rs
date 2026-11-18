@@ -163,7 +163,7 @@ pub fn wallpaper(cx: &mut Ctx, p: &mut Page) {
 
     // The login screen keeps its own copy (./install.sh --greeter); the
     // shell copies it (its root helper, else the password)
-    let installed = std::path::Path::new("/usr/share/tessera").is_dir() || std::path::Path::new("/usr/share/irice").is_dir();
+    let installed = std::path::Path::new("/usr/share/tessera").is_dir() || std::path::Path::new(tessera_core::old_names::LOGIN_SHARE).is_dir();
     let passwordless = feed(cx)["rootHelper"].as_bool().unwrap_or(false);
     let status = feed(cx)["loginStatus"].as_str().unwrap_or("").to_string();
     let copy = cx.on(|cx, _| cx.ask("look", "loginWallpaper", Value::Null));

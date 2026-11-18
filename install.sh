@@ -131,6 +131,9 @@ run() {
 # pacman with second chances (a mirror that's behind, a stalled download, an
 # old keyring): tools/pac.sh, shared with tools/setup-tty.sh
 source "$ROOT/tools/pac.sh"
+# Tessera's old name: what an install from before it left under it
+# (old-names.sh, the one place here that knows it; REMOVE AFTER 2027-02-01)
+source "$ROOT/shell/assets/scripts/old-names.sh"
 ask() { # question, default (y|n) -> 0 for yes
     local def="${2:-y}" reply
     [[ $YES == 1 || $DRY == 1 || $PLAN_ONLY == 1 ]] && [[ $def == y ]] && return 0
@@ -229,7 +232,7 @@ hypr_version() {
 qs_version() {
     local qs=qs
     local d
-    for d in "$DATA/tessera" "$DATA/irice"; do # (irice: built before the rename)
+    for d in "$DATA/tessera"; do
         [[ -x "$d/quickshell/bin/qs" && -d "$d/quickshell/lib/qt6/qml/Quickshell" ]] && { qs="$d/quickshell/bin/qs"; break; }
     done
     "$qs" --version 2>/dev/null | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+' | head -1
@@ -924,7 +927,7 @@ add_to_path() {
     [[ $DRY == 1 ]] && { note "would add ~/.local/bin to your PATH"; return 0; }
     local rc
     for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
-        if [[ -f "$rc" ]] && ! grep -q -e 'tessera: local bin' -e 'irice: local bin' "$rc"; then
+        if [[ -f "$rc" ]] && ! grep -q -e 'tessera: local bin' -e "$OLD_LINE_MARK: local bin" "$rc"; then
             printf '\nexport PATH="$HOME/.local/bin:$PATH" # tessera: local bin\n' >>"$rc"
         fi
     done
@@ -962,12 +965,8 @@ install_files() {
     else
         run cp -r "$ROOT/shell" "$CONFIG/quickshell/tessera"
     fi
-    # (iRice's: a shell started from it before the rename keeps finding its
-    # files until it restarts as Tessera)
-    if [[ -e "$CONFIG/quickshell/irice" || -L "$CONFIG/quickshell/irice" ]]; then
-        run rm -rf "$CONFIG/quickshell/irice"
-        run ln -s tessera "$CONFIG/quickshell/irice"
-    fi
+    # (the copy installed under the old name goes)
+    old_names_quickshell "$CONFIG" "$DRY"
     # Hyprland config: yours is backed up once, before Tessera first replaces it
     if [[ -d "$CONFIG/hypr" && ! -d "$CONFIG/hypr/tessera" && ! -e "$CONFIG/hypr.pre-tessera" ]]; then
         run cp -a "$CONFIG/hypr" "$CONFIG/hypr.pre-tessera"
@@ -1028,7 +1027,6 @@ install_files() {
     run mkdir -p "$DATA/tessera"
     [[ $DRY == 1 ]] || printf '%s\n' "$ROOT" >"$DATA/tessera/source"
     run install -m 755 "$ROOT/tools/tessera" "$BIN/tessera"
-    run rm -f "$BIN/irice" # (the command's name before iRice became Tessera)
     case ":$PATH:" in
         *":$BIN:"*) ;;
         *) add_to_path ;;
@@ -1139,7 +1137,6 @@ keyring_at_login() { # pam file
 # /etc/default/grub, kept as .pre-tessera; other boot loaders: a note). tessera
 # uninstall puts both back.
 PLYMOUTH_DROPIN=/etc/systemd/system/plymouth-quit.service.d/tessera.conf
-OLD_PLYMOUTH_DROPIN=/etc/systemd/system/plymouth-quit.service.d/irice.conf # (iRice's)
 quiet_boot() {
     if command -v plymouth >/dev/null; then
         local dropin='# Tessera: the splash stays until the login screen draws (tessera uninstall removes this)
@@ -1174,27 +1171,6 @@ ExecStart=-/usr/bin/plymouth quit --retain-splash'
     else
         sudo cp -a "$grub.pre-tessera" "$grub"
         warn "grub-mkconfig failed: $grub is as it was"
-    fi
-}
-
-# The login screen's entry for a Tessera run from a folder (tools/setup-
-# session.sh, ./dev.sh tty's way in): iRice's, from before it became
-# Tessera, becomes Tessera's, starting the same folder's session script
-login_session_entry() {
-    local sessions="${TESSERA_SYSTEM_ROOT:-}/usr/share/wayland-sessions" # (TESSERA_SYSTEM_ROOT: the tests)
-    local old="$sessions/irice.desktop" exec dir
-    [[ -f $old ]] || return 0
-    exec=$(sed -n 's/^Exec=//p' "$old" | head -1)
-    dir=$(dirname "$exec")
-    if [[ "$exec" == */sandbox/irice-session.sh && -x "$dir/tessera-session.sh" ]]; then
-        if [[ $DRY == 1 ]]; then
-            note "would replace $old with $sessions/tessera.desktop ($dir/tessera-session.sh)"
-            return 0
-        fi
-        printf '%s\n' '[Desktop Entry]' 'Name=Tessera' "Comment=Tessera, the macOS-style Hyprland desktop, from $(dirname "$dir")" \
-            "Exec=$dir/tessera-session.sh" 'Type=Application' 'DesktopNames=Hyprland' |
-            sudo tee "$sessions/tessera.desktop" >/dev/null &&
-            sudo rm -f "$old" && note "The login screen's entry is \"Tessera\" now"
     fi
 }
 
@@ -1265,11 +1241,11 @@ vt = 1
 command = "/usr/share/tessera/greeter-session.sh"
 user = "greeter"'
         if [[ $DRY == 1 ]]; then note "would write /etc/greetd/config.toml"; else printf '%s\n' "$conf" | sudo tee /etc/greetd/config.toml >/dev/null; fi
-        # iRice's copy, from before it became Tessera: greetd starts Tessera's now
-        if [[ -d /usr/share/irice ]] && grep -q /usr/share/tessera/ /etc/greetd/config.toml 2>/dev/null; then
-            run sudo rm -rf /usr/share/irice
+        # (the copy installed under the old name: greetd starts Tessera's now)
+        if [[ -d $OLD_LOGIN_SHARE ]] && grep -q /usr/share/tessera/ /etc/greetd/config.toml 2>/dev/null; then
+            run sudo rm -rf "$OLD_LOGIN_SHARE"
         fi
-        login_session_entry
+        old_names_install "${TESSERA_SYSTEM_ROOT:-}" "$DRY"
         if [[ -n "$OTHER_DM" ]]; then
             run sudo systemctl disable "$OTHER_DM"
             [[ $DRY == 1 ]] || printf '%s\n' "$OTHER_DM" >"$DATA/tessera/previous-login-manager" # for tessera uninstall
@@ -1283,7 +1259,7 @@ user = "greeter"'
         # from the file your login shell reads (bash, zsh, fish or sh)
         local profile
         profile=$(login_profile)
-        if ! grep -q -e 'tessera: start Hyprland' -e 'irice: start Hyprland' "$profile" 2>/dev/null; then
+        if ! grep -q -e 'tessera: start Hyprland' -e "$OLD_LINE_MARK: start Hyprland" "$profile" 2>/dev/null; then
             if [[ $DRY == 1 ]]; then
                 note "would add starting Hyprland on tty1 to $profile"
             elif [[ $profile == *.fish ]]; then
@@ -1302,37 +1278,19 @@ user = "greeter"'
     return 0
 }
 
-# ── iRice is now Tessera ────────────────────────────────────────────────
-# What an install from before the rename made under iRice's names moves to
-# Tessera's before anything is written: your settings and data
-# (migrate-names.py: …/irice to …/tessera, the old names left as links),
-# the Hyprland files it installed, and the backups of yours it kept (the
-# uninstaller puts those back). Nothing is lost or written twice.
+# ── Tessera's old name ──────────────────────────────────────────────────
+# What an install from before the rename made under the old name moves to
+# Tessera's before anything is written: your settings, data, Hyprland files
+# and backups (migrate-names.py), root's backups and the login screen's
+# entry (old-names.sh). Nothing is lost or written twice.
 adopt_old_names() {
     if [[ $DRY == 1 ]]; then
-        note "would move iRice's folders, backups and login entries to Tessera's names"
+        note "would move what's under Tessera's old name to Tessera's"
+        old_names_install "${TESSERA_SYSTEM_ROOT:-}" 1 | sed 's/^/  /'
         return 0
     fi
-    python3 -I "$ROOT/shell/assets/scripts/migrate-names.py" || true
-    local p n
-    for p in "$CONFIG/hypr" "$CONFIG/hypr/hyprland.conf"; do
-        [[ -e "$p.pre-irice" && ! -e "$p.pre-tessera" ]] && mv "$p.pre-irice" "$p.pre-tessera"
-    done
-    if [[ -d "$CONFIG/hypr/irice" && ! -L "$CONFIG/hypr/irice" && ! -e "$CONFIG/hypr/tessera" ]]; then
-        mv "$CONFIG/hypr/irice" "$CONFIG/hypr/tessera" && ln -s tessera "$CONFIG/hypr/irice"
-    fi
-    for p in irice.fish:tessera.fish irice-start-hyprland.fish:tessera-start-hyprland.fish; do
-        [[ -f "$CONFIG/fish/conf.d/${p%%:*}" && ! -e "$CONFIG/fish/conf.d/${p##*:}" ]] &&
-            mv "$CONFIG/fish/conf.d/${p%%:*}" "$CONFIG/fish/conf.d/${p##*:}"
-    done
-    # (root's: greetd's config, GRUB's, the PAM files the keyring line went in;
-    # TESSERA_SYSTEM_ROOT: where /etc is, for the tests)
-    local s="${TESSERA_SYSTEM_ROOT:-}"
-    for p in "$s"/etc/greetd/config.toml.pre-irice "$s"/etc/default/grub.pre-irice "$s"/etc/pam.d/*.pre-irice; do
-        [[ -e $p ]] || continue
-        n="${p%.pre-irice}.pre-tessera"
-        [[ -e $n ]] || sudo mv "$p" "$n" || true
-    done
+    python3 -I "$ROOT/shell/assets/scripts/migrate-names.py" --no-checkout || true
+    old_names_install "${TESSERA_SYSTEM_ROOT:-}" 0
     return 0
 }
 
@@ -1368,9 +1326,8 @@ verify() {
     fi
     # Glass plugin built for this Hyprland
     local so="$DATA/tessera/tessera-glass.so"
-    [[ -f "$so" ]] || so="$DATA/tessera/irice-glass.so" # (built before iRice became Tessera)
     if [[ -f "$so" ]] && [[ -n "$(nm -D "$so" 2>/dev/null | grep -E "pluginInit|PLUGIN_INIT")" ]]; then
-        if [[ "$(cat "$DATA/tessera/tessera-glass.built-for" 2>/dev/null || cat "$DATA/tessera/irice-glass.built-for" 2>/dev/null)" == "$hv" ]]; then
+        if [[ "$(cat "$DATA/tessera/tessera-glass.built-for" 2>/dev/null)" == "$hv" ]]; then
             ok "Glass plugin built for Hyprland $hv"
         else
             meh "The glass plugin was built for another Hyprland version" "tessera rebuild (until then glass looks frosted)"
@@ -1411,22 +1368,22 @@ verify() {
     if systemctl is-enabled --quiet greetd 2>/dev/null; then
         if [[ -f /usr/share/tessera/shell/greeter.qml && -f /usr/share/tessera/greeter.lua ]] && id greeter >/dev/null 2>&1 && grep -q tessera /etc/greetd/config.toml 2>/dev/null; then
             ok "Tessera login screen (greetd)"
-        elif [[ -f /usr/share/irice/shell/greeter.qml ]] && grep -q /usr/share/irice/ /etc/greetd/config.toml 2>/dev/null; then
-            meh "The login screen is the one installed before iRice became Tessera (it works)" "./install.sh --only=login"
+        elif [[ -f $OLD_LOGIN_SHARE/shell/greeter.qml ]] && grep -q "$OLD_LOGIN_SHARE/" /etc/greetd/config.toml 2>/dev/null; then
+            meh "The login screen is the one installed under Tessera's old name (it works)" "./install.sh --only=login"
         else
             bad "greetd is on but the Tessera login screen isn't set up" "run the installer again"
         fi
     elif [[ -n "$(basename "$(readlink /etc/systemd/system/display-manager.service 2>/dev/null)" .service 2>/dev/null)" ]]; then
         ok "Login screen: $(basename "$(readlink /etc/systemd/system/display-manager.service)" .service) (choose Hyprland there)"
-    elif grep -q -e 'tessera: start Hyprland' -e 'irice: start Hyprland' "$(login_profile)" 2>/dev/null; then
+    elif grep -q -e 'tessera: start Hyprland' -e "$OLD_LINE_MARK: start Hyprland" "$(login_profile)" 2>/dev/null; then
         ok "Hyprland starts when you log in on tty1"
     else
         meh "Nothing starts Hyprland at login" "start it with: start-hyprland"
     fi
     # Inside a running Tessera session: the live parts
     if [[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]] && command -v hyprctl >/dev/null; then
-        { hyprctl tessera-glass ping 2>/dev/null | grep -q tessera-glass || hyprctl irice-glass ping 2>/dev/null | grep -q irice-glass; } && ok "Glass plugin loaded in Hyprland" || meh "The glass plugin isn't loaded in this session" "tessera rebuild --load"
-        if pgrep -af '(^|/)(tessera-shell|irice-shell|qs|quickshell) ' | grep -qi -e tessera -e irice; then
+        hyprctl tessera-glass ping 2>/dev/null | grep -q tessera-glass && ok "Glass plugin loaded in Hyprland" || meh "The glass plugin isn't loaded in this session" "tessera rebuild --load"
+        if pgrep -af '(^|/)(tessera-shell|qs|quickshell) ' | grep -qi -e tessera; then
             ok "The Tessera shell is running"
         else
             bad "The Tessera shell isn't running" "tessera repair"

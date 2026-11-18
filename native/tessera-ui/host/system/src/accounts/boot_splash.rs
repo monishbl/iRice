@@ -37,9 +37,9 @@ pub struct BootSplash {
     sent: Value,
 }
 
-/// `^(tessera|irice)-(.+)$` → the id (irice-<id>: set before iRice became Tessera)
+/// `tessera-<id>` → the id (or the old name's, until the root setup renames it)
 pub fn design_id(theme: &str) -> &str {
-    theme.strip_prefix("tessera-").or_else(|| theme.strip_prefix("irice-")).filter(|r| !r.is_empty()).unwrap_or("")
+    tessera_core::old_names::plymouth_id(theme).filter(|r| !r.is_empty()).unwrap_or("")
 }
 
 impl BootSplash {
@@ -105,11 +105,11 @@ impl BootSplash {
             "t=$(sed -n 's/^[[:space:]]*Theme[[:space:]]*=[[:space:]]*//p' /etc/plymouth/plymouthd.conf 2>/dev/null | tail -n 1)".into(),
             "[ -n \"$t\" ] || t=$(sed -n 's/^[[:space:]]*Theme[[:space:]]*=[[:space:]]*//p' /usr/share/plymouth/plymouthd.defaults 2>/dev/null | tail -n 1)".into(),
             "echo \"theme:$t\"".into(),
-            "echo \"record:$(head -c 512 /etc/tessera/bootsplash.json 2>/dev/null || head -c 512 /etc/irice/bootsplash.json 2>/dev/null)\"".into(),
+            format!("echo \"record:$(head -c 512 /etc/tessera/bootsplash.json 2>/dev/null || head -c 512 {}/bootsplash.json 2>/dev/null)\"", tessera_core::old_names::ETC),
             "grep -qw splash /proc/cmdline && echo splash".into(),
             "for b in mkinitcpio dracut booster; do command -v $b >/dev/null && { echo \"builder:$b\"; break; }; done".into(),
             "grep -hE '^[[:space:]]*HOOKS[+]?=' /etc/mkinitcpio.conf /etc/mkinitcpio.conf.d/*.conf 2>/dev/null | grep -qw plymouth && echo hooked".into(),
-            format!("{} && {{ test -d /usr/lib/tessera/plymouth/tessera-breathe || test -d /usr/lib/irice/plymouth/irice-breathe; }} && echo helper", root_knows("bootsplash")),
+            format!("{} && {{ test -d /usr/lib/tessera/plymouth/tessera-breathe || test -d {}; }} && echo helper", root_knows("bootsplash"), tessera_core::old_names::PLYMOUTH_BREATHE),
             ":".into(),
         ]
         .join("; ");
@@ -218,7 +218,6 @@ mod tests {
     #[test]
     fn theme_names_and_probe_lines() {
         assert_eq!(design_id("tessera-breathe"), "breathe");
-        assert_eq!(design_id("irice-breathe"), "breathe");
         assert_eq!(design_id("spinner"), "");
         let t = "installed\ntheme:spinner\nbuilder:mkinitcpio\n";
         let v = read_probe(t);

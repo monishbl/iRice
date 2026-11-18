@@ -289,7 +289,7 @@ or answer for the Settings pages to work.
   discovery (TESSERA_UPDATE_REPO wins), tessera-update.py check, conflict
   decisions kept across checks, packages status, launch (the same sh -c copy
   of the updater + update-run.sh, started detached), 20 s start timeout, last
-  result file (tessera-/irice-update-result.json, deleted) and the 4 s
+  result file (tessera-/tessera-update-result.json, deleted) and the 4 s
   "Tessera updated" alert. The update screen's menu icon glyph comes from
   `tessera_core::icons`.
 - Check: Check for updates (shows the report/conflicts); Update runs

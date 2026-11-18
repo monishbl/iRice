@@ -3,7 +3,7 @@
 setup foot -T A & sleep 1; foot -T B & sleep 1; foot -T C & sleep 1; hyprctl dispatch 'hl.dsp.workspace(2)'; sleep 1; foot -T D & sleep 1; hyprctl dispatch 'hl.dsp.workspace(1)'
 wait 6
 ptr move 100 900
-rec mc-open 1.2 ipc panels open missionControl IRICE-TEST
+rec mc-open 1.2 ipc panels open missionControl TESSERA-TEST
 note Open takes 320 ms (emphasized in): bar slides 30 px down while fading, stage scales 0.96 -> 1. Rust Glass was slower than QML before: first change and duration must match QML within 1-2 frames.
 wait 1
 shot open
@@ -17,14 +17,14 @@ note Pointer moved off: hover state back to normal (no border, no pill).
 rec mc-close 1.2 ipc panels close
 note Close takes 320 ms (exit curve); compare with QML (Glass QML was about 0.20 s first change).
 wait 1
-ipc panels open missionControl IRICE-TEST
+ipc panels open missionControl TESSERA-TEST
 wait 1
 # NOTE: click on layer surfaces may not register in the harness
 ptr move 960 560 sleep 200 click
 wait 1
 shot click-window
 note Clicking a window focuses it and closes Mission Control.
-ipc panels open missionControl IRICE-TEST
+ipc panels open missionControl TESSERA-TEST
 wait 1
 ptr move 794 86 sleep 200 click
 wait 1
@@ -34,7 +34,7 @@ ptr move 794 134 sleep 200 click
 wait 1
 shot click-title
 note Click on the title under card 2 (794, 134): Mission Control CLOSES (title is not part of the card's click area), same as QML.
-ipc panels open missionControl IRICE-TEST
+ipc panels open missionControl TESSERA-TEST
 wait 1
 ptr move 1126 86 sleep 200 down glide 794 86 600 sleep 200
 shot drag-card
@@ -47,7 +47,7 @@ key -k Escape
 wait 1
 shot esc
 note Escape closes Mission Control.
-ipc panels open missionControl IRICE-TEST
+ipc panels open missionControl TESSERA-TEST
 wait 1
 ptr move 960 1060 sleep 200 click
 wait 1
@@ -61,7 +61,7 @@ ipc panels close
 wait 1
 setup hyprctl dispatch workspace 3
 wait 1
-ipc panels open missionControl IRICE-TEST
+ipc panels open missionControl TESSERA-TEST
 wait 1
 shot empty
 note Empty space 3: "No windows on this desktop" centred in the stage, same as QML; dock icons coloured on Rust too.

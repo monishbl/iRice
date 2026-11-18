@@ -51,15 +51,13 @@ pub struct Events {
     subscribers: Vec<&'static str>,
 }
 
-/// The binary: $TESSERA_EVENTS, else <data>/bin/tessera-events, else the one
-/// built while Tessera was called iRice
+/// The binary: $TESSERA_EVENTS, else <data>/bin/tessera-events
 fn find_binary() -> Option<String> {
     let mut list: Vec<String> = Vec::new();
     if let Some(p) = tessera_core::env::var("EVENTS").filter(|p| !p.is_empty()) {
         list.push(p);
     }
     list.push(data_dir().join("bin/tessera-events").to_string_lossy().into_owned());
-    list.push(data_dir().join("bin/irice-events").to_string_lossy().into_owned());
     use std::os::unix::fs::PermissionsExt;
     list.into_iter().find(|p| std::fs::metadata(p).is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0))
 }

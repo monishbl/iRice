@@ -2,14 +2,8 @@
 -- Loads the real Tessera modules from ../../hypr with ALT as the modifier,
 -- because the host Hyprland swallows SUPER.
 
-local root = (os.getenv("TESSERA_ROOT") or os.getenv("IRICE_ROOT"))
--- Tessera's folder under base, or iRice's while it hasn't been moved yet
--- (the shell moves it at its next start: migrate-names.py)
+local root = os.getenv("TESSERA_ROOT")
 local function appDir(base)
-    local f = io.open(base .. "/tessera/config.json", "r")
-    if f then f:close(); return base .. "/tessera" end
-    f = io.open(base .. "/irice/config.json", "r")
-    if f then f:close(); return base .. "/irice" end
     return base .. "/tessera"
 end
 TESSERA_MOD = "ALT"
@@ -19,7 +13,7 @@ hl.monitor({ output = "WAYLAND-1", mode = "preferred", position = "0x0", scale =
 -- Headless test output (created by dev.sh up). It renders even when the sandbox
 -- window is hidden on the host, so screenshots work at a fixed 1920x1080.
 -- Placed far from WAYLAND-1 so the pointer can never wander onto it.
-hl.monitor({ output = "IRICE-TEST", mode = "1920x1080@60", position = "20000x20000", scale = 1 })
+hl.monitor({ output = "TESSERA-TEST", mode = "1920x1080@60", position = "20000x20000", scale = 1 })
 hl.config({
     input = { kb_layout = "us", follow_mouse = 1, touchpad = { natural_scroll = true } },
     -- No Hyprland update/donation pop-ups inside the test compositor
@@ -36,8 +30,7 @@ dofile(root .. "/hypr/tessera/keybinds.lua")
 dofile(root .. "/hypr/tessera/gestures.lua")
 pcall(dofile, root .. "/hypr/tessera/titlebars.lua") -- only with the hyprbars plugin
 -- Liquid Glass plugin straight from the repo build (make -C hypr/plugin/tessera-glass)
--- (or the one built there while Tessera was called iRice, until it's rebuilt)
-TESSERA_GLASS_PLUGIN = { root .. "/hypr/plugin/tessera-glass/tessera-glass.so", root .. "/hypr/plugin/irice-glass/irice-glass.so" }
+TESSERA_GLASS_PLUGIN = { root .. "/hypr/plugin/tessera-glass/tessera-glass.so" }
 pcall(dofile, root .. "/hypr/tessera/glass.lua")
 
 -- (MOD + SHIFT + R is recording, MOD + Return the terminal: see keybinds.lua)

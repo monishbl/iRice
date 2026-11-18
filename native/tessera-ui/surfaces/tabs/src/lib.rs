@@ -91,11 +91,11 @@ pub fn strips(groups: &[Group], clients: &[Client], monitors: &[Monitor]) -> Vec
 /// The raw events that move windows (the strips step aside) or regroup them
 pub fn kind(line: &str) -> Option<bool> {
     let (name, data) = line.split_once(">>").unwrap_or((line, ""));
-    const MOVING: &[&str] = &["workspace", "workspacev2", "movewindow", "movewindowv2", "changefloatingmode", "fullscreen", "openwindow", "closewindow", "tessera-drag", "irice-drag", "moveworkspace", "moveworkspacev2", "configreloaded", "monitoradded", "monitorremoved"];
+    const MOVING: &[&str] = &["workspace", "workspacev2", "movewindow", "movewindowv2", "changefloatingmode", "fullscreen", "openwindow", "closewindow", "tessera-drag", "moveworkspace", "moveworkspacev2", "configreloaded", "monitoradded", "monitorremoved"];
     const GROUPING: &[&str] = &["togglegroup", "moveintogroup", "moveoutofgroup", "activewindowv2", "lockgroups", "ignoregrouplock"];
     if MOVING.contains(&name) {
         // (a drag that ends doesn't hide them)
-        Some(!((name == "tessera-drag" || name == "irice-drag") && data.starts_with("drop")))
+        Some(!(name == "tessera-drag" && data.starts_with("drop")))
     } else if GROUPING.contains(&name) {
         Some(false)
     } else {
@@ -121,7 +121,7 @@ enum M {
 }
 
 fn read() -> Read {
-    let groups = ["tessera-glass groups", "irice-glass groups"].iter().find_map(|c| request(c).ok().and_then(|s| serde_json::from_str::<Vec<Group>>(&s).ok())).unwrap_or_default();
+    let groups = request("tessera-glass groups").ok().and_then(|s| serde_json::from_str::<Vec<Group>>(&s).ok()).unwrap_or_default();
     let clients = request("j/clients").ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
     let monitors = request("j/monitors").ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
     Read { groups, clients, monitors }

@@ -1,5 +1,5 @@
 # OverlayWidget. Both looks.
-ipc panels open overlay IRICE-TEST
+ipc panels open overlay TESSERA-TEST
 wait 1
 # First toggle (e.g. Resources) assumed at (800, 44); read from the shot
 ptr move 800 44 sleep 200 click
@@ -13,7 +13,7 @@ shot dragged
 note Dragged 200 px down by its title bar; the widget is now 200 px lower.
 ipc panels close
 wait 1
-ipc panels open overlay IRICE-TEST
+ipc panels open overlay TESSERA-TEST
 wait 1
 shot reopened
 note After closing and reopening the overlay the widget stays where it was dropped (same as QML).

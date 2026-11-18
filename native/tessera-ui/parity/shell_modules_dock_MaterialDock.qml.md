@@ -13,7 +13,7 @@
 
 ## Test plan
 
-### Geometry (the user's settings, 1920x1080 IRICE-TEST, scale 1, no windows open)
+### Geometry (the user's settings, 1920x1080 TESSERA-TEST, scale 1, no windows open)
 Items: Apps button | Downloads, Trash (pinned is empty; the divider before Downloads).
 - Glass (icon 48, gap 9, pad 12, bar 72, bottom gap 6, magnification ×1.6): pill x 857..1063, y 1002..1074; icon centres x Apps 894, Downloads 970, Trash 1027; y 1038. Hover band y 961..1074.
 - Material (icon 48, pad 8, gap 9, bar 64, bottom gap 16): pill x 861..1059, y 1000..1064; icon centres x 894, 970, 1027; y 1032.

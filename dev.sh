@@ -7,7 +7,11 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # This folder, always: inside a Tessera session the environment says where
 # *that* Tessera is (TESSERA_ROOT), and the sandbox would run that copy instead
 export TESSERA_ROOT="$ROOT"
-BOX=irice
+# (Tessera's old name: its environment names still count, and a container
+# made under it is used until it's renamed: old-names.sh, until 2027-02-01)
+source "$ROOT/shell/assets/scripts/old-names.sh"
+old_names_env
+BOX=$(old_names_dev_box)
 source "$ROOT/sandbox/lib.sh"
 RT="$TESSERA_RT"
 PKGS=(hyprland hypridle hyprpicker hyprsunset xdg-desktop-portal-hyprland
@@ -89,7 +93,7 @@ case "${1:-help}" in
     up)
         running && { echo "Sandbox already running."; exit 0; }
         stop_sandbox_apps # left behind by a sandbox that crashed
-        [[ "${TESSERA_VISIBLE:-${IRICE_VISIBLE:-0}}" == 1 ]] && : "${WAYLAND_DISPLAY:?host WAYLAND_DISPLAY not set}"
+        [[ "${TESSERA_VISIBLE:-0}" == 1 ]] && : "${WAYLAND_DISPLAY:?host WAYLAND_DISPLAY not set}"
         [[ -d "$TESSERA_HOME" ]] || seed_arena
         # (without the files this shell has open: a smoke check's lock would
         # stay held for as long as the sandbox runs)
@@ -99,7 +103,7 @@ case "${1:-help}" in
                 ((fd > 2)) && eval "exec $fd>&-"
             done
             exec setsid -f "${BOXCMD[@]}" env HOME="$TESSERA_HOME" TESSERA_ARENA="$TESSERA_ARENA" TESSERA_HOST_WAYLAND="${WAYLAND_DISPLAY:-}" TESSERA_HYPRLAND="${TESSERA_HYPRLAND:-}" \
-                TESSERA_VISIBLE="${TESSERA_VISIBLE:-${IRICE_VISIBLE:-0}}" TESSERA_HOST_AUDIO="${TESSERA_HOST_AUDIO:-${IRICE_HOST_AUDIO:-0}}" \
+                TESSERA_VISIBLE="${TESSERA_VISIBLE:-0}" TESSERA_HOST_AUDIO="${TESSERA_HOST_AUDIO:-0}" \
                 TESSERA_FAKE_ACCOUNTS="${TESSERA_FAKE_ACCOUNTS:-}" \
                 "$ROOT/sandbox/inner.sh" >/dev/null 2>&1
         )
@@ -110,7 +114,7 @@ case "${1:-help}" in
         # no window on your desktop to park.
         hpid="$(pgrep -P "$(sandbox_pid)" -x Hyprland | head -1 || true)"
         found=0
-        if [[ "${TESSERA_VISIBLE:-${IRICE_VISIBLE:-0}}" == 1 && $hpid =~ ^[0-9]+$ ]]; then
+        if [[ "${TESSERA_VISIBLE:-0}" == 1 && $hpid =~ ^[0-9]+$ ]]; then
             for _ in $(seq 25); do
                 hyprctl -j clients | jq -e ".[] | select(.pid == $hpid)" >/dev/null && { found=1; break; }
                 sleep 0.2
@@ -118,12 +122,12 @@ case "${1:-help}" in
         fi
         # Only when that exact window exists; never a bare "pid:" to the real compositor
         # (other arenas out of sight, on a special workspace of their own)
-        ws="${TESSERA_HOST_WORKSPACE:-${IRICE_HOST_WORKSPACE:-1}}"
-        [[ "$TESSERA_ARENA" != 1 ]] && ws='"special:irice-arenas"'
+        ws="${TESSERA_HOST_WORKSPACE:-1}"
+        [[ "$TESSERA_ARENA" != 1 ]] && ws='"special:tessera-arenas"'
         [[ $found == 1 ]] && { hyprctl dispatch "hl.dsp.window.move({ workspace = $ws, follow = false, window = \"pid:$hpid\" })" >/dev/null || true; }
         # (once the nested Hyprland answers: hidden, nothing above waited for it)
         for _ in $(seq 50); do nested hyprctl monitors >/dev/null 2>&1 && break; sleep 0.2; done
-        nested hyprctl output create headless IRICE-TEST >/dev/null
+        nested hyprctl output create headless TESSERA-TEST >/dev/null
         # Layer surfaces in the nested output keep their first size after the host
         # resizes the window, so restart the shell once it has settled.
         sleep 1.5 && nested "$ROOT/sandbox/reload-shell.sh" >/dev/null
@@ -136,10 +140,10 @@ case "${1:-help}" in
             || echo "Sandbox not running."
         ;;
     status)  running && echo "running (pid $(sandbox_pid))" || echo "stopped" ;;
-    reload)  "$ROOT/tools/build-shaders.sh" && nested env TESSERA_LAB="${TESSERA_LAB:-${IRICE_LAB:-0}}" "$ROOT/sandbox/reload-shell.sh" ;;
-    # Screenshots come from the headless IRICE-TEST output, which renders even
+    reload)  "$ROOT/tools/build-shaders.sh" && nested env TESSERA_LAB="${TESSERA_LAB:-0}" "$ROOT/sandbox/reload-shell.sh" ;;
+    # Screenshots come from the headless TESSERA-TEST output, which renders even
     # while the sandbox window is on a hidden host workspace.
-    shot)    nested timeout 15 grim -o IRICE-TEST "${2:-$RT/shot.png}" && echo "${2:-$RT/shot.png}" ;;
+    shot)    nested timeout 15 grim -o TESSERA-TEST "${2:-$RT/shot.png}" && echo "${2:-$RT/shot.png}" ;;
     hyprctl) shift; nested hyprctl "$@" ;;
     run)     shift; nested "$@" ;;
     ipc)     shift; nested env QS=qs "$ROOT/shell/assets/scripts/shell-ipc.sh" call "$@" ;; # (either look's root)
@@ -167,10 +171,10 @@ case "${1:-help}" in
             case "$comm" in
                 Hyprland|start-hyprland|dbus-run-sessio*)
                     tr '\0' ' ' <"$d/cmdline" 2>/dev/null | grep -q "sandbox/hypr/tty.lua" && pids="$pids $p" ;;
-                tessera-shell|irice-shell|qs|quickshell|bash|sh|wl-paste)
+                tessera-shell|qs|quickshell|bash|sh|wl-paste)
                     # The marker, or the session's own tty-shell.sh (a script's
                     # exports don't show in its own /proc environ)
-                    { { tr '\0' '\n' <"$d/environ"; } 2>/dev/null | grep -qx -e "TESSERA_TTY=1" -e "IRICE_TTY=1" ||
+                    { { tr '\0' '\n' <"$d/environ"; } 2>/dev/null | grep -qx -e "TESSERA_TTY=1" ||
                         tr '\0' ' ' <"$d/cmdline" 2>/dev/null | grep -q "sandbox/tty-shell.sh"; } && pids="$pids $p" ;;
             esac
         done
@@ -217,7 +221,7 @@ case "${1:-help}" in
     *)
         cat <<EOF
 Usage: ./dev.sh <command>
-  create       Create the irice distrobox and install the toolchain
+  create       Create the tessera distrobox and install the toolchain
   up | down    Start / stop the nested Hyprland sandbox
   tty          Start a real (non-nested) Tessera session; run from a text console
   tty-stop     End a (frozen) tty session from anywhere [--force] [--dry-run]
@@ -225,14 +229,14 @@ Usage: ./dev.sh <command>
   reload       Restart the sandbox Quickshell
   hyprctl ...  Run hyprctl against the sandbox compositor
   run ...      Run any command inside the sandbox session
-  ipc ...      Call the shell's IPC, e.g. ./dev.sh ipc panels open controlCenter IRICE-TEST
-  shot [file]  Screenshot the headless IRICE-TEST output
-  pointer ...  Move/click/scroll a virtual pointer on IRICE-TEST, e.g. pointer move 960 15 click
-               (build it once with: distrobox enter irice -- sandbox/tools/build.sh)
+  ipc ...      Call the shell's IPC, e.g. ./dev.sh ipc panels open controlCenter TESSERA-TEST
+  shot [file]  Screenshot the headless TESSERA-TEST output
+  pointer ...  Move/click/scroll a virtual pointer on TESSERA-TEST, e.g. pointer move 960 15 click
+               (build it once with: distrobox enter tessera -- sandbox/tools/build.sh)
   enter        Open a shell in the container
   logs [n]     Tail the sandbox Hyprland and Quickshell logs
   reset-home   Wipe the sandbox home (.sandbox/home)
-Every command works on another identical sandbox with TESSERA_ARENA=2..19 (or IRICE_ARENA)
+Every command works on another identical sandbox with TESSERA_ARENA=2..19
 (e.g. TESSERA_ARENA=2 ./dev.sh up): its own compositor, shell and home.
 Sandboxes are hidden and silent: they draw into a private headless display
 (see them with shot) and play into a silent Speakers. TESSERA_VISIBLE=1 up puts

@@ -27,7 +27,7 @@ Shell state host-shell should publish (`Host::set_state`), read here with `Host:
 ## 2. What host-shell should call on this crate
 
 - `Panels.share(paths, scr, note)` -> before opening the sheet: `h.ask("share.paths", json!([paths, note]))`. (This crate also calls `panels.share` itself for the shelf and shared text, and sets the paths first, so those work either way.)
-- The Hyprland raw event `tessera-drag` / `irice-drag` (a window is being moved) -> `h.ask("shelf.windowMove", json!([]))`.
+- The Hyprland raw event `tessera-drag` / `tessera-drag` (a window is being moved) -> `h.ask("shelf.windowMove", json!([]))`.
 - The global shortcuts `pointerDown` / `pointerUp` (left button, hypr/tessera/keybinds.lua) -> `shelf.pointerDown` / `shelf.pointerUp`.
 - The menu bar's shelf icon and the keymap's `shelf` action -> `shelf.toggle` (or `shell-ipc.sh call shelf toggle`, the IPC target is answered here too).
 - Probes (ShelfProbes.qml's job, which is a surface nobody has ported): read the shell state `shelf.probing` / `shelf.probe` ({x, y, screen}) and call `shelf.dragArrived ["left"|"right"|"top"|"shake", screen]` / `shelf.dragLeft [where]`, and `shelf.keep [urls, text]` for a drop on a probe. Until then the shelf opens from the shortcut, the menu bar and `shelf.offer` only.

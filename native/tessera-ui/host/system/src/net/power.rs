@@ -427,7 +427,7 @@ impl Power {
         let idle_file = tessera_core::theme::config_path().parent().map(|p| p.join("idle-listeners")).unwrap_or_default();
         let user_hypridle = tessera_core::util::xdg("XDG_CONFIG_HOME", ".config").join("hypr/hypridle.conf");
         let own = crate::util::script("own-hypridle.sh");
-        let script = "printf '%s\\n' \"$2\" > \"$1.tmp\" && mv \"$1.tmp\" \"$1\"; for n in tessera irice; do d=\"${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/$n-idle-$HYPRLAND_INSTANCE_SIGNATURE\"; p=$(cat \"$d/hypridle.pid\" 2>/dev/null); [ -n \"$p\" ] && [ \"$(cat /proc/$p/comm 2>/dev/null)\" = hypridle ] && kill \"$p\"; done; \"$4\" \"$3\" && echo own || echo ok";
+        let script = "printf '%s\\n' \"$2\" > \"$1.tmp\" && mv \"$1.tmp\" \"$1\"; for n in tessera; do d=\"${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/$n-idle-$HYPRLAND_INSTANCE_SIGNATURE\"; p=$(cat \"$d/hypridle.pid\" 2>/dev/null); [ -n \"$p\" ] && [ \"$(cat /proc/$p/comm 2>/dev/null)\" = hypridle ] && kill \"$p\"; done; \"$4\" \"$3\" && echo own || echo ok";
         let send = h.sender(NAME);
         let args = [idle_file.to_string_lossy().into_owned(), lines.join("\n"), user_hypridle.to_string_lossy().into_owned(), own];
         let a: Vec<&str> = args.iter().map(String::as_str).collect();

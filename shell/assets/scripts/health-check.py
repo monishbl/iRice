@@ -37,10 +37,8 @@ import threading
 
 
 def app_dir(base):
-    """Tessera's folder under base, or iRice's while it hasn't been moved yet
-    (the shell moves it as it starts: migrate-names.py)."""
-    new, old = os.path.join(base, "tessera"), os.path.join(base, "irice")
-    return old if not os.path.exists(new) and os.path.isdir(old) else new
+    """Tessera's folder under base."""
+    return os.path.join(base, "tessera")
 
 HERE = os.path.dirname(os.path.realpath(__file__))  # (the real folder, from the Material look's links too)
 SHELL = os.path.dirname(os.path.dirname(HERE))
@@ -339,7 +337,7 @@ def check_notifications(opts):
         pass
     # (the shell itself, or, asked from somewhere else, a Quickshell; or
     # tessera-ui, Tessera's interface in Rust, while it draws notifications)
-    if (opts.shell_pid and pid == opts.shell_pid) or owner in ("tessera-shell", "irice-shell", "qs", "quickshell") or owner.startswith("tessera-ui"):
+    if (opts.shell_pid and pid == opts.shell_pid) or owner in ("tessera-shell", "qs", "quickshell") or owner.startswith("tessera-ui"):
         return result("notifications", "Notifications", "Desktop", "ok", "Tessera shows them")
     return result("notifications", "Notifications", "Desktop", "warn",
                   f"Another program ({owner or 'unknown'}) is showing notifications instead of Tessera",
@@ -450,13 +448,6 @@ def check_hyprland(_):
 def check_plugin(_):
     code, out = run(["hyprctl", "tessera-glass", "ping"])
     m = re.search(r"tessera-glass (\d+)", out or "")
-    if not (code == 0 and m):
-        # (built while Tessera was called iRice: it answers to the old name)
-        code, out = run(["hyprctl", "irice-glass", "ping"])
-        if code == 0 and re.search(r"irice-glass (\d+)", out or ""):
-            return result("plugin", "Glass plugin", "Tessera itself", "warn",
-                          "Loaded, but built before iRice became Tessera",
-                          "Rebuild it: tessera rebuild plugin; then log out and in")
     if code == 0 and m:
         n = int(m.group(1))
         if n >= PLUGIN_VERSION:
@@ -473,10 +464,6 @@ def check_native(_):
     have = os.path.isdir(os.path.join(build, "qml", "Tessera", "Native")) and os.path.exists(os.path.join(build, "glass-ipc"))
     if have:
         return result("native", "Native helpers", "Tessera itself", "ok", "Built")
-    # (built while Tessera was called iRice: still used, under the old name)
-    if os.path.isdir(os.path.join(build, "qml", "IRice", "Native")) and os.path.exists(os.path.join(build, "glass-ipc")):
-        return result("native", "Native helpers", "Tessera itself", "ok", "Built (before iRice became Tessera)",
-                      "tessera rebuild native")
     return result("native", "Native helpers", "Tessera itself", "warn", "Not built: glass updates use a slower path",
                   "tessera rebuild native")
 
@@ -488,8 +475,7 @@ def check_quickshell(opts):
     except OSError:
         pass
     if os.path.basename(exe) not in ("qs", "quickshell"):
-        # (…/irice: built while Tessera was called iRice)
-        bundled = [b for b in (os.path.expanduser(f"~/.local/share/{n}/quickshell/bin/qs") for n in ("tessera", "irice")) if os.access(b, os.X_OK)]
+        bundled = [b for b in (os.path.expanduser("~/.local/share/tessera/quickshell/bin/qs"),) if os.access(b, os.X_OK)]
         exe = bundled[0] if bundled else (shutil.which("qs") or "qs")
     code, out = run([exe, "--version"])
     m = re.search(r"Quickshell (\d+\.\d+\.\d+)", out or "")
@@ -501,7 +487,7 @@ def check_quickshell(opts):
     build = os.path.join(source(), "tools", "build-quickshell.sh") + (f" v{want}" if want else "")
     restart = ", then restart Tessera: Super+Ctrl+Escape"
     have = m.group(1)
-    if "/tessera/quickshell/" in exe or "/irice/quickshell/" in exe:  # Tessera's own build
+    if "/tessera/quickshell/" in exe:  # Tessera's own build
         if want and have != want:
             return result("quickshell", "Quickshell", "Tessera itself", "warn", f"Tessera's own build is {have}; this Tessera expects {want}",
                           "Rebuild it: " + build + restart)

@@ -14,8 +14,8 @@ Dialog.qml's spring is Theme.motion.spring + 0.4 / damping + 0.08: Material 6.48
 | 8 | FAB items come out nearest first, 30 ms apart (only when opening), each on springPress with damping + 0.1 | FabMenu 55-75 | menu pills `t` | **was** 250 ms emphasized bezier with the stagger both ways; now 290 ms spring(0.42), stagger only when opening |
 
 ## Test plan (tester)
-Both looks. Open: `inbox 'ipc panels open quickNote IRICE-TEST'`.
-1. `rec qn-open 1 "ipc panels open quickNote IRICE-TEST"`: Material settles in ≈ 0.3 s with ≤ 1 % overshoot; Glass ≈ 0.4 s, a little more overshoot; `-k Escape` closes in 192 ms. Compare with QML ± 1 frame.
+Both looks. Open: `inbox 'ipc panels open quickNote TESSERA-TEST'`.
+1. `rec qn-open 1 "ipc panels open quickNote TESSERA-TEST"`: Material settles in ≈ 0.3 s with ≤ 1 % overshoot; Glass ≈ 0.4 s, a little more overshoot; `-k Escape` closes in 192 ms. Compare with QML ± 1 frame.
 2. Type `hello`, close, reopen → "hello" back, caret at the end.
 3. Save button: empty → disabled (Material 12 % / 38 %). With text, Material `P down` on it (bottom right of the card) → corners 8 and ≈ 6 % swell in ≈ 0.22–0.29 s; Glass → 97 %.
 4. `-M ctrl -k Return -m ctrl` → saves (a file in the notes folder), closes; reopen → empty.

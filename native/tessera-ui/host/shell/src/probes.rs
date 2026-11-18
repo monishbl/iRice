@@ -442,7 +442,7 @@ impl Probes {
 
     fn priority_check(&self, h: &mut Host) {
         let send = h.sender("Probes");
-        run_then(vec!["sh".into(), "-c".into(), "test -d /etc/ananicy.d || exit 2; test -f /etc/ananicy.d/tessera.rules || test -f /etc/ananicy.d/irice.rules".into()], move |code, _| send(Box::new(Msg::Priority(code))));
+        run_then(vec!["sh".into(), "-c".into(), format!("test -d /etc/ananicy.d || exit 2; test -f /etc/ananicy.d/tessera.rules || test -f {}", tessera_core::old_names::ANANICY_RULE)], move |code, _| send(Box::new(Msg::Priority(code))));
     }
 
     fn publish_priority(&self, h: &mut Host) {
@@ -545,7 +545,7 @@ impl Service for Probes {
                 self.priority.3 = if code == 64 {
                     "Tessera's system helper is from before this setting. Run Software Update once, then try again.".into()
                 } else if code != 0 && code != 126 {
-                    if code == 127 { "Not allowed (an administrator's password is needed).".into() } else { let e = err.replace("tessera-root: ", "").replace("irice-root: ", ""); if e.trim().is_empty() { "That didn't change. Update Tessera, then try again.".into() } else { e.trim().to_string() } }
+                    if code == 127 { "Not allowed (an administrator's password is needed).".into() } else { let e = tessera_core::old_names::without_helper_prefix(&err); if e.trim().is_empty() { "That didn't change. Update Tessera, then try again.".into() } else { e.trim().to_string() } }
                 } else {
                     self.priority.3.clone()
                 };
@@ -726,7 +726,7 @@ impl Service for Probes {
                 self.priority.2 = true;
                 let on = a[0].as_bool().unwrap_or(false);
                 let send = h.sender("Probes");
-                let cmd = vec!["sh".into(), "-c".into(), "h=/usr/lib/tessera/tessera-root; [ -x \"$h\" ] || h=/usr/lib/irice/irice-root; exec pkexec \"$h\" \"$@\" 2>&1".into(), "sh".into(), "priority".into(), (if on { "on" } else { "off" }).into()];
+                let cmd = vec!["sh".into(), "-c".into(), format!("h=/usr/lib/tessera/tessera-root; [ -x \"$h\" ] || h={}; exec pkexec \"$h\" \"$@\" 2>&1", tessera_core::old_names::ROOT_HELPER), "sh".into(), "priority".into(), (if on { "on" } else { "off" }).into()];
                 run_then(cmd, move |code, out| send(Box::new(Msg::PriorityJob(code, out))));
                 self.publish_priority(h);
             }

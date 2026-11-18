@@ -14,9 +14,7 @@ TO="${1:-}"
 SHELL_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../.." && pwd -P)"
 MATERIAL_DIR="$(dirname "$SHELL_DIR")/material"
 RUN="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
-# Tessera's folder under $1, or iRice's while it hasn't been moved yet (the
-# shell moves it as it starts: migrate-names.py)
-app_dir() { if [[ ! -e "$1/tessera" && -d "$1/irice" ]]; then echo "$1/irice"; else echo "$1/tessera"; fi; }
+app_dir() { echo "$1/tessera"; }
 CONFIG="$(app_dir "${XDG_CONFIG_HOME:-$HOME/.config}")/config.json"
 CACHE="$(app_dir "${XDG_CACHE_HOME:-$HOME/.cache}")"
 LOG="$RUN/tessera-look.log"
@@ -43,8 +41,7 @@ saved || { echo "the setting wasn't saved"; exit 1; }
 # The screen, from a copy (it must outlive the shell, and a Glass install has
 # the Material fonts only in material/)
 QS=qs
-# (…/irice: Tessera's folder from before it was renamed, not moved yet)
-for d in "${XDG_DATA_HOME:-}/tessera" "$HOME/.local/share/tessera" "${XDG_DATA_HOME:-}/irice" "$HOME/.local/share/irice"; do
+for d in "${XDG_DATA_HOME:-}/tessera" "$HOME/.local/share/tessera"; do
     if [[ -n "$d" && -x "$d/quickshell/bin/qs" && -d "$d/quickshell/lib/qt6/qml/Quickshell" ]]; then
         QS="$d/quickshell/bin/qs"
         export QML_IMPORT_PATH="$d/quickshell/lib/qt6/qml${QML_IMPORT_PATH:+:$QML_IMPORT_PATH}"
@@ -74,7 +71,7 @@ PY
 # Either way "-p $T/ui" is in its command line (the wait at the end looks
 # for it) and "/tessera-look." (sandbox/lib.sh's shell stopper skips it).
 cover=("$QS" -p "$T/ui")
-for b in "${TESSERA_UI:-}" "${XDG_DATA_HOME:-$HOME/.local/share}/tessera/bin/tessera-ui" "$HOME/.local/share/tessera/bin/tessera-ui" "${XDG_DATA_HOME:-$HOME/.local/share}/irice/bin/tessera-ui" "$HOME/.local/share/irice/bin/tessera-ui"; do
+for b in "${TESSERA_UI:-}" "${XDG_DATA_HOME:-$HOME/.local/share}/tessera/bin/tessera-ui" "$HOME/.local/share/tessera/bin/tessera-ui"; do
     [[ -n "$b" && -x "$b" ]] || continue
     "$b" --look-cover --probe >/dev/null 2>&1 </dev/null 8>&- && cover=("$b" --look-cover -p "$T/ui")
     break
@@ -86,14 +83,13 @@ sleep 0.5 # (covered)
 if [[ $TO == glass ]]; then
     hyprctl reload config-only >/dev/null 2>&1
     hyprctl tessera-glass controls-style glass >/dev/null 2>&1
-    hyprctl irice-glass controls-style glass >/dev/null 2>&1 # (a plugin built before the rename)
 fi
 
 # The shell, restarted into the chosen look. In the dev sandbox through its
 # own reload, which only touches the sandbox's shells (repair-shell.sh also
 # clears shells of other sessions it thinks have ended, and from inside the
 # sandbox's container a real session can look ended)
-if [[ ${TESSERA_SANDBOX:-${IRICE_SANDBOX:-0}} == 1 && ${TESSERA_TTY:-${IRICE_TTY:-0}} != 1 && -x "${TESSERA_ROOT:-${IRICE_ROOT:-}}/sandbox/reload-shell.sh" ]]; then
+if [[ ${TESSERA_SANDBOX:-0} == 1 && ${TESSERA_TTY:-0} != 1 && -x "${TESSERA_ROOT:-}/sandbox/reload-shell.sh" ]]; then
     "$TESSERA_ROOT/sandbox/reload-shell.sh" 8>&-
 else
     TESSERA_REPAIR_QUIET=1 "$SHELL_DIR/assets/scripts/repair-shell.sh" 8>&-

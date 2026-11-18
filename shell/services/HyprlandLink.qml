@@ -89,7 +89,7 @@ Singleton {
     function repairIfDue(last) {
         if (!asking)
             return; // (the stamp loading as the shell starts)
-        if ((Quickshell.env("TESSERA_SANDBOX") || Quickshell.env("IRICE_SANDBOX")) !== "1" && Date.now() - last >= repairEvery) {
+        if (Quickshell.env("TESSERA_SANDBOX") !== "1" && Date.now() - last >= repairEvery) {
             console.warn("HyprlandLink: Hyprland's events stopped arriving: restarting the shell");
             stampFile.setText(String(Date.now())); // (while the path is set)
             Quickshell.execDetached(["setsid", "-f", Quickshell.shellDir + "/assets/scripts/repair-shell.sh"]);

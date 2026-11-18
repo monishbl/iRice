@@ -1,8 +1,8 @@
 //! shell/services/RootHelper.qml: Tessera's root helper, as the shell runs
 //! it, through pkexec (which asks for the password or not as its polkit rule
 //! says). The helper is /usr/lib/tessera/tessera-root; until the root setup
-//! has installed it, the iRice-era /usr/lib/irice/irice-root with its own
-//! polkit actions. Which one is decided when the command runs.
+//! has installed it, the one from before Tessera's rename (old_names), with
+//! its own polkit actions. Which one is decided when the command runs.
 //!
 //! This module only BUILDS commands (as the QML's `command`, `knows`,
 //! `message`); nothing here runs pkexec by itself. The one Service call,
@@ -13,14 +13,10 @@ use serde_json::Value;
 use tessera_core::host::{Host, Service};
 
 pub const PATH: &str = "/usr/lib/tessera/tessera-root";
-pub const OLD_PATH: &str = "/usr/lib/irice/irice-root";
 
-/// sh: the helper that's there (Tessera's, else iRice's) as $h, and its
-/// polkit actions file as $policy
+/// sh: the helper that's there as $h, and its polkit actions file as $policy
 pub fn pick() -> String {
-    format!(
-        "h={PATH}; policy=/usr/share/polkit-1/actions/org.tessera.root.policy; if [ ! -x \"$h\" ] && [ -x {OLD_PATH} ]; then h={OLD_PATH}; policy=/usr/share/polkit-1/actions/org.irice.root.policy; fi; "
-    )
+    tessera_core::old_names::root_pick(PATH, "/usr/share/polkit-1/actions/org.tessera.root.policy")
 }
 
 /// ["sh", "-c", …, "sh", args…]: pkexec <helper> args…, as one command
@@ -36,13 +32,10 @@ pub fn knows(subcommand: &str) -> String {
     format!("{}[ -x \"$h\" ] && grep -q \"\\.root\\.{subcommand}\\\"\" \"$policy\" 2>/dev/null", pick())
 }
 
-/// A message from the helper, without its "tessera-root: " (or the older
-/// "irice-root: ") prefix
+/// A message from the helper, without its name in front
 pub fn message(text: &str) -> String {
-    for p in ["tessera-root: ", "irice-root: "] {
-        if let Some(r) = text.strip_prefix(p) {
-            return r.to_string();
-        }
+    if text.starts_with("tessera-root: ") || text.starts_with(tessera_core::old_names::ROOT_PREFIX) {
+        return tessera_core::old_names::without_helper_prefix(text);
     }
     text.to_string()
 }
@@ -75,7 +68,7 @@ mod tests {
     #[test]
     fn message_prefixes() {
         assert_eq!(message("tessera-root: no"), "no");
-        assert_eq!(message("irice-root: no"), "no");
+        assert_eq!(message(&format!("{}no", tessera_core::old_names::ROOT_PREFIX)), "no");
         assert_eq!(message("plain"), "plain");
     }
     #[test]

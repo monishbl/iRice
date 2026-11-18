@@ -85,7 +85,7 @@ Singleton {
                     for (const o of outs) {
                         const p = o.properties ?? {};
                         const bin = p["application.process.binary"] ?? "";
-                        if (monitor.has(o.source) || bin === "tessera-shell" || bin === "irice-shell" || bin === "qs" || bin === "quickshell" || p["media.name"] === "Peak detect")
+                        if (monitor.has(o.source) || bin === "tessera-shell" || bin === "qs" || bin === "quickshell" || p["media.name"] === "Peak detect")
                             continue;
                         apps.add(root.nice(p["application.name"] || bin));
                         streams.push({ name: p["application.name"] ?? "", bin: bin, pid: parseInt(p["application.process.id"] ?? "0") || 0 });

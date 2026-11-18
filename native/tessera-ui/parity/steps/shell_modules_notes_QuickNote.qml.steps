@@ -1,5 +1,5 @@
 # QuickNote. Both looks.
-rec qn-open 1 ipc panels open quickNote IRICE-TEST
+rec qn-open 1 ipc panels open quickNote TESSERA-TEST
 note Material settles in about 0.3 s with at most 1 % overshoot; Glass about 0.4 s with a little more overshoot. Compare QML within 1 frame.
 wait 1
 shot empty
@@ -7,12 +7,12 @@ note Quick note card open with an empty editor; Save button disabled (Material 1
 rec qn-close 0.4 key -k Escape
 note Escape closes in 192 ms, same as QML.
 wait 1
-ipc panels open quickNote IRICE-TEST
+ipc panels open quickNote TESSERA-TEST
 wait 1
 key hello
 key -k Escape
 wait 1
-ipc panels open quickNote IRICE-TEST
+ipc panels open quickNote TESSERA-TEST
 wait 1
 shot reopen
 note Reopened: "hello" is back in the editor, caret at the end. Save enabled.
@@ -23,7 +23,7 @@ key -M ctrl -k Return -m ctrl
 wait 1
 shot saved
 note Ctrl+Enter saves (a file in the notes folder) and closes the dialog.
-ipc panels open quickNote IRICE-TEST
+ipc panels open quickNote TESSERA-TEST
 wait 1
 shot empty-again
 note After saving, the reopened note is empty.

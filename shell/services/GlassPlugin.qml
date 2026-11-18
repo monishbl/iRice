@@ -19,9 +19,7 @@ Singleton {
     id: root
 
     property bool available: false
-    // The name the loaded plugin answers to: a plugin built while Tessera was
-    // called iRice (loaded until it's rebuilt and you log in again) only knows
-    // irice-glass. Requests start with it.
+    // The name the loaded plugin answers to. Requests start with it.
     property string name: "tessera-glass"
     property int version: 0 // 2+: shapes carry gloss (a 19th number)
     readonly property string socketPath: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/hypr/" + Quickshell.env("HYPRLAND_INSTANCE_SIGNATURE") + "/.socket.sock"
@@ -127,9 +125,6 @@ Singleton {
                     if (root.available) {
                         root.name = root.pingName;
                         Qt.callLater(root.ready);
-                    } else if (root.pingName === "tessera-glass") {
-                        root.pingName = "irice-glass"; // (then the older name)
-                        oldPing.restart();
                     }
                 } else if (!data.startsWith("ok") && !data.startsWith("error")) {
                     // Not the plugin answering (it was unloaded): fall back

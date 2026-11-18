@@ -23,7 +23,7 @@ pictures and the failed set from `tessera_core::wm::Thumbs` (surfaces/overview/s
 Run with the Overview in **grid** style (`use_config` overview.style = "grid"), both shells, both looks,
 3 foot windows on space 1 (see the Overview plan for geometry: cell 1 spans x 162..462, y ≈ 444..612).
 
-1. **Fade-in** (T3): `rec wp-fade 1 "ipc panels open overview IRICE-TEST"`; crop to cell 1. Each window shows
+1. **Fade-in** (T3): `rec wp-fade 1 "ipc panels open overview TESSERA-TEST"`; crop to cell 1. Each window shows
    its icon first (if the picture is late) and the picture fades in over ~150 ms (count frames: 9 ± 1 at 60 fps).
 2. **Badge** (T8): `dev shot` after 1 s: bottom-right of each miniature the foot icon (Colloid), ~20 px
    (Material: on a round chip). A tiny miniature (< 40×32) has no badge.

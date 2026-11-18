@@ -61,7 +61,7 @@ Nothing in sections 3–5 has been changed yet.
 - [x] **Two Note widgets share one note** (should each have their own text). - yes
 - [x] **Stopwatch** ticks 20×/s even when only whole seconds are shown.
 - [x] **Hyprland config paths** assume `~/.config` (ignore `XDG_CONFIG_HOME`).
-- [x] **dev.sh down/tty** trust the PID file in `/tmp/irice-rt` without checking what process it is.
+- [x] **dev.sh down/tty** trust the PID file in `/tmp/tessera-rt` without checking what process it is.
 
 ---
 

@@ -146,7 +146,7 @@ class Sending(unittest.TestCase):
 
     def test_only_https(self):
         with mock.patch.object(self.m.urllib.request, "urlopen") as urlopen:
-            for url in ("http://irice-bugs.monishbl.in/api/bug-reports", "ftp://x/y", "file:///etc/passwd"):
+            for url in ("http://tessera-bugs.monishbl.in/api/bug-reports", "ftp://x/y", "file:///etc/passwd"):
                 with self.assertRaisesRegex(ValueError, "https"):
                     self.m.send(self.report, endpoint=url)
             urlopen.assert_not_called()

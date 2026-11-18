@@ -28,6 +28,7 @@ pub mod inhibit;
 pub mod outside; // (popovers close on a press on any screen: outside.rs)
 pub mod memory; // (malloc's arenas and threshold, freed memory given back when quiet: memory.rs)
 pub mod env;
+pub mod old_names; // (Tessera's old name, until it has moved on every machine: old_names.rs)
 pub mod face; // (face unlock's PAM services, hints and `--face-live`)
 pub mod health; // (the health record Settings → Health shows: health.rs)
 pub mod global_shortcuts; // (Hyprland's global shortcuts, as Quickshell's GlobalShortcut: standalone)

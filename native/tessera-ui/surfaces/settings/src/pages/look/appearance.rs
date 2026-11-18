@@ -346,7 +346,7 @@ pub fn appearance(cx: &mut Ctx, p: &mut Page) {
         let icons: Vec<Opt> = MENU_ICONS
             .iter()
             .map(|(v, icon, name)| {
-                let on = menu_icon == *v || (*v == "tessera" && (menu_icon == "circle" || menu_icon == "irice"));
+                let on = menu_icon == *v || (*v == "tessera" && (menu_icon == "circle" || menu_icon == tessera_core::old_names::SETTING_VALUE));
                 let name = if *v == "distro" { os_name.clone() } else { name.to_string() };
                 let mut o = Opt::new(name).icon(if icon.is_empty() { "linux-logo" } else { icon }).on(on).id(*v);
                 if *v == "distro" {

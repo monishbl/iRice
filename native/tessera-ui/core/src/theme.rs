@@ -40,16 +40,9 @@ pub fn config_path() -> PathBuf {
     config_in(&base)
 }
 
-/// As shell/common/Paths.qml: Tessera's folder, or iRice's while only that one
-/// has settings (not moved yet: the shell moves it at its next start)
+/// As shell/common/Paths.qml: Tessera's folder under base
 pub fn config_in(base: &std::path::Path) -> PathBuf {
-    let new = base.join("tessera/config.json");
-    let old = base.join("irice/config.json");
-    if !new.exists() && old.exists() {
-        old
-    } else {
-        new
-    }
+    base.join("tessera/config.json")
 }
 
 /// The shell's settings, as JSON: always an object or Null (none yet). While
@@ -1158,22 +1151,6 @@ mod tests {
     fn a_bad_seed_is_treated_as_the_wallpaper() {
         let v = json!({"appearance": {"look": "material", "materialSeed": "#12345z"}});
         assert_eq!(look_from(&v, None, none).seed, BASELINE);
-    }
-
-    #[test]
-    fn config_folder_follows_the_rename() {
-        let d = std::env::temp_dir().join(format!("tessera-ui-test-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&d);
-        std::fs::create_dir_all(d.join("irice")).unwrap();
-        std::fs::write(d.join("irice/config.json"), "{}").unwrap();
-        // only iRice's: that one, until the shell moves it
-        assert_eq!(config_in(&d), d.join("irice/config.json"));
-        std::fs::create_dir_all(d.join("tessera")).unwrap();
-        std::fs::write(d.join("tessera/config.json"), "{}").unwrap();
-        assert_eq!(config_in(&d), d.join("tessera/config.json"));
-        let _ = std::fs::remove_dir_all(&d);
-        // nothing yet: Tessera's
-        assert_eq!(config_in(&d), d.join("tessera/config.json"));
     }
 
     /// The glass is Theme.qml's own: glass_golden.js runs its `glass` object

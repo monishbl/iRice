@@ -20,15 +20,12 @@ import qs.common
 Singleton {
     id: root
 
-    readonly property string binary: Quickshell.env("TESSERA_EVENTS") || Quickshell.env("IRICE_EVENTS") || Paths.data + "/bin/tessera-events"
-    // (or the one built while Tessera was called iRice, until the next
-    // rebuild: tools/build-native.sh)
-    readonly property string olderBinary: Paths.data + "/bin/irice-events"
+    readonly property string binary: Quickshell.env("TESSERA_EVENTS") || Paths.data + "/bin/tessera-events"
     property string found: ""
     property bool canStart: false // (once the command has the binary found: set after it)
     Process {
         running: true
-        command: ["sh", "-c", "for b; do [ -x \"$b\" ] && { echo \"$b\"; exit 0; }; done; exit 1", "sh", root.binary, root.olderBinary]
+        command: ["sh", "-c", "for b; do [ -x \"$b\" ] && { echo \"$b\"; exit 0; }; done; exit 1", "sh", root.binary]
         stdout: StdioCollector {
             onStreamFinished: {
                 root.found = text.trim();

@@ -1,5 +1,5 @@
 # Right-clicks are press-and-hold here (the DSL's click is the left button).
-# Coordinates: IRICE-TEST 1920x1080, scale 1, the default Control Center layout
+# Coordinates: TESSERA-TEST 1920x1080, scale 1, the default Control Center layout
 # (setup below resets it). Material grid: x0 1512, y0 50, columns 94 apart
 # (86 wide), rows 80 apart (72 tall). Glass grid: x0 1560, y0 50, columns
 # and rows 82.5 apart (72.5). Default layout rows: 0 Wi-Fi 2x1 + Now Playing
@@ -8,7 +8,7 @@
 look material
 setup python3 -I -c "import json,os;p=os.path.expanduser('~/.config/tessera/config.json');c=json.load(open(p));c.setdefault('controlCenter',{})['layout']=[];json.dump(c,open(p,'w'),indent=4)"
 wait 2
-ipc panels open controlCenter IRICE-TEST
+ipc panels open controlCenter TESSERA-TEST
 wait 1
 ptr move 1555 166 sleep 50 down sleep 1100 up
 wait 0.6

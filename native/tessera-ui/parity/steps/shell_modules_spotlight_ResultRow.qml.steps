@@ -1,6 +1,6 @@
 look glass
 # NOTE: click on layer surfaces may not register in the harness
-ipc panels open spotlight IRICE-TEST
+ipc panels open spotlight TESSERA-TEST
 wait 1
 key fi
 wait 1

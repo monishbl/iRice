@@ -28,7 +28,7 @@ For each set server1 lists (`tessera-release --list-ready`, over ssh):
   3. signed with minisign, the signed comment naming the file, the tree and
      the commit (what installs check), and each signature checked against
      tools/tessera-ui.pub of that commit (from the checkout here, TESSERA_REPO,
-     default ~/Projects/Personal/iRice; else that commit's file on GitHub;
+     which install-publisher.sh sets to its own checkout; else that commit's file on GitHub;
      never server1's copy): a key and public key that don't belong together
      never get published;
   4. published with gh to its release (tessera-ui-latest for main,
@@ -71,7 +71,7 @@ PASSWORD = os.path.join(HOME, ".minisign", "tessera-ui.password")
 GITLAB_TOKEN_FILE = os.path.join(HOME, ".config", "tessera", "gitlab-token")
 GITLAB_PROJECT_FILE = os.path.join(HOME, ".config", "tessera", "gitlab-project")
 HOST = os.environ.get("TESSERA_BUILDER") or "user@server1"
-REPO = os.path.expanduser(os.environ.get("TESSERA_REPO") or "~/Projects/Personal/iRice")
+REPO = os.path.expanduser(os.environ.get("TESSERA_REPO") or os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
 GH_REPO = os.environ.get("TESSERA_RELEASE_GH_REPO") or "monishbl/tessera"
 SSH = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15"]
 SCP = ["scp", "-q", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15"]

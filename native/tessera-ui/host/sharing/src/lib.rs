@@ -200,10 +200,10 @@ impl Sharing {
     }
     /// Tessera's root helper, as RootHelper.command does: through pkexec, which
     /// asks for the password or not as its polkit rule says. Which helper
-    /// (Tessera's, else iRice's) is decided when the command runs.
+    /// (Tessera's, else the old one until the root setup) is decided when
+    /// the command runs.
     pub fn root_command(args: &[&str]) -> Vec<String> {
-        let pick = "h=/usr/lib/tessera/tessera-root; policy=/usr/share/polkit-1/actions/org.tessera.root.policy; \
-            if [ ! -x \"$h\" ] && [ -x /usr/lib/irice/irice-root ]; then h=/usr/lib/irice/irice-root; policy=/usr/share/polkit-1/actions/org.irice.root.policy; fi; ";
+        let pick = tessera_core::old_names::root_pick("/usr/lib/tessera/tessera-root", "/usr/share/polkit-1/actions/org.tessera.root.policy");
         let mut v = vec!["sh".to_string(), "-c".into(), format!("{pick}exec pkexec \"$h\" \"$@\""), "sh".into()];
         v.extend(args.iter().map(|a| a.to_string()));
         v

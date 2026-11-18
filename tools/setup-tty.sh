@@ -75,7 +75,6 @@ if [[ -f $conf ]] && ! grep -qE '^\s*Experimental\s*=\s*true' "$conf"; then
         sudo mkdir -p /etc/systemd/system/bluetooth.service.d
         printf '# Tessera: no Ranging or LE Audio control profiles, which make phones ask to pair for Quick Share\n[Service]\nExecStart=\nExecStart=/usr/lib/bluetooth/bluetoothd --noplugin=rap,vcp,micp,mcp,bass\n' |
             sudo tee /etc/systemd/system/bluetooth.service.d/tessera-no-rap.conf >/dev/null
-        sudo rm -f /etc/systemd/system/bluetooth.service.d/irice-no-rap.conf # (its name before iRice became Tessera)
         sudo systemctl daemon-reload
         sudo systemctl restart bluetooth && echo "Done: reconnect your headphones to see their battery."
     fi

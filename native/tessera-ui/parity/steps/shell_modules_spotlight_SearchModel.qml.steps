@@ -1,6 +1,6 @@
 # Check in each look. Known earlier results: store (Software) rows were missing in Rust, ranking tie-order for "fi"; re-check both.
 # NOTE: click on layer surfaces may not register in the harness
-ipc panels open spotlight IRICE-TEST
+ipc panels open spotlight TESSERA-TEST
 wait 1
 rec sp-type 1 key fir
 note Results appear within one frame of the last key; first changed frame after the last key: Rust not later than QML. Selection on row 0.
@@ -29,7 +29,7 @@ shot sp-22-closed
 note Search closed; clipboard holds 4 (wl-paste in the setup line).
 # MANUAL: /.bash file rows arrive later; keep selection on the 2nd file title while more arrive (no files in sandbox)
 # MANUAL: file row: Shift+Space and Ctrl+Y open Quick Look (no files in sandbox)
-ipc panels open spotlight IRICE-TEST
+ipc panels open spotlight TESSERA-TEST
 wait 1
 key ?hello
 key -k Return
@@ -38,7 +38,7 @@ shot sp-ask
 note With no AI set up, "?hello" + Return opens Settings on the AI page and closes Search.
 key -k Escape
 setup ipc panels close
-ipc panels open spotlight IRICE-TEST
+ipc panels open spotlight TESSERA-TEST
 wait 1
 # Ask button with an empty field (Glass (1280,244) / Material (1280,244) approx.)
 ptr move 960 540 sleep 100 glide 1280 244 200 sleep 100 click
@@ -47,13 +47,13 @@ shot sp-ask-empty
 note Ask (sparkle) with empty field opens the sidebar (or Settings AI if no AI); compare with QML. Click may not register on layer surfaces.
 ipc panels close
 # reopen after typing
-ipc panels open spotlight IRICE-TEST
+ipc panels open spotlight TESSERA-TEST
 wait 1
 key hello
 wait 1
 key -k Escape
 wait 1
-ipc panels open spotlight IRICE-TEST
+ipc panels open spotlight TESSERA-TEST
 wait 1
 shot sp-reopen
 note Reopened Search: field empty, no results.

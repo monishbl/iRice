@@ -1,5 +1,5 @@
 # Overlay. Both looks.
-ipc panels open overlay IRICE-TEST
+ipc panels open overlay TESSERA-TEST
 wait 1
 shot open
 note Scrim (32 % Material / 30 % Glass), toolbar pill centred at y 44; toggles 48 px (Material) / 40 px (Glass). Same as QML.
@@ -17,7 +17,7 @@ key -k Escape
 wait 1
 shot esc
 note Escape closes the overlay.
-ipc panels open overlay IRICE-TEST
+ipc panels open overlay TESSERA-TEST
 wait 1
 ptr move 300 800 sleep 200 click
 wait 1

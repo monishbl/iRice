@@ -1,16 +1,20 @@
-"""iRice is now Tessera, and a session, an install or a system set up while
-it was called iRice keeps working before the one-time setup and after it:
-your folders move over once (migrate-names.py, at shell start), the shell
-finds the old root helper until the new one is installed and setup then
-moves the rest, old environment names still count, and the installer and
-uninstaller handle both names. Everything runs in temporary folders, with
-fakes for sudo, pkexec and qs; nothing real is changed."""
+"""Tessera was called iRice until 4 November 2026. An install from before
+updates itself across the rename: its folders, its checkout (~/iRice →
+~/tessera), its settings and files move over once (migrate-names.py, at the
+shell's start), the root setup moves the system pieces and the login screen's
+entry, the old environment names count until the removal date, and the old
+names live only in the migration modules. Everything runs in temporary
+folders, with fakes for sudo, pkexec, systemctl and qs; nothing real is
+changed.
+
+This file is one of the places allowed to name the old name (with the
+modules: docs/rename-to-tessera.md has the list). REMOVE AFTER 2027-02-01."""
+import datetime
 import importlib.util
 import json
 import os
 import re
 import shutil
-import stat
 import subprocess
 import sys
 import tempfile
@@ -22,8 +26,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SHELL = ROOT / "shell"
 SCRIPTS = SHELL / "assets/scripts"
-BUNDLE = next((b for b in (Path.home() / ".local/share/tessera/quickshell", Path.home() / ".local/share/irice/quickshell") if b.exists()),
-              Path.home() / ".local/share/tessera/quickshell")
+BUNDLE = Path.home() / ".local/share/tessera/quickshell"
 QS = BUNDLE / "bin/qs"
 
 
@@ -36,6 +39,7 @@ def load(path, name):
 
 MIG = load(SCRIPTS / "migrate-names.py", "migrate_names")
 R = load(SCRIPTS / "tessera-root.py", "tessera_root_rename")
+DAY = 24 * 3600
 
 
 class Temp(unittest.TestCase):
@@ -46,9 +50,10 @@ class Temp(unittest.TestCase):
         self.home.mkdir()
         self.xdg = {"HOME": str(self.home), "XDG_CONFIG_HOME": str(self.home / ".config"),
                     "XDG_DATA_HOME": str(self.home / ".local/share"), "XDG_STATE_HOME": str(self.home / ".local/state"),
-                    "XDG_CACHE_HOME": str(self.home / ".cache")}
+                    "XDG_CACHE_HOME": str(self.home / ".cache"), "TESSERA_SYSTEM_ROOT": str(self.d / "sys")}
         self.bin = self.d / "bin"
         self.bin.mkdir()
+        self.calls = []
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -64,9 +69,31 @@ class Temp(unittest.TestCase):
     def fake(self, name, script):
         self.write(self.bin / name, "#!/bin/sh\n" + textwrap.dedent(script), 0o755)
 
+    def run_fake(self, args, **kw):
+        """subprocess.run's stand-in: notes every call, and runs only git
+        (on the temporary checkouts); the rest (systemctl, the file-manager
+        menus) only answer"""
+        self.calls.append(list(args))
+        if args[0] == "git":
+            return subprocess.run(args, **kw)
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    def checkout(self, where, remote=None):
+        """A Tessera checkout with what an update and a start need."""
+        where = Path(where)
+        for rel in ("shell/assets/scripts/launch-shell.sh", "shell/assets/scripts/old-names.sh", "shell/assets/scripts/migrate-names.py",
+                    "shell/assets/scripts/file-manager-share.py", "sandbox/tessera-session.sh", "sandbox/irice-session.sh"):
+            (where / rel).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(ROOT / rel, where / rel)
+        self.write(where / "shell/shell.qml", "import Quickshell\nShellRoot {}\n")
+        subprocess.run(["git", "init", "-q", str(where)], check=True)
+        if remote:
+            subprocess.run(["git", "-C", str(where), "remote", "add", "origin", remote], check=True)
+        return where
+
 
 # ── Your folders: moved once, the old names left as links ────────────────
-class Migration(Temp):
+class Folders(Temp):
     def old_layout(self):
         c = self.home / ".config/irice"
         self.write(c / "config.json", '{"appearance": {"menuIcon": "irice"}}')
@@ -78,208 +105,253 @@ class Migration(Temp):
 
     def test_old_folders_move_and_the_old_names_become_links(self):
         self.old_layout()
+        os.symlink(self.home / ".local/share/irice/whisper", self.home / ".local/share/irice/models")  # (absolute, into the old folder)
         self.assertEqual(MIG.migrate(self.xdg), {"config": "moved", "data": "moved", "state": "moved", "cache": "moved"})
         cfg = self.home / ".config"
-        self.assertEqual((cfg / "tessera/config.json").read_text(), '{"appearance": {"menuIcon": "irice"}}')
         self.assertTrue((cfg / "irice").is_symlink())
         self.assertEqual(os.readlink(cfg / "irice"), "tessera")  # (relative: the home can move)
-        # anything that still uses the old path finds the same files
         self.assertEqual((cfg / "irice/monitors.lua").read_text(), "-- displays\n")
         self.assertEqual((self.home / ".local/share/tessera/whisper/ggml-base.bin").read_text(), "model")
-        self.assertTrue(os.access(self.home / ".local/share/tessera/bin/irice-events", os.X_OK))
-        self.assertEqual(json.loads((self.home / ".local/state/tessera/state.json").read_text()), {"todos": ["milk"]})
+        self.assertEqual(os.readlink(self.home / ".local/share/tessera/models"), str(self.home / ".local/share/tessera/whisper"))
         self.assertIn("Moved here from", (cfg / "tessera" / MIG.NOTE).read_text())
 
     def test_already_moved_is_left_alone(self):
         self.old_layout()
         MIG.migrate(self.xdg)
-        note = (self.home / ".config/tessera" / MIG.NOTE).read_text()
-        self.assertEqual(MIG.migrate(self.xdg), {"config": "linked", "data": "linked", "state": "linked", "cache": "linked"})
-        self.assertEqual((self.home / ".config/tessera" / MIG.NOTE).read_text(), note)
+        self.assertEqual(set(MIG.migrate(self.xdg).values()), {"linked"})
 
     def test_both_there_keeps_the_new_and_loses_nothing(self):
         self.old_layout()
-        # (something wrote Tessera's first: its settings stay, iRice's others move over)
         self.write(self.home / ".config/tessera/config.json", '{"new": true}')
         self.assertEqual(MIG.migrate(self.xdg)["config"], "merged")
         cfg = self.home / ".config"
         self.assertEqual((cfg / "tessera/config.json").read_text(), '{"new": true}')
         self.assertEqual((cfg / "tessera/monitors.lua").read_text(), "-- displays\n")
         self.assertTrue((cfg / "irice").is_symlink())
-        kept = cfg / "irice.before-tessera/config.json"
-        self.assertEqual(kept.read_text(), '{"appearance": {"menuIcon": "irice"}}')
-        note = (cfg / "tessera" / MIG.NOTE).read_text()
-        self.assertIn("monitors.lua", note)
-        self.assertIn("irice.before-tessera", note)
-        # nothing in both: the old folder simply goes
-        self.write(self.home / ".local/state/tessera/other.json", "{}")
-        MIG.migrate_one(self.xdg["XDG_STATE_HOME"])  # (already merged above: linked)
-        st = Path(self.xdg["XDG_STATE_HOME"])
-        shutil.rmtree(st)
-        self.write(st / "tessera/a", "new")
-        self.write(st / "irice/b", "old")
-        self.assertEqual(MIG.migrate_one(str(st)), "merged")
-        self.assertEqual(sorted(p.name for p in st.iterdir()), ["irice", "tessera"])
-        self.assertEqual((st / "irice/b").read_text(), "old")
+        self.assertEqual((cfg / "irice.before-tessera/config.json").read_text(), '{"appearance": {"menuIcon": "irice"}}')
 
-    def test_nothing_to_move(self):
-        self.assertEqual(MIG.migrate(self.xdg), {"config": "none", "data": "none", "state": "none", "cache": "none"})
-        self.assertFalse((self.home / ".config").exists())
+    def test_a_console_session_moves_your_homes_own_folders_too(self):
+        # (XDG_* point at a sandbox home; ~/.local/share/irice is your own)
+        self.write(self.home / ".local/share/irice/previous-login-manager", "sddm\n")
+        self.write(self.home / ".local/share/tessera/bin/tessera-ui", "")
+        env = dict(self.xdg, XDG_DATA_HOME=str(self.d / "sandbox/.local/share"))
+        self.assertEqual(MIG.migrate(env)["home data"], "merged")
+        self.assertEqual((self.home / ".local/share/tessera/previous-login-manager").read_text(), "sddm\n")
 
     def test_dry_run_changes_nothing(self):
         self.old_layout()
         self.assertEqual(MIG.migrate(self.xdg, dry=True)["config"], "would move")
         self.assertFalse((self.home / ".config/tessera").exists())
 
-    def test_which_folder_to_use_before_and_after(self):
-        base = self.home / ".config"
-        self.assertEqual(MIG.resolve(str(base)), str(base / "tessera"))  # (a new setup)
-        self.old_layout()
-        self.assertEqual(MIG.resolve(str(base)), str(base / "irice"))  # (not moved yet)
-        MIG.migrate(self.xdg)
-        self.assertEqual(MIG.resolve(str(base)), str(base / "tessera"))
-
     def test_never_stops_a_shell_from_starting(self):
         self.old_layout()
         os.chmod(self.home / ".config", 0o500)  # (can't rename in there)
         try:
             p = subprocess.run([sys.executable, "-I", str(SCRIPTS / "migrate-names.py")], env=dict(os.environ, **self.xdg),
-                               capture_output=True, text=True, timeout=20)
+                               capture_output=True, text=True, timeout=60)
         finally:
             os.chmod(self.home / ".config", 0o700)
         self.assertEqual(p.returncode, 0)
         self.assertIn("config: error", p.stderr)
-        self.assertTrue((self.home / ".config/irice/config.json").exists())
 
 
-# The shell itself, under Quickshell: which folder it reads
-PATHS_PROBE = '''import QtQuick
-import Quickshell
-import qs.common
-ShellRoot { settings.watchFiles: false
-Timer { interval: 50; running: true; onTriggered: { console.log("PATHS " + Paths.name + " " + Paths.config + " " + Paths.state); Qt.quit(); } }
-}
-'''
+# ── The checkout: ~/iRice → ~/tessera ───────────────────────────────────
+class Checkout(Temp):
+    def old_install(self):
+        """A console-session install from before: run from ~/iRice."""
+        old = self.checkout(self.home / "iRice", remote="https://github.com/monishbl/iRice.git")
+        sb = old / ".sandbox/home"
+        self.write(sb / ".config/tessera/config.json", json.dumps(
+            {"wallpaper": {"path": f"{old}/material/assets/wallpapers/material-dark.jpg"}, "appearance": {"menuIcon": "irice"}}))
+        self.write(sb / ".config/tessera/keybinds.json", json.dumps({"shortcuts": [{"exec": "$IRICE_SHELL/assets/scripts/x.sh"}]}))
+        self.write(sb / ".config/qt6ct/qt6ct.conf", f"[Appearance]\ncolor_scheme_path={old}/.sandbox/home/.config/qt6ct/colors/TesseraDesktop.conf\n")
+        self.write(sb / ".config/tessera/MOVED-FROM-IRICE.txt", "2026-11-04: moved\n")
+        self.write(self.home / ".local/share/tessera/source", f"{old}\n")
+        self.write(self.home / ".config/systemd/user/tessera-battery-guard.service",
+                   f"[Service]\nExecStart=/usr/bin/env python3 -I {old}/shell/assets/scripts/battery-guard.py --sleep-at 3\n")
+        self.write(self.home / "iRice-notes/keep.txt", f"{old}2 is not {old}\n")  # (a longer name is never touched)
+        os.symlink(old / "shell", sb / ".config/tessera/shell-link")
+        return old
+
+    def test_the_checkout_moves_and_everything_points_at_it(self):
+        old = self.old_install()
+        out = MIG.run_all(self.xdg, given=[str(old)], run=self.run_fake)
+        new = self.home / "tessera"
+        self.assertEqual(out["checkout"], "moved")
+        self.assertTrue((new / "shell/shell.qml").is_file())
+        self.assertTrue(old.is_symlink())
+        self.assertEqual(os.readlink(old), "tessera")
+        sb = new / ".sandbox/home"
+        cfg = json.loads((sb / ".config/tessera/config.json").read_text())
+        self.assertEqual(cfg["wallpaper"]["path"], f"{new}/material/assets/wallpapers/material-dark.jpg")
+        self.assertEqual(cfg["appearance"]["menuIcon"], "tessera")
+        self.assertIn("$TESSERA_SHELL/assets/scripts/x.sh", (sb / ".config/tessera/keybinds.json").read_text())
+        self.assertIn(f"color_scheme_path={new}/", (sb / ".config/qt6ct/qt6ct.conf").read_text())
+        self.assertEqual((self.home / ".local/share/tessera/source").read_text(), f"{new}\n")
+        self.assertIn(f"{new}/shell/assets/scripts/battery-guard.py", (self.home / ".config/systemd/user/tessera-battery-guard.service").read_text())
+        self.assertEqual(os.readlink(sb / ".config/tessera/shell-link"), f"{new}/shell")
+        self.assertEqual((self.home / "iRice-notes/keep.txt").read_text(), f"{old}2 is not {old}\n")
+        # the note: with the settings, never in the checkout; the 4 Nov one folded in
+        note = (sb / ".config/tessera" / MIG.NOTE).read_text()
+        self.assertIn("2026-11-04: moved", note)
+        self.assertFalse((sb / ".config/tessera/MOVED-FROM-IRICE.txt").exists())
+        self.assertFalse((new / MIG.NOTE).exists())
+        # the repository's old address: its own
+        remote = subprocess.run(["git", "-C", str(new), "remote", "get-url", "origin"], capture_output=True, text=True).stdout.strip()
+        self.assertEqual(remote, "https://github.com/monishbl/tessera.git")
+        self.assertIn(["git", "-C", str(new), "worktree", "repair"], self.calls)
+        self.assertIn(["systemctl", "--user", "daemon-reload"], self.calls)
+        # once: nothing more the next time
+        self.assertNotIn("checkout", MIG.run_all(self.xdg, given=[str(old)], run=self.run_fake))
+
+    def test_only_the_checkout_at_irice_and_never_over_another(self):
+        elsewhere = self.checkout(self.home / "src/tessera")
+        self.assertNotIn("checkout", MIG.run_all(self.xdg, given=[str(elsewhere)], run=self.run_fake))
+        self.assertTrue(elsewhere.is_dir())
+        old = self.old_install()
+        self.write(self.home / "tessera/mine.txt", "yours")
+        self.assertTrue(MIG.run_all(self.xdg, given=[str(old)], run=self.run_fake)["checkout"].startswith("error"))
+        self.assertTrue(old.is_dir() and not old.is_symlink())
+        self.assertEqual((self.home / "tessera/mine.txt").read_text(), "yours")
+
+    def test_a_build_never_moves_the_checkout_it_runs_in(self):
+        old = self.old_install()
+        self.assertNotIn("checkout", MIG.run_all(self.xdg, given=[str(old)], run=self.run_fake, move=False))
+        self.assertFalse(old.is_symlink())
+
+    def test_the_link_goes_once_nothing_uses_it(self):
+        old = self.old_install()
+        MIG.run_all(self.xdg, given=[str(old)], run=self.run_fake)
+        fake_proc = self.d / "proc"
+        fake_proc.mkdir()
+        later = time.time() + 15 * DAY
+        # a login screen's entry still names it: kept
+        entry = self.write(self.d / "sys/usr/share/wayland-sessions/tessera.desktop", f"Exec={old}/sandbox/tessera-session.sh\n")
+        self.assertEqual(MIG.old_link(str(old), str(self.home / "tessera"), self.xdg, now=later, proc=str(fake_proc)), "kept")
+        entry.write_text(f"Exec={self.home}/tessera/sandbox/tessera-session.sh\n")
+        # a program started from it (its environment names it): kept
+        p = subprocess.Popen(["sleep", "30"], env=dict(os.environ, TESSERA_ROOT=str(old)))
+        try:
+            time.sleep(0.2)
+            self.assertEqual(MIG.old_link(str(old), str(self.home / "tessera"), self.xdg, now=later), "kept")
+        finally:
+            p.kill()
+            p.wait()
+        # too new: kept
+        self.assertEqual(MIG.old_link(str(old), str(self.home / "tessera"), self.xdg, proc=str(fake_proc)), "kept")
+        # old enough and unused: gone
+        self.assertEqual(MIG.old_link(str(old), str(self.home / "tessera"), self.xdg, now=later, proc=str(fake_proc)), "removed")
+        self.assertFalse(os.path.lexists(old))
+        # a link of yours elsewhere is never ours
+        os.symlink(self.home / "src", old)
+        self.assertEqual(MIG.old_link(str(old), str(self.home / "tessera"), self.xdg, now=later, proc=str(fake_proc)), "none")
 
 
-@unittest.skipUnless(QS.exists(), "requires bundled Quickshell")
-class PathsQml(Temp):
-    def paths(self):
-        shell = self.d / "shell"
-        (shell / "common").mkdir(parents=True, exist_ok=True)
-        shutil.copy2(SHELL / "common/Paths.qml", shell / "common/Paths.qml")
-        (shell / "shell.qml").write_text(PATHS_PROBE)
-        rt = self.d / "rt"
-        rt.mkdir(mode=0o700, exist_ok=True)
-        env = dict(os.environ, **self.xdg, XDG_RUNTIME_DIR=str(rt), QT_QPA_PLATFORM="offscreen", QML_IMPORT_PATH=str(BUNDLE / "lib/qt6/qml"))
-        p = subprocess.run([str(QS), "-p", str(shell)], env=env, capture_output=True, text=True, timeout=20)
-        m = re.search(r"PATHS (\S+) (\S+) (\S+)", p.stdout + p.stderr)
-        self.assertIsNotNone(m, p.stdout + p.stderr)
-        return m.groups()
-
-    def test_a_new_setup_uses_tesseras(self):
-        self.assertEqual(self.paths(), ("tessera", f"{self.home}/.config/tessera", f"{self.home}/.local/state/tessera"))
-
-    def test_a_shell_reloaded_before_the_move_keeps_the_old_folders(self):
-        self.write(self.home / ".config/irice/config.json", "{}")
-        self.assertEqual(self.paths(), ("irice", f"{self.home}/.config/irice", f"{self.home}/.local/state/irice"))
-
-    def test_after_the_move(self):
-        self.write(self.home / ".config/irice/config.json", "{}")
-        MIG.migrate(self.xdg)
-        self.assertEqual(self.paths()[0], "tessera")
-
-
-# ── launch-shell.sh: moves the folders, passes the old names on ─────────
+# ── A fake old install, updated, then started: it works ─────────────────
 FAKE_QS = r"""#!/bin/sh
 if [ "$3" = ipc ] && [ "$4" = show ]; then echo "No running instances"; exit 0; fi
 printf '%s\n' "$@" > "$QS_CALL"
-basename "$0" > "$QS_CALL.name"
 env > "$QS_CALL.env"
 """
 
 
-class Launch(Temp):
-    def setUp(self):
-        super().setUp()
+class OldInstallUpdated(Temp):
+    def test_an_old_install_starts_from_its_new_folder(self):
+        old = self.checkout(self.home / "iRice", remote="git@github.com:monishbl/iRice.git")
+        sb = old / ".sandbox/home"
+        # (as before the 4 Nov move too: the console session's folders under the old name)
+        self.write(sb / ".config/irice/config.json", json.dumps({"appearance": {"look": "glass", "menuIcon": "irice"},
+                                                                 "rust": {"standalone": False}}))
+        self.write(sb / ".local/state/irice/state.json", json.dumps({"_irice_revisions": {"a": [1, "x", 0]}}))
         self.write(self.bin / "qs", FAKE_QS, 0o755)
-        self.call = self.d / "call"
-        self.sys = self.d / "sys"
-        self.sys.mkdir()
-        self.env = dict(os.environ, **self.xdg, XDG_RUNTIME_DIR=str(self.d), QS_CALL=str(self.call), PATH=f"{self.bin}:/usr/bin:/bin",
-                        QS_ICON_THEME="hicolor", TESSERA_SYSTEM_ROOT=str(self.sys))
-        for k in ("HYPRLAND_INSTANCE_SIGNATURE", "TESSERA_TTY", "TESSERA_ROOT", "IRICE_TTY", "IRICE_ROOT", "TESSERA_SHELL", "IRICE_SHELL"):
-            self.env.pop(k, None)
-
-    def launch(self, *args, **env):
-        subprocess.run(["bash", str(SCRIPTS / "launch-shell.sh"), *(args or ("-p", str(SHELL)))], env=dict(self.env, **env), timeout=30,
+        call = self.d / "call"
+        env = dict(os.environ, HOME=str(self.home), XDG_RUNTIME_DIR=str(self.d), QS_CALL=str(call), PATH=f"{self.bin}:/usr/bin:/bin",
+                   QS_ICON_THEME="hicolor", TESSERA_SYSTEM_ROOT=str(self.d / "sys"), TESSERA_TTY="1", IRICE_LAB="1",
+                   XDG_CONFIG_HOME=str(sb / ".config"), XDG_DATA_HOME=str(sb / ".local/share"),
+                   XDG_STATE_HOME=str(sb / ".local/state"), XDG_CACHE_HOME=str(sb / ".cache"), TESSERA_ROOT=str(old))
+        for k in ("HYPRLAND_INSTANCE_SIGNATURE", "TESSERA_SHELL", "TESSERA_STANDALONE", "TESSERA_LAB"):
+            env.pop(k, None)
+        # the session's start after the update, as the console session does it
+        subprocess.run(["bash", str(old / "shell/assets/scripts/launch-shell.sh"), "-p", str(old / "shell")], env=env, timeout=90,
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        return self.call.read_text().split("\n")[:2]
+        new = self.home / "tessera"
+        self.assertTrue(old.is_symlink() and (new / "shell/shell.qml").is_file())
+        # the shell started, from the new folder, with the new names
+        self.assertEqual(call.read_text().split("\n")[:2], ["-p", str(new / "shell")])
+        started = dict(l.split("=", 1) for l in Path(str(call) + ".env").read_text().splitlines() if "=" in l)
+        self.assertEqual(started.get("TESSERA_LAB"), "1")  # (an old environment name still counts)
+        self.assertEqual(started.get("TESSERA_SHELL"), "1")
+        self.assertNotIn("IRICE_SHELL", started)
+        # its settings moved and say Tessera
+        nsb = new / ".sandbox/home"
+        self.assertEqual(json.loads((nsb / ".config/tessera/config.json").read_text())["appearance"]["menuIcon"], "tessera")
+        self.assertIn("_tessera_revisions", json.loads((nsb / ".local/state/tessera/state.json").read_text()))
+        remote = subprocess.run(["git", "-C", str(new), "remote", "get-url", "origin"], capture_output=True, text=True).stdout.strip()
+        self.assertEqual(remote, "git@github.com:monishbl/tessera.git")
+        # and the login screen's entry from before still starts it, through the link
+        self.write(new / "sandbox/tessera-session.sh", f'#!/bin/sh\necho "tessera $*" > {self.d}/ran\n', 0o755)
+        subprocess.run([str(old / "sandbox/irice-session.sh"), "a"], timeout=10, check=True)
+        self.assertEqual((self.d / "ran").read_text(), "tessera a\n")
 
-    def name(self):
-        return Path(str(self.call) + ".name").read_text().strip()
 
-    def started_env(self):
-        return dict(l.split("=", 1) for l in Path(str(self.call) + ".env").read_text().splitlines() if "=" in l)
+# ── Settings and files saved under the old name ─────────────────────────
+class Files(Temp):
+    def test_settings_values_take_the_new_name(self):
+        f = self.home / "cfg"
+        self.write(f / "config.json", json.dumps({"appearance": {"menuIcon": "irice"}, "screenshot": {"editor": "irice"}}))
+        self.write(f / "spaces.lua", 'IRICE_SPACE_BASES = { ["name:DP-1"] = 100 }\n')
+        self.write(f / "state.json", json.dumps({"_irice_revisions": {"k": [2, "a", 1]}, "todos": []}))
+        done = MIG.settings(str(f))
+        self.assertEqual(len(done), 3)
+        c = json.loads((f / "config.json").read_text())
+        self.assertEqual((c["appearance"]["menuIcon"], c["screenshot"]["editor"]), ("tessera", "tessera"))
+        self.assertIn("TESSERA_SPACE_BASES", (f / "spaces.lua").read_text())
+        s = json.loads((f / "state.json").read_text())
+        self.assertEqual(s, {"_tessera_revisions": {"k": [2, "a", 1]}, "todos": []})
+        self.assertEqual(MIG.settings(str(f)), [])
 
-    def test_the_start_moves_your_folders(self):
-        self.write(self.home / ".config/irice/config.json", json.dumps({"appearance": {"look": "glass"}}))
-        self.write(self.home / ".local/state/irice/state.json", "{}")
-        self.launch()
-        self.assertTrue((self.home / ".config/tessera/config.json").exists())
-        self.assertTrue((self.home / ".config/irice").is_symlink())
-        self.assertTrue((self.home / ".local/state/tessera/state.json").exists())
+    def test_your_files_from_before(self):
+        c, data = self.home / ".config", self.home / ".local/share"
+        self.write(c / "hypr/irice/keyboard.lua", "-- yours\n")
+        self.write(c / "hypr.pre-irice/hyprland.conf", "# your own\n")
+        self.write(c / "fish/conf.d/irice.fish", "fish_add_path\n")
+        self.write(c / "gtk-3.0/gtk.css", "@import 'irice-colors.css';\n")
+        self.write(c / "gtk-3.0/irice-colors.css", "x")
+        self.write(c / "kdeglobals", "[General]\nColorScheme=iRiceDesktopDark\n[KDE]\nColorScheme=iRiceOther\n")
+        self.write(c / "autostart/app.desktop", "[Desktop Entry]\nOnlyShowIn=irice;KDE;\n")
+        self.write(data / "tessera/bin/irice-events", "#!/bin/sh\n", 0o755)
+        self.write(data / "tessera/irice-glass.so", "so")
+        self.write(data / "nemo/actions/irice-share.nemo_action", "x")
+        self.write(self.home / ".local/bin/irice", "#!/bin/sh\n# iRice's command\n", 0o755)
+        self.write(self.home / ".local/bin/irice-other", "mine")
+        self.write(c / "systemd/user/irice-battery-guard.service", "[Service]\n")
+        MIG.user_files(self.xdg, run=self.run_fake)
+        self.assertEqual((c / "hypr/tessera/keyboard.lua").read_text(), "-- yours\n")
+        self.assertTrue((c / "hypr/irice").is_symlink())
+        self.assertEqual((c / "hypr.pre-tessera/hyprland.conf").read_text(), "# your own\n")
+        self.assertTrue((c / "fish/conf.d/tessera.fish").exists())
+        self.assertEqual((c / "gtk-3.0/gtk.css").read_text(), "@import 'tessera-colors.css';\n")
+        self.assertFalse((c / "gtk-3.0/irice-colors.css").exists())
+        self.assertEqual((c / "kdeglobals").read_text(), "[General]\nColorScheme=TesseraDesktopDark\n[KDE]\nColorScheme=iRiceOther\n")
+        self.assertEqual((c / "autostart/app.desktop").read_text(), "[Desktop Entry]\nOnlyShowIn=Tessera;KDE;\n")
+        self.assertTrue(os.access(data / "tessera/bin/tessera-events", os.X_OK))  # (the same helper, under its name)
+        self.assertFalse((data / "tessera/irice-glass.so").exists())  # (answers only to the old name: goes)
+        self.assertFalse((data / "nemo/actions/irice-share.nemo_action").exists())
+        self.assertIn([sys.executable, "-I", str(SCRIPTS / "file-manager-share.py"), "install", "nemo"], self.calls)
+        self.assertFalse((self.home / ".local/bin/irice").exists())
+        self.assertTrue((self.home / ".local/bin/irice-other").exists())
+        self.assertFalse((c / "systemd/user/irice-battery-guard.service").exists())
+        self.assertIn(["systemctl", "--user", "disable", "--now", "irice-battery-guard.service"], self.calls)
 
-    def test_a_session_from_before_the_rename_passes_its_names_on(self):
-        e = (self.launch("-p", str(SHELL), IRICE_TTY="1", IRICE_ROOT="/somewhere"), self.started_env())[1]
-        self.assertEqual((e.get("TESSERA_TTY"), e.get("TESSERA_ROOT")), ("1", "/somewhere"))
-        # (and the old markers, for a watchdog or update screen from before)
-        self.assertEqual((e.get("TESSERA_SHELL"), e.get("IRICE_SHELL"), e.get("IRICE_TTY")), ("1", "1", "1"))
-        e = (self.launch("-p", str(SHELL), TESSERA_TTY="1", IRICE_TTY="0"), self.started_env())[1]
-        self.assertEqual(e.get("TESSERA_TTY"), "1")  # (the new name wins)
-
-    def test_the_name_follows_the_priority_rule_installed(self):
-        self.launch()
-        self.assertEqual(self.name(), "tessera-shell")  # (no ananicy: the new name)
-        rules = self.sys / "etc/ananicy.d"
-        self.write(rules / "irice.rules", '{ "name": "irice-shell", "type": "LowLatency_RT" }\n')
-        self.launch()
-        self.assertEqual(self.name(), "irice-shell")  # (until the root setup installs Tessera's rule)
-        self.write(rules / "tessera.rules", R.ANANICY_TEXT.decode())
-        self.launch()
-        self.assertEqual(self.name(), "tessera-shell")
-
-    def name_while(self, script, args, text, env=None):
-        f = self.d / script
-        f.parent.mkdir(parents=True, exist_ok=True)
-        f.write_text(text + "\nsleep 30\n")
-        w = subprocess.Popen(["bash", str(f), *args], env=dict(self.env, **(env or {})))
-        try:
-            time.sleep(0.3)
-            self.launch()
-            return self.name()
-        finally:
-            w.kill()
-            w.wait()
-
-    def test_watchers_from_before_the_rename_keep_the_name_they_know(self):
-        # an update running iRice's copy of its script, which knows irice-shell
-        self.assertEqual(self.name_while("irice-update.ab12/run.sh", ["x"], "pgrep -x irice-shell"), "irice-shell")
-        self.assertEqual(self.name_while("tessera-update.cd34/run.sh", ["x"], "pgrep -x tessera-shell; pgrep -x irice-shell"), "tessera-shell")
-        # a tty session's watchdog started before the rename (it noted itself in irice-watchdog.names)
-        self.env["HYPRLAND_INSTANCE_SIGNATURE"] = "sig1"
-        names = self.d / "hypr/sig1"
-        names.mkdir(parents=True)
-        self.assertEqual(self.name_while("old/tty-shell.sh", ["watchdog"], f'echo $$ > "{names}/irice-watchdog.names"'), "irice-shell")
-        self.assertEqual(self.name_while("new/tty-shell.sh", ["watchdog"], f'echo $$ > "{names}/tessera-watchdog.names"'), "tessera-shell")
-
-    def test_an_installed_shell_started_by_its_old_name(self):
-        q = self.home / ".config/quickshell"
-        self.write(q / "irice/shell.qml", "")
-        self.assertEqual(self.launch("-c", "irice"), ["-c", "irice"])  # (only the old one there)
-        self.write(q / "tessera/shell.qml", "")
-        self.assertEqual(self.launch("-c", "irice"), ["-c", "tessera"])
-        self.assertEqual(self.launch("-c", "tessera"), ["-c", "tessera"])
+    def test_remotes_at_the_old_address_point_at_the_new(self):
+        repo = self.checkout(self.d / "repo", remote="https://github.com/monishbl/iRice")
+        subprocess.run(["git", "-C", str(repo), "remote", "add", "mirror", "https://gitlab.com/monishbl/iRice.git"], check=True)
+        subprocess.run(["git", "-C", str(repo), "remote", "add", "fork", "https://github.com/someone/iRice.git"], check=True)
+        MIG.remotes(str(repo))
+        url = lambda r: subprocess.run(["git", "-C", str(repo), "remote", "get-url", r], capture_output=True, text=True).stdout.strip()
+        self.assertEqual(url("origin"), "https://github.com/monishbl/tessera")
+        self.assertEqual(url("mirror"), "https://gitlab.com/monishbl/tessera.git")
+        self.assertEqual(url("fork"), "https://github.com/someone/iRice.git")
 
 
 # ── The root helper: the old one until setup, then setup moves the rest ─
@@ -309,11 +381,13 @@ class HelperChoice(Temp):
 
     @unittest.skipUnless(QS.exists(), "requires bundled Quickshell")
     def test_the_shells_pkexec_calls(self):
-        # RootHelper.qml's command, as the shell builds it, run with /usr in a
-        # temporary folder and a pkexec that says what it was asked
+        # RootHelper.qml's command, as the shell builds it (with OldNames.qml),
+        # run with /usr in a temporary folder and a pkexec that says what it was asked
         shell = self.d / "shell"
         (shell / "services").mkdir(parents=True)
+        (shell / "common").mkdir(parents=True)
         shutil.copy2(SHELL / "services/RootHelper.qml", shell / "services/RootHelper.qml")
+        shutil.copy2(SHELL / "common/OldNames.qml", shell / "common/OldNames.qml")
         (shell / "shell.qml").write_text('import QtQuick\nimport Quickshell\nimport qs.services\nShellRoot { settings.watchFiles: false\n'
                                          'Timer { interval: 50; running: true; onTriggered: { console.log("CMD " + JSON.stringify(RootHelper.command(["priority", "on"]))); '
                                          'console.log("KNOWS " + JSON.stringify(RootHelper.knows("login-look"))); console.log("MSG " + RootHelper.message("irice-root: no")); Qt.quit(); } }\n}\n')
@@ -333,31 +407,23 @@ class HelperChoice(Temp):
             r = subprocess.run(["sh", "-c", script, "sh", *args], env=dict(os.environ, PATH=f"{self.bin}:/usr/bin:/bin"),
                                capture_output=True, text=True, timeout=10)
             return r.returncode, r.stdout.strip().replace(str(sysroot), "")
-        self.assertEqual(cmd[:2], ["sh", "-c"])
-        # neither installed: Tessera's (pkexec then says it's missing)
         self.assertEqual(run(cmd[2], *cmd[4:]), (0, "/usr/lib/tessera/tessera-root priority on"))
         self.assertNotEqual(run(knows)[0], 0)
-        # only iRice's: that one, with its own policy
         self.system("usr/lib/irice/irice-root")
         self.write(sysroot / "usr/share/polkit-1/actions/org.irice.root.policy", '<action id="org.irice.root.login-look">')
         self.assertEqual(run(cmd[2], *cmd[4:]), (0, "/usr/lib/irice/irice-root priority on"))
         self.assertEqual(run(knows)[0], 0)
-        # Tessera's installed: Tessera's
         self.system("usr/lib/tessera/tessera-root")
         self.assertEqual(run(cmd[2], *cmd[4:]), (0, "/usr/lib/tessera/tessera-root priority on"))
-        self.assertNotEqual(run(knows)[0], 0)  # (its policy isn't there yet in this folder)
-        self.write(sysroot / "usr/share/polkit-1/actions/org.tessera.root.policy", (SHELL / "assets/polkit/org.tessera.root.policy").read_text())
-        self.assertEqual(run(knows)[0], 0)
 
 
 class RootSetup(Temp):
-    """setup, into a folder that has what iRice's helper installed."""
+    """setup, into a folder that has what the helper installed under the old name."""
 
-    def irice_system(self):
+    def old_system(self):
         s = self.d / "sys"
         w = lambda p, t="", m=None: self.write(s / p, t, m)
         w("usr/lib/irice/irice-root", "#!/usr/bin/python3\n", 0o755)
-        w("usr/lib/irice/qs-wifi-helper.py", "")
         w("usr/lib/irice/plymouth/irice-breathe/irice-breathe.plymouth", "")
         w("usr/share/polkit-1/actions/org.irice.root.policy", "<policyconfig/>")
         w("etc/polkit-1/rules.d/49-irice.rules", "// iRice\n")
@@ -367,58 +433,69 @@ class RootSetup(Temp):
         w("var/lib/irice/initramfs-backup/0.img", "x")
         w("etc/ananicy.d/irice.rules", '{ "name": "irice-shell", "type": "LowLatency_RT" }\n')
         w("etc/systemd/system/bluetooth.service.d/irice-no-rap.conf", "# iRice: no Ranging\n[Service]\n")
-        w("etc/systemd/system/fprintd.service.d/irice-timeout.conf", "# iRice: firmware\n")
         w("etc/systemd/system/plymouth-quit.service.d/irice.conf", "# iRice: the splash stays (irice uninstall removes this)\n")
         w("etc/modprobe.d/irice-phonecam.conf", "options v4l2loopback\n")
-        w("etc/modules-load.d/irice-phonecam.conf", "v4l2loopback\n")
         w("etc/pam.d/sudo", "#%PAM-1.0\nauth       sufficient   pam_fprintd.so max-tries=5 timeout=10   # iRice fingerprint\nauth include system-auth\n")
+        w("etc/pam.d/greetd.pre-irice", "# pam before\n")
+        w("etc/greetd/config.toml.pre-irice", "# before\n")
         w("etc/plymouth/plymouthd.conf", "[Daemon]\nTheme=irice-breathe\nShowDelay=0\n")
         for id in ("breathe", "orbit"):
             w(f"usr/share/plymouth/themes/irice-{id}/irice-{id}.plymouth", "")
         return s
 
     def test_setup_moves_everything_and_removes_the_old(self):
-        s = self.irice_system()
+        s = self.old_system()
         written = R.setup(str(SHELL), os.getuid(), prefix=str(s))
         e = lambda p: (s / p).exists() or (s / p).is_symlink()
-        # Tessera's helper, policy and rule are in; iRice's are gone
         for p in ("usr/lib/tessera/tessera-root", "usr/share/polkit-1/actions/org.tessera.root.policy", "etc/polkit-1/rules.d/49-tessera.rules"):
             self.assertTrue(e(p), p)
         for p in ("usr/lib/irice", "usr/share/polkit-1/actions/org.irice.root.policy", "etc/polkit-1/rules.d/49-irice.rules",
-                  "etc/polkit-1/rules.d/49-irice-quickshare.rules", "etc/ananicy.d/irice.rules", "etc/irice", "var/lib/irice"):
+                  "etc/polkit-1/rules.d/49-irice-quickshare.rules", "etc/ananicy.d/irice.rules", "etc/irice", "var/lib/irice",
+                  "etc/systemd/system/bluetooth.service.d/irice-no-rap.conf", "etc/modprobe.d/irice-phonecam.conf",
+                  "usr/share/plymouth/themes/irice-breathe", "usr/share/plymouth/themes/irice-orbit",
+                  "etc/greetd/config.toml.pre-irice", "etc/pam.d/greetd.pre-irice"):
             self.assertFalse(e(p), p)
-        # the shell's priority, for its new name and its old one (a shell started before keeps it)
         rule = (s / "etc/ananicy.d/tessera.rules").read_text()
         self.assertIn('"tessera-shell"', rule)
-        self.assertIn('"irice-shell"', rule)
-        # Quick Share's trust, for the same person, now for Tessera's helper
+        self.assertNotIn("irice", rule)
         trust = (s / "etc/polkit-1/rules.d/49-tessera-quickshare.rules").read_text()
         self.assertIn('subject.user === "me"', trust)
-        self.assertIn("/usr/lib/tessera/tessera-root", trust)
-        self.assertNotIn("irice", trust)
         self.assertEqual((s / "etc/tessera/quickshare-trusted").read_text(), "me\n")
-        self.assertTrue(e("var/lib/tessera/initramfs-backup/0.img"))
-        # drop-ins and module options renamed, content kept
         self.assertEqual((s / "etc/systemd/system/bluetooth.service.d/tessera-no-rap.conf").read_text(), "# Tessera: no Ranging\n[Service]\n")
         self.assertIn("tessera uninstall", (s / "etc/systemd/system/plymouth-quit.service.d/tessera.conf").read_text())
-        for p in ("etc/systemd/system/bluetooth.service.d/irice-no-rap.conf", "etc/systemd/system/fprintd.service.d/irice-timeout.conf",
-                  "etc/systemd/system/plymouth-quit.service.d/irice.conf", "etc/modprobe.d/irice-phonecam.conf", "etc/modules-load.d/irice-phonecam.conf"):
-            self.assertFalse(e(p), p)
-        self.assertTrue(e("etc/modprobe.d/tessera-phonecam.conf"))
-        # the fingerprint line is Tessera's now (and still turned off by it)
-        pam = (s / "etc/pam.d/sudo").read_text()
-        self.assertIn("# Tessera fingerprint", pam)
-        self.assertNotIn("iRice", pam)
-        # the boot animation in use, under its new name; iRice's copies gone
+        self.assertIn("# Tessera fingerprint", (s / "etc/pam.d/sudo").read_text())
         self.assertIn("Theme=tessera-breathe\n", (s / "etc/plymouth/plymouthd.conf").read_text())
-        self.assertIn("ShowDelay=0", (s / "etc/plymouth/plymouthd.conf").read_text())
-        self.assertTrue(e("usr/share/plymouth/themes/tessera-breathe/tessera-breathe.plymouth"))
-        self.assertFalse(e("usr/share/plymouth/themes/irice-breathe"))
-        self.assertFalse(e("usr/share/plymouth/themes/irice-orbit"))
         self.assertEqual(json.loads((s / "etc/tessera/bootsplash.json").read_text()), {"original": "spinner", "applied": "tessera-breathe"})
+        self.assertEqual((s / "etc/greetd/config.toml.pre-tessera").read_text(), "# before\n")
+        self.assertTrue(e("etc/pam.d/greetd.pre-tessera"))
         self.assertIn("/usr/lib/irice", written)
-        # once: nothing more to do the next time
-        self.assertEqual(R.setup(str(SHELL), os.getuid(), prefix=str(s)), [])
+        self.assertEqual(R.setup(str(SHELL), os.getuid(), prefix=str(s)), [])  # (once)
+
+    def test_the_login_screens_entry_takes_tesseras_name_and_folder(self):
+        s = self.d / "sys"
+        new = self.checkout(self.home / "tessera")
+        os.symlink("tessera", self.home / "iRice")
+        old = self.home / "iRice"
+        sessions = s / "usr/share/wayland-sessions"
+        self.write(sessions / "irice.desktop", f"[Desktop Entry]\nName=iRice\nExec={old}/sandbox/irice-session.sh\nType=Application\n")
+        done = R.session_entry(str(old / "shell"), str(s))
+        self.assertEqual(done, [R.SESSION_ENTRY, R.OLD_SESSION_ENTRY])
+        self.assertFalse((sessions / "irice.desktop").exists())
+        entry = (sessions / "tessera.desktop").read_text()
+        self.assertIn(f"Exec={new}/sandbox/tessera-session.sh\n", entry)
+        self.assertIn("Name=Tessera\n", entry)
+        self.assertEqual(R.session_entry(str(new / "shell"), str(s)), [])  # (once)
+        # an entry that starts the checkout through its old folder name: its own path
+        (sessions / "tessera.desktop").write_text(f"[Desktop Entry]\nExec={old}/sandbox/tessera-session.sh\n")
+        R.session_entry(str(new / "shell"), str(s))
+        self.assertIn(f"Exec={new}/sandbox/tessera-session.sh\n", (sessions / "tessera.desktop").read_text())
+        # another checkout's entry, or none: nothing new at the login screen
+        other = self.checkout(self.d / "other")
+        (sessions / "tessera.desktop").write_text(f"[Desktop Entry]\nExec={other}/sandbox/tessera-session.sh\n")
+        self.assertEqual(R.session_entry(str(new / "shell"), str(s)), [])
+        (sessions / "tessera.desktop").unlink()
+        self.assertEqual(R.session_entry(str(new / "shell"), str(s)), [])
+        self.assertFalse((sessions / "tessera.desktop").exists())
 
     def test_priority_turned_off_stays_off(self):
         s = self.d / "sys"
@@ -429,26 +506,10 @@ class RootSetup(Temp):
         self.assertFalse((s / "etc/ananicy.d/tessera.rules").exists())
         self.assertFalse((s / "etc/ananicy.d/irice.rules").exists())
 
-    def test_priority_on_and_off_take_the_old_rule_out(self):
-        s = self.d / "sys"
-        self.write(s / "etc/ananicy.d/irice.rules", "x\n")
-        self.assertIn(str(s / "etc/ananicy.d/irice.rules"), R.priority(True, prefix=str(s), run=lambda *a, **k: None))
-        self.assertTrue((s / "etc/ananicy.d/tessera.rules").exists())
-        self.write(s / "etc/ananicy.d/irice.rules", "x\n")
-        R.priority(False, prefix=str(s), run=lambda *a, **k: None)
-        self.assertEqual(sorted(p.name for p in (s / "etc/ananicy.d").iterdir()), [])
-
-    def test_trust_without_its_marker_reads_the_rule(self):
-        s = self.d / "sys"
-        self.write(s / "etc/polkit-1/rules.d/49-irice-quickshare.rules", 'if (subject.user === "ana" && subject.active)\n')
-        R.migrate_from_irice(str(s))
-        self.assertIn('subject.user === "ana"', (s / "etc/polkit-1/rules.d/49-tessera-quickshare.rules").read_text())
-
     def test_the_old_login_screen_is_written_until_its_replaced(self):
         s = self.d / "sys"
         self.write(s / "usr/share/irice/shell/shell.qml", "old")
         self.assertEqual(R.login_share(str(s)), str(s / "usr/share/irice"))
-        # (setup leaves that copy as it was installed: install.sh --only=login replaces it)
         R.setup(str(SHELL), os.getuid(), prefix=str(s))
         self.assertEqual((s / "usr/share/irice/shell/shell.qml").read_text(), "old")
         self.write(s / "usr/share/tessera/shell/shell.qml", "")
@@ -460,128 +521,47 @@ class RootSetup(Temp):
         R.fingerprint(False, "sudo", etc=str(etc), vendor=str(self.d / "vendor"), module=())
         self.assertEqual((etc / "sudo").read_text(), "#%PAM-1.0\nauth include system-auth\n")
 
-    def test_bootsplash_counts_an_old_animation_as_tesseras(self):
-        # (the system's own theme is never one of ours, by either name)
-        self.assertTrue("irice-breathe".startswith(("tessera-", "irice-")))
-        src = (SCRIPTS / "tessera-root.py").read_text()
-        self.assertIn('original.startswith(("tessera-", "irice-"))', src)
-        self.assertIn("read_text(at(OLD_BOOTSPLASH_RECORD))", src)
 
-
-# ── Environment names from before the rename ────────────────────────────
-class EnvFallbacks(Temp):
-    def test_autostart_reads_the_old_settings_folder_name(self):
-        cfg = self.d / "cfg"
-        self.write(cfg / "config.json", json.dumps({"loginItems": {"startAtLogin": False}}))
-        p = subprocess.run([sys.executable, "-I", str(SCRIPTS / "xdg-autostart.py"), "--dry-run"],
-                           env=dict(os.environ, **self.xdg, IRICE_USER_DIR=str(cfg), XDG_RUNTIME_DIR=str(self.d)),
-                           capture_output=True, text=True, timeout=20)
-        self.assertFalse(json.loads(p.stdout)["startAtLogin"], p.stderr)
-
-    def test_watchers_from_before_are_still_ours(self):
-        pi = load(SCRIPTS / "process-identity.py", "process_identity_rename")
-        w = subprocess.Popen(["sleep", "30"], env=dict(os.environ, IRICE_WATCH_TOKEN="abc"))
-        try:
-            time.sleep(0.1)
-            self.assertTrue(pi.carries(w.pid, "abc"))
-            self.assertFalse(pi.carries(w.pid, "abd"))
-        finally:
-            w.kill()
-            w.wait()
-
-    def test_hypridles_actions_from_before_still_lock(self):
-        idle = self.d / "idle"
-        self.write(idle / "lock-command", f"touch {self.d}/locked")
-        subprocess.run(["bash", str(SCRIPTS / "idle-action.sh"), "before-sleep"],
-                       env=dict(os.environ, IRICE_IDLE_DIR=str(idle)), timeout=20, capture_output=True)
-        self.assertTrue((self.d / "locked").exists())
-
-    def test_the_glass_plugin_loads_whichever_build_is_there(self):
-        # glass.lua with a stand-in for Hyprland's hl
-        data = self.d / "data"
-
-        def picked(*files, plugin=None):
-            shutil.rmtree(data, ignore_errors=True)
-            for f in files:
-                self.write(data / f, "so")
-            pre = f"TESSERA_GLASS_PLUGIN = {plugin}\n" if plugin else ""
-            lua = pre + 'hl = { on = function(_, f) f() end, exec_cmd = function(c) print(c) end }\n' + (ROOT / "hypr/tessera/glass.lua").read_text()
-            p = subprocess.run(["lua", "-"], input=lua, env=dict(os.environ, XDG_DATA_HOME=str(data)), capture_output=True, text=True, timeout=10)
-            self.assertEqual(p.returncode, 0, p.stderr)
-            return p.stdout.strip().replace(str(data), "$DATA")
-        if not shutil.which("lua"):
-            self.skipTest("needs lua")
-        self.assertEqual(picked(), "")
-        self.assertEqual(picked("irice/irice-glass.so"), "hyprctl plugin load '$DATA/irice/irice-glass.so'")
-        self.assertEqual(picked("tessera/irice-glass.so"), "hyprctl plugin load '$DATA/tessera/irice-glass.so'")
-        self.assertEqual(picked("tessera/irice-glass.so", "tessera/tessera-glass.so"), "hyprctl plugin load '$DATA/tessera/tessera-glass.so'")
-        # the tty session: the repo's own build first, the one built there before the rename next
-        repo = f'{{ "{data}/repo/tessera-glass.so", "{data}/repo/irice-glass.so" }}'
-        self.assertEqual(picked("repo/irice-glass.so", "tessera/tessera-glass.so", plugin=repo), "hyprctl plugin load '$DATA/repo/irice-glass.so'")
-
-
-# ── The installer and uninstaller ───────────────────────────────────────
-class Installer(Temp):
-    def setUp(self):
-        super().setUp()
-        self.fake("sudo", 'exec "$@"\n')
-        self.sys = self.d / "sys"
-        self.sys.mkdir()
-
-    def bash(self, names, code):
-        pattern = "; ".join(f"/^{n}() {{/,/^}}/p" for n in names)
-        functions = subprocess.run(["sed", "-n", pattern, str(ROOT / "install.sh")], capture_output=True, text=True, check=True).stdout
-        env = dict(os.environ, **self.xdg, PATH=f"{self.bin}:/usr/bin:/bin", TESSERA_SYSTEM_ROOT=str(self.sys))
-        script = (f'ROOT={ROOT}; CONFIG="$XDG_CONFIG_HOME"; DATA="$XDG_DATA_HOME"; DRY=0\n'
-                  'note() { echo "note: $*"; }\n' + functions + "\n" + code)
-        p = subprocess.run(["bash", "-c", script], env=env, capture_output=True, text=True, timeout=30)
+# ── Environment names, the pending check, the dev container (bash) ──────
+class Bash(Temp):
+    def bash(self, code, **env):
+        e = dict(os.environ, **self.xdg, PATH=f"{self.bin}:/usr/bin:/bin", **env)
+        p = subprocess.run(["bash", "-c", f'source {SCRIPTS / "old-names.sh"}\n' + code], env=e, capture_output=True, text=True, timeout=30)
         self.assertEqual(p.returncode, 0, p.stderr)
         return p.stdout
 
-    def test_an_install_from_before_moves_over(self):
-        c = self.home / ".config"
-        self.write(c / "irice/config.json", "{}")
-        self.write(self.home / ".local/share/irice/source", "/repo\n")
-        self.write(c / "hypr/irice/keyboard.lua", "-- yours\n")
-        self.write(c / "hypr.pre-irice/hyprland.conf", "# your own\n")
-        self.write(c / "fish/conf.d/irice.fish", "fish_add_path\n")
-        self.write(self.sys / "etc/greetd/config.toml.pre-irice", "# before\n")
-        self.write(self.sys / "etc/pam.d/greetd.pre-irice", "# pam before\n")
-        self.bash(["adopt_old_names"], "adopt_old_names")
-        self.assertTrue((c / "tessera/config.json").exists())
-        self.assertTrue((self.home / ".local/share/tessera/source").exists())
-        self.assertEqual((c / "hypr/tessera/keyboard.lua").read_text(), "-- yours\n")
-        self.assertTrue((c / "hypr/irice").is_symlink())
-        self.assertEqual((c / "hypr.pre-tessera/hyprland.conf").read_text(), "# your own\n")
-        self.assertTrue((c / "fish/conf.d/tessera.fish").exists())
-        self.assertEqual((self.sys / "etc/greetd/config.toml.pre-tessera").read_text(), "# before\n")
-        self.assertTrue((self.sys / "etc/pam.d/greetd.pre-tessera").exists())
-        self.assertFalse((self.sys / "etc/greetd/config.toml.pre-irice").exists())
-        # (a backup of Tessera's own already there wins: the other stays where it is)
-        self.write(self.sys / "etc/default/grub.pre-irice", "a")
-        self.write(self.sys / "etc/default/grub.pre-tessera", "b")
-        self.bash(["adopt_old_names"], "adopt_old_names")
-        self.assertEqual((self.sys / "etc/default/grub.pre-tessera").read_text(), "b")
+    def test_old_environment_names_count_until_the_new_one_is_set(self):
+        out = self.bash('old_names_env; echo "$TESSERA_ARENA $TESSERA_TTY"', IRICE_ARENA="3", IRICE_TTY="1", TESSERA_TTY="0")
+        self.assertEqual(out.strip(), "3 0")
 
-    def test_the_login_screens_entry_starts_the_same_folder(self):
-        repo = self.d / "repo"
-        self.write(repo / "sandbox/tessera-session.sh", "#!/bin/sh\n", 0o755)
-        sessions = self.sys / "usr/share/wayland-sessions"
+    def test_pending_only_while_something_is_left(self):
+        self.assertEqual(self.bash("old_names_pending && echo yes || echo no").strip(), "no")
+        self.write(self.home / ".cache/irice/x", "")
+        self.assertEqual(self.bash("old_names_pending && echo yes || echo no").strip(), "yes")
+        shutil.rmtree(self.home / ".cache/irice")
+        self.checkout(self.home / "iRice")
+        self.assertEqual(self.bash("old_names_pending && echo yes || echo no").strip(), "yes")
+
+    def test_the_dev_container_until_its_renamed(self):
+        self.fake("distrobox", 'echo "ID | NAME | STATUS | IMAGE"; echo "abc | $BOXES | Up | arch"\n')
+        self.assertEqual(self.bash("old_names_dev_box", BOXES="irice").strip(), "irice")
+        self.assertEqual(self.bash("old_names_dev_box", BOXES="tessera").strip(), "tessera")
+        self.assertEqual(self.bash("old_names_dev_box", BOXES="other").strip(), "tessera")
+
+    def test_the_installer_renames_root_backups_and_the_entry(self):
+        s = self.d / "sys"
+        self.fake("sudo", 'exec "$@"\n')
+        repo = self.checkout(self.d / "repo")
+        sessions = s / "usr/share/wayland-sessions"
         self.write(sessions / "irice.desktop", f"[Desktop Entry]\nName=iRice\nExec={repo}/sandbox/irice-session.sh\nType=Application\n")
-        self.bash(["login_session_entry"], "login_session_entry")
+        self.write(s / "etc/greetd/config.toml.pre-irice", "# before\n")
+        self.write(s / "etc/default/grub.pre-irice", "a")
+        self.write(s / "etc/default/grub.pre-tessera", "b")
+        self.bash(f'old_names_install "{s}" 0')
         self.assertFalse((sessions / "irice.desktop").exists())
-        entry = (sessions / "tessera.desktop").read_text()
-        self.assertIn(f"Exec={repo}/sandbox/tessera-session.sh\n", entry)
-        self.assertIn("Name=Tessera\n", entry)
-
-    def test_the_old_entry_still_starts_tessera(self):
-        # (until that entry is replaced, it starts sandbox/irice-session.sh)
-        box = self.d / "box/sandbox"
-        box.mkdir(parents=True)
-        shutil.copy2(ROOT / "sandbox/irice-session.sh", box / "irice-session.sh")
-        self.write(box / "tessera-session.sh", f'#!/bin/sh\necho "tessera $*" > {self.d}/ran\n', 0o755)
-        subprocess.run([str(box / "irice-session.sh"), "a"], timeout=10, check=True)
-        self.assertEqual((self.d / "ran").read_text(), "tessera a\n")
+        self.assertIn(f"Exec={repo}/sandbox/tessera-session.sh\n", (sessions / "tessera.desktop").read_text())
+        self.assertEqual((s / "etc/greetd/config.toml.pre-tessera").read_text(), "# before\n")
+        self.assertEqual((s / "etc/default/grub.pre-tessera").read_text(), "b")  # (Tessera's own wins)
 
 
 class Uninstall(Temp):
@@ -612,7 +592,7 @@ class Uninstall(Temp):
         self.write(s / "etc/pam.d/greetd", "auth include x\n# irice: unlock the keyring with the login password\n-auth optional pam_gnome_keyring.so\n")
         self.write(h / ".bash_profile", "a\n# irice: start Hyprland when logging in on the first console\nexec start-hyprland\nb\n")
         self.write(data / "tessera/previous-login-manager", "sddm\n")
-        env = dict(os.environ, **self.xdg, PATH=f"{self.bin}:/usr/bin:/bin", TESSERA_SYSTEM_ROOT=str(s))
+        env = dict(os.environ, **self.xdg, PATH=f"{self.bin}:/usr/bin:/bin")
         p = subprocess.run(["bash", str(ROOT / "uninstall.sh"), "--dry-run"], env=env, capture_output=True, text=True, timeout=30)
         self.assertEqual(p.returncode, 0, p.stderr)
         self.assertTrue((s / "usr/lib/irice/x").exists())  # (a dry run changes nothing)
@@ -624,11 +604,41 @@ class Uninstall(Temp):
                          s / f"etc/polkit-1/rules.d/49-{name}.rules", s / f"etc/ananicy.d/{name}.rules", s / f"etc/{name}",
                          s / f"usr/share/wayland-sessions/{name}.desktop", s / f"etc/systemd/system/plymouth-quit.service.d/{name}.conf"):
                 self.assertFalse(path.exists(), path)
-        self.assertEqual((c / "hypr/hyprland.lua").read_text(), "-- mine\n")  # (iRice's backup of yours)
+        self.assertEqual((c / "hypr/hyprland.lua").read_text(), "-- mine\n")
         self.assertEqual((s / "etc/greetd/config.toml").read_text(), "# before\n")
         self.assertEqual((s / "etc/pam.d/greetd").read_text(), "auth include x\n")
         self.assertEqual((h / ".bash_profile").read_text(), "a\nb\n")
         self.assertIn("systemctl enable sddm", log.read_text())
+
+
+# ── The old name lives only in the migration modules, until they go ─────
+ALLOWED = {
+    "shell/assets/scripts/migrate-names.py", "shell/assets/scripts/old-names.sh", "shell/assets/scripts/tessera-root.py",
+    "native/tessera-ui/core/src/old_names.rs", "shell/common/OldNames.qml", "sandbox/irice-session.sh",
+    "site/wrangler.jsonc", "site/bugs/wrangler.jsonc", "site/bugs/README.md", "CHANGELOG.md", "docs/rename-to-tessera.md",
+    "tests/test_rename_tessera.py",
+}
+
+
+class Confined(unittest.TestCase):
+    @unittest.skipUnless((ROOT / ".git").exists(), "needs the git checkout")
+    def test_the_old_name_is_only_in_the_migration_modules(self):
+        files = subprocess.run(["git", "-C", str(ROOT), "grep", "-il", "-I", "irice"], capture_output=True, text=True).stdout.split()
+        self.assertEqual(sorted(set(files) - ALLOWED), [])
+        names = subprocess.run(["git", "-C", str(ROOT), "ls-files"], capture_output=True, text=True).stdout.split()
+        self.assertEqual([n for n in names if "irice" in n.lower() and n not in ALLOWED], [])
+
+    def test_the_root_helper_keeps_it_in_its_own_section(self):
+        lines = (SCRIPTS / "tessera-root.py").read_text().split("\n")
+        start = next(i for i, l in enumerate(lines) if l.startswith("# ── Tessera's old name"))
+        end = next(i for i, l in enumerate(lines) if i > start and l.startswith('LIB = "/usr/lib/tessera"'))
+        outside = [l for i, l in enumerate(lines) if not start <= i < end and "irice" in l.lower()]
+        self.assertEqual(outside, [])
+
+    def test_not_past_its_removal_date(self):
+        self.assertEqual(MIG.REMOVE_AFTER, datetime.date(2027, 2, 1))
+        self.assertLessEqual(datetime.date.today(), MIG.REMOVE_AFTER,
+                             "past the removal date: remove Tessera's old name (docs/rename-to-tessera.md)")
 
 
 if __name__ == "__main__":

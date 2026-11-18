@@ -336,8 +336,8 @@ Singleton {
     }
     Process {
         id: trustProbe
-        // (/etc/irice: turned on before iRice became Tessera, until the root setup moves it)
-        command: ["sh", "-c", "[ -e /etc/tessera/quickshare-trusted ] || [ -e /etc/irice/quickshare-trusted ]"]
+        // (the old name's folder: turned on before the rename, until the root setup moves it)
+        command: ["sh", "-c", "[ -e /etc/tessera/quickshare-trusted ] || [ -e \"$1/quickshare-trusted\" ]", "sh", OldNames.etc]
         onExited: code => root.trusted = code === 0
     }
     function setTrusted(on) {
@@ -359,7 +359,7 @@ Singleton {
             root.trustBusy = false;
             if (code !== 0 && code !== 126)
                 root.trustError = code === 127 ? "Not allowed (an administrator's password is needed)."
-                    : (trustErr.text.replace(/^(tessera|irice)-root: /, "").trim() || "That didn't change. Update Tessera, then try again.");
+                    : (OldNames.withoutHelperPrefix(trustErr.text).trim() || "That didn't change. Update Tessera, then try again.");
             root.checkTrust();
         }
     }

@@ -13,9 +13,7 @@ if [[ "$role" == terminal ]]; then
     [[ "${1:-}" == --hold ]] && { hold=1; shift; }
     [[ "${1:-}" == -- ]] && shift
 fi
-cfgdir="${TESSERA_USER_DIR:-${IRICE_USER_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/tessera}}"
-# (…/irice: Tessera's folder from before it was renamed, not moved yet)
-[[ ! -e "$cfgdir" && -d "${cfgdir%/tessera}/irice" ]] && cfgdir="${cfgdir%/tessera}/irice"
+cfgdir="${TESSERA_USER_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/tessera}"
 
 chosen=""
 if [[ -f "$cfgdir/config.json" ]] && command -v python3 >/dev/null; then

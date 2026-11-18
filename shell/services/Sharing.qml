@@ -201,7 +201,7 @@ Singleton {
     //   qs ipc call sharingdemo peers | none | sending <0-100> | sent | real
     IpcHandler {
         target: "sharingdemo"
-        enabled: (Quickshell.env("TESSERA_SANDBOX") || Quickshell.env("IRICE_SANDBOX")) === "1"
+        enabled: Quickshell.env("TESSERA_SANDBOX") === "1"
         function ask(): void {
             root.addRequest({ id: "demo:1", via: "demo", session: "1", from: "Maya's phone", type: "phone", what: "2 photos",
                 files: [{ name: "IMG_2041.jpg", mime: "image/jpeg" }, { name: "IMG_2042.jpg", mime: "image/jpeg" }], total: 6200000, pin: "4821" });

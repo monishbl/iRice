@@ -1,4 +1,4 @@
--- Bug reports from iRice (Settings → Report a Bug), filed as GitHub issues.
+-- Bug reports from Tessera (Settings → Report a Bug), filed as GitHub issues.
 -- No IP addresses are kept: the rate limit stores a salted hash of the
 -- address and the hour, and those rows are deleted after a day.
 CREATE TABLE IF NOT EXISTS reports (

@@ -1,4 +1,4 @@
-// iRice bug reports: POST /api/bug-reports from iRice's Settings → Report a
+// Tessera bug reports: POST /api/bug-reports from Tessera's Settings → Report a
 // Bug (shell/assets/scripts/bug-report.py), stored in D1 and filed as a
 // GitHub issue in monishbl/tessera. A report's screenshot is served at
 // /api/bug-reports/<id>/screenshot, where the id is 128 random bits, so only
@@ -95,15 +95,15 @@ export function issueBody(r, id, origin) {
         // GitHub caps an issue body at 65,536 characters: keep the end of the log
         const room = 60000 - parts.join("\n\n").length;
         const log = r.log.length > room ? "…\n" + r.log.slice(r.log.length - room) : r.log;
-        parts.push("<details><summary>iRice log (scrubbed)</summary>\n\n" + fenced(log) + "\n\n</details>");
+        parts.push("<details><summary>Tessera log (scrubbed)</summary>\n\n" + fenced(log) + "\n\n</details>");
     }
-    parts.push(`<sub>Sent from iRice · report ${id.slice(0, 8)}</sub>`);
+    parts.push(`<sub>Sent from Tessera · report ${id.slice(0, 8)}</sub>`);
     return parts.join("\n\n");
 }
 
 async function limited(env, ip) {
     const hour = Math.floor(Date.now() / 3600000);
-    const bucket = await sha256((env.RATE_SALT ?? "irice") + "|" + ip + "|" + hour);
+    const bucket = await sha256((env.RATE_SALT ?? "tessera") + "|" + ip + "|" + hour);
     await env.DB.prepare("DELETE FROM rate WHERE hour < ?").bind(hour - 24).run();
     const row = await env.DB.prepare("INSERT INTO rate (bucket, hour, count) VALUES (?, ?, 1) ON CONFLICT(bucket) DO UPDATE SET count = count + 1 RETURNING count").bind(bucket, hour).first();
     return (row?.count ?? 1) > PER_HOUR;
@@ -118,7 +118,7 @@ async function fileIssue(env, r, id, origin) {
             Authorization: `Bearer ${env.GITHUB_TOKEN}`,
             Accept: "application/vnd.github+json",
             "X-GitHub-Api-Version": "2022-11-28",
-            "User-Agent": "irice-bug-reports",
+            "User-Agent": "tessera-bug-reports",
             "Content-Type": "application/json",
         },
         body: JSON.stringify({ title: quiet(r.title), body: issueBody(r, id, origin), labels: ["bug-report"] }),

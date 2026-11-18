@@ -15,7 +15,7 @@
 set -uo pipefail
 ARENA=$1 BIN=$(realpath "$2") OUT=$3
 GATE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-export TESSERA_NO_BOX=${TESSERA_NO_BOX:-1} IRICE_ARENA=$ARENA TESSERA_ARENA=$ARENA
+export TESSERA_NO_BOX=${TESSERA_NO_BOX:-1} TESSERA_ARENA=$ARENA
 REPS=${PROBE_REPS:-4} LATER=${PROBE_LATER:-600}
 # (glibc's defaults: nothing of the gate's malloc caps)
 unset MALLOC_ARENA_MAX MALLOC_MMAP_THRESHOLD_ MALLOC_TRIM_THRESHOLD_ GLIBC_TUNABLES

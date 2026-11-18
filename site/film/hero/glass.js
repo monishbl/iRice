@@ -13,7 +13,7 @@
  *     used as height), so the word appears as refraction before it's light
  *     (optional: pass `text` to createGlass);
  *   - ink: the glass going black from the top down, leaving glass at its
- *     lower rim, the way iRice's island looks (so a drop can become it).
+ *     lower rim, the way Tessera's island looks (so a drop can become it).
  *
  *   const g = await createGlass(canvas, { images: { petals: 'assets/p1.jpg', … } });
  *   g.draw({ a: 'petals', b: 'ocean', wipe: 0.4, … });

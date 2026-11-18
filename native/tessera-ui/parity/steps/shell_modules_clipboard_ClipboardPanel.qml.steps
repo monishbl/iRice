@@ -3,7 +3,7 @@
 setup for n in 1 2 3 4 5 6 7 8 9 10 11 12 13; do printf "item $n" | wl-copy; sleep 0.4; done
 setup for n in 1 2 3; do convert -size $((200+n*20))x$((120+n*10)) xc:'#'$((n*3))$((n*2))ff$((n*4)) /tmp/clip-pic$n.png 2>/dev/null && wl-copy < /tmp/clip-pic$n.png; sleep 0.5; done
 wait 8
-rec cb-open 1 ipc panels open clipboard IRICE-TEST
+rec cb-open 1 ipc panels open clipboard TESSERA-TEST
 note Open: body settles in about 0.3 s (Material) / 0.4 s (Glass); overshoot at most 1 % (Material) / about 3 % (Glass); body x 664..1256, y 244..756; compare QML within 1 frame.
 wait 1
 shot list
@@ -11,7 +11,7 @@ note Clipboard list: search field x 680..1018 y 260..296; segments All/Text/Imag
 rec cb-close 0.4 key -k Escape
 note Close in 192 ms with a slow start (exit curve 0.3,0,0.8,0.15 Material; 0.4,0,1,1 Glass); same as QML.
 wait 1
-ipc panels open clipboard IRICE-TEST
+ipc panels open clipboard TESSERA-TEST
 wait 1
 # NOTE: click on layer surfaces may not register in the harness
 rec cb-seg 0.6 ptr move 1135 278 sleep 100 click
@@ -68,7 +68,7 @@ shot images-nav
 note Arrow keys moved the ring across/down the image grid, same as QML.
 key -k Escape -k Escape
 wait 1
-ipc panels open clipboard IRICE-TEST
+ipc panels open clipboard TESSERA-TEST
 wait 1
 # Clear history: first click only, never twice
 ptr move 1195 726 sleep 200 click

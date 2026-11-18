@@ -110,17 +110,17 @@ impl Service for LoginScreen {
         self.tx = Some(tx.clone());
         let l = &h.st.shell.look;
         self.look = look_json(h.cfg(), l.dark, &l.seed);
-        // (/usr/share/irice: the login screen installed before iRice became Tessera)
+        // (the old name's copy: the login screen installed before the rename)
         let t1 = tx.clone();
         std::thread::spawn(move || {
-            let script = format!("[ -d /usr/share/tessera/shell ] || [ -d /usr/share/irice/shell ] || exit 1; {} && exit 0; exit 2", root_knows("login-look"));
+            let script = format!("[ -d /usr/share/tessera/shell ] || [ -d {}/shell ] || exit 1; {} && exit 0; exit 2", tessera_core::old_names::LOGIN_SHARE, root_knows("login-look"));
             let (code, _, _) = run_full(&strs(&["sh", "-c", &script]), None);
             t1.send(M::Probe(code));
         });
         std::thread::spawn(move || {
-            let (_, out, _) = run_full(&strs(&["sh", "-c", "[ -d /usr/share/tessera ] || [ ! -d /usr/share/irice ] || echo old"]), None);
+            let (_, out, _) = run_full(&strs(&["sh", "-c", &format!("[ -d /usr/share/tessera ] || [ ! -d {} ] || echo old", tessera_core::old_names::LOGIN_SHARE)]), None);
             if out.trim() == "old" {
-                tx.send(M::Share("/usr/share/irice".into()));
+                tx.send(M::Share(tessera_core::old_names::LOGIN_SHARE.into()));
             }
         });
         self.publish(h);
@@ -137,7 +137,7 @@ impl Service for LoginScreen {
         let wall = tessera_core::wallpaper::showing_now(cfg, h.st.shell.look.material);
         let clock24 = if cfg["appearance"]["clock24"] == true { "1" } else { "0" };
         let shell_dir = crate::util::root().join("shell").to_string_lossy().into_owned();
-        let sh = "QS=qs; for d in \"${XDG_DATA_HOME:-}/tessera\" \"$HOME/.local/share/tessera\" \"${XDG_DATA_HOME:-}/irice\" \"$HOME/.local/share/irice\"; do if [ -x \"$d/quickshell/bin/qs\" ]; then QS=\"$d/quickshell/bin/qs\"; export QML_IMPORT_PATH=\"$d/quickshell/lib/qt6/qml${QML_IMPORT_PATH:+:$QML_IMPORT_PATH}\"; break; fi; done; TESSERA_GREETER_MOCK=1 TESSERA_GREETER_STYLE=\"$1\" TESSERA_GREETER_WALLPAPER=\"$2\" TESSERA_GREETER_CLOCK24=\"$4\" exec \"$QS\" -p \"$3/greeter.qml\"";
+        let sh = "QS=qs; for d in \"${XDG_DATA_HOME:-}/tessera\" \"$HOME/.local/share/tessera\"; do if [ -x \"$d/quickshell/bin/qs\" ]; then QS=\"$d/quickshell/bin/qs\"; export QML_IMPORT_PATH=\"$d/quickshell/lib/qt6/qml${QML_IMPORT_PATH:+:$QML_IMPORT_PATH}\"; break; fi; done; TESSERA_GREETER_MOCK=1 TESSERA_GREETER_STYLE=\"$1\" TESSERA_GREETER_WALLPAPER=\"$2\" TESSERA_GREETER_CLOCK24=\"$4\" exec \"$QS\" -p \"$3/greeter.qml\"";
         let qml = vec!["sh".to_string(), "-c".into(), sh.into(), "sh".into(), style.clone(), wall, shell_dir, clock24.into()];
         // This binary's own login screen (tessera-ui --greeter), as a preview
         // (TESSERA_GREETER_MOCK: the password "tessera" "logs in", Escape quits);

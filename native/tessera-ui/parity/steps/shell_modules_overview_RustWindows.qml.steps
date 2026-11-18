@@ -2,7 +2,7 @@
 # Earlier run: spaces/titles PASS; Expose opened Mission Control but NEITHER shell showed the "foot / N windows" header (not scored); lock-vs-strip not run.
 setup foot & foot & foot &
 wait 2
-ipc panels open overview IRICE-TEST
+ipc panels open overview TESSERA-TEST
 wait 1
 shot spaces-overview
 note Every space shows its title ("Desktop" / "Space N") with the same names and window counts as QML; compare both looks.
@@ -29,4 +29,4 @@ wait 1
 # MANUAL: In the Overview drag a window to space 3: hyprctl clients shows it there; reorder two spaces; (virtual pointer drags did nothing in an earlier run)
 # MANUAL: minimize a window (title-bar button), Alt+Tab to it: it comes back (apps.show)
 # MANUAL: after unlocking, Alt+Tab works again
-# MANUAL: grep "no wm call" /tmp/irice-rt*/tessera-ui*.log is empty after the steps above (Rust log check)
+# MANUAL: grep "no wm call" /tmp/tessera-rt*/tessera-ui*.log is empty after the steps above (Rust log check)

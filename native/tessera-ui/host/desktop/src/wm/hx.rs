@@ -144,18 +144,12 @@ pub fn script(name: &str) -> Option<std::path::PathBuf> {
 
 // ── the glass plugin's commands ─────────────────────────────────────────────
 
-/// `<plugin> <args>` on the plugin's command socket (it answers to
-/// "tessera-glass", or "irice-glass" if built before the rename); false when
-/// no plugin answers. Blocking: call it on a thread.
+/// `tessera-glass <args>` on the plugin's command socket; false when no
+/// plugin answers. Blocking: call it on a thread.
 pub fn glass_command(args: &str) -> bool {
-    for n in ["tessera-glass", "irice-glass"] {
-        if hypr::request(&format!("{n} ping")).is_ok_and(|a| a.starts_with(n)) {
-            return hypr::request(&format!("{n} {args}")).is_ok();
-        }
-    }
-    false
+    glass_available() && hypr::request(&format!("tessera-glass {args}")).is_ok()
 }
-/// Whether a glass plugin answers (blocking)
+/// Whether the glass plugin answers (blocking)
 pub fn glass_available() -> bool {
-    ["tessera-glass", "irice-glass"].iter().any(|n| hypr::request(&format!("{n} ping")).is_ok_and(|a| a.starts_with(n)))
+    hypr::request("tessera-glass ping").is_ok_and(|a| a.starts_with("tessera-glass"))
 }

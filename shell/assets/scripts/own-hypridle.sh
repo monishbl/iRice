@@ -8,7 +8,7 @@
 set -uo pipefail
 f="${1:-${XDG_CONFIG_HOME:-$HOME/.config}/hypr/hypridle.conf}"
 [[ -r "$f" && -f "$f" ]] || exit 1
-# (sha256 of each hypr/hypridle.conf ever shipped, all while Tessera was called iRice)
+# (sha256 of each hypr/hypridle.conf ever shipped, all before 4 Nov 2026)
 case "$(sha256sum <"$f" | cut -d' ' -f1)" in
     cd5a63398fc723190008d71dbc0793c5e53d2910a4684635017b9812642e41a1 | \
         6bc086d7655b96b2e0803644fded9ca16570b30ae9b570e833a4359f8a6dee10 | \

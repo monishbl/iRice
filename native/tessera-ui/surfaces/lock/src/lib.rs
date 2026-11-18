@@ -10,7 +10,7 @@
 //! ── Roles: which real protocol is taken when ──────────────────────────────
 //! Nothing here acts on the system unless all of its conditions hold.
 //! "Real" below means: not `--demo` (nor TESSERA_UI_DEMO=1), and not a
-//! sandbox (TESSERA_SANDBOX / IRICE_SANDBOX ≠ 1).
+//! sandbox (TESSERA_SANDBOX ≠ 1).
 //!   Session lock (ext-session-lock-v1, wayland.rs): taken when the shell
 //!     says `held: true` (Lock.qml, while it locks and tessera-ui drew the
 //!     lock when that lock began) and this isn't `--demo`, on whatever
@@ -2486,6 +2486,6 @@ mod tests {
     #[test]
     fn modes_from_the_environment() {
         // (the test binary has no --demo: real unless a sandbox says so)
-        assert!(!super::demo_mode() || std::env::var("TESSERA_UI_DEMO").is_ok() || std::env::var("IRICE_UI_DEMO").is_ok());
+        assert!(!super::demo_mode() || std::env::var("TESSERA_UI_DEMO").is_ok());
     }
 }

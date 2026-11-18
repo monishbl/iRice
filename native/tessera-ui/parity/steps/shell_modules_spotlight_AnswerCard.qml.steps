@@ -1,7 +1,7 @@
 look glass
 # NOTE: sandbox accent colour in Glass differed (Rust red-coral vs QML orange) in earlier results; that is a known FAIL, report if still so.
 # NOTE: click on layer surfaces may not register in the harness
-ipc panels open spotlight IRICE-TEST
+ipc panels open spotlight TESSERA-TEST
 wait 1
 key 7*6
 wait 1
@@ -12,7 +12,7 @@ wait 1
 setup sh -c 'wl-paste > /tmp/ac-clip.txt; cat /tmp/ac-clip.txt'
 shot ac-closed
 note Search is closed after Return; clipboard holds 42 (checked by the setup line).
-ipc panels open spotlight IRICE-TEST
+ipc panels open spotlight TESSERA-TEST
 wait 1
 key 10 km in miles
 wait 2

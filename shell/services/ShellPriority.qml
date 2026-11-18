@@ -23,8 +23,8 @@ Singleton {
     }
     Process {
         id: check
-        // (irice.rules: installed before iRice became Tessera, until the root setup replaces it)
-        command: ["sh", "-c", "test -d /etc/ananicy.d || exit 2; test -f /etc/ananicy.d/tessera.rules || test -f /etc/ananicy.d/irice.rules"]
+        // (the old name's rule: installed before the rename, until the root setup replaces it)
+        command: ["sh", "-c", "test -d /etc/ananicy.d || exit 2; test -f /etc/ananicy.d/tessera.rules || test -f \"$1\"", "sh", OldNames.ananicyRule]
         onExited: code => {
             root.available = code !== 2;
             root.on = code === 0;
@@ -52,7 +52,7 @@ Singleton {
                 root.error = "Tessera's system helper is from before this setting. Run Software Update once, then try again.";
             else if (code !== 0 && code !== 126)
                 root.error = code === 127 ? "Not allowed (an administrator's password is needed)."
-                    : (jobErr.text.replace(/^(tessera|irice)-root: /, "").trim() || "That didn't change. Update Tessera, then try again.");
+                    : (OldNames.withoutHelperPrefix(jobErr.text).trim() || "That didn't change. Update Tessera, then try again.");
             root.refresh();
         }
     }

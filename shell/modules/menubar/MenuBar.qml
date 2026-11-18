@@ -184,12 +184,12 @@ Variants {
 
                 // The system menu: Tessera's badge, your distro's logo, Tux or a
                 // symbol (Settings → Appearance → Menu icon). No company
-                // marks: an old choice of one shows the badge. ("irice" and
-                // "circle": the badge too, chosen before iRice became Tessera.)
+                // marks: an old choice of one shows the badge. ("circle", and
+                // the old name's choice: the badge too.)
                 MenuBarItem {
                     readonly property string choice: Config.options.appearance.menuIcon
                     readonly property string distroIcon: choice === "distro" && SystemInfo.osLogo !== "" ? Quickshell.iconPath(SystemInfo.osLogo, true) : ""
-                    icon: distroIcon !== "" ? "" : ({ tessera: "circle-wavy", irice: "circle-wavy", linux: "linux-logo", distro: "linux-logo", command: "command", terminal: "terminal-window", cpu: "cpu", atom: "atom", planet: "planet", rocket: "rocket-launch", star: "star-four", lightning: "lightning", flame: "flame", leaf: "leaf", snowflake: "snowflake", moon: "moon-stars", cat: "cat", ghost: "ghost", alien: "alien", circle: "circle-wavy" })[choice] ?? "circle-wavy"
+                    icon: distroIcon !== "" ? "" : ({ tessera: "circle-wavy", [OldNames.settingValue]: "circle-wavy", linux: "linux-logo", distro: "linux-logo", command: "command", terminal: "terminal-window", cpu: "cpu", atom: "atom", planet: "planet", rocket: "rocket-launch", star: "star-four", lightning: "lightning", flame: "flame", leaf: "leaf", snowflake: "snowflake", moon: "moon-stars", cat: "cat", ghost: "ghost", alien: "alien", circle: "circle-wavy" })[choice] ?? "circle-wavy"
                     image: distroIcon
                     tintImage: true
                     fill: true

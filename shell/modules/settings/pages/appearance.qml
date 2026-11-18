@@ -395,9 +395,9 @@ Column {
                         Squircle {
                             id: choice
                             required property var modelData
-                            // (the badge was "circle", and "irice" was the drop, Tessera's mark before)
+                            // (the badge was "circle", and the old name's choice was the drop, Tessera's mark before)
                             readonly property bool on: Config.options.appearance.menuIcon === modelData[0]
-                                || (modelData[0] === "tessera" && ["circle", "irice"].includes(Config.options.appearance.menuIcon))
+                                || (modelData[0] === "tessera" && ["circle", OldNames.settingValue].includes(Config.options.appearance.menuIcon))
                             readonly property string distroIcon: modelData[0] === "distro" && SystemInfo.osLogo !== "" ? Quickshell.iconPath(SystemInfo.osLogo, true) : ""
                             width: 40
                             height: 32

@@ -28,7 +28,7 @@ _dir = _private_dir()
 _path = None
 # (or `touch $XDG_RUNTIME_DIR/tessera-quickshare.debug`: the shell starts the
 # helper, so its environment is the shell's; the next start picks it up)
-if _dir and ((os.environ.get("TESSERA_QS_DEBUG") or os.environ.get("IRICE_QS_DEBUG")) == "1" or os.path.exists(os.path.join(_dir, "tessera-quickshare.debug"))):
+if _dir and (os.environ.get("TESSERA_QS_DEBUG") == "1" or os.path.exists(os.path.join(_dir, "tessera-quickshare.debug"))):
     _path = os.path.join(_dir, "tessera-quickshare.log")
 
 

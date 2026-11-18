@@ -22,16 +22,16 @@
 # (the shake has settled), session, power (Restart asked), next-user,
 # finger, finger-miss, greetd-wrong. Each "started:" line must name
 # tessera-session for user grace (the login went through the fake greetd).
-# Each "power stub:" line must say "never called". Then IRICE_ARENA=9 ./dev.sh down.
+# Each "power stub:" line must say "never called". Then TESSERA_ARENA=9 ./dev.sh down.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
 # (GREETER_ARENA: another hidden arena, when 9 is someone else's)
-export IRICE_ARENA=${GREETER_ARENA:-9} TESSERA_ARENA=${GREETER_ARENA:-9}
+export TESSERA_ARENA=${GREETER_ARENA:-9}
 ROOT="$REPO"
 . "$REPO/sandbox/lib.sh"
 dev() { "$REPO/dev.sh" "$@"; }
-P() { dev pointer -o IRICE-TEST "$@" >/dev/null 2>&1; }
+P() { dev pointer -o TESSERA-TEST "$@" >/dev/null 2>&1; }
 key() { dev run wtype "$@" 2>/dev/null; }
 
 #   FACE=analog tools/greeter-shots.sh still <glass|material> <qml|rust>   (one preview shot: the clock faces)
@@ -81,9 +81,9 @@ sed -e "s#\"/etc/passwd\"#\"$G/passwd\"#" -e "s#\"/etc/hostname\"#\"$G/hostname\
 
 # ── The arena: up, one 1920×1080 screen, no shell ───────────────────────────
 dev status | grep -q running || { dev up >/dev/null 2>&1; sleep 12; }
-dev hyprctl eval 'hl.monitor({ output = "IRICE-TEST", mode = "1920x1080@60", position = "20000x20000", scale = 1 })' >/dev/null
+dev hyprctl eval 'hl.monitor({ output = "TESSERA-TEST", mode = "1920x1080@60", position = "20000x20000", scale = 1 })' >/dev/null
 dev hyprctl eval 'hl.monitor({ output = "WAYLAND-1", disabled = true })' >/dev/null
-dev hyprctl dispatch 'hl.dsp.focus({ monitor = "IRICE-TEST" })' >/dev/null
+dev hyprctl dispatch 'hl.dsp.focus({ monitor = "TESSERA-TEST" })' >/dev/null
 stop_sandbox_shells
 
 stop_greeter() {

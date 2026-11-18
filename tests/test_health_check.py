@@ -199,7 +199,7 @@ class HealthCheck(unittest.TestCase):
         # record of where Tessera came from leads to it)
         shell = self.home / ".config/quickshell/tessera/assets/scripts"
         shell.mkdir(parents=True)
-        for name in ("health-check.py", "sharing-check.py", "tessera-root.py", "bug-report.py"):
+        for name in ("health-check.py", "sharing-check.py", "tessera-root.py", "bug-report.py", "migrate-names.py"):
             (shell / name).write_text((SCRIPT.parent / name).read_text())
         (self.home / ".local/share/tessera").mkdir(parents=True)
         (self.home / ".local/share/tessera/source").write_text(str(ROOT) + "\n")

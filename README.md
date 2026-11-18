@@ -1,6 +1,6 @@
 # Tessera
 
-(Formerly iRice. Coming from it? Your settings move over by themselves; [docs/rename-to-tessera.md](docs/rename-to-tessera.md) has the two commands to run once.)
+(Using it under its earlier name? Your settings and folders move over by themselves; [docs/rename-to-tessera.md](docs/rename-to-tessera.md) has what's left to run once.)
 
 A glass desktop shell for Hyprland, after macOS, with everything end4's illogical-impulse dots offer and more: Stages, window tiling, Focus modes, an App Drawer and a matching login screen. A second look, Material, follows Android. It's written from scratch in [Quickshell](https://quickshell.org) and tuned for integrated GPUs.
 
@@ -229,7 +229,7 @@ All development happens in a nested Hyprland inside a distrobox (`./dev.sh`), ne
 ./dev.sh create      # one-time: create the container and install the toolchain
 ./dev.sh up          # start the sandbox (Alt stands in for Super)
 ./dev.sh reload      # rebuild shaders and restart the shell
-./dev.sh ipc panels open controlCenter IRICE-TEST   # drive the UI
+./dev.sh ipc panels open controlCenter TESSERA-TEST   # drive the UI
 ./dev.sh shot shot.png                               # screenshot the test output
 ./dev.sh hyprctl …   # talk to the sandbox compositor
 ./dev.sh logs | down

@@ -54,7 +54,7 @@ Variants {
             target: Hyprland
             enabled: win.pluginMode
             function onRawEvent(event) {
-                if (event.name !== "tessera-controls" && event.name !== "irice-controls") // (irice: a glass plugin built before the rename)
+                if (event.name !== "tessera-controls")
                     return;
                 const [kind, addr, x, y] = event.data.split(",");
                 const mx = win.monitor?.x ?? 0, my = win.monitor?.y ?? 0;

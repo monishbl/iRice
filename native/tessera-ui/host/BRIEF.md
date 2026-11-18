@@ -80,7 +80,7 @@ server). Use them; don't write a second reader. Read their data with
    `cargo build`, `cargo test`, `--workspace` or `-p tessera-ui`. Never run
    tessera-ui, qs, a sandbox or any binary you wrote. The user builds and
    tests everything afterwards.
-4. **Safety.** Never run sudo, pkexec, irice-root, nft, ufw, systemctl
+4. **Safety.** Never run sudo, pkexec, tessera-root, nft, ufw, systemctl
    (except reading `--user` state is not needed either), or anything that
    changes the live system. Your code may *call* such tools (as the QML
    does), but you never execute them. Never kill processes. Never read or

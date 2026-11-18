@@ -3,7 +3,7 @@
 # your screen): 2x (3840 x 2160), Quick Settings the same moment in both
 # looks so the page can split them, then cropped by crop-shots.py.
 #
-#   IRICE_ARENA=7 [LOOKS='glass material'] [SEARCH=1] [EXTRAS=1] site/tools/shots.sh [OUT_DIR]
+#   TESSERA_ARENA=7 [LOOKS='glass material'] [SEARCH=1] [EXTRAS=1] site/tools/shots.sh [OUT_DIR]
 #                                     (default /tmp/tessera-shots; EXTRAS=0 skips
 #                                     the closing still)
 #   site/tools/crop-shots.py OUT_DIR
@@ -28,7 +28,7 @@ for look in ${LOOKS:-glass material}; do
     echo "$look"
     ACCENT=blue setup "$look" "$TILES" 2 "3840x2160@60"
     inbox 'P move 3830 2150'
-    inbox 'ipc panels open controlCenter IRICE-TEST'; sleep 2.5; snap "qs-$l"
+    inbox 'ipc panels open controlCenter TESSERA-TEST'; sleep 2.5; snap "qs-$l"
     inbox 'ipc panels close'; sleep 1
     inbox 'ipc island demo parts'; sleep 2.5; snap "island-$l"
     inbox 'ipc island dismissNewest'; sleep 1.5
@@ -43,7 +43,7 @@ if [[ ${SEARCH:-1} == 1 ]]; then
     ACCENT=blue setup glass "$ROOT/site/tools/wallpapers/photo-flower.jpg" 2 "3840x2160@60"
     inbox 'P move 3830 2150'
     for q in "spotlight-flower:18% of 2450" "spotlight-days:days until christmas" "spotlight-time:time in Tokyo"; do
-        inbox 'ipc panels open spotlight IRICE-TEST'; sleep 1
+        inbox 'ipc panels open spotlight TESSERA-TEST'; sleep 1
         inbox "key \"${q#*:}\""; sleep 2; snap "${q%%:*}"
         inbox 'ipc panels close'; sleep 1
     done

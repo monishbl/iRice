@@ -186,7 +186,7 @@ fn color(hex: &str) -> slint::Color {
     }
 }
 
-/// $XDG_CACHE_HOME/tessera (Paths.cache; iRice's while the settings are)
+/// $XDG_CACHE_HOME/tessera (Paths.cache)
 fn cache_dir() -> std::path::PathBuf {
     let base = std::env::var_os("XDG_CACHE_HOME").map(std::path::PathBuf::from).unwrap_or_else(|| std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".cache"));
     let name = crate::util::state_dir().file_name().map(|n| n.to_owned()).unwrap_or_else(|| "tessera".into());

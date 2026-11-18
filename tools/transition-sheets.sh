@@ -6,18 +6,18 @@
 # glass, shapes left behind, jumps.
 #   tools/transition-sheets.sh --side qml|rust --arena N --look glass|material --out DIR
 #                              [--code DIR] [--bin TESSERA_UI] [--only 'a|b'] [--env K=V]…
-# Never your screen: the arena's IRICE-TEST only.
+# Never your screen: the arena's TESSERA-TEST only.
 set -uo pipefail
 TOOLS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SIDE="" ARENA="" LOOK=glass OUT="" CODE="" BIN="" ONLY="" KEEPUP="" ENVS=()
-USERCFG="$HOME/iRice/.sandbox/home/.config/tessera/config.json"
+USERCFG="$HOME/tessera/.sandbox/home/.config/tessera/config.json"
 while (($#)); do case "$1" in
     --side) SIDE=$2; shift;; --arena) ARENA=$2; shift;; --look) LOOK=$2; shift;; --out) OUT=$2; shift;;
     --code) CODE=$2; shift;; --bin) BIN=$2; shift;; --only) ONLY=$2; shift;; --keep-up) KEEPUP=1;; --env) ENVS+=("$2"); shift;;
     *) echo "unknown option $1"; exit 2;; esac; shift; done
 [[ -n $SIDE && -n $ARENA && -n $OUT && $ARENA != 1 ]] || { sed -n 2,8p "$0"; exit 2; }
 CODE=${CODE:-$(cd "$TOOLS/.." && pwd)}
-export IRICE_ARENA=$ARENA
+export TESSERA_ARENA=$ARENA
 # shellcheck source=/dev/null
 . "$CODE/site/film/tessera/capture/lib.sh"
 CFG="$HOMEDIR/.config/tessera/config.json"
@@ -38,8 +38,8 @@ PANELS=(
     "session|sc session|key -k Escape"
     "sidebar|sc sidebar|key -k Escape"
     "wallpaper|sc wallpaper|key -k Escape"
-    "soundMenu|ipc panels open soundMenu IRICE-TEST|key -k Escape"
-    "systemMenu|ipc panels open systemMenu IRICE-TEST|key -k Escape"
+    "soundMenu|ipc panels open soundMenu TESSERA-TEST|key -k Escape"
+    "systemMenu|ipc panels open systemMenu TESSERA-TEST|key -k Escape"
     "island|ipc island post bell Speed test|ipc island dismissNewest"
     "islandHover|P glide 960 14 200|P glide 1500 700 200"
     "islandWifi|ipc island demo wifi|true"
@@ -81,7 +81,7 @@ inbox "ipc lock unlock; $CLEAN" </dev/null >/dev/null 2>&1; sleep 2
 rec() {
     local n=$1 body=$2
     inbox "rm -f /tmp/ts-$ARENA-$n.mp4
-wf-recorder -o IRICE-TEST -r 60 -c libx264 -p preset=ultrafast -p crf=18 -f /tmp/ts-$ARENA-$n.mp4 >/dev/null 2>&1 & r=\$!
+wf-recorder -o TESSERA-TEST -r 60 -c libx264 -p preset=ultrafast -p crf=18 -f /tmp/ts-$ARENA-$n.mp4 >/dev/null 2>&1 & r=\$!
 sleep 1.2; echo \$(date +%s.%N) >/tmp/ts-$ARENA-$n.t; $body
 sleep 3.0; kill -INT \$r; wait \$r 2>/dev/null; cp /tmp/ts-$ARENA-$n.mp4 '$OUT/$n.mp4'; rm -f /tmp/ts-$ARENA-$n.mp4" </dev/null >/dev/null 2>&1
 }

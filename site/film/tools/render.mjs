@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * render.mjs: render a film to video, frame-exact.
- * (iRice's copy of the product-film kit's tool, MIT: adds software WebGL for
+ * (Tessera's copy of the product-film kit's tool, MIT: adds software WebGL for
  * the glass layer, and PLAYWRIGHT_FROM to find Playwright.)
  *
  * A film exposes window.__film = { DUR, seek(t), pause() } and draws each
@@ -70,7 +70,7 @@ OUT = resolve(OUT || join(dirname(filmAbs), basename(filmAbs, '.html') + '.mp4')
 const tmp = OUT.replace(/\.mp4$/, '');
 
 let chromium;
-/* iRice: PLAYWRIGHT_FROM names a package.json whose node_modules has Playwright
+/* Tessera: PLAYWRIGHT_FROM names a package.json whose node_modules has Playwright
    (the product-film kit's), since this copy lives outside it */
 if (process.env.PLAYWRIGHT_FROM) {
 	({ chromium } = (await import('node:module')).createRequire(process.env.PLAYWRIGHT_FROM)('playwright'));
@@ -85,7 +85,7 @@ if (process.env.PLAYWRIGHT_FROM) {
 const run = (args) => new Promise((ok, fail) => spawn('ffmpeg', ['-y', '-loglevel', 'error', ...args], { stdio: 'inherit' }).on('close', (c) => (c ? fail(new Error('ffmpeg exited ' + c)) : ok())));
 
 const server = await serve(ROOT);
-const browser = await chromium.launch({ executablePath: process.env.CHROME || undefined, args: ['--disable-gpu-vsync', '--force-color-profile=srgb', /* iRice: WebGL without a GPU (the glass) */ '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const browser = await chromium.launch({ executablePath: process.env.CHROME || undefined, args: ['--disable-gpu-vsync', '--force-color-profile=srgb', /* Tessera: WebGL without a GPU (the glass) */ '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: SCALE });
 page.on('pageerror', (e) => console.error('page error:', e.message));
 page.on('console', (m) => m.type() === 'error' && console.error('console:', m.text()));

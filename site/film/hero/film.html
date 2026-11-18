@@ -4,14 +4,14 @@
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<link rel="icon" href="data:," />
-		<title>iRice hero film</title>
+		<title>Tessera hero film</title>
 		<!--
 		The site's hero: a 62.5 s muted loop.
 
 		It opens on glass: liquid gathers on a photo into one drop, the photos
 		change beneath it in liquid wipes, and the drop leaps to the top of the
-		frame and lands as the island, going black from the top as iRice's does.
-		From there it's real iRice, recorded (clips.sh): the island opens for
+		frame and lands as the island, going black from the top as Tessera's does.
+		From there it's real Tessera, recorded (clips.sh): the island opens for
 		charging, a notification, Wi-Fi and the volume, a cut on each. The camera
 		pulls back and the island is on a laptop's screen. The frame splits:
 		earbuds open their case on the right, and the laptop offers to connect
@@ -23,7 +23,7 @@
 		the other look, recorded too: "All in glass." becomes "Or Material."
 		over the switching screen's shape morph, Quick Settings bounces open,
 		and the lock screen's clock makes room when the music starts. The
-		end: the drop forms on the petals again, "iRice" over it, and it melts.
+		end: the drop forms on the petals again, "Tessera" over it, and it melts.
 
 		The warps bend images, so the scenes on either side of each one are
 		stills of this film: render once with ?nowarp=1, capture the frames at
@@ -52,7 +52,7 @@
 		  51.30–53.80  Or Material: the switching screen's morph       cut
 		  53.80–55.80  Quick Settings bounces open                    cut
 		  55.80–57.80  the clock makes room for Now Playing           liquid warp
-		  58.80–62.50  the drop on the petals; "iRice"; it melts      (loops to 0)
+		  58.80–62.50  the drop on the petals; "Tessera"; it melts      (loops to 0)
 		-->
 		<style>
 			@font-face {
@@ -916,7 +916,7 @@
 									<svg id="avRing" viewBox="0 0 104 104"><circle cx="52" cy="52" r="49" fill="none" stroke="rgba(255,255,255,.14)" stroke-width="4" /><circle id="avArc" cx="52" cy="52" r="49" fill="none" stroke="#64d2ff" stroke-width="4" stroke-linecap="round" transform="rotate(-90 52 52)" /></svg>
 									<div id="avCheck"><span class="ph" style="font-weight: 700">&#xe182;</span></div>
 								</div>
-								<b>iRice laptop</b><span id="avState">Laptop</span>
+								<b>Tessera laptop</b><span id="avState">Laptop</span>
 							</div>
 							<div class="av" style="left: 128px">
 								<div class="disc" style="background: #3a3b40"><span class="ph">&#xe1e6;</span></div>
@@ -933,7 +933,7 @@
 				<div id="lap2" class="a laptop dk">
 					<div class="lid">
 						<div class="cam"></div>
-						<div class="scr"><div id="toast"><i></i><div><b>2 photos received</b><span>From iRice laptop</span></div></div></div>
+						<div class="scr"><div id="toast"><i></i><div><b>2 photos received</b><span>From Tessera laptop</span></div></div></div>
 					</div>
 					<div class="base"></div>
 					<div class="notch"></div>
@@ -981,7 +981,7 @@
 
 			<!-- the glass: above everything but the name written on it -->
 			<canvas id="gl"></canvas>
-			<div id="word" class="a">iRice</div>
+			<div id="word" class="a">Tessera</div>
 
 			<svg width="0" height="0" style="position: absolute">
 				<defs>
@@ -1023,7 +1023,7 @@
 			const at = (sel, x, y) => f.tw(sel, [[0, { x, y }]]);
 			const $ = f.$;
 
-			/* ═══ footage: real iRice, a frame at a time (clips.sh) ═══════════ */
+			/* ═══ footage: real Tessera, a frame at a time (clips.sh) ═══════════ */
 			const CLIPN = { charge: 90, note: 90, wifi: 90, vol: 78, music: 165, fastpair: 462, card: 444, mswitch: 75, mqs: 60, mlock: 75 };
 			const frame = (c, local) => `frames/${c}/${String(clamp(Math.floor(local * 30 + 1e-4) + 1, 1, CLIPN[c])).padStart(4, '0')}.jpg`;
 			const setSrc = (el, src) => el.getAttribute('src') !== src && el.setAttribute('src', src);

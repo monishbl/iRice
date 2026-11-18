@@ -40,7 +40,7 @@ search x 800–1120, y 140–176; segmented x 1320–1520, y 143–173.
 Categories: 5 cards, card i centred at (512 + 224·i, 294). A–Z: 9 columns,
 tile i centred at (460 + 120·(i mod 9), 252 + 116·row); scrubber x 1496–1520.
 
-1. Record 1.2 s while `ipc panels open launchpad IRICE-TEST`: scale 0.96→1
+1. Record 1.2 s while `ipc panels open launchpad TESSERA-TEST`: scale 0.96→1
    and fade on Dialog's spring. With motion "expressive" QML settles
    ≈ 450 ms with a slight overshoot; "standard" ≈ 290 ms; "snappy"
    ≈ 380 ms (no overshoot). Rust within ±50 ms, starting no later.

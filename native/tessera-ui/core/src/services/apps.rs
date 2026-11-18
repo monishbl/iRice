@@ -252,7 +252,7 @@ pub fn shell_file(rel: &str) -> Option<PathBuf> {
 /// user's real ones (Launch.qml's scrub)
 fn scrub(cmd: &mut std::process::Command) {
     if crate::env::var("TTY").as_deref() == Some("1") {
-        for v in ["XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME", "TESSERA_SANDBOX", "TESSERA_ROOT", "TESSERA_TTY", "IRICE_SANDBOX", "IRICE_ROOT", "IRICE_TTY", "QML_IMPORT_PATH", "QML2_IMPORT_PATH"] {
+        for v in ["XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME", "TESSERA_SANDBOX", "TESSERA_ROOT", "TESSERA_TTY", "QML_IMPORT_PATH", "QML2_IMPORT_PATH"] {
             cmd.env_remove(v);
         }
     }

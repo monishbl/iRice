@@ -91,7 +91,7 @@ pub fn event(spaces: &Spaces, h: &mut Host, name: &str, data: &str) {
     match name {
         "configreloaded" => apply_warp(warp_of(h.cfg())),
         "openlayer" | "closelayer" => {
-            if data.starts_with("tessera") || data.starts_with("irice") {
+            if data.starts_with("tessera") {
                 LAYER_AT.store(tessera_core::util::now_ms(), Ordering::SeqCst);
             }
         }

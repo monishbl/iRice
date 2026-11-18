@@ -99,7 +99,7 @@ def notifications(found):
     if comm(pid).startswith("tessera-ui"):  # (also a wrapped build: tessera-ui.real)
         return
     name = comm(pid) or "another app"
-    if name in ("tessera-shell", "irice-shell", "qs", "quickshell"):
+    if name in ("tessera-shell", "qs", "quickshell"):
         name = "quickshell"  # (another Quickshell config)
     found.append({"id": "notifications:" + name, "name": NOTIFIERS.get(name, name),
                   "short": "Shows notifications instead of Tessera",

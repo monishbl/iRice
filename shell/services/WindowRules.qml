@@ -170,11 +170,7 @@ Singleton {
     }
 
     // Replaces an app's rule: disables the one it had (if any), adds the new
-    // (and, once, the rules made while Tessera was called iRice, under the
-    // old names: until the next login they're still in Hyprland)
-    readonly property string prelude: "if IRICE_WINDOW_RULES then for _, r in pairs(IRICE_WINDOW_RULES) do pcall(function() r:set_enabled(false) end) end IRICE_WINDOW_RULES = nil end\n"
-        + "for _, k in ipairs({ \"IRICE_DEFAULT_LAYOUT\", \"IRICE_NO_SELF_MAXIMIZE\" }) do local r = rawget(_G, k) if r then pcall(function() r:set_enabled(false) end) end _G[k] = nil end\n"
-        + "TESSERA_WINDOW_RULES = TESSERA_WINDOW_RULES or {}\n" + "local function tessera_rule(key, spec)\n" + "    local old = TESSERA_WINDOW_RULES[key]\n" + "    if old then pcall(function() old:set_enabled(false) end) end\n" + "    TESSERA_WINDOW_RULES[key] = spec and hl.window_rule(spec) or nil\n" + "end\n"
+    readonly property string prelude: "TESSERA_WINDOW_RULES = TESSERA_WINDOW_RULES or {}\n" + "local function tessera_rule(key, spec)\n" + "    local old = TESSERA_WINDOW_RULES[key]\n" + "    if old then pcall(function() old:set_enabled(false) end) end\n" + "    TESSERA_WINDOW_RULES[key] = spec and hl.window_rule(spec) or nil\n" + "end\n"
 
     function fileText(list) {
         // (Loaded only when the config loads, when no earlier rule exists, so
@@ -406,7 +402,7 @@ Singleton {
         running: true
         command: ["sh", "-c", "grep -qsF window-rules.lua \"$1/hyprland.lua\" \"$1/custom.lua\"", "sh", root.hyprDir]
         onExited: code => {
-            root.hooked = code === 0 || (Quickshell.env("TESSERA_TTY") || Quickshell.env("IRICE_TTY")) === "1";
+            root.hooked = code === 0 || Quickshell.env("TESSERA_TTY") === "1";
             root.hookChecked = true;
             if (root.reloadSeen) {
                 root.reloadSeen = false;

@@ -61,11 +61,11 @@ Singleton {
     // choosing Sleep, always does.
     IdleMonitor {
         id: inUse
-        enabled: (Quickshell.env("TESSERA_TTY") || Quickshell.env("IRICE_TTY")) === "1"
+        enabled: Quickshell.env("TESSERA_TTY") === "1"
         timeout: 120
         respectInhibitors: true // (a playing video counts as use)
     }
-    readonly property bool holdAwake: (keepAwake || (inUse.enabled && !inUse.isIdle)) && !(sandboxed && (Quickshell.env("TESSERA_TTY") || Quickshell.env("IRICE_TTY")) !== "1")
+    readonly property bool holdAwake: (keepAwake || (inUse.enabled && !inUse.isIdle)) && !(sandboxed && Quickshell.env("TESSERA_TTY") !== "1")
     // (held by tessera-events, services/Events; without it, systemd-inhibit)
     EventWatch {
         source: "inhibit:idle"
@@ -111,7 +111,7 @@ Singleton {
 
     // In the dev sandbox, systemctl would reach the real machine through the
     // shared system bus, so power actions only report what they would do.
-    readonly property bool sandboxed: (Quickshell.env("TESSERA_SANDBOX") || Quickshell.env("IRICE_SANDBOX")) === "1"
+    readonly property bool sandboxed: Quickshell.env("TESSERA_SANDBOX") === "1"
     readonly property var powerCommands: ({
             "sleep": ["systemctl", "suspend"],
             "restart": ["systemctl", "reboot"],
@@ -171,18 +171,16 @@ Singleton {
     // Remembered for this Hyprland session, so a shell that restarts while the
     // screen is locked (a crash, a repair) locks again straight away
     readonly property string lockMark: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/tessera-locked-" + (Quickshell.env("HYPRLAND_INSTANCE_SIGNATURE") || "none")
-    // (the mark a shell from before iRice became Tessera left: it counts too)
-    readonly property string oldLockMark: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/irice-locked-" + (Quickshell.env("HYPRLAND_INSTANCE_SIGNATURE") || "none")
     onLockedChanged: {
         if (!locked) {
             sleepPending = false;
             sleepGuard.stop();
         }
-        Quickshell.execDetached(locked ? ["touch", lockMark] : ["rm", "-f", lockMark, oldLockMark]);
+        Quickshell.execDetached(locked ? ["touch", lockMark] : ["rm", "-f", lockMark]);
     }
     Process {
         running: true
-        command: ["sh", "-c", "[ -e \"$1\" ] || [ -e \"$2\" ]", "sh", root.lockMark, root.oldLockMark]
+        command: ["sh", "-c", "[ -e \"$1\" ]", "sh", root.lockMark]
         onExited: code => {
             if (code === 0)
                 root.locked = true;

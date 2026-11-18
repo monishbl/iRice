@@ -3,7 +3,7 @@
 # (tools/speed-suite.sh). Starts the command (bash, with the capture prelude:
 # ipc, P, key) and, for SECONDS, watches the compositor:
 #  - the test screen's frames: the glass plugin's per-monitor frame counter
-#    (`tessera-glass stats`, frames:IRICE-TEST), read over Hyprland's socket
+#    (`tessera-glass stats`, frames:TESSERA-TEST), read over Hyprland's socket
 #    every ~3 ms, so each compositor frame gets a time (±3 ms);
 #  - Hyprland's events: the first `openlayer`/`closelayer` (a layer mapped:
 #    its first frame; unmapped: gone).
@@ -36,7 +36,7 @@ def ctl(q):
     return out.decode(errors="replace")
 
 
-FR = re.compile(r"frames:IRICE-TEST (\d+)")
+FR = re.compile(r"frames:TESSERA-TEST (\d+)")
 
 
 def frames():

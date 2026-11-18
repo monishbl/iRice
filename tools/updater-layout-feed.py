@@ -41,7 +41,7 @@ tu = {"allowed": True, "available": True, "error": "",
       "choices": {}, "missing": ["python-zeroconf-and-a-long-package-name-git", "hyprland-glass-plugin-headers"],
       "reasons": {"python-zeroconf-and-a-long-package-name-git": "Quick Share finds phones on your network with it (mDNS)",
                   "hyprland-glass-plugin-headers": "builds the glass plugin for Hyprland 0.58.0-rc2"},
-      "dropped": ["irice-legacy-helper-from-before-the-rename"]}
+      "dropped": ["legacy-helper-from-before-the-rename"]}
 up = {"list": pkgs[:38], "aurList": pkgs[38:], "job": None, "running": sc == "running", "cancellable": sc == "running", "progress": 0.43,
       "fake": False, "showDetails": True,
       "log": "(12/40) upgrading lib32-mesa-vulkan-intel-git-1:25.3.0_devel.214522.6c1f2e7d8b9a-1 [###########--------]  57%\n" * 6}

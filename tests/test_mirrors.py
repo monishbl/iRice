@@ -17,7 +17,7 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 ID = ["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "-c", "commit.gpgsign=false"]
-DEAD_HTTPS = "https://127.0.0.1:9/dead/iRice.git"  # (the discard port: nothing listens, refused at once)
+DEAD_HTTPS = "https://127.0.0.1:9/dead/tessera.git"  # (the discard port: nothing listens, refused at once)
 
 
 def load(name, path):
@@ -71,10 +71,8 @@ class TheList(unittest.TestCase):
         self.assertTrue(SOURCES.same_repo("git@github.com:monishbl/tessera.git", "https://github.com/monishbl/tessera"))
         self.assertTrue(SOURCES.is_official("https://github.com/monishbl/tessera/"))
         self.assertFalse(SOURCES.is_official("https://github.com/someone/fork.git"))
-        # (its name until 17 Nov 2026: installs made before keep it as origin)
-        self.assertTrue(SOURCES.is_official("https://github.com/monishbl/iRice.git"))
-        self.assertTrue(SOURCES.same_repo("git@github.com:monishbl/iRice.git", "https://github.com/monishbl/tessera"))
-        self.assertFalse(SOURCES.is_official("https://github.com/someone/iRice.git"))
+        # (an install's origin at the repository's old address is pointed at
+        # this one as it updates: migrate-names.py, tests/test_rename_tessera.py)
 
     def test_a_dead_source_fails_fast(self):
         t = time.time()

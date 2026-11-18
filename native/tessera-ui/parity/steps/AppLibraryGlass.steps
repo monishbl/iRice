@@ -1,11 +1,11 @@
-# Arena IRICE-TEST 1920x1080 scale 1, the user's config (expressive motion, Colloid, their 4 widgets).
+# Arena TESSERA-TEST 1920x1080 scale 1, the user's config (expressive motion, Colloid, their 4 widgets).
 # Each file runs top to bottom from a fresh desktop. `static NAME x y w h`: that region must not change
 # from there until the next `shot`, `rec` or `look` (the no-reload blocks end with their last close).
 # Right-clicks: `ptr ... down up` lines marked (right button) need the runner's right button.
 
 look glass
 ptr move 1700 900
-rec alg-open 1.2 ipc panels open launchpad IRICE-TEST
+rec alg-open 1.2 ipc panels open launchpad TESSERA-TEST
 note 0.96→1 and fade; expressive ≈450 ms with slight overshoot
 rec alg-hover 1.2 ptr move 512 294 glide 1408 294 600
 note fillHover + 2 px accent border at once
@@ -18,7 +18,7 @@ key fire
 wait 0.5
 key -k Escape
 rec alg-close 0.8 key -k Escape
-ipc panels open launchpad IRICE-TEST
+ipc panels open launchpad TESSERA-TEST
 wait 0.8
 key -k Tab
 rec alg-fling 2.5 ptr move 900 500 scroll 0 30 sleep 10 scroll 0 30 sleep 10 scroll 0 30 sleep 10 scroll 0 30 sleep 10 scroll 0 30 sleep 10 scroll 0 30 sleep 10 scroll 0 30 sleep 10 scroll 0 30

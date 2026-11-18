@@ -18,7 +18,7 @@ QuickSettings.qml's `stagger`, 60-88). Rust: `stagger` / `rising` on the
 
 ## Tester plan (Material)
 
-1. Open the Control Center with `ipc panels open controlCenter IRICE-TEST`,
+1. Open the Control Center with `ipc panels open controlCenter TESSERA-TEST`,
    recording at 60 fps. In frames: tiles appear in order (top-left first),
    each overshooting slightly. Compare to the QML recording: first tile
    starts, last tile settles (`tools/anim-timing.py`), within ±1 frame of

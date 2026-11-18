@@ -9,13 +9,13 @@
 
 ## Test plan
 
-### Geometry (the user's settings, 1920x1080 IRICE-TEST, scale 1, no windows open)
+### Geometry (the user's settings, 1920x1080 TESSERA-TEST, scale 1, no windows open)
 Items: Apps button | Downloads, Trash (pinned is empty; the divider before Downloads).
 - Glass (icon 48, gap 9, pad 12, bar 72, bottom gap 6, magnification ×1.6): pill x 857..1063, y 1002..1074; icon centres x Apps 894, Downloads 970, Trash 1027; y 1038. Hover band y 961..1074.
 - Material (icon 48, pad 8, gap 9, bar 64, bottom gap 16): pill x 861..1059, y 1000..1064; icon centres x 894, 970, 1027; y 1032.
 Each running app adds 57 px (icon + gap) before the divider and shifts the pill left by 28.5 px: re-measure from a shot.
 Use `P glide` (not jumps) so hover enters/leaves. Record with wf-recorder at 60 fps; time with tools/anim-timing.py; widget reloads with tools/region-changes.py.
 
-1. Both looks: idle shot. One dock pill at the bottom centre of IRICE-TEST. PASS if present in Glass and Material (appearance.look).
+1. Both looks: idle shot. One dock pill at the bottom centre of TESSERA-TEST. PASS if present in Glass and Material (appearance.look).
 2. Settings → Dock → Show the dock: set `dock.enabled` false in config.json → the dock disappears within ~1 s; true again → it comes back (no restart).
-3. **Other surfaces closing don't remake the dock** (the fixed bug): with the dock shown, open and close Control Center (`ipc panels open controlCenter IRICE-TEST`, then `ipc panels close`), open+close Launchpad, open a foot window and close it. Record the dock region (x 820..1100, y 940..1080) throughout: `tools/region-changes.py rec.mp4 820 940 280 140` must show changes only where an icon is added/removed (foot) — no frame where the whole dock vanishes or redraws from blank.
+3. **Other surfaces closing don't remake the dock** (the fixed bug): with the dock shown, open and close Control Center (`ipc panels open controlCenter TESSERA-TEST`, then `ipc panels close`), open+close Launchpad, open a foot window and close it. Record the dock region (x 820..1100, y 940..1080) throughout: `tools/region-changes.py rec.mp4 820 940 280 140` must show changes only where an icon is added/removed (foot) — no frame where the whole dock vanishes or redraws from blank.

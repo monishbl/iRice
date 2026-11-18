@@ -10,11 +10,9 @@ import tempfile
 _runtime = tempfile.mkdtemp(prefix="tessera-tests-run-")
 os.environ["XDG_RUNTIME_DIR"] = _runtime
 os.environ.pop("TESSERA_QS_DEBUG", None)
-# Nor the session's own markers: a test runs as if outside any Tessera
-# session (IRICE_*: the same, set by a session started before iRice became
-# Tessera, which the scripts still read)
+# Nor the session's own markers: a test runs as if outside any Tessera session
 for _var in list(os.environ):
-    if _var.startswith("IRICE_") or _var in ("TESSERA_ROOT", "TESSERA_TTY", "TESSERA_SANDBOX", "TESSERA_USER_DIR", "TESSERA_SHELL"):
+    if _var in ("TESSERA_ROOT", "TESSERA_TTY", "TESSERA_SANDBOX", "TESSERA_USER_DIR", "TESSERA_SHELL"):
         os.environ.pop(_var, None)
 # Nor the real system's configuration (firewall, BlueZ): the sharing checks
 # read /etc and /usr under this, empty unless a test fills it
@@ -52,7 +50,7 @@ def pytest_sessionfinish(session, exitstatus):
         try:
             with open(f"/proc/{pid}/comm") as f:
                 comm = f.read().strip()
-            if comm not in ("tessera-shell", "irice-shell", "qs", "quickshell"):
+            if comm not in ("tessera-shell", "qs", "quickshell"):
                 continue
             with open(f"/proc/{pid}/environ", "rb") as f:
                 env = dict(e.split(b"=", 1) for e in f.read().split(b"\0") if b"=" in e)
@@ -60,8 +58,8 @@ def pytest_sessionfinish(session, exitstatus):
             with open(f"/proc/{pid}/stat") as f:
                 started = boot + int(f.read().rsplit(")", 1)[1].split()[19]) / hz
             # (never the dev sandbox's shell: its runtime folder is
-            # /tmp/irice-rt, and agents' smoke runs restart it while tests run)
-            if runtime.startswith(tmp) and not runtime.startswith("/tmp/irice-rt") \
+            # /tmp/tessera-rt, and agents' smoke runs restart it while tests run)
+            if runtime.startswith(tmp) and not runtime.startswith("/tmp/tessera-rt") \
                     and _started and started >= _started - 1:
                 os.kill(int(pid), signal.SIGTERM)
         except (OSError, ValueError, IndexError):

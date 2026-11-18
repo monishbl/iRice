@@ -258,7 +258,7 @@ def main():
     if len(sys.argv) != 3 or sys.argv[1] not in ("google", "cloud"):
         print(json.dumps({"error": "usage: fake-accounts.py google|cloud <folder>"}))
         return 2
-    if (os.environ.get("TESSERA_SANDBOX") or os.environ.get("IRICE_SANDBOX")) != "1":
+    if os.environ.get("TESSERA_SANDBOX") != "1":
         print(json.dumps({"error": "fake-accounts.py runs in a sandbox only (TESSERA_SANDBOX=1)."}))
         return 2
     try:

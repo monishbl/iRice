@@ -18,7 +18,7 @@ settings, once with the QML shell and once with tessera-ui standalone:
   shells use the global (tessera-ui registers the names itself), so the
   suite's Rust pass on the new binary should be switched to the global too:
   run it with `LAT_SC=global` (see the test plan).
-- **Status menus**: `shell-ipc.sh call panels open <menu> IRICE-TEST`;
+- **Status menus**: `shell-ipc.sh call panels open <menu> TESSERA-TEST`;
   **clicks** on the menu bar (`ccClick`, `clockClick`).
 - Each open and each close is recorded (wf-recorder, 60 fps). The pointer
   jumps 40 px in the bottom-right corner right before the command: that jump

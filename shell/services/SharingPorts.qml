@@ -20,7 +20,7 @@ import qs.common
 Singleton {
     id: root
 
-    readonly property bool sandbox: (Quickshell.env("TESSERA_SANDBOX") || Quickshell.env("IRICE_SANDBOX")) === "1"
+    readonly property bool sandbox: Quickshell.env("TESSERA_SANDBOX") === "1"
     readonly property string script: decodeURIComponent(Qt.resolvedUrl("../assets/scripts/sharing-check.py").toString().replace("file://", ""))
 
     // What's needed now: the root helper's set names (sorted, joined), and why

@@ -151,7 +151,7 @@ Singleton {
         // The dev sandbox only: the card in a state, nothing served
         // (qs ipc call linkshare demo ready|loading|error|busy <qr png>)
         function demo(stage: string, qr: string): void {
-            if ((Quickshell.env("TESSERA_SANDBOX") || Quickshell.env("IRICE_SANDBOX")) !== "1")
+            if (Quickshell.env("TESSERA_SANDBOX") !== "1")
                 return;
             root.mode = "send";
             root.names = ["Holiday.jpg"];

@@ -11,7 +11,7 @@ ipc emoji close
 wait 1
 shot closed-noop
 note emoji close when already closed does nothing: no picker visible.
-ipc panels open emoji IRICE-TEST
+ipc panels open emoji TESSERA-TEST
 wait 1
 shot panels-open
 note Picker opened via panels open; same as QML.

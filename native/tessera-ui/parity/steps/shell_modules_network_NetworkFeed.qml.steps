@@ -1,5 +1,5 @@
 # NetworkFeed: Wi-Fi menu. Both looks.
-ipc panels open wifiMenu IRICE-TEST
+ipc panels open wifiMenu TESSERA-TEST
 wait 2
 shot menu
 note Wi-Fi menu opens under the menu bar's Wi-Fi item; with Wi-Fi in the sandbox rows are sorted connected first; without Wi-Fi it shows the same empty/off state as QML.

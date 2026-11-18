@@ -3,7 +3,7 @@
 # MANUAL: set overview.style = "grid" (use_config) before this file; the runner cannot change the config
 setup foot & foot & foot &
 wait 2
-rec wp-fade 1 ipc panels open overview IRICE-TEST
+rec wp-fade 1 ipc panels open overview TESSERA-TEST
 note Cell 1 spans x 162..462, y 444..612. Each window shows its icon first if the picture is late, then the picture fades in over ~150 ms OutCubic (9 +- 1 frames at 60 fps); compare frame count with QML. The recorder may die at Overview open (earlier run).
 wait 1
 shot wp-badge

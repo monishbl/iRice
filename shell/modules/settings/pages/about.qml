@@ -128,7 +128,7 @@ Column {
             });
         }
         function choose() {
-            FilePicker.pick({ title: "Choose a Tessera settings file", start: "~/Documents", filter: "Tessera settings|*.tessera *.irice" }, file => {
+            FilePicker.pick({ title: "Choose a Tessera settings file", start: "~/Documents", filter: "Tessera settings|*.tessera *." + OldNames.backupExt }, file => {
                 status = "Reading…";
                 pending = null;
                 run(["inspect", file], out => {

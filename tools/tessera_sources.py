@@ -55,10 +55,7 @@ def canonical(url):
         u = u[len("file://"):]
     if "://" not in u:
         return os.path.normpath(u)
-    u = u.lower()
-    # (the repository was monishbl/iRice until 17 Nov 2026: an install made
-    # before keeps that origin, and GitHub redirects it; it's the same repo)
-    return re.sub(r"^(https://(?:github|gitlab)\.com/monishbl)/irice$", r"\1/tessera", u)
+    return u.lower()
 
 
 def same_repo(a, b):

@@ -39,7 +39,7 @@ keys, layout), `ui/switcher.slint` (drawing, fade, tiles).
 
 ## Test plan (tester)
 
-Arena output IRICE-TEST is 1920×1080. Run both shells (`--only qml`, `--only rust`),
+Arena output TESSERA-TEST is 1920×1080. Run both shells (`--only qml`, `--only rust`),
 both looks (`--look glass`, `--look material`). Prepare: `inbox 'ipc lock unlock; ipc panels close'`,
 then open three windows on space 1, one second apart, so focus order is C (newest, focused), B, A:
 `inbox 'foot -T A >/dev/null 2>&1 & sleep 1; foot -T B >/dev/null 2>&1 & sleep 1; foot -T C >/dev/null 2>&1 &'`, wait 2 s.
@@ -81,7 +81,7 @@ body left x = 520; tiles' centres x = 520+12+104+216·i → **636, 852, 1068, 12
 11. **Empty** (T25): close all windows, hold Alt+Tab 600 ms: 240×72 panel, "No open windows" centred.
 12. **Clicks pass through while pending** (T24): `wtype -M alt -k Tab -s 100 -m alt` while `P click` at 960 540
     lands on the window under it (not on the strip).
-13. **Cancelled by another panel** (T26): hold the strip open, `inbox 'ipc panels open controlCenter IRICE-TEST'`:
+13. **Cancelled by another panel** (T26): hold the strip open, `inbox 'ipc panels open controlCenter TESSERA-TEST'`:
     strip goes, no switch on release.
 14. **First press after start** (T28): right after `dev reload` + 3 s, do step 2: the strip's first frame must not be
     later than on the second try.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs INSIDE the `irice` distrobox. Starts a nested Hyprland, fully isolated
+# Runs INSIDE the `tessera` distrobox. Starts a nested Hyprland, fully isolated
 # from the host session:
 #   - own display          -> it draws into a private, virtual KWin, so no
 #                             window shows on your desktop and your keyboard and
@@ -17,7 +17,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/sandbox/lib.sh"
 RT="$TESSERA_RT"
 HOST_RT=/run/user/$(id -u)
-HOST_WL="${TESSERA_HOST_WAYLAND:-${IRICE_HOST_WAYLAND:-${WAYLAND_DISPLAY:-wayland-1}}}"
+HOST_WL="${TESSERA_HOST_WAYLAND:-${WAYLAND_DISPLAY:-wayland-1}}"
 
 if [[ "$HOME" != "$TESSERA_HOME" ]]; then
     echo "inner.sh: refusing to run, HOME is $HOME (expected the sandbox home)" >&2
@@ -32,7 +32,7 @@ rm -rf "$RT"
 mkdir -p -m 700 "$RT"
 helpers=()
 trap '[[ ${#helpers[@]} -gt 0 ]] && kill "${helpers[@]}" 2>/dev/null; true' EXIT
-if [[ "${TESSERA_VISIBLE:-${IRICE_VISIBLE:-0}}" == 1 ]]; then
+if [[ "${TESSERA_VISIBLE:-0}" == 1 ]]; then
     ln -s "$HOST_RT/$HOST_WL" "$RT/wayland-host"
 else
     # KWin's virtual backend: no screen and no input devices, one 1920x1080
@@ -41,7 +41,7 @@ else
     # never taken for the nested Hyprland's wayland-N (dev.sh's nested). The
     # nested Hyprland is its only window.
     mkdir -m 700 "$RT/display"
-    sock=irice-display
+    sock=tessera-display
     # (TESSERA_SANDBOX_RENDER_NODE=/dev/dri/renderD129: the hidden display,
     # and so the nested Hyprland, draw on that GPU, e.g. a laptop's Intel
     # one as its real desktop does, not whichever node comes first)
@@ -55,7 +55,7 @@ else
     ln -s "$RT/display/$sock" "$RT/wayland-host"
 fi
 # Host audio (TESSERA_HOST_AUDIO=1), so volume/media widgets play for real
-if [[ "${TESSERA_HOST_AUDIO:-${IRICE_HOST_AUDIO:-0}}" == 1 ]]; then
+if [[ "${TESSERA_HOST_AUDIO:-0}" == 1 ]]; then
     [[ -S "$HOST_RT/pipewire-0" ]] && ln -s "$HOST_RT/pipewire-0" "$RT/pipewire-0"
     # A real directory with the socket linked in: PulseAudio clients refuse a
     # symlinked $XDG_RUNTIME_DIR/pulse ("Too many levels of symbolic links")
@@ -84,7 +84,7 @@ echo "Tessera sandbox: runtime $RT, log $LOG"
 # the Pulse server, on this sandbox's own bus and runtime folder, with one
 # null sink named Speakers. Started inside the session bus, before Hyprland.
 AUDIO=""
-if [[ "${TESSERA_HOST_AUDIO:-${IRICE_HOST_AUDIO:-0}}" != 1 ]] && command -v pipewire >/dev/null && command -v wireplumber >/dev/null; then
+if [[ "${TESSERA_HOST_AUDIO:-0}" != 1 ]] && command -v pipewire >/dev/null && command -v wireplumber >/dev/null; then
     cfg="$RT/audio-config"
     mkdir -p "$cfg/pipewire/pipewire.conf.d" "$cfg/wireplumber/wireplumber.conf.d"
     cat >"$cfg/pipewire/pipewire.conf.d/tessera-speakers.conf" <<'CONF'

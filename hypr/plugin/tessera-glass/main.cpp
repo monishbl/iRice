@@ -25,8 +25,6 @@
 // hyprctl tessera-glass controls on|off [dark|light]   (see controls.cpp)
 // hyprctl tessera-glass window-frost <0..1>  (accepted, unused: frost is one blur everywhere)
 // (and, on its own, trackpad long presses: hold.cpp)
-// `hyprctl irice-glass ...` does the same: the name from before Tessera was
-// called iRice, for a shell, script or native helper of that time.
 //
 // Shape floats (layer-local logical px): x y w h radius mode refraction depth
 // bevel frost(blur px) chroma rim tintR tintG tintB tintA saturation opacity
@@ -83,7 +81,6 @@ using SCtlCommand = IPC::Socket1::SCommand;
 using SCtlCommand = SHyprCtlCommand;
 #endif
 static SP<SCtlCommand> g_cmd;
-static SP<SCtlCommand> g_oldCmd; // (irice-glass)
 
 constexpr int kFloats = 21; // the 19th (gloss) is optional, and the last two (shadow, margin)
 constexpr int kBase   = 19; // (a shape without a shadow)
@@ -1082,7 +1079,6 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     auto cmd = [](const char* name) { return SCtlCommand{.name = name, .exact = false, .fn = [](eHyprCtlOutputFormat, std::string request) { return onCommand(std::move(request)); }}; };
 #endif
     g_cmd    = HyprlandAPI::registerHyprCtlCommand(handle, cmd("tessera-glass"));
-    g_oldCmd = HyprlandAPI::registerHyprCtlCommand(handle, cmd("irice-glass"));
     return {"tessera-glass", "Glass for the Tessera shell", "Tessera", "1.0"};
 }
 
@@ -1096,8 +1092,6 @@ APICALL EXPORT void PLUGIN_EXIT() {
     holdExit();
     if (g_cmd)
         HyprlandAPI::unregisterHyprCtlCommand(g_handle, g_cmd);
-    if (g_oldCmd)
-        HyprlandAPI::unregisterHyprCtlCommand(g_handle, g_oldCmd);
     // Free our GL objects (the plugin can be reloaded many times)
     for (auto& [size, t] : g_copyTargets) {
         glDeleteFramebuffers(1, &t.fb);

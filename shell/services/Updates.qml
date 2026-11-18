@@ -25,7 +25,7 @@ Singleton {
     property bool checking: false
     readonly property int total: count + aurCount
 
-    readonly property bool fake: (Quickshell.env("TESSERA_SANDBOX") || Quickshell.env("IRICE_SANDBOX")) === "1" || Quickshell.env("TESSERA_FAKE_SYSUPDATE") === "1"
+    readonly property bool fake: Quickshell.env("TESSERA_SANDBOX") === "1" || Quickshell.env("TESSERA_FAKE_SYSUPDATE") === "1"
     readonly property string dir: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/tessera-sysupdate"
     readonly property string script: decodeURIComponent(Qt.resolvedUrl("../assets/scripts/sysupdate.py").toString().replace("file://", ""))
 

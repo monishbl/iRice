@@ -21,14 +21,10 @@ SOURCES=(https://github.com/monishbl/tessera.git
          https://gitlab.com/monishbl/tessera.git
          "https://codeload.github.com/monishbl/tessera/tar.gz/refs/heads/{branch}")
 [[ -n "${TESSERA_MIRRORS:-}" ]] && read -r -a SOURCES <<<"${TESSERA_MIRRORS//,/ }"
-REPO="${TESSERA_REPO:-${IRICE_REPO:-}}"
+REPO="${TESSERA_REPO:-}"
 [[ -n "$REPO" ]] && SOURCES=("$REPO" "${SOURCES[@]}")
-BRANCH="${TESSERA_BRANCH:-${IRICE_BRANCH:-main}}"
+BRANCH="${TESSERA_BRANCH:-main}"
 DIR="${XDG_DATA_HOME:-$HOME/.local/share}/tessera/repo"
-# (downloaded before iRice became Tessera: updated where it is; the installer
-# then moves the folder to Tessera's name, leaving a link)
-OLD="${XDG_DATA_HOME:-$HOME/.local/share}/irice/repo"
-[[ ! -d "$DIR/.git" && -d "$OLD/.git" ]] && DIR="$OLD"
 
 bold() { printf '\033[1m%s\033[0m\n' "$*"; }
 die() { printf '\033[1;31m%s\033[0m\n' "$*" >&2; exit 1; }

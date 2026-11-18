@@ -161,9 +161,9 @@ pub fn notify_args<'a>(args: &[&'a str]) -> [&'a str; 5] {
     out
 }
 
-/// QML `sandboxed` / TESSERA_SANDBOX (or the old IRICE_ name)
+/// QML `sandboxed` / TESSERA_SANDBOX
 pub fn env_is(name: &str) -> bool {
-    std::env::var(format!("TESSERA_{name}")).or_else(|_| std::env::var(format!("IRICE_{name}"))).map(|v| v == "1").unwrap_or(false)
+    tessera_core::env::var(name).is_some_and(|v| v == "1")
 }
 
 // ── Versions (SoftwareUpdate.parts / cmp) ───────────────────────────────

@@ -12,8 +12,7 @@ SHELL_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../.." && pwd)"
 # The same Quickshell the shell runs on (Tessera's own build when there is one;
 # see launch-shell.sh): asking it over IPC needs the same version
 QS=qs
-# (…/irice: Tessera's folder from before it was renamed, not moved yet)
-for d in "${XDG_DATA_HOME:-}/tessera" "$HOME/.local/share/tessera" "${XDG_DATA_HOME:-}/irice" "$HOME/.local/share/irice"; do
+for d in "${XDG_DATA_HOME:-}/tessera" "$HOME/.local/share/tessera"; do
     if [[ -n "$d" && -x "$d/quickshell/bin/qs" && -d "$d/quickshell/lib/qt6/qml/Quickshell" ]]; then
         QS="$d/quickshell/bin/qs"
         export QML_IMPORT_PATH="$d/quickshell/lib/qt6/qml${QML_IMPORT_PATH:+:$QML_IMPORT_PATH}"

@@ -16,8 +16,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 if [[ -z "${TESSERA_PLUGIN_INNER:-}" ]] && command -v python3 >/dev/null && [[ -f "$ROOT/tools/build-progress.py" ]]; then
     exec python3 -I "$ROOT/tools/build-progress.py" make --label tessera-glass --title "the glass plugin" -- env TESSERA_PLUGIN_INNER=1 bash "${BASH_SOURCE[0]}" "$@"
 fi
-# (iRice's folders, from before it became Tessera, move over first: never both)
-python3 -I "$ROOT/shell/assets/scripts/migrate-names.py" 2>/dev/null || true
+# (folders under Tessera's old name move over first, never both: migrate-names.py)
+python3 -I "$ROOT/shell/assets/scripts/migrate-names.py" --no-checkout 2>/dev/null || true
 DEST="${XDG_DATA_HOME:-$HOME/.local/share}/tessera"
 LOAD=0
 [[ "${1:-}" == "--load" ]] && LOAD=1
@@ -39,9 +39,6 @@ mkdir -p "$DEST"
 cp "$ROOT/hypr/plugin/tessera-glass/tessera-glass.so" "$DEST/tessera-glass.so.new"
 mv "$DEST/tessera-glass.so.new" "$DEST/tessera-glass.so"
 printf '%s\n' "$headers" >"$DEST/tessera-glass.built-for"
-# (built before iRice became Tessera: this one replaces it; a running
-# Hyprland keeps the copy it loaded until you log out)
-rm -f "$DEST/irice-glass.so" "$DEST/irice-glass.built-for"
 echo "Built $DEST/tessera-glass.so for Hyprland $headers"
 (( LOAD )) || exit 0
 if ! command -v hyprctl >/dev/null || [[ -z "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]]; then
@@ -60,14 +57,12 @@ fi
 # TESSERA_ROOT and TESSERA_TTY) loads the checkout's own build; an installed
 # session the copy in $DEST
 so="$DEST/tessera-glass.so"
-from="${TESSERA_ROOT:-${IRICE_ROOT:-}}"
-if [[ "${TESSERA_TTY:-${IRICE_TTY:-}}" == 1 && -n "$from" && "$(cd "$from" 2>/dev/null && pwd -P)" == "$(cd "$ROOT" && pwd -P)" ]]; then
+from="${TESSERA_ROOT:-}"
+if [[ "${TESSERA_TTY:-}" == 1 && -n "$from" && "$(cd "$from" 2>/dev/null && pwd -P)" == "$(cd "$ROOT" && pwd -P)" ]]; then
     so="$ROOT/hypr/plugin/tessera-glass/tessera-glass.so"
 fi
-# (every copy this session may have loaded, or two would draw the glass; and
-# one loaded from where it was built before iRice became Tessera)
-for old in "$DEST/tessera-glass.so" "$ROOT/hypr/plugin/tessera-glass/tessera-glass.so" \
-    "${XDG_DATA_HOME:-$HOME/.local/share}/irice/irice-glass.so" "$DEST/irice-glass.so" "$ROOT/hypr/plugin/irice-glass/irice-glass.so"; do
+# (every copy this session may have loaded, or two would draw the glass)
+for old in "$DEST/tessera-glass.so" "$ROOT/hypr/plugin/tessera-glass/tessera-glass.so"; do
     hyprctl plugin unload "$old" >/dev/null 2>&1 || true
 done
 out=$(hyprctl plugin load "$so" 2>&1 || true)

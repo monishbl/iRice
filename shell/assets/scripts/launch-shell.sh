@@ -7,21 +7,12 @@
 # theme is, in order: Settings → Appearance → Icon theme, KDE's, GNOME/GTK's,
 # else the first good one installed.
 set -uo pipefail
-# iRice is now Tessera: your settings and data move from iRice's folders
-# (…/irice) to Tessera's, once, before anything reads them
-# (migrate-names.py; the old names stay behind as links)
-for b in "${XDG_CONFIG_HOME:-$HOME/.config}" "${XDG_DATA_HOME:-$HOME/.local/share}" "${XDG_STATE_HOME:-$HOME/.local/state}" "${XDG_CACHE_HOME:-$HOME/.cache}"; do
-    if [[ -d "$b/irice" && ! -L "$b/irice" ]]; then
-        python3 -I "$(dirname -- "${BASH_SOURCE[0]}")/migrate-names.py" </dev/null >/dev/null || true
-        break
-    fi
-done
-# A session, watchdog or update started before the rename passes the old
-# names (IRICE_ROOT, IRICE_TTY…): the shell and what it starts get the new
-for v in ROOT TTY SANDBOX USER_DIR DEMO LAB NO_NATIVE QS_DEBUG LIVE_RELOAD EVENTS UPDATE_REPO INTRO_PACE; do
-    o="IRICE_$v" n="TESSERA_$v"
-    [[ -z "${!n:-}" && -n "${!o:-}" ]] && export "$n=${!o}"
-done
+# Tessera's old name: what an install from before it still keeps under it
+# moves over, once, before anything reads it, and the old environment names
+# count (old-names.sh, migrate-names.py; REMOVE AFTER 2027-02-01)
+source "$(dirname -- "${BASH_SOURCE[0]}")/old-names.sh"
+old_names_env
+old_names_migrate "${TESSERA_ROOT:-}"
 # Updater/watchdog restarts can inherit an older environment than Hyprland's
 # reloaded config. Apps launched by this shell still need the startup palette.
 # KDE's theme, or qt6ct when you've set it up and KDE's isn't installed or
@@ -82,8 +73,7 @@ fi
 # by another setup. Its QML modules come first on the import path.
 QS=qs
 LOCAL=""
-# (…/irice: Tessera's folder from before it was renamed, not moved yet)
-for d in "${XDG_DATA_HOME:-}/tessera" "$HOME/.local/share/tessera" "${XDG_DATA_HOME:-}/irice" "$HOME/.local/share/irice"; do
+for d in "${XDG_DATA_HOME:-}/tessera" "$HOME/.local/share/tessera"; do
     [[ -n "$d" && -x "$d/quickshell/bin/qs" && -d "$d/quickshell/lib/qt6/qml/Quickshell" ]] && { LOCAL="$d/quickshell"; break; }
 done
 if [[ -n "$LOCAL" ]]; then
@@ -92,11 +82,10 @@ if [[ -n "$LOCAL" ]]; then
     export QML2_IMPORT_PATH="$QML_IMPORT_PATH"
 fi
 # Tessera's native helpers (shell/native/build.sh), when built for this Qt: the
-# Tessera.Native QML module (glass kept in step from C++; IRice.Native when
-# built before the rename, common/Native.qml takes either). Without them the
+# Tessera.Native QML module (glass kept in step from C++). Without them the
 # shell uses its QML fallback. TESSERA_NO_NATIVE=1 forces the fallback.
 NATIVE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/native/build"
-if [[ "${TESSERA_NO_NATIVE:-}" != 1 ]] && [[ -d "$NATIVE/qml/Tessera/Native" || -d "$NATIVE/qml/IRice/Native" ]]; then
+if [[ "${TESSERA_NO_NATIVE:-}" != 1 ]] && [[ -d "$NATIVE/qml/Tessera/Native" ]]; then
     want=$(cat "$NATIVE/built-for-qt" 2>/dev/null || true)
     have=$( { /usr/lib/qt6/bin/qtpaths --qt-version || qmake6 -query QT_VERSION; } 2>/dev/null || true)
     if [[ -z "$want" || -z "$have" || "$want" == "$have" ]]; then
@@ -131,7 +120,6 @@ standalone_ui() {
     [[ "${TESSERA_STANDALONE:-}" == 0 ]] && return 1
     if [[ "${TESSERA_STANDALONE:-}" != 1 ]]; then
         local c="${XDG_CONFIG_HOME:-$HOME/.config}/tessera/config.json"
-        [[ -f "$c" ]] || c="${XDG_CONFIG_HOME:-$HOME/.config}/irice/config.json"
         # (no settings file, or no rust.standalone in it: on; a file that
         # can't be read, too: tessera-ui keeps it aside and says so, where
         # the QML shell would only quietly use its defaults)
@@ -177,7 +165,7 @@ print(json.dumps({"t": int(time.time()), "ev": "fallback", "why": open(sys.argv[
         fi
     fi
     local b
-    for b in "${TESSERA_UI:-}" "${XDG_DATA_HOME:-$HOME/.local/share}/tessera/bin/tessera-ui" "$HOME/.local/share/tessera/bin/tessera-ui" "${XDG_DATA_HOME:-$HOME/.local/share}/irice/bin/tessera-ui" "$HOME/.local/share/irice/bin/tessera-ui"; do
+    for b in "${TESSERA_UI:-}" "${XDG_DATA_HOME:-$HOME/.local/share}/tessera/bin/tessera-ui" "$HOME/.local/share/tessera/bin/tessera-ui"; do
         [[ -n "$b" && -x "$b" ]] && { echo "$b"; return 0; }
     done
     return 1
@@ -187,9 +175,7 @@ if ui="$(standalone_ui)"; then
     # doesn't need it, and the seconds it took left a gap with no shell)
     look=$(python3 -I -c 'import json, sys; print(json.load(open(sys.argv[1])).get("appearance", {}).get("look", "glass"))' \
         "${XDG_CONFIG_HOME:-$HOME/.config}/tessera/config.json" 2>/dev/null || echo glass)
-    export TESSERA_SHELL=1 TESSERA_LOOK="$look" IRICE_SHELL=1
-    [[ "${TESSERA_TTY:-}" == 1 ]] && export IRICE_TTY=1
-    export TESSERA_STANDALONE=1
+    export TESSERA_SHELL=1 TESSERA_LOOK="$look" TESSERA_STANDALONE=1
     # (where the QML shell is: tessera-ui becomes it when it can't draw, EGL
     # not starting on this computer's graphics, so there's always a shell)
     TESSERA_QML_FALLBACK="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../.." && pwd -P)"
@@ -212,7 +198,6 @@ fi
 SELF_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../.." && pwd -P)"
 MATERIAL_DIR="$(dirname "$SELF_DIR")/material"
 MATERIAL_ROOT="${XDG_CACHE_HOME:-$HOME/.cache}/tessera/material-shell"
-OLD_MATERIAL_ROOT="${XDG_CACHE_HOME:-$HOME/.cache}/irice/material-shell" # (a restart of a shell from before the rename)
 look=$(python3 -I -c 'import json, sys; print(json.load(open(sys.argv[1])).get("appearance", {}).get("look", "glass"))' \
     "${XDG_CONFIG_HOME:-$HOME/.config}/tessera/config.json" 2>/dev/null || echo glass)
 target=""
@@ -227,22 +212,16 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         -c | --config)
             c="${2:-}"
-            # (-c irice: Hyprland's config from before iRice became Tessera, until
-            # the installer runs again; Quickshell's folder for it may be either)
-            if [[ ( "$c" == tessera || "$c" == irice ) && -n "$target" ]]; then
+            if [[ "$c" == tessera && -n "$target" ]]; then
                 args+=(-p "$target")
             else
-                if [[ "$c" == tessera || "$c" == irice ]]; then
-                    q="${XDG_CONFIG_HOME:-$HOME/.config}/quickshell"
-                    if [[ -f "$q/tessera/shell.qml" ]]; then c=tessera; elif [[ -f "$q/irice/shell.qml" ]]; then c=irice; fi
-                fi
                 args+=("$1" "$c")
             fi
             shift 2 || shift
             ;;
         -p | --path)
             p="${2:-}"
-            if [[ "$p" == "$MATERIAL_ROOT" || "$p" == "$OLD_MATERIAL_ROOT" || "$(readlink -f "$p" 2>/dev/null)" == "$SELF_DIR" ]]; then
+            if [[ "$p" == "$MATERIAL_ROOT" || "$(readlink -f "$p" 2>/dev/null)" == "$SELF_DIR" ]]; then
                 args+=(-p "${target:-$SELF_DIR}")
             else
                 args+=("$1" "$p")
@@ -255,11 +234,8 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
-# (how the session's scripts tell a Tessera shell, whichever root it runs;
-# IRICE_SHELL and IRICE_TTY for a watchdog or an update screen started before
-# iRice became Tessera, which may run until the next login)
-export TESSERA_SHELL=1 TESSERA_LOOK="$look" IRICE_SHELL=1
-[[ "${TESSERA_TTY:-}" == 1 ]] && export IRICE_TTY=1
+# (how the session's scripts tell a Tessera shell, whichever root it runs)
+export TESSERA_SHELL=1 TESSERA_LOOK="$look"
 # The Material look is experimental: if it doesn't come up (its lock screen
 # isn't answering within 20 s, or it quits first, as Quickshell does when its
 # files don't load), back to Glass, so a broken Material never leaves you
@@ -279,10 +255,10 @@ if [[ $look == material ]]; then
             "${XDG_CONFIG_HOME:-$HOME/.config}/tessera/config.json" || exit 0
         notify-send -a Tessera "Back to the Glass look" "The Material look (experimental) didn't start, so Tessera went back to Glass." 2>/dev/null
         # (unless another shell was started for this session meanwhile)
-        for p in $(pgrep -x tessera-shell; pgrep -x irice-shell; pgrep -x qs; pgrep -x quickshell); do
+        for p in $(pgrep -x tessera-shell; pgrep -x qs; pgrep -x quickshell); do
             [[ $p == "$me" ]] && continue
             e=$( { tr '\0' '\n' <"/proc/$p/environ"; } 2>/dev/null)
-            grep -qx -e "TESSERA_SHELL=1" -e "IRICE_SHELL=1" <<<"$e" && grep -qx "HYPRLAND_INSTANCE_SIGNATURE=$sig" <<<"$e" && exit 0
+            grep -qx "TESSERA_SHELL=1" <<<"$e" && grep -qx "HYPRLAND_INSTANCE_SIGNATURE=$sig" <<<"$e" && exit 0
         done
         setsid -f "$SELF_DIR/assets/scripts/launch-shell.sh" -p "$SELF_DIR" </dev/null >/dev/null 2>&1
     ) </dev/null >/dev/null 2>&1 &
@@ -293,33 +269,27 @@ fi
 # busy; started through a link called tessera-shell, the process takes that
 # name, which only Tessera's own rule (tessera-root.py's ANANICY_TEXT:
 # interactive, like GNOME Shell and KWin) matches.
-# The name the shell had while Tessera was called iRice, irice-shell, until
-# the root setup has installed the new rule (it still matches the old one),
-# and while something started before the rename watches the shell and looks
-# for that name: an update installing this version (its script is a copy of
-# the old one) or a tty session's watchdog (tty-shell.sh notes the ones that
-# know each name). Something older still that knows neither looks for "qs":
-# the update screen would say the shell didn't start, the watchdog would start
-# another. The next start takes the name.
+# While something from before that name watches the shell and looks for
+# "qs" (an update installing this version, its script a copy of the old one,
+# or a tty session's watchdog that doesn't note itself in
+# tessera-watchdog.names), the shell keeps "qs": the update screen would say
+# the shell didn't start, the watchdog would start another. The next start
+# takes the name.
 shell_name() {
-    local name=tessera-shell p f d
-    local rules="${TESSERA_SYSTEM_ROOT:-}/etc/ananicy.d"
-    [[ -f "$rules/irice.rules" && ! -f "$rules/tessera.rules" ]] && name=irice-shell
-    for p in $(pgrep -f '/(tessera|irice)-update\.[^/]*/run\.sh'); do
+    local p f d
+    for p in $(pgrep -f '/tessera-update\.[^/]*/run\.sh'); do
         f=$( { tr '\0' '\n' <"/proc/$p/cmdline"; } 2>/dev/null | sed -n 2p)
         [[ -f $f ]] || continue
         grep -q 'pgrep -x tessera-shell' "$f" && continue
-        grep -q 'pgrep -x irice-shell' "$f" && { name=irice-shell; continue; }
         return 0 # (qs)
     done
     d="${XDG_RUNTIME_DIR:-/tmp}/hypr/${HYPRLAND_INSTANCE_SIGNATURE:-}"
     for p in $(pgrep -f 'tty-shell\.sh watchdog'); do
         { tr '\0' '\n' <"/proc/$p/environ"; } 2>/dev/null | grep -qx "HYPRLAND_INSTANCE_SIGNATURE=${HYPRLAND_INSTANCE_SIGNATURE:-}" || continue
         [[ "$(cat "$d/tessera-watchdog.names" 2>/dev/null)" == "$p" ]] && continue
-        [[ "$(cat "$d/irice-watchdog.names" 2>/dev/null)" == "$p" ]] && { name=irice-shell; continue; }
         return 0 # (qs)
     done
-    echo "$name"
+    echo tessera-shell
 }
 QSPATH="$(command -v "$QS" 2>/dev/null || true)"
 LINKS="${XDG_RUNTIME_DIR:-/tmp}/tessera-bin"

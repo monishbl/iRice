@@ -1,6 +1,6 @@
 # PickerWindow: panel x 750..1170, y 326..754 (no focused window). Both looks.
 # Tabs centre y 398: Frequently 778, Smileys 811, Kaomoji 1075, Text symbols 1108, GIFs 1141. First Smileys row centre y 536, cell c centre x 784+44c.
-rec em-open 0.8 ipc panels open emoji IRICE-TEST
+rec em-open 0.8 ipc panels open emoji TESSERA-TEST
 note Open: panel top edge drops 6 px and scales; Material settles about 0.3 s (overshoot at most 1 %), Glass about 0.37 s with about 5 % overshoot. Compare QML vs Rust within 1 frame.
 wait 1
 shot open
@@ -8,7 +8,7 @@ note Picker open: search y 338..374, tabs y 398, list y 418..694, footer y 694..
 rec em-close 0.3 key -k Escape
 note Close in 154 ms with slow start (Material 0.3,0,0.8,0.15; Glass 0.4,0,1,1). Same as QML.
 wait 1
-ipc panels open emoji IRICE-TEST
+ipc panels open emoji TESSERA-TEST
 wait 1
 # NOTE: click on layer surfaces may not register in the harness
 ptr move 811 398 sleep 200 click
@@ -30,7 +30,7 @@ note Glass: the glyph shrinks to 90 % at once and the cell turns fillPressed; Ma
 ptr up
 wait 1
 # panel closed by the pick (if click works); reopen
-ipc panels open emoji IRICE-TEST
+ipc panels open emoji TESSERA-TEST
 wait 1
 ptr move 811 398 sleep 200 click
 wait 1
@@ -60,7 +60,7 @@ note Gliding to tone 3 (906, 518): that tone is highlighted.
 ptr up
 ipc panels close
 wait 1
-ipc panels open emoji IRICE-TEST
+ipc panels open emoji TESSERA-TEST
 wait 1
 key wave
 wait 1

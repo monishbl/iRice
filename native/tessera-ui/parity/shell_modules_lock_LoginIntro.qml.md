@@ -25,7 +25,7 @@ Rust: when — host `bridges.rs` (`start` → `arm_intro`, `lock.sessionStarted`
 
 ## Test plan (arena N, both looks)
 
-1. `ipc call loginIntro play` (or `IRICE_ARENA=N ./dev.sh ipc loginIntro play`); record 2 s from the command. PASS Glass: black → the wallpaper sharpening and settling from 106 % (≈1 s), then the cover fades (650–1250 ms) revealing the desktop whose widgets/dock settle in; total ≈ 1.3 s; clicks during it reach the desktop (`pointer click` on a desktop icon mid-intro selects it).
+1. `ipc call loginIntro play` (or `TESSERA_ARENA=N ./dev.sh ipc loginIntro play`); record 2 s from the command. PASS Glass: black → the wallpaper sharpening and settling from 106 % (≈1 s), then the cover fades (650–1250 ms) revealing the desktop whose widgets/dock settle in; total ≈ 1.3 s; clicks during it reach the desktop (`pointer click` on a desktop icon mid-intro selects it).
 2. Same on Material: the cookie mark with the badge, opening into a growing window that morphs to a circle and spins 90°, gone by 1.0 s.
 3. Slowed: restart the arena shell with `TESSERA_INTRO_PACE=10` in its environment if practical, record and compare frame timings against the QML at the same pace (anim-timing: Glass end ≈ 13 s).
 4. With `appearance.reduceMotion: true`: Settings → Play Intro does nothing.

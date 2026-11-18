@@ -1,27 +1,21 @@
 # Sourced by dev.sh, inner.sh and reload-shell.sh (with ROOT set).
 # distrobox shares the host PID namespace, so sandbox processes are identified by
-# their environment: only they run with XDG_RUNTIME_DIR=/tmp/irice-rt. Host
+# their environment: only they run with XDG_RUNTIME_DIR=/tmp/tessera-rt. Host
 # processes (e.g. the real end4 `qs -c ii`) can never match.
 # TESSERA_ARENA=2, 3, … is another identical sandbox beside the first, with its
-# own runtime folder (/tmp/irice-rt-N) and home (.sandbox/arena-N/home), so
+# own runtime folder (/tmp/tessera-rt-N) and home (.sandbox/arena-N/home), so
 # checks can run side by side. 1 (the default) is the usual sandbox. Two-digit
 # arenas (10-99) are for tools that keep their own (tools/gate: 13 and 14).
 
-# (IRICE_ARENA: its name before iRice became Tessera. The runtime folders,
-# /tmp/irice-rt*, and the headless IRICE-TEST output keep their names: every
-# checkout, from before the rename or after, shares the same arenas safely)
-TESSERA_ARENA="${TESSERA_ARENA:-${IRICE_ARENA:-1}}"
+TESSERA_ARENA="${TESSERA_ARENA:-1}"
 [[ "$TESSERA_ARENA" =~ ^[1-9][0-9]?$ ]] || { echo "TESSERA_ARENA must be 1-99" >&2; exit 2; }
 if [[ "$TESSERA_ARENA" == 1 ]]; then
-    TESSERA_RT=/tmp/irice-rt
+    TESSERA_RT=/tmp/tessera-rt
     TESSERA_HOME="$ROOT/.sandbox/home"
 else
-    TESSERA_RT=/tmp/irice-rt-$TESSERA_ARENA
+    TESSERA_RT=/tmp/tessera-rt-$TESSERA_ARENA
     TESSERA_HOME="$ROOT/.sandbox/arena-$TESSERA_ARENA/home"
 fi
-# (the same under their old names, for a checkout's scripts from before the
-# rename that source this file: its reload-shell.sh, given this checkout)
-IRICE_ARENA=$TESSERA_ARENA IRICE_RT=$TESSERA_RT IRICE_HOME=$TESSERA_HOME
 
 # PIDs of sandbox processes with the given executable name.
 sandbox_pids() {
@@ -44,7 +38,7 @@ stop_sandbox_apps() {
     for pid in $(pgrep -u "$(id -u)"); do
         [[ $pid == "$$" || $pid == "$PPID" ]] && continue
         case "$(cat "/proc/$pid/comm" 2>/dev/null)" in
-            Hyprland | start-hyprland | tessera-shell | irice-shell | qs | quickshell | "") continue ;;
+            Hyprland | start-hyprland | tessera-shell | qs | quickshell | "") continue ;;
         esac
         grep -qzx "XDG_RUNTIME_DIR=$TESSERA_RT" "/proc/$pid/environ" 2>/dev/null && pids+=" $pid"
     done
@@ -65,7 +59,7 @@ stop_sandbox_shells() {
     # (tessera-ui too: standalone it is the shell, and a reload must restart it;
     # beside the QML it would end with its shell anyway. "tessera-ui.real" is
     # the verification script's wrapped binary)
-    pids="$(for p in $(sandbox_pids tessera-shell; sandbox_pids irice-shell; sandbox_pids qs; sandbox_pids quickshell; sandbox_pids tessera-ui; sandbox_pids tessera-ui.real); do
+    pids="$(for p in $(sandbox_pids tessera-shell; sandbox_pids qs; sandbox_pids quickshell; sandbox_pids tessera-ui; sandbox_pids tessera-ui.real); do
         tr '\0' ' ' <"/proc/$p/cmdline" 2>/dev/null | grep -q -e '/tessera-look\.' -e '/tessera-update\.' || echo "$p"
     done)"
     [[ -z "$pids" ]] && return 0

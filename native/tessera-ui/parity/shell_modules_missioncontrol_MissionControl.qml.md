@@ -35,14 +35,14 @@ pointer tracker), `ui/missioncontrol.slint`.
 ## Test plan (tester)
 
 1920×1080, both shells, both looks. Prepare 3 foot windows on space 1 (A, B, C), one on space 2 (D).
-Open: `inbox 'ipc panels open missionControl IRICE-TEST'`; close `ipc panels close`.
+Open: `inbox 'ipc panels open missionControl TESSERA-TEST'`; close `ipc panels close`.
 
 Geometry: cards 150×84, 166 apart, centred: with 5 spaces x0 = (1920 − 5·150 − 4·16)/2 = 553 →
 card centres **(628, 86) (794, 86) (960, 86) (1126, 86) (1292, 86)**, titles at y ≈ 134.
 Stage starts at y = 44 + 84 + 6 + 15 + 40 = 189, x 48..1872, to y 1032. With 3 windows the tiles are side by side
 (read their centres off a shot; the middle one is near (960, 560)).
 
-1. **Open/close timing** (T4): `rec mc-open 1.2 "ipc panels open missionControl IRICE-TEST"` and `rec mc-close`:
+1. **Open/close timing** (T4): `rec mc-open 1.2 "ipc panels open missionControl TESSERA-TEST"` and `rec mc-close`:
    320 ms each (emphasized in, exit out); bar slides 30 px down while fading; stage 0.96 → 1.
 2. **Hover a window** (T19, T21, T22): `P glide 960 560 400` → card grows 1.02 over 150 ms with a 3 px accent border;
    Glass: title pill appears under it; Material: the chip turns secondaryContainer (150 ms). Glide off: back.

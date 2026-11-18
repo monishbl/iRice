@@ -29,7 +29,7 @@ Not possible in Slint: tabular figures (the digits are a little narrower).
 
 ## Test plan (Sonnet tester)
 
-Setup: `tools/live-scenarios.sh --bin <worktree>/native/tessera-ui/target/release/tessera-ui --arena N --only rust` with the user's settings, once `--look material`, once `--look glass`. Test screen IRICE-TEST 1920×1080 at scale 1; the island is centred at x = 960, the bar 30 px tall. Do the same steps with `--only qml` to record the QML timings.
+Setup: `tools/live-scenarios.sh --bin <worktree>/native/tessera-ui/target/release/tessera-ui --arena N --only rust` with the user's settings, once `--look material`, once `--look glass`. Test screen TESSERA-TEST 1920×1080 at scale 1; the island is centred at x = 960, the bar 30 px tall. Do the same steps with `--only qml` to record the QML timings.
 
 1. Rest: `P move 1500 600`, wait 1 s. Then `P glide 960 14 400`, wait 1.5 s, `shot status-open`.
    Must see: the island open (392 px wide), its last line centred: a CPU icon and `NN%`, a thermometer icon and `NN°` (if the sandbox has a reading), a memory icon and `NN%` (and a drawn battery + `NN%` first if the machine has a battery). Icons, not words. Dim colour (Material: on-surface-variant grey; Glass: 60 % white).

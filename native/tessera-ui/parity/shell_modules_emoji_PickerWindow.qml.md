@@ -36,7 +36,7 @@ springFast 12.8 / 0.54 → 222 ms spring(0.4). springPress 7.5 / 0.3 → ω 21.7
 
 ## Test plan (tester)
 Arena 1920×1080. With no focused window the panel opens centred: x 750..1170, y 326..754; content x 762..1158 from y 338. Search y 338..374. Tabs centre y 398, tab i centre x = 778.5 + 33·i (Frequently used 778, Smileys 811, Kaomoji 1075, Text symbols 1108, GIFs 1141). List y 418..694; with nothing used yet the first Smileys row is y 514..558 (centre 536), cell column c centre x = 784 + 44·c. Footer y 694..750.
-1. **Open, Material**: `rec em-m-open 0.8 "ipc panels open emoji IRICE-TEST"`; track the panel's top edge (drops 6 px) and scale: settles ≈ 0.3 s, overshoot ≤ 1 %. `rec em-m-close 0.3 "wtype -k Escape"` → 154 ms, slow start (0.3,0,0.8,0.15).
+1. **Open, Material**: `rec em-m-open 0.8 "ipc panels open emoji TESSERA-TEST"`; track the panel's top edge (drops 6 px) and scale: settles ≈ 0.3 s, overshoot ≤ 1 %. `rec em-m-close 0.3 "wtype -k Escape"` → 154 ms, slow start (0.3,0,0.8,0.15).
 2. **Open, Glass**: same, Glass look: ≈ 0.37 s, ~5 % overshoot; close on (0.4,0,1,1). Compare strips QML vs Rust ± 1 frame.
 3. **Rows kept**: `P glide 828 536 200` (hover cell 1), then `wtype s`, `wtype m` → results appear without the grid blanking between keystrokes; `rec em-type 0.6 "wtype i"` and compare.
 4. **Press, Glass**: `P glide 784 536 100`, `P down`, `rec em-g-press 0.3 ""` → the glyph shrinks to 90 % at once, the cell turns fillPressed; `P up` → picks (panel closes). Repeat holding 0.6 s on 😀 (no tones) → release still picks.

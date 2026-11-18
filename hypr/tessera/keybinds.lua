@@ -11,7 +11,7 @@ local here = TESSERA_HYPR_DIR or (debug.getinfo(1, "S").source:match("^@(.*)/[^/
 local cfg = (os.getenv("XDG_CONFIG_HOME") ~= nil and os.getenv("XDG_CONFIG_HOME") ~= "") and os.getenv("XDG_CONFIG_HOME") or (os.getenv("HOME") .. "/.config")
 local userDir = TESSERA_USER_DIR or (cfg .. "/tessera")
 -- The shell's folder (repair script, app launcher)
-local shellDir = (os.getenv("TESSERA_ROOT") or os.getenv("IRICE_ROOT")) and ((os.getenv("TESSERA_ROOT") or os.getenv("IRICE_ROOT")) .. "/shell") or (cfg .. "/quickshell/tessera")
+local shellDir = os.getenv("TESSERA_ROOT") and (os.getenv("TESSERA_ROOT") .. "/shell") or (cfg .. "/quickshell/tessera")
 local json = dofile(here .. "/json.lua")
 
 local function log(msg)
@@ -33,8 +33,7 @@ local function uiBinary()
     local env = os.getenv("TESSERA_STANDALONE")
     if env == "0" then return nil end
     if env ~= "1" then
-        -- (Tessera's config, else iRice's while it has not been moved yet)
-        local c = json.read(userDir .. "/config.json") or json.read(cfg .. "/irice/config.json")
+        local c = json.read(userDir .. "/config.json")
         -- (on unless set to false: the default since 7 Nov 2026, as in launch-shell.sh)
         if type(c) == "table" and type(c.rust) == "table" and c.rust.standalone == false then return nil end
     end
@@ -43,8 +42,7 @@ local function uiBinary()
     -- own, and this compositor may not have XDG_DATA_HOME pointing there)
     local base = userDir:match("^(.*)/%.config/[^/]+$")
     local beside = base and (base .. "/.local/share/tessera/bin/tessera-ui") or ""
-    for _, b in ipairs({ os.getenv("TESSERA_UI") or "", beside, dataHome .. "/tessera/bin/tessera-ui", home .. "/.local/share/tessera/bin/tessera-ui",
-        dataHome .. "/irice/bin/tessera-ui", home .. "/.local/share/irice/bin/tessera-ui" }) do
+    for _, b in ipairs({ os.getenv("TESSERA_UI") or "", beside, dataHome .. "/tessera/bin/tessera-ui", home .. "/.local/share/tessera/bin/tessera-ui" }) do
         if b ~= "" then
             local f = io.open(b, "r")
             if f then
@@ -102,8 +100,7 @@ local SPACE_STRIDE = 100
 pcall(dofile, userDir .. "/spaces.lua")
 local function spaceBase(m)
     if not m then return 0 end
-    -- (IRICE_SPACE_BASES: a spaces.lua written before iRice became Tessera)
-    local b = rawget(_G, "TESSERA_SPACE_BASES") or rawget(_G, "IRICE_SPACE_BASES") or {}
+    local b = rawget(_G, "TESSERA_SPACE_BASES") or {}
     local t = rawget(_G, "TESSERA_SPACES")
     return tonumber(m.description and m.description ~= "" and b["desc:" .. m.description])
         or tonumber(b["name:" .. m.name]) or (type(t) == "table" and tonumber(t[m.name])) or 0
@@ -127,7 +124,7 @@ function TESSERA_SPACE_RULES(bases)
         end
     end
 end
-TESSERA_SPACE_RULES(rawget(_G, "TESSERA_SPACE_BASES") or rawget(_G, "IRICE_SPACE_BASES"))
+TESSERA_SPACE_RULES(rawget(_G, "TESSERA_SPACE_BASES"))
 -- Go to (focus), or take the active window to (send: you stay; move: you
 -- follow), space n on the display you're on, or the next/previous one (step).
 -- Global so `hyprctl eval 'TESSERA_SPACE("focus", 2)'` does what Super+2 does.
@@ -188,8 +185,7 @@ local function actionOf(a)
     if a.dsp and a.dsp:gsub("%s", "") == "hl.dsp.window.close()" then return TESSERA_CLOSE end
     if a.space then return space(a) end
     if a.shell then return shortcut(a.shell) end
-    -- ($IRICE_SHELL: a shortcut saved before iRice became Tessera)
-    if a.exec then return hl.dsp.exec_cmd((a.exec:gsub("%$TESSERA_SHELL", shellDir):gsub("%$IRICE_SHELL", shellDir))) end
+    if a.exec then return hl.dsp.exec_cmd((a.exec:gsub("%$TESSERA_SHELL", shellDir))) end
     -- (each app in a scope of its own: assets/scripts/app-scope.sh)
     if a.app then return hl.dsp.exec_cmd("'" .. shellDir .. "/assets/scripts/app-scope.sh' --id " .. a.app .. " -- env TESSERA_USER_DIR='" .. userDir .. "' '" .. shellDir .. "/assets/scripts/open-app.sh' " .. a.app) end
     if a.zoom then return zoom(a.zoom) end

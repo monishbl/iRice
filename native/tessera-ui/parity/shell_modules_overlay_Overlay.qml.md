@@ -16,7 +16,7 @@ Springs: springFast 12.8/0.54 → 222 ms spring(0.4); springPress 7.5/0.3 → 29
 | 10 | FPS widget: limits 30/60/90/120/off | 555-590 | fps widget | same |
 
 ## Test plan (tester)
-Both looks. Open: `inbox 'ipc panels open overlay IRICE-TEST'` (or the overlay hotkey).
+Both looks. Open: `inbox 'ipc panels open overlay TESSERA-TEST'` (or the overlay hotkey).
 1. Shot: scrim (32 % / 30 %), toolbar pill centred at y 44; toggles 48 px (Material) / 40 px (Glass).
 2. Material: `P glide` onto the first toggle, `P down` → corners square to 8 and the button swells ≈ 6 % (`rec ov-press 0.6 "P down"`); `P up` → toggles the widget, corners 16 when on. Settles in ≈ 0.22 s; compare with QML ± 1 frame.
 3. Open the mixer widget; start audio in the arena (`paplay` a file, if available, else mark not testable here); `P down` on a stream slider and drag it while the stream's level changes: the knob stays under the pointer (before: dropped).

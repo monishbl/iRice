@@ -475,8 +475,7 @@ def fake_run(plan):
 # settings aren't touched, packages the update added stay. A version you
 # went back from is then skipped by Software Update until a newer one comes.
 _state = os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state")
-# (…/irice: Tessera's folder from before it was renamed, not moved yet)
-STATE_DIR = os.path.join(_state, "irice" if not os.path.exists(os.path.join(_state, "tessera")) and os.path.isdir(os.path.join(_state, "irice")) else "tessera")
+STATE_DIR = os.path.join(_state, "tessera")
 HISTORY = os.path.join(STATE_DIR, "updates.json")
 KEEP = 5
 ARCHIVE = "https://archive.archlinux.org/packages"
@@ -1199,7 +1198,7 @@ def undo_plan_of(snap, fake):
 if __name__ == "__main__":
     a = sys.argv[1:]
     if a[:1] == ["undo-check"]:
-        fake = os.environ.get("TESSERA_FAKE_SYSUPDATE") == "1" or (os.environ.get("TESSERA_SANDBOX") or os.environ.get("IRICE_SANDBOX")) == "1"
+        fake = os.environ.get("TESSERA_FAKE_SYSUPDATE") == "1" or os.environ.get("TESSERA_SANDBOX") == "1"
         h = history()
         print(json.dumps(dict(FAKE_UNDO if fake else undo_plan(h), skip=h["skip"])))
         sys.exit(0)
@@ -1217,5 +1216,5 @@ if __name__ == "__main__":
         current = helper_current(stage_incoming(ref) if ref else None)
         print(json.dumps({"current": current}))
         sys.exit(0 if current else 1)
-    fake = "--fake" in a or os.environ.get("TESSERA_FAKE_SYSUPDATE") == "1" or (os.environ.get("TESSERA_SANDBOX") or os.environ.get("IRICE_SANDBOX")) == "1"
+    fake = "--fake" in a or os.environ.get("TESSERA_FAKE_SYSUPDATE") == "1" or os.environ.get("TESSERA_SANDBOX") == "1"
     sys.exit(run(fake, plan_of(a, fake)))

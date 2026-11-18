@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The film's footage: real iRice, recorded in the dev sandbox (a 3840x2400
+# The film's footage: real Tessera, recorded in the dev sandbox (a 3840x2400
 # output at 2x, the leaves wallpaper, the blue accent) with wf-recorder while
 # `./dev.sh ipc island demo …` and `sharingdemo …` played the events. Only a
 # region was recorded each time (`wf-recorder -g`: a whole 4K output drops

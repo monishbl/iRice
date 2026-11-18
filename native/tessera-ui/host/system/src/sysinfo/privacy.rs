@@ -59,7 +59,7 @@ pub fn parse_mic(text: &str) -> (Vec<String>, Vec<Value>) {
     for o in &outs {
         let p = &o["properties"];
         let bin = p["application.process.binary"].as_str().unwrap_or("");
-        if monitors.contains(&&o["source"]) || matches!(bin, "tessera-shell" | "irice-shell" | "qs" | "quickshell") || p["media.name"] == "Peak detect" {
+        if monitors.contains(&&o["source"]) || matches!(bin, "tessera-shell" | "qs" | "quickshell") || p["media.name"] == "Peak detect" {
             continue;
         }
         let aname = p["application.name"].as_str().unwrap_or("");

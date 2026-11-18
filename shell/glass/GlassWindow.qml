@@ -50,11 +50,8 @@ PanelWindow {
     Loader {
         id: native
         active: Native.glassSync
-        // (NativeSyncOld: the module built while Tessera was called iRice)
-        source: active ? (Native.module === "IRice.Native" ? "NativeSyncOld.qml" : "NativeSync.qml") : ""
+        source: active ? "NativeSync.qml" : ""
         onLoaded: {
-            // (an older build has no plugin property and always says irice-glass,
-            // which every plugin answers to)
             if ("plugin" in item)
                 item.plugin = Qt.binding(() => GlassPlugin.name);
             item.monitor = Qt.binding(() => root.screen?.name ?? "");

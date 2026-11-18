@@ -224,7 +224,7 @@ impl Sharing {
     pub fn phone_cam_setup_done(&mut self, h: &mut Host, stderr: &str, code: i32) {
         self.phone.cam_setting = false;
         if code != 0 && code != 126 {
-            let said = stderr.trim().trim_start_matches("tessera-root: ").trim_start_matches("irice-root: ").trim().to_string();
+            let said = tessera_core::old_names::without_helper_prefix(stderr.trim()).trim().to_string();
             self.phone.cam_error = if said.is_empty() { "The virtual camera couldn't be set up. Update Tessera, then try again.".into() } else { said };
         }
         self.phone_check_cam(h);

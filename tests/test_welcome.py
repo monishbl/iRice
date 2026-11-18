@@ -14,7 +14,7 @@ import unittest
 LATEST = 3
 
 ROOT = Path(__file__).resolve().parents[1]
-BUNDLE = next((b for b in (Path.home() / ".local/share/tessera/quickshell", Path.home() / ".local/share/irice/quickshell") if b.exists()), Path.home() / ".local/share/tessera/quickshell")  # (irice: built before the rename)
+BUNDLE = Path.home() / ".local/share/tessera/quickshell"
 QS = BUNDLE/'bin/qs'
 
 # Prints welcome.done (and the defaults version) half a second after the

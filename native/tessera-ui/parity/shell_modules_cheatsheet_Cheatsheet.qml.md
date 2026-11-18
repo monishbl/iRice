@@ -11,7 +11,7 @@
 | 7 | Esc / click outside closes | — | keys, `dismissed` | same |
 
 ## Test plan (tester)
-Both looks. `inbox 'ipc panels open cheatsheet IRICE-TEST'`.
+Both looks. `inbox 'ipc panels open cheatsheet TESSERA-TEST'`.
 1. Record the open (1 s) and compare the curve with QML (Material ≈ 0.3 s, Glass ≈ 0.4 s); `-k Escape` → 192 ms.
 2. Click "Periodic table" → Material: the segment's inner corners round with a small overshoot in ≈ 0.22 s; Glass: the pill slides 220 ms.
 3. Glide over an element → tint 45 % + outline; Material: rounds in ≈ 0.22 s.

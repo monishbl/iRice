@@ -7,10 +7,13 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 dir="$HOME/tessera-verify"
 install -Dm755 "$here/publish-release" "$dir/publish-release.py"
-cat > "$dir/publish-release.sh.tmp" <<'EOF'
+repo=$(cd "$here/../.." && pwd -P)
+cat > "$dir/publish-release.sh.tmp" <<EOF
 #!/bin/bash
-# Tessera's release publisher (tools/release-builder/publish-release in the repo)
-exec python3 "$(dirname "$(readlink -f "$0")")/publish-release.py" "$@"
+# Tessera's release publisher (tools/release-builder/publish-release in the repo,
+# $repo, where it checks signatures against tools/tessera-ui.pub)
+export TESSERA_REPO="\${TESSERA_REPO:-$repo}"
+exec python3 "\$(dirname "\$(readlink -f "\$0")")/publish-release.py" "\$@"
 EOF
 chmod 755 "$dir/publish-release.sh.tmp"
 mv "$dir/publish-release.sh.tmp" "$dir/publish-release.sh"

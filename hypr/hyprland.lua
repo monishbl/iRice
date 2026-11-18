@@ -3,14 +3,7 @@
 local cfg = (os.getenv("XDG_CONFIG_HOME") ~= nil and os.getenv("XDG_CONFIG_HOME") ~= "") and os.getenv("XDG_CONFIG_HOME") or (os.getenv("HOME") .. "/.config")
 local dir = cfg .. "/hypr"
 TESSERA_HYPR_DIR = dir .. "/tessera"
--- (iRice's settings folder while it hasn't been moved yet: the shell moves it
--- at its next start, migrate-names.py)
 TESSERA_USER_DIR = cfg .. "/tessera"
-do
-    local new, old = io.open(cfg .. "/tessera/config.json", "r"), io.open(cfg .. "/irice/config.json", "r")
-    if new then new:close() elseif old then TESSERA_USER_DIR = cfg .. "/irice" end
-    if old then old:close() end
-end
 
 hl.monitor({ output = "", mode = "preferred", position = "auto", scale = "auto" })
 pcall(dofile, TESSERA_USER_DIR .. "/monitors.lua") -- per-display settings from Settings → Displays

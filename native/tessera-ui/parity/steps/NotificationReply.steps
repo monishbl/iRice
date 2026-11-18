@@ -3,7 +3,7 @@ look glass
 wait 2
 setup gdbus call --session --dest org.freedesktop.Notifications --object-path /org/freedesktop/Notifications --method org.freedesktop.Notifications.Notify Chat 0 '' 'Ann' 'Lunch?' "['inline-reply','Reply']" '{}' 0
 wait 0.5
-ipc panels open notificationCenter IRICE-TEST
+ipc panels open notificationCenter TESSERA-TEST
 wait 1
 shot nc
 note click Reply on the card (from shot)

@@ -284,7 +284,7 @@ Singleton {
     Connections {
         target: Hyprland
         function onRawEvent(event) {
-            if ((event.name === "tessera-drag" || event.name === "irice-drag") && root.down) { // (irice-drag: a glass plugin built before the rename)
+            if (event.name === "tessera-drag" && root.down) {
                 root.windowMove = true;
                 root.probing = false;
                 if (follower.running)

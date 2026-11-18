@@ -1,11 +1,11 @@
-# Arena IRICE-TEST 1920x1080 scale 1, the user's config (expressive motion, Colloid, their 4 widgets).
+# Arena TESSERA-TEST 1920x1080 scale 1, the user's config (expressive motion, Colloid, their 4 widgets).
 # Each file runs top to bottom from a fresh desktop. `static NAME x y w h`: that region must not change
 # from there until the next `shot`, `rec` or `look` (the no-reload blocks end with their last close).
 # Right-clicks: `ptr ... down up` lines marked (right button) need the runner's right button.
 
 look material
 ptr move 1500 400
-rec wp-open 1 ipc panels open wallpaper IRICE-TEST
+rec wp-open 1 ipc panels open wallpaper TESSERA-TEST
 note opacity 0→1 and 16 px rise over 320 ms; thumbnails fade in 220 ms; applied one ringed
 key -k Right -k Right
 wait 0.4
@@ -16,7 +16,7 @@ rec wp-close 0.8 key -k Escape
 
 look glass
 ptr move 1500 400
-rec wp-open 1 ipc panels open wallpaper IRICE-TEST
+rec wp-open 1 ipc panels open wallpaper TESSERA-TEST
 note opacity 0→1 and 16 px rise over 320 ms; thumbnails fade in 220 ms; applied one ringed
 key -k Right -k Right
 wait 0.4

@@ -45,7 +45,7 @@ while (($#)); do
     shift
 done
 [[ $ARENA =~ ^[2-9]$ ]] || { echo "--arena must be 2–9 (1 is your own session's sandbox)"; exit 2; }
-export IRICE_ARENA=$ARENA
+export TESSERA_ARENA=$ARENA
 # shellcheck source=/dev/null
 . "$ROOT/site/film/tessera/capture/lib.sh"   # setup, inbox, dev (this arena)
 CFG="$HOMEDIR/.config/tessera/config.json"
@@ -66,7 +66,7 @@ run_cargo() {
 # (panels open through the shell as a shortcut would; every state is closed
 # again before the next: Esc, panels close, lock unlock; welcome goes last,
 # as nothing closes it)
-SCREEN=IRICE-TEST
+SCREEN=TESSERA-TEST
 STATES=$(cat <<EOF
 menubar|idle|:|1.5
 menubar|system-menu|ipc panels open systemMenu $SCREEN|1.5
@@ -241,7 +241,7 @@ for look in ${LOOKS//,/ }; do
     # (tessera-ui keeps the notification list across restarts, the QML only
     # across its own reloads: a list from the last look's Rust pass would show
     # twice what this look's QML pass did)
-    rm -f "$HOMEDIR/.local/state/tessera/notifications.json" "$HOMEDIR/.local/state/irice/notifications.json"
+    rm -f "$HOMEDIR/.local/state/tessera/notifications.json"
     # (Rust first, then the reload: the QML twins never start, so none of them
     # holds a bus name a Rust surface needs, e.g. org.freedesktop.Notifications)
     if ((STANDALONE)); then

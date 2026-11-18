@@ -14,7 +14,7 @@ EV=$1 UI=$2 REPS=$3
 shift 3
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 VPTR="$ROOT/.sandbox/bin/vptr"
-OUTPUT=IRICE-TEST
+OUTPUT=TESSERA-TEST
 
 mark() { printf '%s\t%s\t%s\n' "$(date +%s.%N)" "$1" "${2:-}" >>"$EV"; }
 ipc() { "$UI" ipc call "$@" >/dev/null 2>&1; }

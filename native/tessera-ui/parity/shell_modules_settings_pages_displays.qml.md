@@ -56,9 +56,9 @@ the Choice + ActionMenu xdg_popup (see shell_modules_settings_ActionMenu.qml.md)
 
 ## Test plan (Material window 1040×700 at 440,205; page column from x≈772)
 
-The arena has one display on (IRICE-TEST); WAYLAND-1 is disabled by the
+The arena has one display on (TESSERA-TEST); WAYLAND-1 is disabled by the
 script, so the page should list two displays (one off). Never change
-IRICE-TEST's mode/scale/rotation except in D6.
+TESSERA-TEST's mode/scale/rotation except in D6.
 
 D1 Look: `setup qml material`, `open displays`, `shot dsp-qml-m`; then
 `setup rust material <bin>`, same, `shot dsp-rust-m`. Repeat with `glass`.
@@ -71,7 +71,7 @@ its x,y from the shot). PASS: the group below switches to "… (WAYLAND-1)" with
 "This display is off…" footer and only "Use this display"; click the first
 segment back. Do NOT toggle "Use this display".
 
-D3 Tile press: click the IRICE-TEST tile (centre of the arrangement, ≈ 1110,330:
+D3 Tile press: click the TESSERA-TEST tile (centre of the arrangement, ≈ 1110,330:
 read it). PASS: it is chosen (primary container / 2 px accent); cursor is the
 plain arrow (only one placed display, so no drag); release does nothing else.
 

@@ -19,7 +19,7 @@
 
 ## Test plan
 
-### Geometry (the user's settings, 1920x1080 IRICE-TEST, scale 1, no windows open)
+### Geometry (the user's settings, 1920x1080 TESSERA-TEST, scale 1, no windows open)
 Items: Apps button | Downloads, Trash (pinned is empty; the divider before Downloads).
 - Glass (icon 48, gap 9, pad 12, bar 72, bottom gap 6, magnification ×1.6): pill x 857..1063, y 1002..1074; icon centres x Apps 894, Downloads 970, Trash 1027; y 1038. Hover band y 961..1074.
 - Material (icon 48, pad 8, gap 9, bar 64, bottom gap 16): pill x 861..1059, y 1000..1064; icon centres x 894, 970, 1027; y 1032.
@@ -30,9 +30,9 @@ Use `P glide` (not jumps) so hover enters/leaves. Record with wf-recorder at 60 
 2. Bounce isn't handed to the wrong icon: click the foot icon when NOT running (pin foot first: set `dock.pinned` ["foot","firefox"]): foot hops twice (Glass 1040 ms total, Material 960 ms) and only foot. Then close foot: firefox must not hop.
 3. Auto-hide (set `dock.autoHide` "always"): pointer at (1500,500); dock slides out (Glass 250 ms InCubic; Material spring ~320 ms). Glide to (960,1079) and rest: dock appears after 120 ms (Glass slide up 350 ms with a small overshoot, OutBack 1.2). Glide up to (960,700): it hides 300 ms after leaving the zone. Record and time with anim-timing; must match QML ±1 frame.
 4. Auto-hide "windows": open foot maximized (`hyprctl dispatch 'hl.dsp.window.fullscreen(...)'` or a large foot) covering the bottom: dock hides; close it: dock shows.
-5. Opening any panel closes the dock menu: right-click Trash (1027,1038 Glass / 1032 Material) → menu; then `ipc panels open controlCenter IRICE-TEST` → menu gone immediately.
+5. Opening any panel closes the dock menu: right-click Trash (1027,1038 Glass / 1032 Material) → menu; then `ipc panels open controlCenter TESSERA-TEST` → menu gone immediately.
 
-### Touchscreen (needs a touch device in the arena: e.g. a uinput touchscreen made with `evemu`/`python-evdev` mapped to IRICE-TEST; skip with a note if the arena has none)
+### Touchscreen (needs a touch device in the arena: e.g. a uinput touchscreen made with `evemu`/`python-evdev` mapped to TESSERA-TEST; skip with a note if the arena has none)
 6. `dock.autoHide` "always", the dock hidden. Touch down at (960,1079), move up to (960,1040) over 150 ms, lift. Must see: the dock slides up (Glass 350 ms OutBack / Material spring) as soon as the finger passed 24 px, stays up ~4 s with no pointer near, then hides (250 ms). A touch moving only 20 px up: nothing.
 7. Same, but glide the mouse pointer into the zone (960,1040) during the 4 s and keep it there: the dock stays up after 4 s.
 8. Autohide "off" (core's touch): tap on Downloads (970,1038): the stack opens **once** (not opened and closed again); tap a file cell: it opens; tap outside the card: the stack closes. Tap Trash: one file manager window, not two. (A finger held on an icon may magnify it until it lifts: core moves the pointer with touches; QML doesn't.)

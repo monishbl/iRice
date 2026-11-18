@@ -39,8 +39,6 @@ function TESSERA_HOLD(fingers)
     local run = TESSERA_HOLDS[tonumber(fingers)]
     if run then run() end
 end
--- (a glass plugin built before iRice became Tessera calls this name)
-IRICE_HOLD = TESSERA_HOLD
 
 local function add(g)
     local action = actionOf(g.action)

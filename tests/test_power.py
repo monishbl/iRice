@@ -21,6 +21,7 @@ def load(name, file):
 
 
 energy = load("app_energy", SCRIPTS / "app-energy.py")
+OLD = load("migrate_names_power", SCRIPTS / "migrate-names.py")  # (Tessera's old name)
 guard = load("battery_guard", SCRIPTS / "battery-guard.py")
 
 
@@ -80,7 +81,7 @@ class BatteryGuard(unittest.TestCase):
         self.assertFalse(guard.should_sleep(2, 1, 3))  # charging
 
 
-SHIPPED_HYPRIDLE = """# iRice idle behaviour: lock at 5 min, screen off at 10, sleep at 30.
+SHIPPED_HYPRIDLE = """# @OLD@ idle behaviour: lock at 5 min, screen off at 10, sleep at 30.
 # Locking goes through the shell's own lock screen.
 
 # lock_cmd and before_sleep_cmd are added by shell/assets/scripts/start-idle.sh
@@ -107,7 +108,7 @@ listener {
     timeout = 1800
     on-timeout = systemctl suspend
 }
-"""
+""".replace("@OLD@", OLD.OLD_DISPLAY_NAME)
 
 
 class IdleConfig(unittest.TestCase):
@@ -152,7 +153,7 @@ class IdleConfig(unittest.TestCase):
         self.assertNotIn("ac sleep", conf)
 
     def test_the_copy_an_old_installer_put_there_isnt_yours(self):
-        # (the last hypr/hypridle.conf iRice shipped, before it became Tessera, which install.sh copied in)
+        # (the last hypr/hypridle.conf shipped under Tessera's old name, which install.sh copied in)
         conf, _ = self.run_idle("ac sleep 60\n", own=SHIPPED_HYPRIDLE)
         self.assertIn("ac sleep", conf)
         self.assertNotIn("loginctl lock-session", conf)

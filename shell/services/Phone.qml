@@ -169,7 +169,7 @@ Singleton {
         onExited: code => {
             root.camSetting = false;
             if (code !== 0 && code !== 126)
-                root.camError = setupErr.text.replace(/^(tessera|irice)-root: /, "").trim() || "The virtual camera couldn't be set up. Update Tessera, then try again.";
+                root.camError = OldNames.withoutHelperPrefix(setupErr.text).trim() || "The virtual camera couldn't be set up. Update Tessera, then try again.";
             root.checkCam();
         }
     }

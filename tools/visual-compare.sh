@@ -27,12 +27,12 @@
 #
 # The screens are tools/visual-scenes.txt (name | commands run in the
 # sandbox; "-" for none; "ptr …" one virtual-pointer path: move/glide/click). Open OUT/index.html when it's done.
-# Never your screen: the arenas' hidden IRICE-TEST only.
+# Never your screen: the arenas' hidden TESSERA-TEST only.
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIN="" LOOKS="material,glass" REF="$HOME/tessera-verify/qml-ref" SETS=4 SHARD="0/1" ARENA="" ONLY="*"
 OUT="$HOME/tessera-verify/visual-$(date +%m%d-%H%M)" SIDE="" REUSE="" ENVS=() FILL="" RUST_ARENAS=""
-USERCFG="$HOME/iRice/.sandbox/home/.config/tessera/config.json"
+USERCFG="$HOME/tessera/.sandbox/home/.config/tessera/config.json"
 WALL=""
 while (($#)); do
     case "$1" in
@@ -60,7 +60,7 @@ SCENES="$ROOT/tools/visual-scenes.txt"
 # ── One side: its own sandbox, its own copy of the code ─────────────────────
 if [[ -n $SIDE ]]; then
     if [[ $SIDE == qml ]]; then CODE=$REF; else CODE=$ROOT; fi
-    export IRICE_ARENA=$ARENA
+    export TESSERA_ARENA=$ARENA
     # shellcheck source=/dev/null
     . "$CODE/site/film/tessera/capture/lib.sh"
     CFG="$HOMEDIR/.config/tessera/config.json"
@@ -87,10 +87,10 @@ PY
     reset() {
         inbox 'ipc panels close; ipc lock demo off; ipc lock unlock; ipc emoji close; ipc shotEditor close; ipc island dismissNewest; ipc island dismissNewest; wtype -k Escape; wtype -k Escape
             for a in $(hyprctl clients -j | jq -r ".[].address"); do hyprctl dispatch "hl.dsp.window.close({ window = \"address:$a\" })" >/dev/null; done; true' </dev/null >/dev/null 2>&1
-        dev pointer -o IRICE-TEST move 1500 700 </dev/null >/dev/null 2>&1
+        dev pointer -o TESSERA-TEST move 1500 700 </dev/null >/dev/null 2>&1
         sleep 1
     }
-    log "setup: arena $IRICE_ARENA, code $CODE"
+    log "setup: arena $TESSERA_ARENA, code $CODE"
     # (each sandbox starts once its memory fits beside the builds running:
     # the shared budget in slot.sh; under memory pressure grim timed out)
     GATE=$HOME/.local/share/tessera-port/slot.sh
@@ -151,7 +151,7 @@ PY
             if [[ $cmds == ptr\ * ]]; then
                 # (the pointer: bar menus and island popovers open from clicks and hovers)
                 # shellcheck disable=SC2086
-                dev pointer -o IRICE-TEST ${cmds#ptr } </dev/null >/dev/null 2>&1
+                dev pointer -o TESSERA-TEST ${cmds#ptr } </dev/null >/dev/null 2>&1
             elif [[ $cmds != "-" && -n $cmds ]]; then
                 inbox "$cmds" </dev/null >/dev/null 2>&1
             fi

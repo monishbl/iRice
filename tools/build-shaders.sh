@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Compiles shell/**/*.frag|vert and material/**/*.frag|vert (the Material
 # look) to .qsb next to the source. Runs qsb inside the
-# irice distrobox when it isn't available on the host.
+# tessera distrobox when it isn't available on the host.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 QSB=/usr/lib/qt6/bin/qsb
-run() { if [[ -x "$QSB" ]]; then "$@"; else distrobox enter irice -- "$@"; fi; }
+box() { source "$ROOT/shell/assets/scripts/old-names.sh" && old_names_dev_box; }
+run() { if [[ -x "$QSB" ]]; then "$@"; else distrobox enter "$(box)" -- "$@"; fi; }
 # (a build whose source is gone, say a Material shader merged into shell/,
 # would still be linked into the Material root over the shared one)
 find "$ROOT/shell" "$ROOT/material" -name '*.qsb' 2>/dev/null | while read -r built; do

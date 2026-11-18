@@ -1,4 +1,4 @@
-# iRice: feature gaps, session reliability, and power/performance strategy
+# Tessera: feature gaps, session reliability, and power/performance strategy
 
 Date: **29 October 2026**, Asia/Kolkata. Reviewed source: **`483d6eb`**.
 
@@ -12,7 +12,7 @@ This document complements the [bug audit](bug-audit-2026-10-28.md). It records m
 2. **The floating-default problem has a reproduced code cause.** Its change handler reads a derived boolean before that binding updates, generating the previous layout policy. Existing-window rearrangement runs later and sees the new value. Startup-rule persistence has a separate missing trigger.
 3. **Power features exist, but they do not form one coherent policy.** Low Power, visual Cool-down, heat throttling, Game Mode, Caffeine, and logind lid behavior have different owners. Adding more independent toggles would make their interactions harder to predict.
 4. **A strong competitive position is a beautiful desktop that reliably explains and controls its energy use.** The immediate opportunity is finishing workflows and lifecycle behavior, then adding device continuity, automation, accessibility, and extensibility.
-5. **No evidence currently establishes iRice or its base distro as the fastest or most efficient.** That ambition needs controlled comparisons, a hardware support matrix, and regression budgets. CPU clock frequency alone cannot establish efficiency.
+5. **No evidence currently establishes Tessera or its base distro as the fastest or most efficient.** That ambition needs controlled comparisons, a hardware support matrix, and regression budgets. CPU clock frequency alone cannot establish efficiency.
 
 ## 2. What was investigated and what the evidence means
 
@@ -26,7 +26,7 @@ Evidence levels used here:
 - **Proposal:** recommended future behavior; no measured benefit is claimed yet.
 - **External integration:** delivered through another application/service, with its own capabilities and limitations.
 
-The active shell runs from `/home/user/iRice`; that checkout reports the same reviewed commit, and the window-rules service and TTY startup file match the corresponding files in this workspace. Its settings come from that checkout's `.sandbox/home`, rather than the usual `~/.config/irice` directory. That distinction matters when checking whether a setting has taken effect.
+The active shell runs from `/home/user/Tessera`; that checkout reports the same reviewed commit, and the window-rules service and TTY startup file match the corresponding files in this workspace. Its settings come from that checkout's `.sandbox/home`, rather than the usual `~/.config/tessera` directory. That distinction matters when checking whether a setting has taken effect.
 
 No real suspend, lid-close action, compositor reload, frequency write, daemon installation, or window rearrangement was initiated for this analysis. The window-rules experiments ran offscreen with a fake `hyprctl` and a stub Hyprland event source. A candidate correction was tested only in a temporary copy. The previous audit's syntax checks and 27 passing tests remain historical evidence; they were not relabelled as new end-to-end tests here.
 
@@ -41,11 +41,11 @@ Read-only snapshot taken at approximately **08:15 IST on 29 October**:
 | Observation | Result | Meaning |
 |---|---|---|
 | Active compositor configuration | `sandbox/hypr/tty.lua` | This is the TTY/login-session path, not the installed configuration's `execs.lua` path. |
-| Shell environment | `IRICE_TTY=1`; `IRICE_SANDBOX` absent | Real session; power operations are not merely sandbox notifications. |
-| Idle/standalone lock processes | No `hypridle`, `hyprlock`, or `swaylock` process found | iRice has its own locker, but the ordinary sleep/idle integration daemon is absent. |
+| Shell environment | `TESSERA_TTY=1`; `TESSERA_SANDBOX` absent | Real session; power operations are not merely sandbox notifications. |
+| Idle/standalone lock processes | No `hypridle`, `hyprlock`, or `swaylock` process found | Tessera has its own locker, but the ordinary sleep/idle integration daemon is absent. |
 | Saved Caffeine state | Enabled indefinitely (`until: 0`) | Current keep-awake preference is active; this snapshot does not prove its state at every earlier suspend. |
-| iRice inhibitor | `idle`, block mode | It prevents idle handling, not arbitrary explicit suspend or low-level lid-switch handling. |
-| Effective logind lid action | `suspend`; docked action `ignore` | The system, rather than iRice, currently decides lid behavior. |
+| Tessera inhibitor | `idle`, block mode | It prevents idle handling, not arbitrary explicit suspend or low-level lid-switch handling. |
+| Effective logind lid action | `suspend`; docked action `ignore` | The system, rather than Tessera, currently decides lid behavior. |
 | Session lock hint | Unlocked at inspection | Expected while working; the hint alone is not evidence of whether the session was secure during an earlier resume. |
 | Recent logind journal | Lid-close suspends and completed resumes around 07:51–07:52 IST | Sleep itself is happening. The failure is the missing lock integration around it. |
 
@@ -53,7 +53,7 @@ The inspected main logind configuration had no active custom lid override. Effec
 
 ### 3.2 The missing chain
 
-The installed configuration starts `hypridle` in [execs.lua](../hypr/irice/execs.lua#L8). Its [idle configuration](../hypr/hypridle.conf#L4) asks logind to lock before sleep and routes locking to the shell. However:
+The installed configuration starts `hypridle` in [execs.lua](../hypr/tessera/execs.lua#L8). Its [idle configuration](../hypr/hypridle.conf#L4) asks logind to lock before sleep and routes locking to the shell. However:
 
 - The active [TTY startup](../sandbox/hypr/tty.lua#L49) does **not** load `execs.lua` or start `hypridle`.
 - [System.qml](../shell/services/System.qml#L109) invokes `systemctl suspend` without first obtaining a secure session lock.
@@ -65,7 +65,7 @@ The installed configuration starts `hypridle` in [execs.lua](../hypr/irice/execs
 
 ### 3.3 Starting a daemon is necessary but not the whole correction
 
-The repair should cover every supported launch path and use the actual shell instance/binary, including the TTY shell's private XDG paths. Simply copying an IPC command that targets `qs -c irice` can target the wrong configuration if the running shell was started with `-p <checkout>/shell`.
+The repair should cover every supported launch path and use the actual shell instance/binary, including the TTY shell's private XDG paths. Simply copying an IPC command that targets `qs -c tessera` can target the wrong configuration if the running shell was started with `-p <checkout>/shell`.
 
 The invariant should be: **acquire the compositor lock before suspend; preserve it across resume; never expose an interactive desktop frame before authentication.** Caffeine should not override this invariant. A sleep-delay inhibitor should be released on a secure-lock acknowledgement, not just on successful command launch. Hypridle documents explicit secure-lock waiting for custom lockers; logind's lock command sends a signal rather than waiting for a rendered locker. [Hypridle sleep/lock guidance](https://wiki.hypr.land/hypr-ecosystem/user/hypridle/), [logind D-Bus lifecycle](https://www.freedesktop.org/software/systemd/man/latest/org.freedesktop.login1.html)
 
@@ -94,7 +94,7 @@ The isolated service test produced:
 
 | Selected mode after changing from the other mode | Lua policy generated by current code | Expected |
 |---|---|---|
-| Floating | `IRICE_DEFAULT_LAYOUT = nil` | Install the floating default rule. |
+| Floating | `TESSERA_DEFAULT_LAYOUT = nil` | Install the floating default rule. |
 | Tiled | A floating default rule | Remove/disable that rule. |
 
 This reproduces a one-change-behind policy. It supports the reported difference between newly opened windows and windows rearranged by toggling. It does **not** prove that every app, in every live sequence, will always open tiled: reloads, persisted rules, and per-app exceptions also affect that result. At inspection, the actual saved selection and generated file were both Tiled, which by itself is expected.
@@ -134,7 +134,7 @@ The candidate was not copied into the repository or applied to the live desktop.
 | Focus | Scheduled modes, timers, notification allowlists, appearance/wallpaper effects. | [Focus](../shell/services/Focus.qml) |
 | Sharing | LocalSend sending and receiving; Quick Share delegates to Packet. | [LocalSend](../shell/services/LocalSend.qml), [QuickShare](../shell/services/QuickShare.qml) |
 | Input and accessibility groundwork | Layout switching, on-screen keyboard, trackpad controls, contrast/transparency options; some controls have keyboard support. | [KeyboardLayout](../shell/services/KeyboardLayout.qml), [Switch](../shell/common/Switch.qml) |
-| Recovery groundwork | Repair Shell, updater backups/conflict choices, display rollback, and native-helper fallback exist, with limitations recorded in the bug audit. | [update helper](../tools/irice-update.py), [repair helper](../shell/assets/scripts/repair-shell.sh) |
+| Recovery groundwork | Repair Shell, updater backups/conflict choices, display rollback, and native-helper fallback exist, with limitations recorded in the bug audit. | [update helper](../tools/tessera-update.py), [repair helper](../shell/assets/scripts/repair-shell.sh) |
 
 The gap is often coordination, verification, or workflow completion—not absence of an entire feature.
 
@@ -177,7 +177,7 @@ Priorities: **P0** release-blocking trust/security/reliability; **P1** next core
 | G31 | **Full network configuration — partial/external** | Wi-Fi control and VPN/hotspot alerts exist; WARP is one provider. Add convenient access to enterprise Wi-Fi, VPN profiles, DNS, captive portals, and hotspot configuration. | P2; [Network settings](../shell/modules/settings/pages/network.qml), [NetworkAlerts](../shell/services/NetworkAlerts.qml). |
 | G32 | **Storage/device administration — partial/external** | Device notifications and opening folders exist; provide safe eject/unmount, storage pressure, and clear links to disk/encryption tools. Full formatting/encryption belongs to a capable external tool. | P2; [Devices](../shell/services/Devices.qml), [Files](../shell/services/Files.qml). |
 | G33 | **Portable backup/import and dependable updates — partial** | Add user-visible settings/profile export, secret exclusion, versioned migration and rollback; fix copied-install update paths and existing recovery defects first. | P1; [Config](../shell/common/Config.qml), audit R11–R16. |
-| G34 | **Capability/health dashboard — partial** | Doctor and tool detection exist. Show daemon reachability, protocol support, ABI compatibility, blocked permissions, and a retry action; binary presence alone is not availability. | P1; [Tools](../shell/services/Tools.qml), [CLI](../tools/irice). |
+| G34 | **Capability/health dashboard — partial** | Doctor and tool detection exist. Show daemon reachability, protocol support, ABI compatibility, blocked permissions, and a retry action; binary presence alone is not availability. | P1; [Tools](../shell/services/Tools.qml), [CLI](../tools/tessera). |
 | G35 | **Minimal TTY-style greeter — agreed design, not implemented** | Implement the user's confirmed R39 direction with simple keyboard-first prompts while preserving authentication and session choice. | P2; [R39](bug-audit-2026-10-28.md#r39--replace-the-busy-greeter-with-a-minimal-tty-style-setuplogin-flow). |
 | G36 | **Verified hardware/release matrix — incomplete** | Replace broad “built” checkboxes with tested/untested capability states, version compatibility, and reproducible lifecycle tests. | P0; remaining real-hardware items in [ROADMAP](../ROADMAP.md). |
 | G37 | **Profiles/plugin ecosystem — missing product layer** | Start with shareable declarative themes/workflows. Later add a versioned plugin API, lifecycle limits, permission disclosure, and failure isolation; don't call arbitrary QML execution sandboxed. | P3; no plugin-host/manifest system found in reviewed shell. |
@@ -187,7 +187,7 @@ Priorities: **P0** release-blocking trust/security/reliability; **P1** next core
 | G41 | **Google Keep / notes — browser integration implemented, native sync unavailable** | Settings opens Keep; local Markdown notes remain independent. Official Keep API targets enterprise administration. Track supported personal-account sync separately; do not use private login/token scraping. | P2; [integration guide](google-integration.md). |
 | G42 | **Clipboard image reuse — fixed in working tree; visual verification pending** | Removed global preview URL invalidation and enabled Qt caching; publish stable paths after atomic decode, retain unchanged history models, and decode all images within the 200-row history window instead of only 48. | P1; audit R44, [preview helper](../shell/assets/scripts/clipboard-previews.py). |
 | G43 | **Simple Google sign-in — desktop broker implemented, live verification pending** | Default Settings flow uses GNOME Online Accounts for Google Calendar/Tasks; users need no Google Cloud project. Custom OAuth remains Advanced. Broker dependencies added to installer; real sign-in still requires validation. | P1; [guide](google-integration.md). |
-| G44 | **Per-display pointer boundaries — implemented, physical verification pending** | Choose corner protection (adjustable reach), resistance/push again, selection-only, or Off. Native compositor hook bypasses deliberate warps and application pointer constraints. Selection confinement expires if the shell exits. | P1; [pointer policy](../hypr/plugin/irice-glass/pointer.cpp), [Mouse settings](../shell/modules/settings/pages/mouse.qml). |
+| G44 | **Per-display pointer boundaries — implemented, physical verification pending** | Choose corner protection (adjustable reach), resistance/push again, selection-only, or Off. Native compositor hook bypasses deliberate warps and application pointer constraints. Selection confinement expires if the shell exits. | P1; [pointer policy](../hypr/plugin/tessera-glass/pointer.cpp), [Mouse settings](../shell/modules/settings/pages/mouse.qml). |
 | G45 | **Every monitor’s active workspace chip — implemented, visual verification pending** | Active spaces on other displays receive full-opacity highlights and remain visible through overflow instead of being reduced to a dim underline. | P1; [workspace strip](../shell/modules/menubar/Workspaces.qml). |
 
 ## 7. Power and performance design
@@ -201,7 +201,7 @@ Priorities: **P0** release-blocking trust/security/reliability; **P1** next core
 | Policy 0 frequency bounds | 400 MHz minimum, 4.8 GHz maximum | These are reported bounds, not proof of current frequency or that a particular cap saves energy. |
 | Active profile/backend | `power-saver`; power-profiles-daemon 0.30 | A profile service is already present; do not install multiple competing profile managers. |
 | Other policy managers | TLP/tuned/auto-cpufreq commands absent | No observed reason to layer another daemon over the current owner. |
-| Feral GameMode | `gamemoded` absent | Current iRice Game Mode is not a hidden Feral GameMode integration. |
+| Feral GameMode | `gamemoded` absent | Current Tessera Game Mode is not a hidden Feral GameMode integration. |
 | Suspend modes | Only `[s2idle]` exposed in `mem_sleep` | Do not offer a working S3/deep-sleep switch on this evidence. Measure s2idle drain instead. |
 | Kernel sleep states | `freeze mem disk` | `disk` alone does not prove hibernation/resume is correctly configured. |
 
@@ -283,7 +283,7 @@ Do not disable thermal protections, globally disable CPU cores, overclock, or fo
 
 These are capability comparisons from primary sources checked for this analysis, **not performance rankings**. A feature shown in another desktop is inspiration; compatibility and protocol limits still apply on Linux.
 
-| Reference | Capability worth learning from | iRice opportunity |
+| Reference | Capability worth learning from | Tessera opportunity |
 |---|---|---|
 | [Apple Continuity](https://www.apple.com/macos/continuity/) | Device handoff, shared clipboard, phone integration, camera/mirroring workflows. | A coherent Devices surface around optional existing protocols. Do not promise Apple's proprietary continuity stack or identical iPhone/Android capabilities. |
 | [Apple Shortcuts](https://support.apple.com/guide/shortcuts-mac/welcome/mac) | Composable app/content actions and automation. | Reuse one action registry across Spotlight, widgets, keyboard shortcuts, and event-triggered workflows. |
@@ -313,7 +313,7 @@ These are capability comparisons from primary sources checked for this analysis,
 
 ### 9.1 Measure the desktop separately from the distro
 
-Use two comparisons: **same kernel/driver/base system with and without iRice**, then the same iRice build across candidate distributions. Otherwise a driver, kernel, compositor version, or background service difference can be mistaken for shell improvement. The observed kernel is from the CachyOS family; that is a reasonable initial support target, not proof that it wins every workload.
+Use two comparisons: **same kernel/driver/base system with and without Tessera**, then the same Tessera build across candidate distributions. Otherwise a driver, kernel, compositor version, or background service difference can be mistaken for shell improvement. The observed kernel is from the CachyOS family; that is a reasonable initial support target, not proof that it wins every workload.
 
 Start with one well-supported Arch/CachyOS reference install, then expand packaging and CI to additional bases. Keep shell policy portable and isolate distro-specific package, privilege, and update adapters. A reliable shell release should not require replacing every user's kernel or power daemon.
 
@@ -379,10 +379,10 @@ Every delivered capability should have a manifest/status entry recording: implem
 
 Temporary evidence from this analysis:
 
-- `/tmp/irice-deep-analysis-2026-10-29/runtime-evidence.json`: session launch path, relevant shell environment, effective lid properties, lock-process and inhibitor snapshot.
-- `/tmp/irice-deep-analysis-2026-10-29/power-capabilities.json`: backend/profile and CPU/sleep capability reads.
-- `/tmp/irice-deep-analysis-2026-10-29/source-inventory.json` and `settings-surface.json`: source/configuration and Settings-surface inventory.
-- `/tmp/irice-deep-analysis-2026-10-29/window-rules-probe.py`: actual-service offscreen test with fake commands and event source.
+- `/tmp/tessera-deep-analysis-2026-10-29/runtime-evidence.json`: session launch path, relevant shell environment, effective lid properties, lock-process and inhibitor snapshot.
+- `/tmp/tessera-deep-analysis-2026-10-29/power-capabilities.json`: backend/profile and CPU/sleep capability reads.
+- `/tmp/tessera-deep-analysis-2026-10-29/source-inventory.json` and `settings-surface.json`: source/configuration and Settings-surface inventory.
+- `/tmp/tessera-deep-analysis-2026-10-29/window-rules-probe.py`: actual-service offscreen test with fake commands and event source.
 - `window-rules-probe-result.json` and `window-rules-candidate-result.json` in that directory: current/candidate policy generation and startup-rule results.
 
 The important observations and expected/actual results are embedded above so this document remains useful if `/tmp` is cleaned. The candidate experiment validates policy generation and persistence under the isolated setup; it is not a substitute for the real-window and sleep/resume acceptance tests. No battery-life improvement, GPU performance lead, or distribution ranking was measured in this analysis.

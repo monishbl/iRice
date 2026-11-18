@@ -174,8 +174,6 @@ Singleton {
     // intro keeps time with it (LoginIntro, which reads the same mark)
     signal sessionStarted
     readonly property string startedMark: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/tessera-session-started-" + (Quickshell.env("HYPRLAND_INSTANCE_SIGNATURE") || "none")
-    // (a session that started before iRice became Tessera: its mark counts too)
-    readonly property string oldStartedMark: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/irice-session-started-" + (Quickshell.env("HYPRLAND_INSTANCE_SIGNATURE") || "none")
     function checkStartup() {
         if (Tools.ready && !startup.running && !startup.done)
             startup.running = true;
@@ -190,7 +188,7 @@ Singleton {
     Process {
         id: startup
         property bool done: false
-        command: ["sh", "-c", "[ -e \"$1\" ] && exit 1; [ -e \"$2\" ] && { : > \"$1\"; exit 1; }; : > \"$1\"", "sh", root.startedMark, root.oldStartedMark]
+        command: ["sh", "-c", "[ -e \"$1\" ] && exit 1; : > \"$1\"", "sh", root.startedMark]
         onExited: code => {
             done = true;
             if (code === 0) {

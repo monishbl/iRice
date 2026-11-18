@@ -94,7 +94,7 @@ Singleton {
             root.busy = false;
             if (code !== 0 && code !== 126)
                 root.error = code === 127 ? "Not allowed (an administrator's password is needed)."
-                    : (menuErr.text.replace(/^(tessera|irice)-root: /, "").trim() || "That didn't change. Update Tessera, then try again.");
+                    : (OldNames.withoutHelperPrefix(menuErr.text).trim() || "That didn't change. Update Tessera, then try again.");
             root.refresh();
         }
     }

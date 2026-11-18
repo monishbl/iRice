@@ -2,7 +2,7 @@
 """Renders the site's abstract art (site/public/media/art): soft colour
 fields with film grain, and frosted-glass pills and orbs over them, in four
 families (violet, green, orange, aqua), one per section. Also writes the
-same fields at 1920 x 1080 as wallpapers for screenshots of iRice
+same fields at 1920 x 1080 as wallpapers for screenshots of Tessera
 (site/tools/wallpapers, not published). Pillow only.
 
   site/tools/render-art.py
@@ -138,7 +138,7 @@ def loop(frames_dir, n=144, w=1280, h=720):
         moved = [(c, x + 0.06 * math.cos(t + k), y + 0.05 * math.sin(t * (1 if k % 2 else -1) + k), rx, ry) for k, (c, x, y, rx, ry) in enumerate(blobs)]
         FIELDS["_loop"] = (base, moved)
         img = field("_loop", w, h, False, 40 + i % 3)
-        img = glass(img, (int(w * 0.29), int(h * 0.39), int(w * 0.71), int(h * 0.61)), int(h * 0.11), text="iRice", text_size=int(h * 0.12))
+        img = glass(img, (int(w * 0.29), int(h * 0.39), int(w * 0.71), int(h * 0.61)), int(h * 0.11), text="Tessera", text_size=int(h * 0.12))
         img.save(Path(frames_dir) / f"f{i:03d}.png")
 
 
@@ -151,7 +151,7 @@ def main():
     for dark in (False, True):
         s = "-dark" if dark else ""
         img = field("violet", W, H, dark, 11)
-        save(glass(img, (330, 390, 1270, 610), 110, text="iRice", text_size=120, dark=dark), "brand-violet" + s)
+        save(glass(img, (330, 390, 1270, 610), 110, text="Tessera", text_size=120, dark=dark), "brand-violet" + s)
         img = field("orange", W, H, dark, 12)
         img = glass(img, (530, 230, 1070, 770), 270, dark=dark)
         save(squircle_tile(img, (735, 435, 865, 565), "#E86A2C"), "brand-orange" + s)

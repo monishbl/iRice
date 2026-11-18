@@ -54,45 +54,45 @@ table bridge br {
 
 # `ufw status numbered` after the permanent fix before sharing-ports, with
 # rules of the person's own (one of them on mDNS's port, one called "mDNS");
-# ours tagged as before iRice became Tessera (iRice …) and after (Tessera …)
+# ours tagged under Tessera's old name (R.UFW_OLD) and under Tessera's
 UFW = """\
 Status: active
 
      To                         Action      From
      --                         ------      ----
 [ 1] 22/tcp                     ALLOW IN    Anywhere
-[ 2] 53317:53320/tcp            ALLOW IN    Anywhere                   # iRice sharing
-[ 3] 53317/udp                  ALLOW IN    Anywhere                   # iRice sharing (LocalSend)
+[ 2] 53317:53320/tcp            ALLOW IN    Anywhere                   # @UFW0@
+[ 3] 53317/udp                  ALLOW IN    Anywhere                   # @UFW1@
 [ 4] 5353/udp                   ALLOW IN    Anywhere                   # mDNS
-[ 5] 67/udp                     ALLOW IN    Anywhere                   # iRice Quick Share hotspot (DHCP)
+[ 5] 67/udp                     ALLOW IN    Anywhere                   # @UFW2@
 [ 6] 5000/udp                   ALLOW IN    Anywhere                   # mDNS
 [ 7] 22/tcp (v6)                ALLOW IN    Anywhere (v6)
 [ 8] 53317:53320/tcp (v6)       ALLOW IN    Anywhere (v6)              # Tessera sharing
 [ 9] 5353/udp (v6)              ALLOW IN    Anywhere (v6)              # mDNS
-"""
+""".replace("@UFW0@", R.UFW_OLD[0]).replace("@UFW1@", R.UFW_OLD[1]).replace("@UFW2@", R.UFW_OLD[2])
 
 # An input chain with an old rule of ours (the fix before: 53317-53320), one
 # still wanted while visible (mDNS), and the person's ssh (the old one tagged
-# as before iRice became Tessera)
+# under Tessera's old name)
 NFT_CHAIN = """\
 table inet filter {
 	chain input {
 		type filter hook input priority filter; policy drop;
 		udp dport 5353 accept comment "tessera sharing" # handle 9
-		tcp dport 53317-53320 accept comment "irice sharing" # handle 7
+		tcp dport 53317-53320 accept comment "@OLDTAG@" # handle 7
 		tcp dport 22 accept # handle 3
 	}
 }
-"""
+""".replace("@OLDTAG@", R.OLD_PORTS_TAG)
 
 # `iptables -L INPUT -n --line-numbers` (iptables 1.8.9+ names protocols by number)
 IPT = """\
 Chain INPUT (policy DROP)
 num  target     prot opt source               destination
-1    ACCEPT     6    --  0.0.0.0/0            0.0.0.0/0            tcp dpts:53317:53320 /* irice sharing */
+1    ACCEPT     6    --  0.0.0.0/0            0.0.0.0/0            tcp dpts:53317:53320 /* @OLDTAG@ */
 2    ACCEPT     6    --  0.0.0.0/0            0.0.0.0/0            tcp dpt:22
 3    ACCEPT     17   --  0.0.0.0/0            0.0.0.0/0            udp dpt:5353 /* tessera sharing */
-"""
+""".replace("@OLDTAG@", R.OLD_PORTS_TAG)
 
 # One stand-in for nft, iptables, ip6tables, systemctl, ufw, firewall-cmd and
 # pkexec. FAKE_UNITS: the services on; FAKE_FWD_HAS: ports firewalld has
@@ -222,14 +222,15 @@ class SharingPortsJob(Fakes):
     def test_nftables_rules_go_first_in_each_input_chain_and_nothing_is_kept(self):
         drop = self.prefix / "etc/nftables.d"
         drop.mkdir(parents=True)
-        (drop / "irice.nft").write_text("insert rule inet filter input tcp dport 53317-53320 accept\n")
+        old = os.path.basename(R.NFT_OLD[0])  # (the drop-in under Tessera's old name)
+        (drop / old).write_text("insert rule inet filter input tcp dport 53317-53320 accept\n")
         done, calls = self.ports(["quickshare", "mdns"], FAKE_UNITS="nftables")
         self.assertEqual(self.changes(calls, "nft"), [
             "nft delete rule inet filter input handle 7",
             'nft insert rule inet filter input tcp dport 53318-53319 accept comment "tessera sharing"',
             'nft insert rule inet filter input udp dport 67 accept comment "tessera sharing"'])
-        self.assertFalse((drop / "irice.nft").exists())  # (the fix before's, loaded at every boot)
-        self.assertIn("removed /etc/nftables.d/irice.nft", done)
+        self.assertFalse((drop / old).exists())  # (the fix before's, loaded at every boot)
+        self.assertIn("removed " + R.NFT_OLD[0], done)
         self.assertFalse([c for c in calls if " -f " in c or "add table" in c], calls)
         _, calls = self.ports([], FAKE_UNITS="nftables")
         self.assertEqual(self.changes(calls, "nft"), ["nft delete rule inet filter input handle 9", "nft delete rule inet filter input handle 7"])

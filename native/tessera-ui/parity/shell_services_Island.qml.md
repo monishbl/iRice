@@ -75,7 +75,7 @@ decision), wired in `surfaces/menubar/src/lib.rs`.
 
 Arena with the user's settings plus `cooling.whenHot: true`, `cooling.hotAction: "ask"`, `island.hotTemp: 40` (so the sandbox's CPU counts as hot) and `temperature` in `island.events`; `--bin` the fixer's binary; both looks. If the sandbox has no temperature reading, feed one: `ipc` can't, so instead set `island.hotTemp` below the reading shown in the island's status line (hover the island to see `NN°`).
 1. Wait up to 35 s: the island opens with "Running hot · CPU NN °C", a red ringed glyph, "Not now" (outlined) and "Cool down" (filled). `shot hot`.
-2. Click "Not now": the alert leaves within ~0.3 s and does not come back for 2 minutes while the temperature stays high (shots every 30 s). Cool-down stays off (`dev run cat /tmp/irice-rt-4/...` not needed: the Control Center's Cool-down control is off).
+2. Click "Not now": the alert leaves within ~0.3 s and does not come back for 2 minutes while the temperature stays high (shots every 30 s). Cool-down stays off (`dev run cat /tmp/tessera-rt-4/...` not needed: the Control Center's Cool-down control is off).
 3. End the spell: set `island.hotTemp: 99`, wait 65 s (it cools on the 60 s average), set it back to 40: a new spell posts the alert again. Click "Cool down": the alert leaves, Cool-down turns on (Control Center shows it; Material: power profile power-saver when ppd exists).
 4. New spell again (as in 3). Hover the alert: a round × appears over the glyph's top-left (fades in ~150 ms). Click it: the alert leaves and stays away for the spell.
 5. New spell again: scroll up over the alert (`P scroll` one notch up, or two-finger swipe up): it leaves.

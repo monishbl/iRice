@@ -55,7 +55,7 @@ radii, icons and icon styles, empty states, wrong values shown.
 A fresh worktree lacks three git-ignored things the sandbox needs; without
 them captures fail ("NO SHOT") or Glass renders without the plugin (dark,
 opaque: misleading). Link them from the main checkout before capturing:
-    M=/home/user/Projects/Personal/iRice
+    M=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")   # the main checkout
     mkdir -p .sandbox && ln -sfn $M/.sandbox/home .sandbox/home && ln -sfn $M/.sandbox/bin .sandbox/bin
     ln -sfn $M/hypr/plugin/tessera-glass/tessera-glass.so hypr/plugin/tessera-glass/tessera-glass.so
 Check your branch is on rust-rewrite (`git merge-base --is-ancestor rust-rewrite HEAD`).
@@ -66,7 +66,7 @@ Worktree agents share one scratchpad: give logs and images unique names.
 Before your first build, seed your target dir from the main checkout's full
 build (btrfs copy-on-write: seconds, no extra disk; a fresh target compiles
 every dependency, ~40 min with the memory shared):
-    cp -a --reflink=always /home/user/Projects/Personal/iRice/native/tessera-ui/target/release native/tessera-ui/target/
+    cp -a --reflink=always "$M/native/tessera-ui/target/release" native/tessera-ui/target/
 Build in your worktree, through the gate, with your own target dir:
     cd native/tessera-ui && CARGO_TARGET_DIR=$PWD/target SLOT_MEM_MAX=8G RUST_MIN_STACK=67108864 ~/.local/share/tessera-port/slot.sh cargo build --release -p tessera-ui
 The gate is a shared memory budget: it starts your build when the memory
@@ -83,7 +83,7 @@ Capture after a batch of fixes, not after every edit.
 
 ## Never
 
-- Never touch the user's live session (~/iRice, their screen, arena 1); the
+- Never touch the user's live session (~/tessera, their screen, arena 1); the
   laptop runs the QML shell and stays on it.
 - Never pkill/killall (shared PIDs): exact PIDs only, checked first.
 - Never use another fixer's arena. No sub-agents.

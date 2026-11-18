@@ -12,7 +12,7 @@
 - a matching lock screen, login screen and boot animation.
 
 **What's new (4 Nov):**
-- the new name (iRice → Tessera) and logo (the Badge);
+- the new name (Tessera) and logo (the Badge);
 - chat history in the AI sidebar;
 - one Rust process instead of ~30;
 - Glass and Material at parity: the A–Z App Drawer, the Quick Settings footer;
@@ -26,7 +26,7 @@
   - Accent: the user's choice (default system blue #0A84FF dark / #007AFF light; swatches in shell/common/Theme.qml:26) or the wallpaper's colour.
   - Surfaces: translucent, with blur drawn by the compositor plugin. Radii: continuous corners.
 - **Material:**
-  - Type: Google Sans Flex, shipped as "iRice Sans Flex" (material/assets/fonts, OFL 1.1: fine for video).
+  - Type: Google Sans Flex, shipped as "Tessera Sans Flex" (material/assets/fonts, OFL 1.1: fine for video).
   - Colour: tonal palettes from a seed (Material Color Utilities, shell/common/MaterialColor.js).
   - Motion: MaterialSpring (fast/default/slow), shape morphs (cookie, clover, burst).
 - **Icons:** Phosphor (Glass), Material Symbols Rounded (Material).
@@ -70,7 +70,7 @@
 | 15 | **Lock screen** | the clock, Now Playing; unlock with the fingerprint | partly | footage | fake player |
 
 ## Running it safely
-- **Sandbox:** `IRICE_ARENA=<n> ./dev.sh up`. It's hidden and silent: a private virtual display and audio, so nothing shows on the user's screen. Capture with `./dev.sh shot` (stills of IRICE-TEST) and `./dev.sh run wf-recorder -g "<region>"` (clips; record a region for full frame rate, expand limited range).
+- **Sandbox:** `TESSERA_ARENA=<n> ./dev.sh up`. It's hidden and silent: a private virtual display and audio, so nothing shows on the user's screen. Capture with `./dev.sh shot` (stills of TESSERA-TEST) and `./dev.sh run wf-recorder -g "<region>"` (clips; record a region for full frame rate, expand limited range).
 - **Hooks:** `./dev.sh ipc …` (panels open/close, island demo/post, loginIntro play, lock lock/unlock, screen circle), `./dev.sh pointer` (virtual pointer), `./dev.sh run wtype` (keys), sandbox/tools/fakeplayer.py (Now Playing), notify-send inside the sandbox.
 - **Clock:** the sandbox clock is real. Pick a calm time: set the shell's clock override if one exists; otherwise film the clock rebuilt or record at a chosen time.
 

@@ -128,7 +128,7 @@ pub fn describe(a: &Value, app_name: &dyn Fn(&str) -> Option<String>) -> String 
     }
     if let Some(e) = a.get("exec") {
         let e = e.as_str().map(str::to_string).unwrap_or_else(|| e.to_string());
-        return format!("Runs {}", e.replace("$TESSERA_SHELL/assets/scripts/", "").replace("$IRICE_SHELL/assets/scripts/", ""));
+        return format!("Runs {}", e.replace("$TESSERA_SHELL/assets/scripts/", ""));
     }
     if let Some(z) = a.get("zoom") {
         return if z.as_f64().unwrap_or(0.0) > 0.0 { "Zooms in".into() } else { "Zooms out".into() };

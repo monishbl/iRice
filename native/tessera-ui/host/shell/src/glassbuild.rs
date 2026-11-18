@@ -94,7 +94,6 @@ fn plugin_files() -> Vec<PathBuf> {
     }
     let data = data_dir();
     v.push(data.join("tessera-glass.so"));
-    v.push(data.join("irice-glass.so"));
     v
 }
 
@@ -132,7 +131,7 @@ fn read_files(running: &str, headers: &str) -> Value {
     let alive = snap["pid"].as_i64().is_some_and(|p| p > 0 && std::path::Path::new(&format!("/proc/{p}")).exists());
     let now = now_s();
     let data = data_dir();
-    let built_for = ["tessera-glass.built-for", "irice-glass.built-for"].iter().find_map(|f| std::fs::read_to_string(data.join(f)).ok()).map(|t| xyz(&t)).unwrap_or_default();
+    let built_for = std::fs::read_to_string(data.join("tessera-glass.built-for")).ok().map(|t| xyz(&t)).unwrap_or_default();
     let fake = if sandboxed() { std::fs::read_to_string(runtime_dir().join("tessera-fake-glass")).map(|t| t.trim().to_string()).unwrap_or_default() } else { String::new() };
     json!({
         "running": running, "headers": headers, "builtFor": built_for,

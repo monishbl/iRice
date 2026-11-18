@@ -73,13 +73,6 @@ else
 fi
 
 # Include the colours (once) in each app's own config
-# (configs that include iRice's files, from before it became Tessera, include
-# Tessera's instead, and the old files go: both would colour the apps)
-for f in "$CFG/gtk-3.0/gtk.css" "$CFG/gtk-4.0/gtk.css" "$CFG/foot/foot.ini" "$CFG/kitty/kitty.conf" "$CFG/alacritty/alacritty.toml"; do
-    [[ -f "$f" ]] && grep -qF "irice-colors" "$f" && sed -i 's/irice-colors/tessera-colors/g' "$f"
-done
-rm -f "$CFG/gtk-3.0/irice-colors.css" "$CFG/gtk-4.0/irice-colors.css" "$CFG/foot/irice-colors.ini" "$CFG/kitty/irice-colors.conf" \
-    "$CFG/alacritty/irice-colors.toml" "$CFG/qt6ct/colors/iRice.conf" "$DATA/color-schemes/iRice.colors"
 include() { # file, line, [create if missing]
     local f="$1" line="$2"
     if [[ -f "$f" ]]; then

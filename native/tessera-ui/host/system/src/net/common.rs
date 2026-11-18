@@ -47,7 +47,7 @@ pub fn has_tool(name: &str) -> bool {
     std::env::var_os("PATH").is_some_and(|p| std::env::split_paths(&p).any(|d| d.join(name).is_file()))
 }
 
-/// Paths.state: ~/.local/state/tessera (irice while only its settings exist)
+/// Paths.state: ~/.local/state/tessera
 pub fn state_dir() -> std::path::PathBuf {
     let name = tessera_core::theme::config_path().parent().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "tessera".into());
     crate::util::state_dir().join(name)

@@ -11,7 +11,7 @@
 | 7 | Response and verdict lines wrap under the figures | 146-170 | `resp_h`, `verdict_h` | same |
 
 ## Test plan (tester)
-Both looks. Open the Wi-Fi menu: `inbox 'ipc panels open wifiMenu IRICE-TEST'` (the menu bar's Wi-Fi item). The card is at the bottom of the menu; the button is at its right edge.
+Both looks. Open the Wi-Fi menu: `inbox 'ipc panels open wifiMenu TESSERA-TEST'` (the menu bar's Wi-Fi item). The card is at the bottom of the menu; the button is at its right edge.
 1. Shot: button "Test speed" (Material filled primary 32 px pill; Glass accent 28 px).
 2. Material: `P glide` onto the button → 8 % layer over 150 ms; `rec net-press 0.6 "P down"` → corners to 8 in ≈ 0.22 s with a slight overshoot, button swells ≈ 6 %; `P up`.
 3. Glass: `P down` → 97 % in 100 ms, no overshoot.

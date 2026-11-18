@@ -8,7 +8,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-BUNDLE = next((b for b in (Path.home() / ".local/share/tessera/quickshell", Path.home() / ".local/share/irice/quickshell") if b.exists()), Path.home() / ".local/share/tessera/quickshell")  # (irice: built before the rename)
+BUNDLE = Path.home() / ".local/share/tessera/quickshell"
 QS = BUNDLE/'bin/qs'
 
 

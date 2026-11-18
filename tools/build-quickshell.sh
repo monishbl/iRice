@@ -9,8 +9,8 @@
 set -euo pipefail
 VER="${1:-v0.3.2}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-# (iRice's folders, from before it became Tessera, move over first: never both)
-python3 -I "$ROOT/shell/assets/scripts/migrate-names.py" || true
+# (folders under Tessera's old name move over first, never both: migrate-names.py)
+python3 -I "$ROOT/shell/assets/scripts/migrate-names.py" --no-checkout || true
 DATA="${XDG_DATA_HOME:-$HOME/.local/share}/tessera"
 SRC="$DATA/build/quickshell"
 PREFIX="$DATA/quickshell"
