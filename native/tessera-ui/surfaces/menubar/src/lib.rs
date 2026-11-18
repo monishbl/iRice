@@ -1528,7 +1528,7 @@ impl Menubar {
     /// target, from where it is with the speed it has
     fn island_size(&mut self, st: &State) {
         // (Reduce motion, and battery saver, which turns it on: the new size at once)
-        let still = st.shell.cfg["appearance"]["reduceMotion"].as_bool().unwrap_or(false) || tessera_core::saver::on();
+        let still = spring::still(&st.shell.cfg, tessera_core::saver::on());
         let trace = tessera_core::env::is_set("FRAMELOG");
         for b in &mut self.bars {
             let want = (b.ui.get_isl_want_w() as f64, b.ui.get_isl_want_h() as f64);
@@ -1596,7 +1596,7 @@ impl Menubar {
             }
             return;
         };
-        let still = st.shell.look.material || st.shell.cfg["appearance"]["reduceMotion"].as_bool().unwrap_or(false);
+        let still = st.shell.look.material || spring::still(&st.shell.cfg, tessera_core::saver::on());
         let set = |bars: &[BarEntry], v: f64| {
             for b in bars {
                 b.ui.set_hud_level((v / HUD_BAR_PX) as f32);

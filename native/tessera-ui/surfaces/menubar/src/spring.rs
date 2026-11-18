@@ -9,6 +9,13 @@
 //! `velocity * 16 / 1000` each step) with the frames in between drawn
 //! between two steps, so 60 and 120 Hz show the same motion.
 
+/// The island and its HUD move at once, no spring: Reduce motion, or
+/// battery saver (which turns Reduce motion on, and draws 60 frames a second
+/// at most)
+pub fn still(cfg: &serde_json::Value, saver: bool) -> bool {
+    saver || cfg["appearance"]["reduceMotion"].as_bool().unwrap_or(false)
+}
+
 /// Qt's step, ms
 pub const STEP_MS: f64 = 16.0;
 
@@ -187,6 +194,15 @@ mod tests {
             // (the first frame may sit at the start: the step before is the start)
             assert!(still <= 1, "{frame_ms} ms frames: {still} frames without a move");
         }
+    }
+
+    #[test]
+    fn reduce_motion_and_saver_snap() {
+        use serde_json::json;
+        assert!(!still(&json!({}), false));
+        assert!(still(&json!({}), true));
+        assert!(still(&json!({"appearance": {"reduceMotion": true}}), false));
+        assert!(!still(&json!({"appearance": {"reduceMotion": false}}), false));
     }
 
     #[test]
