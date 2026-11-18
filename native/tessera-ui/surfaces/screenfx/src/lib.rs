@@ -14,8 +14,8 @@
 //!   MaterialDisplayConfirm.qml).
 //! - `ShelfProbes` (probe.rs): the edge and shake drop strips that open the
 //!   shelf (shell/modules/shelf/ShelfProbes.qml).
-//! - `ClickCatcher` (catcher.rs): while a popover is open, the other screens'
-//!   press closes it (standalone only, no QML twin).
+//! - `ClickCatcher` (catcher.rs): an open popover closes on a press on
+//!   another screen (standalone only, no QML twin; it maps nothing).
 //!
 //! All of them are standalone only (`tessera-ui --standalone`): with the QML
 //! shell running, its own copies draw these, and a second set here would

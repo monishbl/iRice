@@ -250,6 +250,12 @@ pub trait Part {
     /// elsewhere without leaning on the compositor's popup grab (Hyprland's
     /// counts the popup's parent window as inside it)
     fn pointer_pressed(&mut self, st: &mut State, surface: &Rc<Surface>) {}
+    /// A button went down outside the bounds of the surface that has the
+    /// pointer: Hyprland 0.56 keeps the pointer with a layer that holds the
+    /// keyboard exclusively (an open panel) even over another screen, and
+    /// sends the press there, at a position off the window. Slint doesn't
+    /// hear it; a part's popover closes (outside.rs)
+    fn pointer_pressed_outside(&mut self, st: &mut State, surface: &Rc<Surface>) {}
     /// The compositor closed one of its surfaces
     fn surface_closed(&mut self, st: &mut State, surface: &Rc<Surface>) {}
     /// A drag and drop over one of its surfaces that takes drops

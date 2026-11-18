@@ -1492,6 +1492,15 @@ impl State {
                         if wakes_on() {
                             pressed_now(&s.namespace);
                         }
+                        // (off the window: on another screen, the panel holding the pointer)
+                        let (w, h) = s.logical_size();
+                        if off_window(e.position, (w, h)) {
+                            if crate::env::is_set("DEBUG") || wakes_on() {
+                                eprintln!("press off {} at {:?} ({w}x{h}): elsewhere", s.namespace, e.position);
+                            }
+                            self.each_part(|p, st| p.pointer_pressed_outside(st, &s));
+                            continue;
+                        }
                         self.each_part(|p, st| p.pointer_pressed(st, &s));
                         s.dispatch(WindowEvent::PointerPressed { position, button });
                     } else {
@@ -1765,6 +1774,12 @@ fn drew_after_press(ns: &str, render_ms: f64) {
     });
 }
 
+/// A press at this surface-local position is off the window (`size`
+/// logical px; 0: not known yet, never off)
+pub fn off_window(at: (f64, f64), size: (u32, u32)) -> bool {
+    size.0 > 0 && size.1 > 0 && (at.0 < 0.0 || at.1 < 0.0 || at.0 >= size.0 as f64 || at.1 >= size.1 as f64)
+}
+
 /// TESSERA_FRAMELOG=1: every frame a surface draws and every hide, with the
 /// wall time (`framelog frame <namespace> <unix s>`): which surface drew the
 /// frames a compositor frame log (tools/gate/framelog.py) counts, and when a
@@ -1894,7 +1909,19 @@ pub fn wakes_on() -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::shortcut_text;
+    use super::{off_window, shortcut_text};
+
+    #[test]
+    fn a_press_off_the_window_is_elsewhere() {
+        // (a 1920x1080 panel on DP-1 at 1920,0; the press on eDP-1 at 300,500)
+        assert!(off_window((-1620.0, 500.0), (1920, 1080)));
+        assert!(off_window((2100.0, 10.0), (1920, 1080)));
+        assert!(off_window((10.0, 1080.0), (1920, 1080)));
+        assert!(!off_window((0.0, 0.0), (1920, 1080)));
+        assert!(!off_window((1919.5, 1079.5), (1920, 1080)));
+        // (no size yet: never)
+        assert!(!off_window((-5.0, -5.0), (0, 0)));
+    }
 
     #[test]
     fn shortcuts_by_key_on_any_layout() {

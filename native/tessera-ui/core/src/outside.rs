@@ -6,13 +6,12 @@
 //! it. A press on another screen reached an app, or another screen's bar or
 //! dock, and the popover stayed open (18 Nov, two screens).
 //!
-//! So, while one is open: the screens without a popover get a transparent
-//! catcher over their apps (screenfx's `clickcatcher` part: no keyboard, the
-//! whole screen bar the bars' reserved strips; gone the moment the popover
-//! closes), and a press on any of the shell's surfaces on another output (a
-//! catcher, a bar, a dock, the desktop) closes the popovers that aren't on it.
-//! The press that closes is taken, as one outside the panel on its own
-//! screen is; nothing else is blocked once it closes.
+//! So (screenfx's `clickcatcher` part, which maps nothing): a press that
+//! comes to the window holding the pointer at a position off it (Hyprland
+//! 0.56 keeps the pointer with a layer that has the keyboard exclusively,
+//! as an open panel does, even over another screen) closes every popover,
+//! and a press on any of the shell's surfaces on another output (a bar, a
+//! dock, the desktop) closes the popovers that aren't on it.
 //!
 //! What is open: Panels' open panel (the shell state's `open` and `screen`,
 //! for the panels in `PANELS`), and the parts' own menus, said here with
@@ -21,7 +20,7 @@
 
 use std::cell::RefCell;
 
-/// The part that keeps the catchers (surfaces/screenfx catcher.rs)
+/// The part that closes them (surfaces/screenfx catcher.rs)
 pub const CATCHER: &str = "clickcatcher";
 
 /// Panels' panels that close on a press outside them (the others are whole
@@ -63,31 +62,20 @@ thread_local! {
 
 /// A part's popover is open on `output` (again: it moved there)
 pub fn open(tx: &calloop::channel::Sender<crate::Msg>, owner: &'static str, output: &str) {
-    let changed = OPEN.with(|o| {
+    let _ = tx;
+    OPEN.with(|o| {
         let mut o = o.borrow_mut();
-        if o.iter().any(|(w, out)| *w == owner && out == output) {
-            return false;
+        if !o.iter().any(|(w, out)| *w == owner && out == output) {
+            o.retain(|(w, _)| *w != owner);
+            o.push((owner, output.to_string()));
         }
-        o.retain(|(w, _)| *w != owner);
-        o.push((owner, output.to_string()));
-        true
     });
-    if changed {
-        let _ = tx.send(crate::Msg::Part(CATCHER, Box::new(Changed)));
-    }
 }
 
 /// A part's popover closed (however: a pick, Escape, a press)
 pub fn close(tx: &calloop::channel::Sender<crate::Msg>, owner: &'static str) {
-    let changed = OPEN.with(|o| {
-        let mut o = o.borrow_mut();
-        let n = o.len();
-        o.retain(|(w, _)| *w != owner);
-        n != o.len()
-    });
-    if changed {
-        let _ = tx.send(crate::Msg::Part(CATCHER, Box::new(Changed)));
-    }
+    let _ = tx;
+    OPEN.with(|o| o.borrow_mut().retain(|(w, _)| *w != owner));
 }
 
 /// The parts' popovers open now: (owner, output)
@@ -95,21 +83,17 @@ pub fn parts_open() -> Vec<(&'static str, String)> {
     OPEN.with(|o| o.borrow().clone())
 }
 
-/// To the catcher part: what's open changed
-pub struct Changed;
-
 /// Panels' open panel as a popover: (owner, output), when it's one that
 /// closes on a press outside it
 pub fn panel_popover(open: &str, screen: &str) -> Option<(&'static str, String)> {
     (PANELS.contains(&open) && !screen.is_empty()).then(|| (PANELS_OWNER, screen.to_string()))
 }
 
-/// The outputs that get a catcher: those with no popover, while any is open
-pub fn catch_on(popovers: &[(&'static str, String)], outputs: &[String]) -> Vec<String> {
-    if popovers.is_empty() {
-        return Vec::new();
-    }
-    outputs.iter().filter(|o| !popovers.iter().any(|(_, p)| p == *o)).cloned().collect()
+/// A press off the window that holds the pointer (another screen): all of them
+pub fn closed_off_window(popovers: &[(&'static str, String)]) -> Vec<&'static str> {
+    let mut v: Vec<&'static str> = popovers.iter().map(|(w, _)| *w).collect();
+    v.dedup();
+    v
 }
 
 /// A press on one of the shell's surfaces on `on`: the popovers it closes
@@ -128,18 +112,11 @@ pub fn closed_by(popovers: &[(&'static str, String)], on: &str) -> Vec<&'static 
 mod tests {
     use super::*;
 
-    fn outs() -> Vec<String> {
-        vec!["eDP-1".to_string(), "DP-1".to_string()]
-    }
-
     #[test]
-    fn catchers_only_while_open_and_only_elsewhere() {
-        assert!(catch_on(&[], &outs()).is_empty());
-        assert_eq!(catch_on(&[("panels", "DP-1".into())], &outs()), vec!["eDP-1".to_string()]);
-        // (a popover on each screen: every press lands on one of them)
-        assert!(catch_on(&[("panels", "DP-1".into()), ("dock", "eDP-1".into())], &outs()).is_empty());
-        // (one screen: nothing to catch)
-        assert!(catch_on(&[("panels", "DP-1".into())], &["DP-1".to_string()]).is_empty());
+    fn a_press_off_the_window_closes_them_all() {
+        assert!(closed_off_window(&[]).is_empty());
+        let p = vec![("panels", "DP-1".to_string()), ("dock", "eDP-1".to_string())];
+        assert_eq!(closed_off_window(&p), vec!["panels", "dock"]);
     }
 
     #[test]
