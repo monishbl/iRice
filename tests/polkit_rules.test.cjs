@@ -28,8 +28,34 @@ const decide = (a, s = subject()) => {
     return null;
 };
 
-test('one rule', () => {
-    assert.equal(rules.length, 1);
+test('two rules: the root helper, and the fingerprint reader restart', () => {
+    assert.equal(rules.length, 2);
+});
+
+// systemd's details for a unit job (RestartUnit and friends)
+const unitJob = (unit, verb) => ({
+    id: 'org.freedesktop.systemd1.manage-units',
+    lookup: key => ({ unit, verb })[key],
+});
+const person = (over = {}) => subject(Object.assign({ user: 'monish', groups: ['users'] }, over));
+
+test('the person at the computer restarts fprintd without a password', () => {
+    assert.equal(decide(unitJob('fprintd.service', 'restart'), person()), 'yes');
+    // (not only administrators: it's their own reader)
+    assert.equal(decide(unitJob('fprintd.service', 'restart'), person({ groups: ['wheel'] })), 'yes');
+});
+
+test('only fprintd, only a restart, only someone at the computer', () => {
+    for (const verb of ['stop', 'start', 'reload', 'kill', 'enable', undefined])
+        assert.equal(decide(unitJob('fprintd.service', verb), person()), null, String(verb));
+    for (const unit of ['sshd.service', 'fprintd.socket', 'fprintd', 'polkit.service', undefined])
+        assert.equal(decide(unitJob(unit, 'restart'), person()), null, String(unit));
+    assert.equal(decide(unitJob('fprintd.service', 'restart'), person({ active: false })), null);
+    assert.equal(decide(unitJob('fprintd.service', 'restart'), person({ local: false })), null);
+    assert.equal(decide(unitJob('fprintd.service', 'restart'), person({ user: '' })), null);
+    // (other systemd actions aren't touched)
+    assert.equal(decide({ id: 'org.freedesktop.systemd1.manage-unit-files', lookup: () => undefined }, person()), null);
+    assert.equal(decide({ id: 'org.freedesktop.systemd1.reload-daemon', lookup: () => undefined }, person()), null);
 });
 
 test('the small fixed jobs pass for an administrator at the computer', () => {

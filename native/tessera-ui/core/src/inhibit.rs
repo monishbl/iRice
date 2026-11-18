@@ -14,8 +14,20 @@ const IFACE: &str = "org.freedesktop.login1.Manager";
 /// Hold a "block" inhibitor for `what` ("handle-lid-switch", "idle",
 /// "sleep"…); drop the fd to let go. None: no logind (or it refused).
 pub fn hold(what: &str, why: &str) -> Option<OwnedFd> {
+    take(what, why, "block")
+}
+
+/// Hold a "delay" inhibitor for `what` ("sleep", "shutdown"): logind waits
+/// (up to its InhibitDelayMaxSec, 5 s by default) after PrepareForSleep
+/// until it's dropped, so a part can tidy up first. Drop it once done, and
+/// take it again after the wake.
+pub fn delay(what: &str, why: &str) -> Option<OwnedFd> {
+    take(what, why, "delay")
+}
+
+fn take(what: &str, why: &str, mode: &str) -> Option<OwnedFd> {
     let conn = zbus::blocking::Connection::system().ok()?;
-    let reply = conn.call_method(Some(DEST), PATH, Some(IFACE), "Inhibit", &(what, "Tessera", why, "block")).ok()?;
+    let reply = conn.call_method(Some(DEST), PATH, Some(IFACE), "Inhibit", &(what, "Tessera", why, mode)).ok()?;
     reply.body().deserialize::<OwnedFd>().ok()
 }
 

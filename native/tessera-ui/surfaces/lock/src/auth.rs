@@ -90,6 +90,52 @@ impl Conv {
             }
         }
     }
+
+    /// Ask the helper to end (SIGTERM) and wait until it has, up to
+    /// `within`; one still there then is killed. True: it ended in time.
+    /// Before a sleep (reader.rs): its bus connection closes with it, and
+    /// fprintd stops the read and lets the reader go while it's still there
+    pub fn stop(&self, within: std::time::Duration) -> bool {
+        let end = std::time::Instant::now() + within;
+        if let Ok(mut c) = self.child.lock() {
+            if let Some(ch) = c.as_mut() {
+                // (under the lock, before it's reaped: the pid is still this child's)
+                if matches!(ch.try_wait(), Ok(None)) {
+                    unsafe { libc::kill(ch.id() as libc::pid_t, libc::SIGTERM) };
+                }
+            }
+        }
+        loop {
+            if self.ended() {
+                return true;
+            }
+            if std::time::Instant::now() >= end {
+                self.abort();
+                return false;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+    }
+
+    /// The helper is gone (or never started)
+    pub fn ended(&self) -> bool {
+        let Ok(mut c) = self.child.lock() else { return true };
+        let done = match c.as_mut() {
+            None => true,
+            Some(ch) => !matches!(ch.try_wait(), Ok(None)),
+        };
+        if done {
+            // (reaped here: nothing signals its pid again)
+            *c = None;
+        }
+        done
+    }
+
+    /// A conversation around a process of the test's own
+    #[cfg(test)]
+    pub fn of_child(kind: Kind, id: u64, child: Child) -> Self {
+        Self { kind, id, child: Arc::new(Mutex::new(Some(child))) }
+    }
 }
 
 impl Drop for Conv {
@@ -403,6 +449,26 @@ mod tests {
         assert_eq!(got[0], Event::Done(Kind::Password, 1, Outcome::Success));
         assert!(matches!(got[1], Event::Done(Kind::Password, 2, Outcome::Failure(_))));
         assert!(matches!(got[2], Event::Done(Kind::Password, 3, Outcome::Failure(_))));
+    }
+
+    #[test]
+    fn stopping_waits_for_the_helper_to_end() {
+        use std::time::{Duration, Instant};
+        // one that ends on SIGTERM: at once, and true
+        let c = Conv::of_child(Kind::Finger, 1, Command::new("sleep").arg("30").spawn().unwrap());
+        assert!(!c.ended());
+        let t = Instant::now();
+        assert!(c.stop(Duration::from_secs(2)));
+        assert!(t.elapsed() < Duration::from_secs(1));
+        assert!(c.ended());
+        // one that ignores it: killed when the time is up, and false
+        let c = Conv::of_child(Kind::Finger, 2, Command::new("sh").args(["-c", "trap '' TERM; exec sleep 30"]).spawn().unwrap());
+        std::thread::sleep(Duration::from_millis(100));
+        let t = Instant::now();
+        assert!(!c.stop(Duration::from_millis(300)));
+        assert!(t.elapsed() >= Duration::from_millis(300));
+        std::thread::sleep(Duration::from_millis(100));
+        assert!(c.ended());
     }
 
     #[test]

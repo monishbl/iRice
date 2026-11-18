@@ -183,9 +183,8 @@ pub struct Power {
     lid_fd: Option<zbus::zvariant::OwnedFd>,
     /// the lid's state while Tessera handles it, and the closed-lid guard
     lid_is_closed: bool,
-    lid_sleep_asked: f64,
-    /// asks to sleep since the lid closed (the third sleeps without waiting for the lock)
-    lid_sleep_tries: u32,
+    /// asks to sleep since the lid closed, and when (policy::LidGuard)
+    lid_guard: policy::LidGuard,
     hot_since: f64,
     energy_users: i32,
     energy_apps: Value,
@@ -227,8 +226,7 @@ impl Default for Power {
             lid: vec![],
             lid_fd: None,
             lid_is_closed: false,
-            lid_sleep_asked: 0.0,
-            lid_sleep_tries: 0,
+            lid_guard: policy::LidGuard::default(),
             hot_since: 0.0,
             energy_users: 0,
             energy_apps: json!([]),
@@ -482,7 +480,7 @@ impl Power {
         let external = h.st.outputs_now().iter().filter(|(_, n)| !is_built_in(n)).count();
         let act = policy::lid_action(!self.on_battery(), external, &self.cfg, Self::caffeine());
         if act == "sleep" {
-            self.lid_sleep_asked = (tessera_core::util::now_ms() as f64);
+            self.lid_guard.closed(tessera_core::util::now_ms() as f64);
             h.ask("system.power", json!(["sleep"]));
             return;
         }
@@ -501,31 +499,38 @@ impl Power {
     /// charger when it runs hot for a minute and isn't docked. At most once a
     /// minute.
     fn closed_lid_guard(&mut self, h: &mut Host, on_battery: bool) {
-        if !self.lid_is_closed || self.lid_fd.is_none() {
+        let now = tessera_core::util::now_ms() as f64;
+        let held = self.lid_is_closed && self.lid_fd.is_some();
+        let should = held && {
+            let hot = cpu_temp_c().is_some_and(|t| t >= 90.0);
+            if hot && self.hot_since == 0.0 {
+                self.hot_since = now;
+            } else if !hot {
+                self.hot_since = 0.0;
+            }
+            let hot_for = if self.hot_since > 0.0 { (now - self.hot_since) / 1000.0 } else { 0.0 };
+            let external = h.st.outputs_now().iter().filter(|(_, n)| !is_built_in(n)).count();
+            policy::lid_should_sleep_now(!on_battery, external, hot_for)
+        };
+        if !held {
             self.hot_since = 0.0;
-            return;
         }
-        let now = (tessera_core::util::now_ms() as f64);
-        let hot = cpu_temp_c().is_some_and(|t| t >= 90.0);
-        if hot && self.hot_since == 0.0 {
-            self.hot_since = now;
-        } else if !hot {
-            self.hot_since = 0.0;
-        }
-        let hot_for = if self.hot_since > 0.0 { (now - self.hot_since) / 1000.0 } else { 0.0 };
-        let external = h.st.outputs_now().iter().filter(|(_, n)| !is_built_in(n)).count();
-        if !policy::lid_should_sleep_now(!on_battery, external, hot_for) {
-            self.lid_sleep_tries = 0;
-            return;
-        }
-        if now - self.lid_sleep_asked > 60_000.0 {
-            self.lid_sleep_asked = now;
-            self.lid_sleep_tries += 1;
-            if self.lid_sleep_tries <= 2 {
+        match self.lid_guard.step(now, held, should) {
+            policy::LidStep::Nothing => {}
+            policy::LidStep::Woke => {
+                // (the lid as logind has it now, not as last heard: a lid-open
+                // wake's event can come after this tick)
+                if self.lid_fd.is_some() {
+                    self.lid_is_closed = tessera_core::inhibit::lid_closed().unwrap_or(false);
+                }
+                eprintln!("tessera-ui: awake (the lid is {}): no sleep for a minute", if self.lid_is_closed { "closed" } else { "open" });
+            }
+            policy::LidStep::Sleep => {
                 eprintln!("tessera-ui: the lid is closed and it's still awake ({}): sleeping", if on_battery { "on battery" } else { "running hot" });
                 // (locks first, sleeps once the lock is confirmed)
                 h.ask("system.power", json!(["sleep"]));
-            } else {
+            }
+            policy::LidStep::SleepNow => {
                 // Still awake a minute after asking twice: the lock never
                 // confirmed. The lid is shut, so nobody sees the desktop, and
                 // the lock was asked for: sleep now rather than run the battery
@@ -795,6 +800,7 @@ impl Service for Power {
             M::LidClosed => self.lid_closed(h),
             M::LidOpened => {
                 self.lid_is_closed = false;
+                self.lid_guard.opened();
                 self.hot_since = 0.0;
                 Self::built_in_screens(h, true)
             }

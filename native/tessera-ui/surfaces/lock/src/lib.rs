@@ -29,8 +29,14 @@
 //!     shell/assets/pam): only when real and the shell says the reader or
 //!     your faces are set up (`finger`, `face`: Fingerprint.lockScreen,
 //!     Face.lockScreen). In a sandbox the `demo` lines show their states.
-//!   logind's PrepareForSleep (system bus, a signal watch, read-only): only
-//!     when real and the reader or the face is on.
+//!   logind's PrepareForSleep and LidClosed (system bus, signal watches,
+//!     read-only), and a "sleep" delay inhibitor while locked: only when real
+//!     and the reader or the face is on. fprintd's GetDevices and a Claim +
+//!     Release of the reader before each fresh scan, and before a sleep is
+//!     let go; /sys/class/drm's dpms (read-only) for a screen coming on;
+//!     systemd's RestartUnit("fprintd.service"), never interactive, only when
+//!     fprintd is stuck and at most once in 2 minutes (allowed by Tessera's
+//!     polkit rule, else refused): reader.rs.
 //!   faillock --user (read-only): only when real, after a wrong password.
 //!   Idle inhibitor (zwp_idle_inhibit_v1) on a lock surface while Bedside
 //!     Mode shows: whenever it shows (demo too: the arena's compositor).
@@ -76,6 +82,7 @@ use tessera_core::*;
 pub mod auth;
 pub mod intro;
 pub mod logic;
+pub mod reader;
 pub mod shape;
 pub mod veil;
 
@@ -176,8 +183,16 @@ enum M {
     MatchShown,
     /// a password check that never answered (its conversation id)
     PassTimeout(u64),
+    /// the reader's wait is over (a pause, a back-off, a stuck reader's 30 s):
+    /// a fresh scan, for `Reader::retry_why`
     FingerRetry,
     FingerMissOver,
+    /// fprintd's answer before a fresh scan (its generation, why it was asked)
+    Probed(u64, reader::Why, reader::Probe),
+    /// logind's sleep delay inhibitor, taken off the UI thread
+    Inhibitor(Option<zbus::zvariant::OwnedFd>),
+    /// the lid was opened (logind)
+    LidOpened,
     /// the camera's "not recognised" has shown long enough (the island's miss)
     FaceMissOver,
     FaceRetry,
@@ -225,17 +240,61 @@ struct Note {
     at: i64,
 }
 
-#[derive(Default)]
+/// The fingerprint reader's scans (reader.rs has the rules)
 struct Reader {
     text: String,
     state: String,
+    /// real misses since the last wake or unlock (3: a pause; 6: the password only)
     tries: u32,
     asked_at: i64,
     started_at: i64,
     asked: bool,
+    /// scans over at once in a row, before they asked for a finger
     busy: u32,
     conv: Option<Conv>,
     miss_shown: bool,
+    /// the last finger, key, pointer, touch, lid or screen: 2 minutes without, no scan
+    activity_at: i64,
+    /// fprintd is being asked (a fresh scan's thread): `gen` tells its answer from an older one's
+    probing: bool,
+    gen: u64,
+    /// what the next FingerRetry asks fprintd for
+    retry_why: reader::Why,
+    /// fprintd is stuck and couldn't be restarted: the hint shows
+    stuck: bool,
+    /// when fprintd was last restarted (at most once in 2 minutes)
+    restarted_at: Option<i64>,
+    /// the post-unlock notification is owed
+    tell_after: bool,
+    /// a scan was wanted at the last look (the 1 s tick sees idle begin)
+    wanted: bool,
+    /// the screens' power at the last tick (one coming on starts a scan)
+    screens: Vec<(String, bool)>,
+}
+
+impl Default for Reader {
+    fn default() -> Self {
+        Self {
+            text: String::new(),
+            state: String::new(),
+            tries: 0,
+            asked_at: 0,
+            started_at: 0,
+            asked: false,
+            busy: 0,
+            conv: None,
+            miss_shown: false,
+            activity_at: crate::util::now_ms(),
+            probing: false,
+            gen: 0,
+            retry_why: reader::Why::Fresh,
+            stuck: false,
+            restarted_at: None,
+            tell_after: false,
+            wanted: false,
+            screens: Vec::new(),
+        }
+    }
 }
 
 #[derive(Default)]
@@ -315,6 +374,10 @@ pub struct Lock {
     minute: (i32, i32),
     sleeping: bool,
     sleep_watch: bool,
+    /// logind's sleep delay inhibitor while a scan can run (reader.rs), and
+    /// whether it's being taken
+    sleep_fd: Option<zbus::zvariant::OwnedFd>,
+    sleep_fd_asked: bool,
     faillock: logic::Faillock,
     avatar: Option<(Image, Image)>,
     avatar_asked: bool,
@@ -387,6 +450,8 @@ impl Default for Lock {
             minute: (-1, -1),
             sleeping: false,
             sleep_watch: false,
+            sleep_fd: None,
+            sleep_fd_asked: false,
             faillock: logic::Faillock::default(),
             avatar: None,
             avatar_asked: false,
@@ -553,8 +618,14 @@ impl Lock {
         self.held_at = now;
         self.last_touch = now;
         self.face = FaceCam::default();
+        // (an unlock, or a new lock: the misses count from zero)
         self.finger.tries = 0;
         self.finger.busy = 0;
+        self.finger.activity_at = now;
+        if !held && self.finger.stuck && std::mem::take(&mut self.finger.tell_after) {
+            // unlocked with the password while fprintd is stuck: offer the restart
+            reader::offer_restart();
+        }
         self.sb.idle = false;
         self.password.clear();
         self.typed_on = None;
@@ -1085,7 +1156,9 @@ impl Lock {
             d.set_leaving(self.leaving);
             d.set_island_kind(island.kind.into());
             d.set_island_phase(island.phase.into());
-            d.set_island_hint(island.hint.into());
+            // (the reader's third miss says "Place your finger again" there too)
+            let hint = if island.kind == "finger" && island.phase == "miss" && self.finger.text == reader::AGAIN_TEXT { reader::AGAIN_TEXT } else { island.hint };
+            d.set_island_hint(hint.into());
         });
     }
 
@@ -1232,8 +1305,108 @@ impl Lock {
 
     // ── Rules: what's wanted now (Lock.qml's bindings) ─────────────────────
 
+    /// A scan should run: the lock shows, the reader's on, fewer than 6
+    /// misses, something happened in the last 2 minutes (reader.rs)
     fn finger_wanted(&self) -> bool {
-        self.real && self.held && !self.leaving && !self.sleeping && self.finger_on && self.finger.tries < 5
+        self.real && self.held && !self.leaving && !self.sleeping && self.finger_on && reader::listening(self.finger.tries, crate::util::now_ms(), self.finger.activity_at)
+    }
+
+    /// End the running scan off the UI thread (SIGTERM: fprintd lets the
+    /// reader go as its helper's connection closes)
+    fn end_scan(&mut self) {
+        if let Some(c) = self.finger.conv.take() {
+            std::thread::spawn(move || {
+                c.stop(Duration::from_secs(1));
+            });
+        }
+    }
+
+    /// A fresh scan: the old one ended, the reader confirmed (fprintd's
+    /// GetDevices and a claim that works; after a wake, waited for), then
+    /// `M::Probed` starts it
+    fn fresh(&mut self, st: &State, why: reader::Why) {
+        if !self.finger_wanted() {
+            return;
+        }
+        self.t_finger.stop();
+        self.finger.gen += 1;
+        self.finger.probing = true;
+        let old = self.finger.conv.take();
+        let (to, gen) = (Self::send(st), self.finger.gen);
+        std::thread::spawn(move || {
+            let p = reader::fresh_scan(old, &reader::SystemFprint, why);
+            to(Box::new(M::Probed(gen, why, p)));
+        });
+    }
+
+    /// Start the scan itself (the PAM helper: pam_fprintd)
+    fn start_scan(&mut self, st: &State) {
+        let now = crate::util::now_ms();
+        if !self.finger.miss_shown {
+            self.finger.text = WAITING.into();
+            self.finger.state = "waiting".into();
+        }
+        self.finger.asked_at = now;
+        self.finger.started_at = now;
+        self.finger.asked = false;
+        self.conv_id += 1;
+        self.finger.conv = Some(auth::start(&self.backend, Kind::Finger, self.conv_id, String::new(), Self::send(st)));
+        self.field();
+    }
+
+    /// fprintd is stuck: a silent restart when it's allowed now (Tessera's
+    /// polkit rule; at most once in 2 minutes), else the hint
+    fn restart_reader(&mut self, st: &State) {
+        let now = crate::util::now_ms();
+        if !reader::can_restart(now, self.finger.restarted_at) {
+            return self.reader_stuck(st);
+        }
+        self.finger.restarted_at = Some(now);
+        self.t_finger.stop();
+        self.finger.gen += 1;
+        self.finger.probing = true;
+        self.end_scan();
+        eprintln!("tessera-ui: lock: the fingerprint reader is stuck: restarting fprintd");
+        let (to, gen) = (Self::send(st), self.finger.gen);
+        std::thread::spawn(move || {
+            let p = match reader::Fprint::restart(&reader::SystemFprint) {
+                Ok(()) => {
+                    std::thread::sleep(Duration::from_millis(500));
+                    reader::wait_for_reader(&reader::SystemFprint, reader::Why::Restarted.within(), Duration::from_millis(300))
+                }
+                // (no polkit rule: refused at once, never a prompt)
+                Err(e) => reader::Probe::Stuck(format!("restart refused: {e}")),
+            };
+            to(Box::new(M::Probed(gen, reader::Why::Restarted, p)));
+        });
+    }
+
+    /// Stuck and not restarted: the quiet hint under the field, a look every 30 s
+    fn reader_stuck(&mut self, st: &State) {
+        if !self.finger.stuck {
+            eprintln!("tessera-ui: lock: the fingerprint reader needs a restart (fprintd); the password works");
+        }
+        self.finger.stuck = true;
+        self.finger.tell_after = true;
+        self.finger.text = reader::STUCK_TEXT.into();
+        self.finger.state.clear();
+        self.finger.retry_why = reader::Why::Stuck;
+        self.finger_retry(st, reader::STUCK_EVERY_MS);
+        self.field();
+    }
+
+    /// The lid opened, a screen came on, a key, the pointer, a touch: a
+    /// fresh scan at once (a young one that's listening stays; a stuck
+    /// reader keeps its own 30 s; a pause or a back-off runs out)
+    fn reader_activity(&mut self, st: &mut State, always: bool) {
+        let now = crate::util::now_ms();
+        self.finger.activity_at = now;
+        let since = self.finger.conv.as_ref().map(|_| self.finger.started_at);
+        let free = self.finger_wanted() && !self.finger.probing && !self.finger.stuck && !self.t_finger.running();
+        if free && (always || reader::activity_restarts(since, self.finger.asked, now)) {
+            self.fresh(st, reader::Why::Fresh);
+        }
+        self.rules(st);
     }
 
     fn face_wanted(&self, st: &State) -> bool {
@@ -1244,19 +1417,32 @@ impl Lock {
     /// idle timer, Bedside Mode; then show it all
     fn rules(&mut self, st: &mut State) {
         // the reader
-        if self.finger_wanted() {
-            if self.finger.conv.is_none() && !self.t_finger.running() {
-                self.finger_retry(st, 400);
+        self.finger.wanted = self.finger_wanted();
+        if self.finger.wanted {
+            if self.finger.conv.is_none() && !self.t_finger.running() && !self.finger.probing {
+                self.fresh(st, reader::Why::Fresh);
             }
         } else {
             self.t_finger.stop();
-            if let Some(c) = self.finger.conv.take() {
-                c.abort();
-            }
-            if self.real {
+            self.finger.gen += 1;
+            self.finger.probing = false;
+            self.end_scan();
+            // (the last miss stays while it shows)
+            if self.real && !self.t_finger_miss.running() {
                 self.finger.text.clear();
                 self.finger.state.clear();
             }
+        }
+        // logind's sleep delay inhibitor, while a scan can run
+        if reader::hold_inhibitor(self.real, self.held, self.sleeping, self.finger_on, self.face_on) {
+            if self.sleep_fd.is_none() && !self.sleep_fd_asked {
+                self.sleep_fd_asked = true;
+                let to = Self::send(st);
+                std::thread::spawn(move || to(Box::new(M::Inhibitor(tessera_core::inhibit::delay("sleep", "Stop the fingerprint reader and the camera before sleeping")))));
+            }
+        } else {
+            self.sleep_fd = None;
+            self.sleep_fd_asked = false;
         }
         // the camera
         if self.face_wanted(st) {
@@ -1316,14 +1502,10 @@ impl Lock {
             self.face.broken = false;
         }
         if back {
-            self.finger.tries = 0;
+            // (the reader's misses last until the next wake or unlock)
             self.face.tries = 0;
-            if self.finger.busy > 50 {
-                self.finger.busy = 0;
-                self.finger_retry(st, 400);
-            }
         }
-        self.rules(st);
+        self.reader_activity(st, false);
     }
 
     fn submit(&mut self, st: &mut State) {
@@ -1331,7 +1513,6 @@ impl Lock {
             return;
         }
         self.error.clear();
-        self.finger.tries = 0;
         self.face.tries = 0;
         self.busy = true;
         self.conv_id += 1;
@@ -1415,20 +1596,34 @@ impl Lock {
                             return; // (not a touch: pam_fprintd asks again by itself)
                         }
                         self.finger.tries += 1;
-                        self.finger.text = "Not recognised. Try again".into();
+                        // (a finger is activity: the idle 2 minutes start again)
+                        self.finger.activity_at = now;
                         self.finger.state = "miss".into();
                         self.finger.miss_shown = true;
+                        let after = reader::after_miss(self.finger.tries);
+                        self.finger.text = if after == reader::AfterMiss::Pause { reader::AGAIN_TEXT } else { reader::MISS_TEXT }.into();
                         let to = Self::send(st);
-                        self.t_finger_miss.start(slint::TimerMode::SingleShot, Duration::from_millis(1600), move || to(Box::new(M::FingerMissOver)));
-                        if self.finger.tries >= 5 {
-                            if let Some(c) = self.finger.conv.take() {
-                                c.abort();
+                        let shown = if after == reader::AfterMiss::Pause { reader::PAUSE_MS } else { 1600 };
+                        self.t_finger_miss.start(slint::TimerMode::SingleShot, Duration::from_millis(shown), move || to(Box::new(M::FingerMissOver)));
+                        match after {
+                            reader::AfterMiss::Again => {}
+                            // 3 misses: this scan ends; a fresh one in 2 s, for 3 more
+                            reader::AfterMiss::Pause => {
+                                self.end_scan();
+                                self.finger.retry_why = reader::Why::Fresh;
+                                self.finger_retry(st, reader::PAUSE_MS);
+                            }
+                            // 6: the password only, until the next wake or unlock
+                            reader::AfterMiss::Done => {
+                                eprintln!("tessera-ui: lock: 6 fingerprint misses: the password only until the next wake or unlock");
+                                self.end_scan();
                             }
                         }
                     }
                     logic::Finger::Ask => {
                         self.finger.asked_at = now;
                         self.finger.asked = true;
+                        self.finger.busy = 0;
                         if !self.finger.miss_shown {
                             self.finger.text = WAITING.into();
                             self.finger.state = "waiting".into();
@@ -1449,26 +1644,28 @@ impl Lock {
                     self.unlock_after_match(st);
                     return;
                 }
-                // over at once, before it asked: the reader was busy
+                // over at once, before it asked: the reader refused (busy,
+                // or fprintd stuck): back off, ask fprintd, restart it (reader.rs)
                 if !self.finger.asked && now - self.finger.started_at < 2000 {
                     self.finger.busy += 1;
-                    if self.finger.busy > 50 {
-                        self.finger.text.clear();
-                        self.finger.state.clear();
-                    } else {
-                        // (backing off, 0.3 s up to 5 s: it retried every
-                        // 0.3 s while a reader stayed busy after a sleep)
-                        let ms = (300u64 << self.finger.busy.min(5)).min(5000);
-                        self.finger_retry(st, ms);
+                    match reader::after_quick_fail(self.finger.busy) {
+                        reader::Next::Restart => self.restart_reader(st),
+                        reader::Next::Later(0) => {
+                            self.finger.retry_why = reader::Why::Failing;
+                            self.finger_retry(st, 1);
+                        }
+                        reader::Next::Later(ms) => {
+                            self.finger.retry_why = reader::Why::Fresh;
+                            self.finger_retry(st, ms);
+                        }
+                        _ => self.reader_stuck(st),
                     }
                     self.field();
                     return;
                 }
-                self.finger.busy = 0;
-                if matches!(out, Outcome::Error(_)) {
-                    self.finger.tries += 1;
-                }
-                if self.finger_wanted() {
+                // (its 30 s are up, or PAM ended it: the next scan, renewed)
+                if self.finger_wanted() && !self.t_finger.running() {
+                    self.finger.retry_why = reader::Why::Fresh;
                     self.finger_retry(st, 400);
                 }
                 self.rules(st);
@@ -1626,7 +1823,33 @@ impl Lock {
 }
 
 /// logind's PrepareForSleep, read-only (Lock.qml's EventWatch "login1")
-fn watch_sleep(to: impl Fn(Box<dyn Any + Send>) + Send + 'static) {
+fn watch_sleep(to: impl Fn(Box<dyn Any + Send>) + Send + Clone + 'static) {
+    // the lid opening (logind's LidClosed turning false): a fresh scan
+    let lid = to.clone();
+    std::thread::spawn(move || {
+        let run = || -> zbus::Result<()> {
+            let conn = zbus::blocking::Connection::system()?;
+            let rule = zbus::MatchRule::builder()
+                .msg_type(zbus::message::Type::Signal)
+                .sender("org.freedesktop.login1")?
+                .path("/org/freedesktop/login1")?
+                .interface("org.freedesktop.DBus.Properties")?
+                .member("PropertiesChanged")?
+                .build();
+            let signals = zbus::blocking::MessageIterator::for_match_rule(rule, &conn, Some(8))?;
+            for m in signals.flatten() {
+                let body = m.body();
+                let Ok((_, changed, _)) = body.deserialize::<(String, std::collections::HashMap<String, zbus::zvariant::OwnedValue>, Vec<String>)>() else { continue };
+                if changed.get("LidClosed").and_then(|v| v.downcast_ref::<bool>().ok()) == Some(false) {
+                    lid(Box::new(M::LidOpened));
+                }
+            }
+            Ok(())
+        };
+        if let Err(e) = run() {
+            eprintln!("tessera-ui: lock: no logind lid signal ({e})");
+        }
+    });
     std::thread::spawn(move || {
         let run = || -> zbus::Result<()> {
             let conn = zbus::blocking::Connection::system()?;
@@ -1843,12 +2066,29 @@ impl Part for Lock {
                 if now - self.tick_ms > 10_000 && self.finger_on && self.real {
                     self.finger.tries = 0;
                     self.finger.busy = 0;
-                    if let Some(c) = self.finger.conv.take() {
-                        c.abort();
-                    }
-                    self.finger_retry(st, 300);
+                    self.finger.activity_at = now;
+                    self.finger.probing = false;
+                    self.fresh(st, reader::Why::Wake);
                 }
                 self.tick_ms = now;
+                if self.finger_on && self.real && self.held {
+                    // a screen came on (DPMS): a fresh scan at once
+                    let screens = reader::screens();
+                    let on = reader::screen_came_on(&self.finger.screens, &screens);
+                    self.finger.screens = screens;
+                    if on {
+                        self.reader_activity(st, true);
+                    }
+                    // the 2 idle minutes began (or ended): the scan stops (or starts)
+                    if self.finger_wanted() != self.finger.wanted {
+                        self.rules(st);
+                    }
+                    // one scan, renewed every 30 s
+                    let since = self.finger.conv.as_ref().map(|_| self.finger.started_at);
+                    if reader::renew_due(since, now) && !self.finger.probing {
+                        self.fresh(st, reader::Why::Fresh);
+                    }
+                }
                 let before = self.minute;
                 self.clock(st, false);
                 if before != self.minute && self.standby(st) && !self.sb.resting && b(cfg_lock(st), "standbyShift", true) {
@@ -1901,29 +2141,68 @@ impl Part for Lock {
                 }
             }
             M::FingerRetry => {
+                let why = std::mem::replace(&mut self.finger.retry_why, reader::Why::Fresh);
+                if !self.finger_wanted() || self.finger.probing {
+                    return;
+                }
+                self.fresh(st, why);
+            }
+            M::Probed(gen, why, p) => {
+                if gen != self.finger.gen {
+                    return; // (an older ask's answer)
+                }
+                self.finger.probing = false;
                 if !self.finger_wanted() {
-                    return;
+                    return self.rules(st);
                 }
-                if self.finger.conv.is_some() {
-                    self.finger_retry(st, 400);
-                    return;
+                if p != reader::Probe::Ready {
+                    eprintln!("tessera-ui: lock: fingerprint reader ({why:?}): {p:?}");
                 }
-                let now = crate::util::now_ms();
-                self.finger.text = WAITING.into();
-                self.finger.state = "waiting".into();
-                self.finger.asked_at = now;
-                self.finger.started_at = now;
-                self.finger.asked = false;
-                self.conv_id += 1;
-                self.finger.conv = Some(auth::start(&self.backend, Kind::Finger, self.conv_id, String::new(), Self::send(st)));
+                match reader::after_probe(&p, why, self.finger.busy) {
+                    reader::Next::Start => {
+                        if std::mem::take(&mut self.finger.stuck) {
+                            eprintln!("tessera-ui: lock: the fingerprint reader works again");
+                            self.finger.tell_after = false;
+                            self.finger.text.clear();
+                        }
+                        if why != reader::Why::Fresh {
+                            self.finger.busy = 0;
+                        }
+                        self.start_scan(st);
+                    }
+                    reader::Next::Later(0) => {
+                        self.finger.retry_why = reader::Why::Failing;
+                        self.finger_retry(st, 1);
+                    }
+                    reader::Next::Later(ms) => self.finger_retry(st, ms),
+                    reader::Next::Restart => self.restart_reader(st),
+                    reader::Next::Hint => self.reader_stuck(st),
+                }
                 self.field();
+            }
+            M::Inhibitor(fd) => {
+                // (asked stays true while it's wanted: a refusal isn't asked again
+                // until the next lock or wake)
+                if reader::hold_inhibitor(self.real, self.held, self.sleeping, self.finger_on, self.face_on) {
+                    if fd.is_none() {
+                        eprintln!("tessera-ui: lock: no logind sleep delay (the reader is stopped when the sleep signal comes)");
+                    }
+                    self.sleep_fd = fd;
+                } else {
+                    self.sleep_fd_asked = false;
+                }
+            }
+            M::LidOpened => {
+                if self.held && self.real {
+                    self.reader_activity(st, true);
+                }
             }
             M::FingerMissOver => {
                 self.finger.miss_shown = false;
                 if self.finger_wanted() && self.finger.conv.is_some() {
                     self.finger.text = WAITING.into();
                     self.finger.state = "waiting".into();
-                } else if self.finger.state == "miss" && self.real && self.finger.tries >= 5 {
+                } else if self.finger.state == "miss" && self.real && self.finger.tries >= reader::MAX_MISSES {
                     // (no more tries: the reader rests, the password is there;
                     // the island goes back to the field instead of a lasting miss)
                     self.finger.text.clear();
@@ -1948,26 +2227,34 @@ impl Part for Lock {
                 // fingerprint check left running across one kept fprintd's
                 // reader claimed, every new one was refused at once, and the
                 // lock retried in a loop (18 Nov)
+                // 18 Nov, the second time: fprintd couldn't close a reader that
+                // left USB mid-scan, and stayed stuck. Now the scans end cleanly
+                // while logind waits (our delay inhibitor), and the reader is
+                // let go before the inhibitor is (reader::before_sleep).
                 self.t_finger.stop();
                 self.t_face.stop();
-                if let Some(c) = self.finger.conv.take() {
-                    c.abort();
-                }
-                if let Some(c) = self.face.conv.take() {
-                    c.abort();
-                }
-                eprintln!("tessera-ui: lock: {}", if going { "going to sleep: readers stopped" } else { "awake: readers start again in 1.5 s" });
+                self.finger.gen += 1;
+                self.finger.probing = false;
                 if going {
                     self.sleeping = true;
+                    let convs: Vec<Conv> = [self.finger.conv.take(), self.face.conv.take()].into_iter().flatten().collect();
+                    let fd = self.sleep_fd.take();
+                    eprintln!("tessera-ui: lock: going to sleep: ending {} scan(s){}", convs.len(), if fd.is_some() { " before letting the sleep go" } else { "" });
+                    std::thread::spawn(move || {
+                        let t = std::time::Instant::now();
+                        let s = reader::before_sleep(convs, fd, &reader::SystemFprint, Duration::from_secs(2));
+                        eprintln!("tessera-ui: lock: ready to sleep after {} ms ({s:?})", t.elapsed().as_millis());
+                    });
                 } else {
+                    eprintln!("tessera-ui: lock: awake: a fresh scan once the reader is back");
                     self.sleeping = false;
                     self.finger.tries = 0;
                     self.finger.busy = 0;
-                    self.tick_ms = crate::util::now_ms();
-                    if self.finger_wanted() {
-                        // (the USB reader comes back a moment after the system)
-                        self.finger_retry(st, 1500);
-                    }
+                    let now = crate::util::now_ms();
+                    self.finger.activity_at = now;
+                    self.tick_ms = now;
+                    // (the USB reader comes back a moment after the system: waited for)
+                    self.fresh(st, reader::Why::Wake);
                     if self.held {
                         self.face.armed = true;
                         self.face.tries = 0;

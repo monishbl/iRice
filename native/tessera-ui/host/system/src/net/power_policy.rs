@@ -196,6 +196,68 @@ pub fn lid_should_sleep_now(on_ac: bool, external_displays: usize, hot_for_s: f6
     !on_ac || (hot_for_s >= 60.0 && external_displays == 0)
 }
 
+/// The closed-lid guard's count (power.rs closed_lid_guard), by the 1 s tick
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct LidGuard {
+    /// when it last asked to sleep (or the lid closed, or it woke), ms
+    pub asked: f64,
+    /// asks since the lid closed (the third sleeps without waiting for the lock)
+    pub tries: u32,
+    /// the last tick, ms (wall clock: a sleep shows as a gap)
+    pub last_tick: f64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum LidStep {
+    Nothing,
+    /// it just woke: read the lid again before anything (a minute's grace)
+    Woke,
+    /// ask to sleep (locks first)
+    Sleep,
+    /// asked twice and still awake: sleep without waiting for the lock
+    SleepNow,
+}
+
+impl LidGuard {
+    /// A tick. `closed`: the lid as last heard; `should`: lid_should_sleep_now.
+    /// 18 Nov: a lid-open wake was suspended again at once: the tick after the
+    /// resume still had the lid closed (its open came a moment later), the
+    /// last ask was over a minute old (the sleep's time counts), and the tries
+    /// from before the sleep were never reset, so it ran `systemctl suspend`.
+    /// Now a wake (a gap in the ticks) resets the count, gives a minute's
+    /// grace, and the lid's state is read again first.
+    pub fn step(&mut self, now: f64, closed: bool, should: bool) -> LidStep {
+        let woke = self.last_tick > 0.0 && now - self.last_tick > 5_000.0;
+        self.last_tick = now;
+        if woke {
+            self.tries = 0;
+            self.asked = now;
+            return LidStep::Woke;
+        }
+        if !closed || !should {
+            self.tries = 0;
+            return LidStep::Nothing;
+        }
+        if now - self.asked <= 60_000.0 {
+            return LidStep::Nothing;
+        }
+        self.asked = now;
+        self.tries += 1;
+        if self.tries <= 2 { LidStep::Sleep } else { LidStep::SleepNow }
+    }
+
+    /// The lid closed and it asked to sleep: the minute starts now
+    pub fn closed(&mut self, now: f64) {
+        self.asked = now;
+        self.tries = 0;
+    }
+
+    /// The lid opened: nothing counts any more
+    pub fn opened(&mut self) {
+        self.tries = 0;
+    }
+}
+
 /// Tessera only takes the lid over from logind (an inhibitor) when some
 /// setting isn't logind's own default, or Caffeine keeps it awake
 pub fn lid_needs_inhibit(cfg: &Value, caffeine: bool) -> bool {
@@ -327,6 +389,69 @@ mod tests {
 
     fn req(owner: &str, mode: &str, since: f64, until: f64) -> Request {
         Request { owner: owner.into(), mode: mode.into(), priority: priority(owner), since, until, why: String::new() }
+    }
+
+    #[test]
+    fn a_lid_open_wake_is_never_put_back_to_sleep() {
+        let mut g = LidGuard::default();
+        // closed on battery: asked to sleep at once by the lid itself
+        g.closed(1_000.0);
+        let mut t = 1_000.0;
+        // awake with the lid shut: asks after a minute, twice, then sleeps without the lock
+        let mut steps = vec![];
+        while t < 200_000.0 {
+            t += 1_000.0;
+            let s = g.step(t, true, true);
+            if s != LidStep::Nothing {
+                steps.push(s);
+            }
+        }
+        assert_eq!(steps, vec![LidStep::Sleep, LidStep::Sleep, LidStep::SleepNow]);
+        // it slept (an hour); the lid opened, and the open arrives a moment after the first tick
+        t += 3_600_000.0;
+        assert_eq!(g.step(t, true, true), LidStep::Woke);
+        assert_eq!(g.tries, 0);
+        // a stale "closed" for the next ticks: still nothing within the minute
+        for _ in 0..30 {
+            t += 1_000.0;
+            assert_eq!(g.step(t, true, true), LidStep::Nothing);
+        }
+        g.opened();
+        for _ in 0..120 {
+            t += 1_000.0;
+            assert_eq!(g.step(t, false, true), LidStep::Nothing);
+        }
+    }
+
+    #[test]
+    fn a_wake_with_the_lid_still_shut_sleeps_again_after_a_minute() {
+        let mut g = LidGuard::default();
+        g.closed(0.0);
+        let mut t = 0.0;
+        for _ in 0..3 {
+            t += 1_000.0;
+            g.step(t, true, true);
+        }
+        t += 600_000.0; // asleep
+        assert_eq!(g.step(t, true, true), LidStep::Woke);
+        let mut first = None;
+        for i in 1..=70 {
+            t += 1_000.0;
+            let s = g.step(t, true, true);
+            if s != LidStep::Nothing {
+                first = Some((i, s));
+                break;
+            }
+        }
+        // (a minute's grace, then a normal ask: the lock first, not SleepNow)
+        let (i, s) = first.unwrap();
+        assert!(i > 60, "{i}");
+        assert_eq!(s, LidStep::Sleep);
+        assert_eq!(g.tries, 1);
+        // the charger and cool: never
+        let mut g = LidGuard::default();
+        g.closed(0.0);
+        assert!((1..300).all(|i| g.step(i as f64 * 1000.0, true, false) == LidStep::Nothing));
     }
 
     #[test]

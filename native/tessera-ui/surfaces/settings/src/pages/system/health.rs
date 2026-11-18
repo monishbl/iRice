@@ -185,6 +185,63 @@ pub fn explain(e: &Value) -> Option<(String, String, Offer)> {
     })
 }
 
+/// The root helper's policy file: world-readable, installed with its polkit
+/// rules (whose folder isn't), so its note says which rules are there
+const POLICY: &str = "/usr/share/polkit-1/actions/org.tessera.root.policy";
+/// The note the policy carries since the fingerprint reader's restart rule
+const READER_RULE_NOTE: &str = "tessera-fprintd-restart";
+
+/// The one-time setup is still to run for the lock to restart a stuck
+/// fingerprint reader by itself: fprintd is here, and the installed rules
+/// are older than that rule (or missing)
+pub fn reader_setup_pending(has_fprintd: bool, policy: Option<&str>) -> bool {
+    has_fprintd && !policy.is_some_and(|p| p.contains(READER_RULE_NOTE))
+}
+
+fn has_fprintd() -> bool {
+    ["/usr/lib/systemd/system/fprintd.service", "/etc/systemd/system/fprintd.service", "/usr/share/dbus-1/system-services/net.reactivated.Fprint.service"].iter().any(|p| std::path::Path::new(p).exists())
+}
+
+/// pkexec <root helper> setup <the shell's folder>: the installed helper,
+/// else this version's own script (the password, once)
+fn run_setup() -> Value {
+    let Some(shell) = tessera_core::util::asset("shell") else {
+        return json!({"ok": false, "err": "Tessera's shell folder wasn't found. Reinstall Tessera, then try again."});
+    };
+    let shell = shell.to_string_lossy().into_owned();
+    let installed = "/usr/lib/tessera/tessera-root";
+    let mut cmd = std::process::Command::new("pkexec");
+    if std::path::Path::new(installed).exists() {
+        cmd.args([installed, "setup", &shell]);
+    } else {
+        cmd.args(["python3", "-I", &format!("{shell}/assets/scripts/tessera-root.py"), "setup", &shell]);
+    }
+    match cmd.stdin(std::process::Stdio::null()).output() {
+        Ok(o) if o.status.success() => json!({"ok": true}),
+        // (126: the password dialog was closed)
+        Ok(o) if o.status.code() == Some(126) => json!({"ok": false, "err": ""}),
+        Ok(o) => {
+            let said = String::from_utf8_lossy(&o.stderr).trim().trim_start_matches("tessera-root: ").to_string();
+            json!({"ok": false, "err": if said.is_empty() { "The setup didn't finish. Try again.".to_string() } else { format!("{said}. Try again.") }})
+        }
+        Err(_) => json!({"ok": false, "err": "Setup needs polkit (pkexec), which isn't installed. Install polkit, then try again."}),
+    }
+}
+
+/// "Fingerprint after sleep" while the one-time setup is still to run
+fn setup_steps(cx: &mut Ctx, p: &mut Page) {
+    let policy = std::fs::read_to_string(POLICY).ok();
+    let done = cx.local.get("health.setup").cloned();
+    if !reader_setup_pending(has_fprintd(), policy.as_deref()) || done.as_ref().is_some_and(|d| d["ok"] == true) {
+        return;
+    }
+    let busy = cx.local_b("health.setup.busy");
+    let act = cx.on(|cx, _| cx.spawn("health.setup", run_setup));
+    let err = done.as_ref().and_then(|d| d["err"].as_str()).filter(|e| !e.is_empty()).map(str::to_string);
+    let detail = err.unwrap_or_else(|| "After a sleep the fingerprint reader can stop answering until it's restarted. Run this once so the lock restarts it by itself; it asks for an administrator's password.".into());
+    p.group("Setup").row(Row::new("Restart the fingerprint reader by itself").detail(detail).icon("fingerprint").buttons(vec![btn(if busy { "Setting up…" } else { "Run Setup" }).icon("fingerprint").primary().on(busy)], act));
+}
+
 /// A scale's top for `max` (a round number above it)
 pub fn nice_top(max: f64, floor: f64) -> f64 {
     let m = max.max(floor);
@@ -236,6 +293,7 @@ pub fn page(cx: &mut Ctx, p: &mut Page) {
             ("Not recorded here", "Tessera keeps this record when it runs as the whole shell. Started beside the basic shell, it doesn't.")
         };
         p.group("").footer(footer).row(Row::new(label).detail(detail).icon("heartbeat"));
+        setup_steps(cx, p);
         return;
     }
 
@@ -247,6 +305,7 @@ pub fn page(cx: &mut Ctx, p: &mut Page) {
         _ => detail,
     };
     p.group("").row(Row::new(label).detail(detail).icon(if ok { "check-circle" } else { "warning-circle" }));
+    setup_steps(cx, p);
 
     // ── Memory and processor ──
     let week = cx.local_s("health.range") == "week";
@@ -392,6 +451,16 @@ mod tests {
         assert_eq!(t, "Animations were slow on the Intel graphics");
         assert!(d.starts_with("18% of animation frames"));
         assert!(matches!(o, Offer::OtherGpu));
+    }
+
+    #[test]
+    fn the_reader_setup_step_shows_until_its_rule_is_installed() {
+        let old = "<policyconfig><action id=\"org.tessera.root.fix\"/></policyconfig>";
+        let new = include_str!("../../../../../../../shell/assets/polkit/org.tessera.root.policy");
+        assert!(reader_setup_pending(true, None));
+        assert!(reader_setup_pending(true, Some(old)));
+        assert!(!reader_setup_pending(true, Some(new)), "the shipped policy carries the note");
+        assert!(!reader_setup_pending(false, None), "no fprintd: nothing to set up");
     }
 
     #[test]

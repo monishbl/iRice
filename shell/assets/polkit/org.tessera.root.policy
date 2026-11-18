@@ -9,6 +9,11 @@
   password by default; 49-tessera.rules lets the small fixed ones through
   without it. A first argument not listed here falls back to pkexec's own
   action (org.freedesktop.policykit.exec, the password).
+  Installed with 49-tessera.rules, whose second rule lets the person at the
+  computer restart fprintd.service (only that, only a restart) for the lock
+  screen's fingerprint reader. This file is world-readable and that one
+  isn't: Tessera reads this note (tessera-fprintd-restart) to know the rule
+  is there.
 -->
 <policyconfig>
   <vendor>Tessera</vendor>

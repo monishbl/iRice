@@ -28,3 +28,18 @@ polkit.addRule(function (action, subject) {
         return polkit.Result.YES;
     return polkit.Result.NOT_HANDLED;
 });
+
+// The lock screen's fingerprint reader: when fprintd is stuck after a sleep
+// (it holds the reader open and refuses every claim), the lock restarts it
+// through systemd (RestartUnit, never interactive). Only fprintd.service,
+// only a restart, only for the person in the session on screen at this
+// computer; nothing else about systemd's units changes.
+polkit.addRule(function (action, subject) {
+    if (action.id !== "org.freedesktop.systemd1.manage-units")
+        return polkit.Result.NOT_HANDLED;
+    if (action.lookup("unit") !== "fprintd.service" || action.lookup("verb") !== "restart")
+        return polkit.Result.NOT_HANDLED;
+    if (subject.active && subject.local && subject.user && subject.user !== "root")
+        return polkit.Result.YES;
+    return polkit.Result.NOT_HANDLED;
+});
