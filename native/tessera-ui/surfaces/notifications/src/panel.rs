@@ -200,6 +200,16 @@ fn color(s: &str) -> slint::Color {
     }
 }
 
+/// An alert's glyph: the island sends a Phosphor name ("usb"); one already a
+/// glyph (a single private-use character) is kept
+pub(crate) fn alert_glyph(name: &str) -> String {
+    let mut c = name.chars();
+    match (c.next(), c.next()) {
+        (Some(ch), None) if ('\u{e000}'..='\u{f8ff}').contains(&ch) => name.to_string(),
+        _ => crate::icons::glyph_or(name, "bell").to_string(),
+    }
+}
+
 fn escape(t: &str) -> String {
     t.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
 }
@@ -409,7 +419,9 @@ impl Notifications {
                 progress: -1.0,
                 history: self.history(&format!("a{}", a.hid), &a.changes, h24),
                 alert: true,
-                glyph: a.glyph.clone().into(),
+                // (the island names its icon, "battery-warning": the card
+                // draws the Phosphor glyph, which the name alone left blank)
+                glyph: alert_glyph(&a.glyph).into(),
                 glyph_color: color(&a.color),
                 ..Default::default()
             };
