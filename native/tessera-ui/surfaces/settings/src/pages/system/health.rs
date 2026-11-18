@@ -177,6 +177,10 @@ pub fn explain(e: &Value) -> Option<(String, String, Offer)> {
             let on = e["on"].as_str().unwrap_or("low-power");
             (format!("Animations were slow on the {on} graphics"), format!("{}% of animation frames were missed. The other GPU is faster but uses more power.", share.round()), Offer::OtherGpu)
         }
+        "gpu-fallback" => {
+            let (from, to) = (e["from"].as_str().unwrap_or("chosen"), e["to"].as_str().unwrap_or("desktop's"));
+            (format!("Couldn't draw on {from}: back on {to}"), format!("Tessera couldn't start on the {from} GPU with this desktop, so Graphics processor was set to Same as the desktop."), Offer::None)
+        }
         _ => return None,
     })
 }

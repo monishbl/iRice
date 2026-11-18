@@ -147,6 +147,9 @@ fn main() {
     let started = Instant::now();
     // (malloc: two arenas, a fixed mmap threshold; before any thread: tessera_core::memory)
     tessera_core::memory::tune_allocator();
+    // (the environment as given, before anything here changes it: a restart
+    // on another GPU runs with exactly this; core/src/gpu.rs)
+    tessera_core::gpu::remember_env();
     // (an XDG folder set but empty or relative means "the default" by the
     // spec: taken out before anything reads it, so Mesa's shader cache, the
     // shell's children and every crate here use ~/.cache and the rest, not
@@ -177,6 +180,10 @@ fn main() {
     // (the lock's PAM conversations run in a child of their own: surfaces/lock/auth.rs)
     if args.get(1).map(String::as_str) == Some("--pam-helper") {
         std::process::exit(tessera_lock::auth::helper_main(&args));
+    }
+    // (whether a GPU other than the desktop's can draw for it: core/src/gpu.rs probe)
+    if args.get(1).map(String::as_str) == Some("--gpu-probe") {
+        std::process::exit(tessera_core::gpu::probe_main(args.get(2)));
     }
     // (pam_exec's program in tessera-face-rgb: the blink check, core/face.rs)
     if args.get(1).map(String::as_str) == Some("--face-live") {
@@ -316,19 +323,24 @@ fn main() {
     let egl = match egl::Egl::new(conn.backend().display_ptr() as *mut _) {
         Ok(egl) => egl,
         // (a GPU other than the desktop's that can't draw for it: started
-        // again, this time on the desktop's; core/src/gpu.rs fall_back)
-        Err(e) if tessera_core::gpu::fall_back() => {
-            eprintln!("tessera-ui: EGL didn't start ({e})");
-            tessera_core::gpu::restore(vendor_set);
-            use std::os::unix::process::CommandExt;
-            // (as it was started, argv[0] and all: a launcher's name for it stays)
-            let mut args = std::env::args_os();
-            let argv0 = args.next().unwrap_or_default();
-            let exe = if std::path::Path::new(&argv0).components().count() > 1 { argv0.into() } else { std::env::current_exe().unwrap_or_else(|_| argv0.into()) };
-            let err = std::process::Command::new(exe).args(args).exec();
-            no_gl(&format!("couldn't start again: {err}"), standalone)
-        }
-        Err(e) => no_gl(&e.to_string(), standalone),
+        // again, once, on the desktop's, with the environment as it was
+        // given and the choice set back on disk; core/src/gpu.rs fall_back)
+        Err(e) => match tessera_core::gpu::fall_back() {
+            Some(env) => {
+                eprintln!("tessera-ui: EGL didn't start ({e})");
+                use std::os::unix::process::CommandExt;
+                // (as it was started, argv[0] and all: a launcher's name for it stays)
+                let mut args = std::env::args_os();
+                let argv0 = args.next().unwrap_or_default();
+                let exe = if std::path::Path::new(&argv0).components().count() > 1 { argv0.into() } else { std::env::current_exe().unwrap_or_else(|_| argv0.into()) };
+                // (the signals blocked for this loop's signalfd would stay
+                // blocked in the new process: unblocked first)
+                unblock_signals();
+                let err = std::process::Command::new(exe).args(args).env_clear().envs(env).exec();
+                no_gl(&format!("couldn't start again: {err}"), standalone)
+            }
+            None => no_gl(&e.to_string(), standalone),
+        },
     };
     tessera_core::gpu::restore(vendor_set);
     slint::platform::set_platform(Box::new(wayland::Platform { tx: tx.clone() })).expect("platform");
@@ -533,13 +545,18 @@ fn no_gl(e: &str, standalone: bool) -> ! {
     eprintln!("tessera-ui: starting the QML shell instead ({})", dir.display());
     // (the signals this process blocked for its signalfd would stay blocked
     // in the shell it becomes: unblocked first)
+    unblock_signals();
+    use std::os::unix::process::CommandExt;
+    let err = std::process::Command::new(dir.join("assets/scripts/launch-shell.sh")).arg("-p").arg(&dir).env("TESSERA_STANDALONE", "0").env_remove("TESSERA_QML_FALLBACK").exec();
+    eprintln!("tessera-ui: couldn't start the QML shell: {err}");
+    std::process::exit(1);
+}
+
+/// Every signal unblocked on this thread (before exec: a new process keeps the mask)
+fn unblock_signals() {
     unsafe {
         let mut none: libc::sigset_t = std::mem::zeroed();
         libc::sigemptyset(&mut none);
         libc::pthread_sigmask(libc::SIG_SETMASK, &none, std::ptr::null_mut());
     }
-    use std::os::unix::process::CommandExt;
-    let err = std::process::Command::new(dir.join("assets/scripts/launch-shell.sh")).arg("-p").arg(&dir).env("TESSERA_STANDALONE", "0").env_remove("TESSERA_QML_FALLBACK").exec();
-    eprintln!("tessera-ui: couldn't start the QML shell: {err}");
-    std::process::exit(1);
 }
