@@ -986,7 +986,7 @@ impl Menubar {
         }
         self.bars = bars;
         self.hud_level(st);
-        self.island_size();
+        self.island_size(st);
         // the HUD's inline list: the outputs (and the apps playing) or the inputs
         let hud = self.hud_kind();
         if hud.is_none() {
@@ -1526,7 +1526,10 @@ impl Menubar {
     /// Each island's size follows where its layout wants it on Qt's spring
     /// (IslandView.qml's SpringAnimation): a new size while it moves is a new
     /// target, from where it is with the speed it has
-    fn island_size(&mut self) {
+    fn island_size(&mut self, st: &State) {
+        // (Reduce motion, and battery saver, which turns it on: the new size at once)
+        let still = st.shell.cfg["appearance"]["reduceMotion"].as_bool().unwrap_or(false) || tessera_core::saver::on();
+        let trace = tessera_core::env::is_set("FRAMELOG");
         for b in &mut self.bars {
             let want = (b.ui.get_isl_want_w() as f64, b.ui.get_isl_want_h() as f64);
             let Some(sz) = b.size.clone() else {
@@ -1546,6 +1549,14 @@ impl Menubar {
                 if tessera_core::env::is_set("DEBUG") && (s.0.moving() || s.1.moving()) {
                     eprintln!("debug: island {} size retargeted while moving: {:.0}x{:.0} -> {:.0}x{:.0}", b.output, s.0.target(), s.1.target(), want.0, want.1);
                 }
+                if still {
+                    s.0.jump(want.0);
+                    s.1.jump(want.1);
+                    b.size_tick.stop();
+                    b.ui.set_isl_spring_w(want.0 as f32);
+                    b.ui.set_isl_spring_h(want.1 as f32);
+                    continue;
+                }
                 s.0.retarget(want.0);
                 s.1.retarget(want.1);
             }
@@ -1553,6 +1564,7 @@ impl Menubar {
                 continue; // (the running tick carries it to the new size)
             }
             let ui = b.ui.as_weak();
+            let out = b.output.clone();
             let mut last = std::time::Instant::now();
             b.size_tick.start_while(move || {
                 let now = std::time::Instant::now();
@@ -1564,6 +1576,10 @@ impl Menubar {
                 if let Some(ui) = ui.upgrade() {
                     ui.set_isl_spring_w(s.0.value() as f32);
                     ui.set_isl_spring_h(s.1.value() as f32);
+                }
+                if trace {
+                    let t = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0.0, |d| d.as_secs_f64());
+                    eprintln!("framelog spring island@{out} {t:.6} +{ms:.1} {:.1}x{:.1}", s.0.value(), s.1.value());
                 }
                 s.0.moving() || s.1.moving()
             });
@@ -2755,7 +2771,7 @@ impl Part for Menubar {
             Some(m) => tessera_core::outside::open(&st.tx, NAME, &m.output),
             None => tessera_core::outside::close(&st.tx, NAME),
         }
-        self.island_size();
+        self.island_size(st);
         let cfg = Self::cfg(st);
         let mut changed = false;
         for b in &mut self.bars {

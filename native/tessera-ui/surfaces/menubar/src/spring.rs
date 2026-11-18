@@ -167,6 +167,29 @@ mod tests {
     }
 
     #[test]
+    fn every_real_frame_moves_it() {
+        // the island opening (26 → 180 px high, Subtle's spring) at the
+        // displays' real frame times: each frame shows a new size until it
+        // is nearly there (18 Nov: the laptop saw it change every 4th frame)
+        for frame_ms in [1000.0 / 60.0, 1000.0 / 120.0, 16.9, 8.1] {
+            let mut s = Spring::at(26.0, 5.0, 0.36, 0.01);
+            s.retarget(180.0);
+            let mut last = s.value();
+            let mut still = 0;
+            for _ in 0..(200.0 / frame_ms) as usize {
+                s.advance(frame_ms);
+                let v = s.value();
+                if (v - last).abs() < 0.05 {
+                    still += 1;
+                }
+                last = v;
+            }
+            // (the first frame may sit at the start: the step before is the start)
+            assert!(still <= 1, "{frame_ms} ms frames: {still} frames without a move");
+        }
+    }
+
+    #[test]
     fn jump_and_rest() {
         let mut s = hud(10.0);
         assert!(!s.moving());
