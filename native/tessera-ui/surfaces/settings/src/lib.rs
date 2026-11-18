@@ -115,6 +115,9 @@ pub enum M {
     Unflash,
     /// the services' data changed meanwhile: the page built again (DATA_MS)
     DataChanged,
+    /// a while after the window, its menu or popover lost the keyboard:
+    /// still none of them has it (another window took it): they close
+    FocusCheck,
     Picture(String, Option<slint::SharedPixelBuffer<slint::Rgb8Pixel>>),
     /// an app icon drawn (Ctx::icon)
     Icon(String, Option<slint::SharedPixelBuffer<slint::Rgba8Pixel>>),
@@ -195,6 +198,8 @@ pub struct Settings {
     popover_dismissed: Option<std::time::Instant>,
     /// Material's open-page cookie: a slow turn, stepped (SPIN_MS)
     spin_timer: slint::Timer,
+    /// the keyboard left the window or its menu (FocusCheck, FOCUS_CHECK_MS)
+    focus_timer: slint::Timer,
     /// the services' updates, a build for each burst (DATA_MS)
     data_timer: slint::Timer,
     /// every 30 s while open: what shows a time ("Last synced 3 min ago",
@@ -206,6 +211,39 @@ pub struct Settings {
     waiting: std::collections::VecDeque<Job>,
     running: usize,
 }
+
+/// Where a press landed, for an open menu or popover
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Pressed {
+    Menu,
+    Popover,
+    Window,
+    /// another of the shell's surfaces (the bar, the dock, the desktop…)
+    Elsewhere,
+}
+
+/// What a press closes (menu, popover), as the QML's popups' CloseOnPressOutside:
+/// the menu on any press but its own; the popover on any press outside it
+/// (a press in the popover leaves it, but closes a menu over the window).
+/// The compositor's popup grab isn't enough: Hyprland counts the popup's
+/// parent window as inside the grab, so a press elsewhere in Settings never
+/// dismissed the menu (18 Nov)
+pub fn closes_on_press(at: Pressed) -> (bool, bool) {
+    match at {
+        Pressed::Menu => (false, false),
+        Pressed::Popover => (true, false),
+        Pressed::Window | Pressed::Elsewhere => (true, true),
+    }
+}
+
+/// How long after the keyboard left the window (or its menu) the menu and
+/// popover close if none of them has it again: the keyboard may move from the
+/// window to its own popup in between (leave, then enter)
+pub const FOCUS_CHECK_MS: u64 = 200;
+
+/// The press on a menu's own control within this long of a press elsewhere
+/// closing it: the same click, not one to open it again (Choice.qml toggles)
+pub const REOPEN_GUARD_MS: u64 = 500;
 
 /// The window's size in each look (Settings.qml's implicit size)
 pub fn window_size(material: bool) -> (u32, u32) {
@@ -368,6 +406,7 @@ impl Settings {
     fn drop_window(&mut self, st: &mut State) {
         self.close_menu(st);
         self.close_popover(st);
+        self.focus_timer.stop();
         self.spin_timer.stop();
         self.minute_timer.stop();
         if let Some(w) = self.win.take() {
@@ -465,7 +504,7 @@ impl Settings {
         }
         let key = b.text.to_string();
         // (the click that closed it, on its own button, asked to open it again)
-        if self.popover_dismissed.take().is_some_and(|t| t.elapsed() < Duration::from_millis(300)) {
+        if self.popover_dismissed.take().is_some_and(|t| t.elapsed() < Duration::from_millis(REOPEN_GUARD_MS)) {
             self.local.remove(&key);
             return;
         }
@@ -507,6 +546,13 @@ impl Settings {
             p.surface.hide();
             st.drop_surface(&p.surface);
         }
+    }
+
+    /// The window, its menu or its popover
+    fn owns(&self, s: &Rc<Surface>) -> bool {
+        self.win.as_ref().is_some_and(|w| Rc::ptr_eq(&w.surface, s))
+            || self.menu.as_ref().is_some_and(|m| Rc::ptr_eq(&m.surface, s))
+            || self.popover.as_ref().is_some_and(|p| Rc::ptr_eq(&p.surface, s))
     }
 
     fn close_menu(&mut self, st: &mut State) {
@@ -973,7 +1019,7 @@ impl Part for Settings {
             }
             M::Menu(id, x, y, w, h) => {
                 // (its control again while it's open: closes it, as Choice.qml)
-                let just = self.menu_dismissed.take().is_some_and(|(d, t)| d == id && t.elapsed() < Duration::from_millis(300));
+                let just = self.menu_dismissed.take().is_some_and(|(d, t)| d == id && t.elapsed() < Duration::from_millis(REOPEN_GUARD_MS));
                 let again = just || (self.menu.is_some() && self.menu_id == id);
                 self.close_menu(st);
                 if !again {
@@ -986,6 +1032,16 @@ impl Part for Settings {
                 self.act(st, &id, Arg { i, f: 0.0, s: String::new(), id: id.clone() });
             }
             M::MenuDismiss => self.close_menu(st),
+            M::FocusCheck => {
+                let k = st.keyboard_surface();
+                if !k.is_some_and(|k| self.owns(&k)) {
+                    self.close_menu(st);
+                    if self.popover.is_some() {
+                        self.close_popover(st);
+                        self.rebuild(st);
+                    }
+                }
+            }
             M::Anchor(x, y, w, h) => self.anchor = (x, y, w, h),
             M::MenuKey(k) => {
                 if let Some(m) = &self.menu {
@@ -1157,6 +1213,43 @@ impl Part for Settings {
         }
     }
 
+    fn pointer_pressed(&mut self, st: &mut State, s: &Rc<Surface>) {
+        if self.menu.is_none() && self.popover.is_none() {
+            return;
+        }
+        let is = |o: Option<&Rc<Surface>>| o.is_some_and(|x| Rc::ptr_eq(x, s));
+        let at = if is(self.menu.as_ref().map(|m| &m.surface)) {
+            Pressed::Menu
+        } else if is(self.popover.as_ref().map(|p| &p.surface)) {
+            Pressed::Popover
+        } else if is(self.win.as_ref().map(|w| &w.surface)) {
+            Pressed::Window
+        } else {
+            Pressed::Elsewhere
+        };
+        let (menu, popover) = closes_on_press(at);
+        if menu && self.menu.is_some() {
+            // (the press may be on the menu's own control: its click mustn't open it again)
+            self.menu_dismissed = Some((self.menu_id.clone(), std::time::Instant::now()));
+            self.close_menu(st);
+        }
+        if popover && self.popover.is_some() {
+            self.popover_dismissed = Some(std::time::Instant::now());
+            self.close_popover(st);
+            self.rebuild(st);
+        }
+    }
+
+    fn keyboard_left(&mut self, st: &mut State, s: &Rc<Surface>) {
+        // (another window took the keyboard: the menu and popover go, as the
+        // QML's popups do when their window loses focus; checked a moment
+        // later, as the keyboard may only be moving to the menu itself)
+        if (self.menu.is_some() || self.popover.is_some()) && self.owns(s) {
+            let to = Self::sender(st);
+            self.focus_timer.start(slint::TimerMode::SingleShot, Duration::from_millis(FOCUS_CHECK_MS), move || to(M::FocusCheck));
+        }
+    }
+
     fn surface_closed(&mut self, st: &mut State, s: &Rc<Surface>) {
         // (the popover: a click elsewhere, or its window went)
         if self.popover.as_ref().is_some_and(|m| Rc::ptr_eq(&m.surface, s)) {
@@ -1200,6 +1293,18 @@ impl Part for Settings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_press_outside_closes_menus_and_popovers() {
+        // (its own menu: stays; the popover: a menu over the window goes, the popover stays)
+        assert_eq!(closes_on_press(Pressed::Menu), (false, false));
+        assert_eq!(closes_on_press(Pressed::Popover), (true, false));
+        // (elsewhere in Settings, which Hyprland's grab counts as inside, or on the bar, dock, desktop)
+        assert_eq!(closes_on_press(Pressed::Window), (true, true));
+        assert_eq!(closes_on_press(Pressed::Elsewhere), (true, true));
+        // (a click is down and up well within the guard; the keyboard's move to the menu within the check)
+        assert!(REOPEN_GUARD_MS >= 300 && FOCUS_CHECK_MS >= 100 && FOCUS_CHECK_MS < 500);
+    }
 
     #[test]
     fn older_ids_go_where_they_live() {

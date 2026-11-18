@@ -288,6 +288,9 @@ pub struct Bridges {
     chimed: bool,
     // background
     sun: Option<(i64, i64)>,
+    /// Theme.dark as last seen (Auto follows the sun: when it turns, the
+    /// look is read again, as a settings change would)
+    dark: Option<bool>,
     // overlay
     image_stamp: i64,
     // wallpaper sets, the root helper, the login screen's status
@@ -830,6 +833,21 @@ impl Bridges {
         }
     }
 
+    /// Theme.qml's `dark` turned (Auto past sunrise or sunset, or new sun
+    /// times that put now on the other side): the look is read again, every
+    /// part with it (Msg::ConfigChanged, as for a settings change). `sun`:
+    /// times just said, not yet heard by the parts that keep them
+    fn daylight(&mut self, h: &mut Host, sun: Option<(i32, i32)>) {
+        let dark = match sun {
+            Some((r, s)) => tessera_core::wallpaper::dark(h.cfg(), &tessera_core::wallpaper::Day::now(r, s)),
+            None => tessera_core::wallpaper::dark_now(h.cfg()),
+        };
+        if turned(self.dark, dark) {
+            let _ = h.st.shell.tx.send(tessera_core::Msg::ConfigChanged);
+        }
+        self.dark = Some(dark);
+    }
+
     /// What the Rust surfaces are told when they come up (RustUi's `started`)
     fn resend(&mut self, h: &mut Host) {
         self.tell_lock(h);
@@ -842,6 +860,11 @@ impl Bridges {
         h.tell("background", json!({"sunrise": r, "sunset": s}));
         h.tell("wallpaper", json!({"sunrise": r, "sunset": s}));
     }
+}
+
+/// Theme.dark turned since it was last seen (not at the first look)
+pub fn turned(was: Option<bool>, now: bool) -> bool {
+    was.is_some_and(|w| w != now)
 }
 
 /// The variables the tty session sandboxes, dropped for what the shell starts
@@ -869,6 +892,7 @@ impl Service for Bridges {
     }
     fn start(&mut self, h: &mut Host) {
         upgrade_config();
+        self.dark = Some(tessera_core::wallpaper::dark_now(h.cfg()));
         self.w_look = cfg_str(h.cfg(), "appearance.look", "glass").to_string();
         // Where the bundled pictures really are (the Material look runs from a folder of links)
         let send = h.sender("Bridges");
@@ -919,12 +943,20 @@ impl Service for Bridges {
     fn settled(&mut self, h: &mut Host) {
         self.idle_watches(h);
     }
+    fn every_second(&mut self, h: &mut Host, n: u64) {
+        // (Auto's turn at sunrise and sunset, within 15 s)
+        if n % 15 == 0 {
+            self.daylight(h, None);
+        }
+    }
     fn data(&mut self, h: &mut Host, what: std::any::TypeId) {
         if what == std::any::TypeId::of::<tessera_core::idle::Idle>() {
             self.idle_heard(h);
         }
     }
     fn config_changed(&mut self, h: &mut Host) {
+        // (the look was just read with the new settings: no second reading)
+        self.dark = Some(tessera_core::wallpaper::dark_now(h.cfg()));
         self.rescan_sets(h);
         h.set_state("menubar.resources", json!(cfg_bool(h.cfg(), "menubar.resources", false)));
         self.tell_overlay(h, false);
@@ -997,6 +1029,9 @@ impl Service for Bridges {
                         self.sun = Some((r, ss));
                         h.tell("background", json!({"sunrise": r, "sunset": ss}));
                         h.tell("wallpaper", json!({"sunrise": r, "sunset": ss}));
+                        // (Auto by the new times: the look follows once the
+                        // parts have them, its reading queued after the tells)
+                        self.daylight(h, Some((r as i32, ss as i32)));
                     }
                 } else if func == "resend" {
                     self.resend(h);
@@ -1158,6 +1193,17 @@ impl Bridges {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn auto_turns_the_look_only_when_dark_changes() {
+        assert!(!turned(None, true) && !turned(None, false));
+        assert!(!turned(Some(true), true) && !turned(Some(false), false));
+        assert!(turned(Some(true), false) && turned(Some(false), true));
+        // (Auto by the sun told: light between sunrise and sunset)
+        let auto = json!({"appearance": {"mode": "auto"}});
+        let at = |minute| tessera_core::wallpaper::dark(&auto, &tessera_core::wallpaper::Day { minute, sunrise: 420, sunset: 1020 });
+        assert!(at(400) && !at(420) && !at(1019) && at(1020));
+    }
 
     #[test]
     fn sets_come_newest_first_then_by_name() {

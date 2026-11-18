@@ -29,8 +29,8 @@ import time
 
 from . import ble_format, debuglog, endpoint, links, wifi
 from .connection import Connection, ProtocolError
-from .sharing import Cancelled, Declined, Receive, Send
-from .transport import StreamTransport, TransportClosed
+from .sharing import Cancelled, Declined, Pace, Receive, Send, Timeline
+from .transport import READ_LIMIT, StreamTransport, TransportClosed
 
 PORT = 53318
 MAX_INCOMING = 3  # at once; more are refused (a flood shouldn't fill the disk or the island)
@@ -154,13 +154,13 @@ class QuickShareService:
         why = None
         for attempt in range(self.port_tries) if self.preferred_port else ():
             try:
-                self.server = await asyncio.start_server(self._incoming, host="0.0.0.0", port=self.preferred_port)
+                self.server = await asyncio.start_server(self._incoming, host="0.0.0.0", port=self.preferred_port, limit=READ_LIMIT)
                 break
             except OSError as e:
                 why = e
                 await asyncio.sleep(0.5)
         if self.server is None:
-            self.server = await asyncio.start_server(self._incoming, host="0.0.0.0", port=0)
+            self.server = await asyncio.start_server(self._incoming, host="0.0.0.0", port=0, limit=READ_LIMIT)
         self.port = self.server.sockets[0].getsockname()[1]
         if why is not None and self.port != self.preferred_port:
             self._log(f"port {self.preferred_port} unavailable ({why}): using {self.port}")
@@ -367,6 +367,7 @@ class QuickShareService:
             await transport.close()
             return
         sid = self._new_session("in")
+        timeline = Timeline()
         conn = Connection(transport, is_client=False, endpoint_id=self.endpoint_id,
                           endpoint_info=self._endpoint_info(), device_name=self.name)
         conn.tag = sid
@@ -395,11 +396,15 @@ class QuickShareService:
                     self._upgrade_soon(conn, sid, entry, sender, early=True)
                 return await entry["answer"]
 
+            pace = Pace()
+
             def progress(done, total):
                 entry["done"], entry["total"] = done, total
-                self.emit({"ev": "progress", "session": sid, "dir": "in", "done": done, "total": total, "name": sender})
+                if pace.due(done, total):
+                    self.emit({"ev": "progress", "session": sid, "dir": "in", "done": done, "total": total, "name": sender})
 
             receive = Receive(conn, self.folder, ask, progress)
+            receive.timeline = timeline
             # A shared network that crawls (a busy 2.4 GHz band, a router
             # in between): Wi-Fi Direct next to it when the phone asks (it
             # knows its radio; moving on our own mid-flow can make it hop
@@ -415,6 +420,8 @@ class QuickShareService:
                 receive.on_accepted = lambda: conn._spawn(self._check_lan(conn, sid, entry, sender))
             entry["session"] = receive
             result = await receive.run()
+            # (setup apart from the data, always in the shell's log: no names)
+            self._step(f"{sid}: received " + timeline.summary(receive.total, conn.medium))
             self.emit(dict({"ev": "finished", "session": sid, "dir": "in", "from": sender}, **result))
         except Declined as e:
             self.emit({"ev": "ended", "session": sid, "dir": "in", "reason": str(e)})
@@ -760,6 +767,7 @@ class QuickShareService:
     async def _send(self, sid, entry, dev, files):
         conn = None
         name = dev["name"]
+        timeline = Timeline()
         try:
             self.emit({"ev": "progress", "session": sid, "dir": "out", "done": 0,
                        "total": sum(os.path.getsize(p) for p in files), "name": name, "waiting": True})
@@ -793,11 +801,15 @@ class QuickShareService:
             self._transport_event(sid, conn.medium)
             self.emit({"ev": "connected", "session": sid, "pin": conn.pin, "to": name, "medium": conn.medium})
 
+            pace = Pace()
+
             def progress(done, total):
                 entry["done"], entry["total"] = done, total
-                self.emit({"ev": "progress", "session": sid, "dir": "out", "done": done, "total": total, "name": name})
+                if pace.due(done, total):
+                    self.emit({"ev": "progress", "session": sid, "dir": "out", "done": done, "total": total, "name": name})
 
             send = Send(conn, files, progress)
+            send.timeline = timeline
             if wifi.CR.WIFI_DIRECT in (conn.mediums or []) and conn.medium == "wifi_lan":
                 async def direct_first():
                     # A slow shared network (2.4 GHz, a slow answer): ask the
@@ -826,6 +838,8 @@ class QuickShareService:
                 send.before_files = wait_for_wifi
             entry["session"] = send
             result = await send.run()
+            # (setup apart from the data, always in the shell's log: no names)
+            self._step(f"{sid}: sent " + timeline.summary(result.get("total", 0), conn.medium))
             self.emit(dict({"ev": "finished", "session": sid, "dir": "out", "to": name}, **result))
         except Declined as e:
             self.emit({"ev": "declined", "session": sid, "to": name, "reason": str(e)})

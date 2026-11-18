@@ -14,6 +14,18 @@ import struct
 # up to 512 KiB, plus encryption); anything far bigger is garbage or abuse
 MAX_FRAME = 8 * 1024 * 1024
 
+# What a stream buffers (18 Nov, transfers over Wi-Fi Direct at 8-9 MB/s):
+# READ_LIMIT: a whole chunk's frame (512 KiB and its encryption) fits the
+# reader's buffer, so reading one doesn't pause and resume the socket every
+# 128 KiB (asyncio's default limit is 64 KiB: paused past twice that);
+# WRITE_HIGH: a chunk handed over doesn't wait to drain to 16 KiB before
+# the next is read and encrypted (asyncio's default high-water mark, 64 KiB):
+# the next one is made while this one still goes out. The kernel's own
+# socket buffers are left to its autotuning (setting SO_SNDBUF/SO_RCVBUF
+# turns that off and caps them at net.core.[rw]mem_max, 208 KiB here).
+READ_LIMIT = 2 * 1024 * 1024
+WRITE_HIGH = 2 * 1024 * 1024
+
 
 class TransportClosed(Exception):
     """The other side went away (or sent something that isn't a frame)."""
@@ -38,6 +50,14 @@ class Transport:
         return ""
 
 
+def tune(writer):
+    """A stream's write buffer as WRITE_HIGH says (a transport that can't: as it is)."""
+    try:
+        writer.transport.set_write_buffer_limits(high=WRITE_HIGH)
+    except (AttributeError, NotImplementedError, ValueError):
+        pass
+
+
 class StreamTransport(Transport):
     """A transport over asyncio streams: TCP today, any socket-like medium later."""
 
@@ -49,11 +69,14 @@ class StreamTransport(Transport):
         self._write_lock = asyncio.Lock()
         if medium:
             self.medium = medium  # (an upgrade's "wifi_direct", "wifi_hotspot")
+        tune(writer)
+
 
     @classmethod
     async def connect(cls, host, port, timeout=10, medium=None, local_address=None):
         reader, writer = await asyncio.wait_for(
-            asyncio.open_connection(host, port, local_addr=(local_address, 0) if local_address else None), timeout)
+            asyncio.open_connection(host, port, local_addr=(local_address, 0) if local_address else None,
+                                    limit=READ_LIMIT), timeout)
         return cls(reader, writer, medium)
 
     @property

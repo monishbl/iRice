@@ -17,6 +17,7 @@ import asyncio
 import mimetypes
 import os
 import shutil
+import time
 
 from . import sharing_enums, sharing_pb
 from .connection import Connection, ProtocolError, new_payload_id
@@ -67,6 +68,60 @@ def file_type(name):
     return mime, FILE_TYPES.get(mime.split("/")[0], sharing_pb.FileMetadata.UNKNOWN)
 
 
+class Pace:
+    """When a progress event is due: the first, the last (done == total),
+    and in between at most every `every` seconds (a 512 KiB chunk at 10 MB/s
+    is 20 a second, each one a line the shell reads and a redraw)."""
+
+    def __init__(self, every=0.1, clock=time.monotonic):
+        self.every = every
+        self.clock = clock
+        self.last = None
+
+    def due(self, done, total):
+        now = self.clock()
+        if self.last is None or done >= total or now - self.last >= self.every:
+            self.last = now
+            return True
+        return False
+
+
+class Timeline:
+    """When each step of one transfer happened, for the line that splits its
+    time: setup (connecting and pairing, the person deciding, moving to a
+    faster link) apart from the data itself, and the wait for the other side
+    to hang up after. Marks (first one wins): paired, offered, accepted,
+    first (byte of a file), last (byte), done."""
+
+    def __init__(self, clock=time.monotonic):
+        self.clock = clock
+        self.start = clock()
+        self.marks = {}
+
+    def mark(self, name):
+        self.marks.setdefault(name, self.clock())
+
+    def summary(self, nbytes, medium=""):
+        t = self.marks
+        at = lambda k, d=None: t.get(k, d)
+        first, last = at("first"), at("last")
+        accepted = at("accepted", first)
+        def secs(a, b):
+            return f"{max(0.0, b - a):.1f} s" if a is not None and b is not None else "?"
+        parts = [f"setup {secs(self.start, first or at('done') or self.clock())}"]
+        steps = [("connect", self.start, at("paired")), ("decide", at("offered"), accepted),
+                 ("link", accepted, first)]
+        detail = ", ".join(f"{k} {secs(a, b)}" for k, a, b in steps if a is not None and b is not None)
+        if detail:
+            parts[0] += f" ({detail})"
+        if first is not None and last is not None:
+            d = max(last - first, 1e-6)
+            parts.append(f"data {nbytes / 1e6:.1f} MB in {d:.1f} s = {nbytes / 1e6 / d:.1f} MB/s")
+        if last is not None and at("done") is not None:
+            parts.append(f"end {secs(last, at('done'))}")
+        return ", ".join(parts) + (f", over {medium}" if medium else "")
+
+
 class Session:
     """What both directions share: the paired-key exchange and a frame queue."""
 
@@ -78,6 +133,8 @@ class Session:
         self.cancelled = False
         conn.on_bytes = self._bytes
         self._pump = None
+        # (the service may hand it the one it started before connecting)
+        self.timeline = Timeline()
 
     def _bytes(self, pid, data):
         if pid in self._expected_bytes:
@@ -128,6 +185,7 @@ class Session:
                 got_result = True
             else:
                 raise ProtocolError(f"unexpected message {v1.type} before the introduction")
+        self.timeline.mark("paired")
 
     async def cancel(self):
         self.cancelled = True
@@ -168,6 +226,7 @@ class Receive(Session):
                 break
         else:
             raise ProtocolError("expected an introduction")
+        self.timeline.mark("offered")
         i = intro.introduction
         files = list(i.file_metadata)
         texts = list(i.text_metadata)
@@ -210,11 +269,13 @@ class Receive(Session):
 
             def file_progress(pid, d, t):
                 heard[0] = loop.time()
+                self.timeline.mark("first")
                 self.progress(sum(s.written for s in sinks.values()), total)
             self.conn.on_file_progress = file_progress
             self.conn.on_file_done = lambda pid: (done.__setitem__(pid, True), self.frames.put_nowait(("payload", pid)))
             self.conn.on_payload_cancelled = lambda pid: self.frames.put_nowait(("error", Cancelled("the sender cancelled")))
             await self._respond(RESP.ACCEPT)
+            self.timeline.mark("accepted")
             if self.on_accepted:
                 self.on_accepted()
             while pending:
@@ -241,6 +302,8 @@ class Receive(Session):
                 if s.path is None:
                     s.fail()
             raise
+        self.timeline.mark("last")
+        self.timeline.mark("done")
         result_texts = []
         for t in texts:
             body = self.texts.get(t.payload_id, b"").decode("utf-8", "replace")
@@ -290,6 +353,7 @@ class Send(Session):
             m.name, m.size, m.mime_type, m.type, m.payload_id = it["name"], it["size"], it["mime"], it["type"], it["pid"]
             m.id = new_payload_id()
         await self.conn.send_bytes(sharing_frame(F.INTRODUCTION, introduction=intro))
+        self.timeline.mark("offered")
         # The receiver may take its time deciding (it's a person)
         while True:
             v1 = await self.next_frame(DECISION_TIMEOUT + 30)
@@ -301,8 +365,10 @@ class Send(Session):
                       RESP.UNSUPPORTED_ATTACHMENT_TYPE: "that device can't receive these",
                       RESP.TIMED_OUT: "no answer in time"}.get(status, "declined")
             raise Declined(reason)
+        self.timeline.mark("accepted")
         if self.before_files:
             await self.before_files()
+        self.timeline.mark("first")
         sent = 0
         for it in items:
             base = sent
@@ -312,10 +378,12 @@ class Send(Session):
             if not ok:
                 raise Cancelled("cancelled")
             sent += it["size"]
+        self.timeline.mark("last")
         # The receiver hangs up once it has everything
         try:
             while True:
                 await self.next_frame(30)
         except (TransportClosed, asyncio.TimeoutError):
             pass
+        self.timeline.mark("done")
         return {"paths": self.paths, "total": total}

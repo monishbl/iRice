@@ -147,8 +147,7 @@ pub fn upgrade_config() {
 // ── Theme.qml's dark, Daylight.qml, TimeFormat.qml ──────────────────────────
 
 pub fn dark(cfg: &Value) -> bool {
-    let (r, s) = tessera_core::wallpaper::sun();
-    tessera_core::wallpaper::dark(cfg, &tessera_core::wallpaper::Day::now(r, s))
+    tessera_core::wallpaper::dark_now(cfg)
 }
 
 pub fn material(cfg: &Value) -> bool {
