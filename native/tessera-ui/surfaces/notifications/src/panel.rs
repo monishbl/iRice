@@ -200,6 +200,29 @@ fn color(s: &str) -> slint::Color {
     }
 }
 
+/// An alert's glyph: the island sends a Phosphor name ("usb"); one already a
+/// glyph (a single private-use character) is kept
+pub(crate) fn alert_glyph(name: &str) -> String {
+    let mut c = name.chars();
+    match (c.next(), c.next()) {
+        (Some(ch), None) if ('\u{e000}'..='\u{f8ff}').contains(&ch) => name.to_string(),
+        _ => crate::icons::glyph_or(name, "bell").to_string(),
+    }
+}
+
+/// A card's act, for the timing log (its kind and id only)
+fn act_name(c: &C) -> Option<String> {
+    Some(match c {
+        C::Activated(i) => format!("activate {i}"),
+        C::Close(i) => format!("close {i}"),
+        C::ClearGroup(_) => "clear-group".into(),
+        C::Action(i, _) => format!("action {i}"),
+        C::ClearAll => "clear-all".into(),
+        C::Toggle(_) => "toggle-group".into(),
+        _ => return None,
+    })
+}
+
 fn escape(t: &str) -> String {
     t.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
 }
@@ -303,6 +326,8 @@ impl Notifications {
         ui.set_cal_targets(targets.model());
         ui.show().expect("show notification center");
         let a11y = crate::a11y::A11y::new(&surface, st.tx.clone());
+        // (a new window's rows say their places as they're made)
+        self.nc.cards.clear();
         self.nc.win = Some(Win { output: output.into(), surface, ui, rows, days, day_items, todos, laps, targets, a11y, glass_sent: String::new() });
         true
     }
@@ -321,7 +346,9 @@ impl Notifications {
             self.nc.selected = t;
             self.nc.shown = (t.0, t.1);
             self.nc.groups_open.clear();
-            self.nc.cards.clear();
+            // (not the cards' places: the rows stay made while it's closed,
+            // so they don't say them again; cleared, the glass under each
+            // card was gone after the first opening: 18 Nov)
             // (the QML widgets are made anew: month view, the Focus timer)
             self.nc.week = false;
             self.nc.focus_mode = 0;
@@ -409,7 +436,9 @@ impl Notifications {
                 progress: -1.0,
                 history: self.history(&format!("a{}", a.hid), &a.changes, h24),
                 alert: true,
-                glyph: a.glyph.clone().into(),
+                // (the island names its icon, "battery-warning": the card
+                // draws the Phosphor glyph, which the name alone left blank)
+                glyph: alert_glyph(&a.glyph).into(),
                 glyph_color: color(&a.color),
                 ..Default::default()
             };
@@ -457,6 +486,9 @@ impl Notifications {
             });
         }
         let anything = !rows.is_empty();
+        // (places of rows no longer there)
+        let n = rows.len() as i32;
+        self.nc.cards.retain(|i, _| *i < n);
         let h24 = st.shell.cfg["appearance"]["clock24"].as_bool().unwrap_or(false);
         let today = today();
         let w = &self.nc.widgets;
@@ -505,7 +537,13 @@ impl Notifications {
         let win = self.nc.win.as_ref().unwrap();
         let ui = &win.ui;
         // (by card: a header by its group, a card by its note or alert)
-        win.rows.set_keyed(rows, |r| format!("{}:{}:{}", r.kind, r.gkey, if r.kind == 2 { 0 } else { r.b.id }));
+        // A card that left (dismissed, an action done, Clear all), came or
+        // changed: the next frame is drawn and damaged whole. Its partial
+        // damage left the laptop's screen as it was (18 Nov: X, Clear all and
+        // the actions acted, the list emptied, the cards stayed drawn)
+        if win.rows.set_keyed(rows, |r| format!("{}:{}:{}", r.kind, r.gkey, if r.kind == 2 { 0 } else { r.b.id })) {
+            win.surface.redraw_all();
+        }
         ui.set_anything(anything);
         ui.set_bare(bare(&st.shell.cfg, material, st.shell.look.transparency));
         ui.set_glass_plugin(st.shell.plugin);
@@ -578,6 +616,13 @@ impl Notifications {
     }
 
     pub(super) fn nc_message(&mut self, st: &mut State, c: C) {
+        // (the timing log, TESSERA_WAKES or $XDG_RUNTIME_DIR/tessera-wakes:
+        // which act a card's click made, never what the card says)
+        if crate::wayland::wakes_on() {
+            if let Some(what) = act_name(&c) {
+                eprintln!("nc act {what} at {}", crate::util::now_ms());
+            }
+        }
         let alert = |i: i32| if i < 0 { self.nc.alerts.get((-i - 1) as usize).map(|a| a.hid) } else { None };
         match c {
             C::Dismissed => self.nc_close(st, true),
@@ -894,7 +939,7 @@ impl Notifications {
             st.shell.glass.set(&w.output, NS, &[]);
             w.glass_sent.clear();
         }
-        self.nc.cards.clear();
+        // (the cards' places stay: a row that moves says its new one)
         self.nc_refresh(st);
     }
 
@@ -945,6 +990,30 @@ mod tests {
         // Material: bare once its panels see through
         assert!(!bare(&json!({}), true, 0.0));
         assert!(bare(&json!({}), true, 0.5));
+    }
+
+    /// The island sends an icon's name; the card draws its glyph (the name
+    /// itself drew as an empty badge)
+    #[test]
+    fn alert_glyphs_from_names() {
+        let usb = alert_glyph("usb");
+        assert_eq!(usb, crate::icons::glyph("usb"));
+        assert_eq!(usb.chars().count(), 1);
+        assert!(('\u{e000}'..='\u{f8ff}').contains(&usb.chars().next().unwrap()));
+        // already a glyph: kept; unknown or empty: the bell
+        assert_eq!(alert_glyph(&usb), usb);
+        assert_eq!(alert_glyph("no-such-icon"), crate::icons::glyph("bell"));
+        assert_eq!(alert_glyph(""), crate::icons::glyph("bell"));
+    }
+
+    /// The timing log names a card's act by kind and id, never its text
+    #[test]
+    fn card_acts_in_the_log() {
+        assert_eq!(act_name(&C::Close(3)).as_deref(), Some("close 3"));
+        assert_eq!(act_name(&C::Action(-2, "secret-key".into())).as_deref(), Some("action -2"));
+        assert_eq!(act_name(&C::ClearAll).as_deref(), Some("clear-all"));
+        assert_eq!(act_name(&C::ClearGroup("Ann's app".into())).as_deref(), Some("clear-group"));
+        assert!(act_name(&C::Minute).is_none());
     }
 
     #[test]

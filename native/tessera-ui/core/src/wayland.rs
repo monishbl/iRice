@@ -302,12 +302,23 @@ impl Surface {
             let tp = Instant::now();
             let region = crate::perf::time(|| format!("damage probe {}", self.namespace), || self.renderer.damage.region(&self.window, (w as f32, h as f32)));
             PROBE_MS.with(|c| c.set(tp.elapsed().as_secs_f32() * 1000.0));
+            if crate::env::is_set("DAMAGE_LOG") {
+                eprintln!("damage {} {:?}", self.namespace, region.as_ref().map(|r| r.iter().map(|x| [x.origin.x as i32, x.origin.y as i32, x.size.width as i32, x.size.height as i32]).collect::<Vec<_>>()));
+            }
             *self.damage.borrow_mut() = region.map(|r| (crate::damage::to_buffer(&r, self.scale.get(), (px.width as i32, px.height as i32)), px.height as i32));
             // (and the frame draws only that, with the back buffer's age: egl.rs)
             self.gl_frame.set(true);
         }
         if let Err(e) = crate::perf::time(|| format!("femtovg draw {}", self.namespace), || self.renderer.draw()) {
             eprintln!("tessera-ui: render failed: {e}");
+        }
+        // (a frame that skipped items left the window tracking only the drawn
+        // ones: every item is read again, so a change anywhere asks for a frame;
+        // damage.rs track_all)
+        #[cfg(not(feature = "skia"))]
+        if self.egl.has_damage() && i_slint_renderer_femtovg::last_frame().culled > 0 {
+            let (w, h) = self.logical.get();
+            crate::perf::time(|| format!("damage track {}", self.namespace), || self.renderer.damage.track_all(&self.window, (w as f32, h as f32)));
         }
         let took = t.elapsed();
         // (TESSERA_DRAW_STATS=1: where each frame's time went, one line a frame)

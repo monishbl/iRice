@@ -1087,7 +1087,11 @@ impl<'a, R: femtovg::Renderer + TextureImporter> LayerRenderer<'a> for GLItemRen
             scissor: bounding_rect,
             global_alpha: 1.,
             current_render_target: render_target,
-            cull: partial.flatten().map(|d| d.inflate(super::CULL_MARGIN, super::CULL_MARGIN)),
+            // (every child is drawn, the scissor below keeps the pixels to
+            // the damaged part: the layer's cache entry depends on what its
+            // drawing reads, and a child left out was then never watched, so
+            // a change to it kept the old texture: 18 Nov, the laptop)
+            cull: None,
         };
 
         {
@@ -1096,7 +1100,12 @@ impl<'a, R: femtovg::Renderer + TextureImporter> LayerRenderer<'a> for GLItemRen
             canvas.reset();
             match partial {
                 // (an empty damage: nothing in it changed on screen)
-                Some(None) => {}
+                // (its children are still walked, for the cache's tracking:
+                // nothing of them reaches the texture)
+                Some(None) => {
+                    canvas.translate(-physical_origin.x, -physical_origin.y);
+                    canvas.intersect_scissor(physical_origin.x, physical_origin.y, 0., 0.);
+                }
                 Some(Some(d)) => {
                     // the damaged part, in the texture's pixels, grown to whole ones
                     let r = (d.translate(-bounding_rect.origin.to_vector()) * self.scale_factor).round_out();
