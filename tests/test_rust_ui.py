@@ -40,7 +40,7 @@ def rust_sources():
 # shell). Their QML windows have no RustUi.drawing guard because, beside the
 # QML shell, the QML draws them and these parts stay off; and what they ask is
 # answered by the host (native/tessera-ui/host), not RustUi.qml
-STANDALONE_ONLY = {"downloadsstack", "widgetoptions", "screencorners", "findpointer", "spaceswitch", "displayconnect", "displayoverlay", "shelfprobes"}
+STANDALONE_ONLY = {"downloadsstack", "widgetoptions", "screencorners", "findpointer", "spaceswitch", "displayconnect", "displayoverlay", "shelfprobes", "clickcatcher"}
 STANDALONE_ONLY_SOURCES = ("surfaces/screenfx/", "surfaces/desktop/src/gallery.rs", "surfaces/desktop/src/options.rs", "surfaces/dock/src/stack.rs")
 # Calls only the standalone shell answers. The QML shell is frozen as the
 # crash fallback (16 Nov, docs: rust-only), so its hybrid mode (QML hosting

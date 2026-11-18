@@ -106,7 +106,11 @@ pub fn event(spaces: &Spaces, h: &mut Host, name: &str, data: &str) {
                 return;
             }
             // a panel or menu opening or closing took the focus along: not a move
-            if layer_moved(LAYER_AT.load(Ordering::SeqCst), tessera_core::util::now_ms()) || !h.state("open").as_str().unwrap_or("").is_empty() {
+            // (the shell's own map or unmap, which it knows before Hyprland says
+            // openlayer/closelayer: on 0.56 focusedmonv2 came first, and the cue
+            // played as a panel opened or closed)
+            let layer_at = LAYER_AT.load(Ordering::SeqCst).max(tessera_core::wayland::layer_changed_at());
+            if layer_moved(layer_at, tessera_core::util::now_ms()) || !h.state("open").as_str().unwrap_or("").is_empty() {
                 return;
             }
             let mode = mode_of(h.cfg());

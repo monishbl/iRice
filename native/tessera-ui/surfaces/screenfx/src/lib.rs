@@ -1,6 +1,6 @@
 //! The screen-wide overlays that had no Rust version (rust.surfaces:
 //! screencorners, findpointer, spaceswitch, displayconnect, displayoverlay,
-//! shelfprobes), one Part each in this crate:
+//! shelfprobes, clickcatcher), one Part each in this crate:
 //!
 //! - `ScreenCorners` (corners.rs): the rounded bottom screen corners
 //!   (shell/modules/background/ScreenCorners.qml).
@@ -14,6 +14,8 @@
 //!   MaterialDisplayConfirm.qml).
 //! - `ShelfProbes` (probe.rs): the edge and shake drop strips that open the
 //!   shelf (shell/modules/shelf/ShelfProbes.qml).
+//! - `ClickCatcher` (catcher.rs): an open popover closes on a press on
+//!   another screen (standalone only, no QML twin; it maps nothing).
 //!
 //! All of them are standalone only (`tessera-ui --standalone`): with the QML
 //! shell running, its own copies draw these, and a second set here would
@@ -30,6 +32,7 @@ tessera_core::theme_global!(ui);
 #[allow(unused_imports)]
 use tessera_core::*;
 
+pub mod catcher;
 pub mod connect;
 pub mod corners;
 pub mod cue;
@@ -37,6 +40,7 @@ pub mod display;
 pub mod probe;
 pub mod ring;
 
+pub use catcher::ClickCatcher;
 pub use connect::DisplayConnect;
 pub use corners::ScreenCorners;
 pub use cue::SpaceSwitch;

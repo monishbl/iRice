@@ -99,6 +99,8 @@ pub struct DrawCounts {
     /// only their damaged part
     pub layers_full: u32,
     pub layers_partial: u32,
+    /// layer textures made (a layer whose size changed gets a new one)
+    pub layers_new: u32,
 }
 
 /// The bounding box of `rect` rotated by `radians` (around the origin)
@@ -1048,6 +1050,7 @@ impl<'a, R: femtovg::Renderer + TextureImporter> LayerRenderer<'a> for GLItemRen
 
         reused.map(|(_, t)| t).or_else(|| {
             *self.metrics.layers_created.as_mut().unwrap() += 1;
+            self.counts.layers_new += 1;
             Texture::new_empty_on_gpu(&self.canvas, size.width, size.height)
         })
     }

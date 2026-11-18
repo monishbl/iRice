@@ -325,8 +325,10 @@ impl Surface {
         if draw_stats() {
             let f = i_slint_renderer_femtovg::last_frame();
             eprintln!(
-                "draw-stats {} {:.2} ms: probe {:.2} current {:.2} age-wait {:.2} items {:.2} flush {:.2} present {:.2}; drawn {} culled {} layers {}+{}p {} age {}",
+                "draw-stats {}{}{} {:.2} ms: probe {:.2} current {:.2} age-wait {:.2} items {:.2} flush {:.2} present {:.2}; drawn {} culled {} layers {}+{}p new {} {} age {}",
                 self.namespace,
+                if self.output.is_empty() { "" } else { "@" },
+                self.output,
                 took.as_secs_f64() * 1000.0,
                 PROBE_MS.with(|c| c.replace(0.0)),
                 crate::egl::last_begin_ms()[0],
@@ -338,12 +340,13 @@ impl Surface {
                 f.culled,
                 f.layers_full,
                 f.layers_partial,
+                f.layers_new,
                 if f.partial { "partial" } else { "whole" },
                 crate::egl::last_age()
             );
         }
         self.stats.borrow_mut().rendered(took);
-        framelog("frame", &self.namespace);
+        framelog_on("frame", &self.namespace, &self.output);
         if wakes_on() {
             drew_after_press(&self.namespace, took.as_secs_f64() * 1000.0);
         }
@@ -368,6 +371,8 @@ impl Surface {
         // one that never animates would keep it: so the first after each
         // `show` is drawn twice)
         if self.shown_frames.get() == 1 {
+            // (mapped: a layer taking the keyboard moves Hyprland's focused monitor)
+            note_layer_change();
             self.needs_redraw.set(true);
             if wakes_on() {
                 // (open timing: the first frame after a show, by the wall clock)
@@ -401,7 +406,10 @@ impl Surface {
         } else if crate::env::is_set("DEBUG") {
             eprintln!("debug: hide on a lock surface: kept its buffer");
         }
-        framelog("hide", &self.namespace);
+        framelog_on("hide", &self.namespace, &self.output);
+        if self.mapped.get() {
+            note_layer_change();
+        }
         self.configured.set(false);
         self.frame_pending.set(false);
         self.mapped.set(false);
@@ -1500,6 +1508,15 @@ impl State {
                         if wakes_on() {
                             pressed_now(&s.namespace);
                         }
+                        // (off the window: on another screen, the panel holding the pointer)
+                        let (w, h) = s.logical_size();
+                        if off_window(e.position, (w, h)) {
+                            if crate::env::is_set("DEBUG") || wakes_on() {
+                                eprintln!("press off {} at {:?} ({w}x{h}): elsewhere", s.namespace, e.position);
+                            }
+                            self.each_part(|p, st| p.pointer_pressed_outside(st, &s));
+                            continue;
+                        }
                         self.each_part(|p, st| p.pointer_pressed(st, &s));
                         s.dispatch(WindowEvent::PointerPressed { position, button });
                     } else {
@@ -1773,15 +1790,44 @@ fn drew_after_press(ns: &str, render_ms: f64) {
     });
 }
 
+static LAYER_CHANGE_AT: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+
+/// (also when a panel is told to open or close, or closes itself: it gives
+/// the keyboard back as its close starts, before it unmaps)
+pub fn note_layer_change() {
+    LAYER_CHANGE_AT.store(crate::util::now_ms(), std::sync::atomic::Ordering::Relaxed);
+}
+
+/// When one of the shell's surfaces last mapped or unmapped (ms, util::now_ms;
+/// 0: never). Hyprland moves its focused monitor with a layer that takes or
+/// gives back the keyboard, and its `focusedmonv2` can come before its own
+/// open/closelayer: the display-switch cue asks this, which we know first
+pub fn layer_changed_at() -> i64 {
+    LAYER_CHANGE_AT.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// A press at this surface-local position is off the window (`size`
+/// logical px; 0: not known yet, never off)
+pub fn off_window(at: (f64, f64), size: (u32, u32)) -> bool {
+    size.0 > 0 && size.1 > 0 && (at.0 < 0.0 || at.1 < 0.0 || at.0 >= size.0 as f64 || at.1 >= size.1 as f64)
+}
+
 /// TESSERA_FRAMELOG=1: every frame a surface draws and every hide, with the
 /// wall time (`framelog frame <namespace> <unix s>`): which surface drew the
 /// frames a compositor frame log (tools/gate/framelog.py) counts, and when a
 /// panel's close animation really ended. Off: one cached bool test.
 pub fn framelog(what: &str, ns: &str) {
+    framelog_on(what, ns, "");
+}
+
+/// The same for a surface on an output: `<namespace>@<output>` (two bars,
+/// one per screen, told apart)
+pub fn framelog_on(what: &str, ns: &str, output: &str) {
     static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     if *ON.get_or_init(|| crate::env::is_set("FRAMELOG")) {
         let t = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0.0, |d| d.as_secs_f64());
-        eprintln!("framelog {what} {ns} {t:.6}");
+        let at = if output.is_empty() { "" } else { "@" };
+        eprintln!("framelog {what} {ns}{at}{output} {t:.6}");
     }
 }
 
@@ -1895,7 +1941,19 @@ pub fn wakes_on() -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::shortcut_text;
+    use super::{off_window, shortcut_text};
+
+    #[test]
+    fn a_press_off_the_window_is_elsewhere() {
+        // (a 1920x1080 panel on DP-1 at 1920,0; the press on eDP-1 at 300,500)
+        assert!(off_window((-1620.0, 500.0), (1920, 1080)));
+        assert!(off_window((2100.0, 10.0), (1920, 1080)));
+        assert!(off_window((10.0, 1080.0), (1920, 1080)));
+        assert!(!off_window((0.0, 0.0), (1920, 1080)));
+        assert!(!off_window((1919.5, 1079.5), (1920, 1080)));
+        // (no size yet: never)
+        assert!(!off_window((-5.0, -5.0), (0, 0)));
+    }
 
     #[test]
     fn shortcuts_by_key_on_any_layout() {

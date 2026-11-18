@@ -762,6 +762,8 @@ component AlertView inherits Rectangle {
     // the HUD's inline list (IslandLevels), open under its row
     in property <[LevelRow]> levels;
     in property <bool> levels-open;
+    // the HUD's level as drawn (the spring's, from Rust; else its value)
+    in property <float> hud-level: a.hud-value;
     callback level-pick(string);
     callback level-set(string, float);
     callback level-mute(string);
@@ -838,17 +840,14 @@ component AlertView inherits Rectangle {
             background: Theme.material ? Theme.m3-secondary-container : #ffffff29;
             Rectangle {
                 x: 0;
-                width: parent.width * max(0, min(1, a.hud-value));
+                // (IslandEvent.qml's hudBar: SpringAnimation spring 5, damping
+                // 0.4, epsilon 0.5 px, stepped in Rust (menubar spring.rs): a
+                // step while it moves keeps its speed, where an `animate`
+                // started over from rest at each one and the bar stuttered
+                // under a held key. Material's Slider: no animation, set at once.)
+                width: parent.width * max(0, min(1, hud-level));
                 border-radius: parent.border-radius;
                 background: Theme.material ? Theme.m3-primary : ink;
-                // (IslandEvent.qml's hudBar: SpringAnimation spring 5, damping
-                // 0.4, epsilon 0.5 px. A key's 5% step (under 25 px) stops at
-                // 256 ms; this cubic follows Qt's 16 ms steps to within 0.5% of
-                // the step. Material's Slider has no animation on its value.)
-                animate width {
-                    duration: Theme.material ? 0ms : 256ms;
-                    easing: cubic-bezier(0.192, 0.156, 0.334, 1.15);
-                }
             }
             level := TouchArea {
                 pointer-event(e) => {
@@ -2122,6 +2121,7 @@ export component Island inherits Rectangle {
     in property <bool> reduce-motion; // appearance.reduceMotion: the call's ring holds still
     in property <[LevelRow]> levels;
     in property <bool> levels-open;
+    in property <float> hud-level; // (the HUD's level on its spring: menubar spring.rs)
     // IslandAlertStack: alerts that came while it was hovered or pinned open
     // drop in as a card under it (the island keeps what it showed)
     in property <bool> alerts-below;
@@ -2232,6 +2232,12 @@ export component Island inherits Rectangle {
     property <length> area: max(dots-w, trail-w + 26px);
     property <length> compact-w: layout == "split" ? 2 * pad + 2 * side + 24px + dots-w : layout == "beside" ? 2 * pad + dots-w + 21px + area : pad + lead-w + 12px + trail-w + pad;
     property <length> target-w: mode == 3 ? min(420px, pill-row.preferred-width + 28px) : expanded && event-inside ? (has-card ? 440px : 392px) : expanded ? 392px : compact ? compact-w : dots-w + 14px;
+    // the size it's going to, and the size it is now on its spring (Rust's;
+    // below zero: none yet, the target itself)
+    out property <length> want-w: target-w;
+    out property <length> want-h: target-h;
+    in property <length> spring-w: -1px;
+    in property <length> spring-h: -1px;
     property <length> target-h: expanded ? max(body.y + body.preferred-height + (event-inside ? 16px : 14px), recent-over && !event-inside ? recent-hold-h : 0) : mode == 3 ? 30px : 26px;
     property <length> radius: min(Theme.radius-tile, shape.height / 2);
     property <length> group-left: shape.width / 2 - compact-w / 2 + pad;
@@ -2290,17 +2296,15 @@ export component Island inherits Rectangle {
     shape := Rectangle {
         x: round((root.width - self.width) / 2 / 1px) * 1px;
         y: 3px;
-        width: target-w;
-        height: target-h;
         // (IslandView.qml: SpringAnimation spring Theme.motion.spring + 1.2,
-        // damping + 0.04, Qt's 16 ms steps; the same spring in Slint's terms,
-        // from the poles of Qt's step: Subtle 5.0/0.36 → 318 ms, bounce 0.29;
-        // Expressive 4.2/0.26 → 359 ms, 0.46; Material and Snappy 7.28/0.54
-        // → 244 ms, 0.06)
-        animate width, height {
-            duration: Theme.material || Theme.snappy ? 244ms : Theme.expressive ? 359ms : 318ms;
-            easing: Theme.material || Theme.snappy ? spring(0.06) : Theme.expressive ? spring(0.46) : spring(0.29);
-        }
+        // damping + 0.04: Subtle 5.0/0.36, Expressive 4.2/0.26, Material and
+        // Snappy 7.28/0.54. Stepped in Rust (menubar spring.rs) from want-w
+        // and want-h: a new size while it moves keeps its speed, as Qt's
+        // spring does. A Slint `animate` started over from rest each time
+        // the size changed under it (an alert, the music card's height
+        // settling, a hover out while it opened), and the island stuttered.)
+        width: spring-w >= 0 ? spring-w : target-w;
+        height: spring-h >= 0 ? spring-h : target-h;
         property <float> open-fade: filled ? 1 : 0;
         animate open-fade { duration: Theme.hover; }
         property <float> fade: filled ? open-fade : max(0, min(1, (self.height - 26px) / max(1px, close-from - 26px)));
@@ -2567,6 +2571,7 @@ export component Island inherits Rectangle {
                             reduce-motion: root.reduce-motion;
                             levels: root.levels;
                             levels-open: root.levels-open;
+                            hud-level: root.hud-level;
                             level-pick(id) => { root.level-pick(id); }
                             level-set(id, v) => { root.level-set(id, v); }
                             level-mute(id) => { root.level-mute(id); }
@@ -3174,6 +3179,7 @@ export component Island inherits Rectangle {
                     if below.on: AlertView {
                         a: alerts[alerts.length - 1];
                         first: true;
+                        hud-level: root.hud-level;
                         ink: Theme.material ? Theme.m3-on-surface : #F5F5F7;
                         ink2: root.ink2;
                         reduce-motion: root.reduce-motion;

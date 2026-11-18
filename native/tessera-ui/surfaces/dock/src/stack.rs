@@ -220,6 +220,9 @@ impl Part for DownloadsStack {
     }
 
     fn message(&mut self, st: &mut State, msg: Box<dyn Any + Send>) {
+        if msg.is::<tessera_core::outside::Elsewhere>() {
+            return self.close(st, true);
+        }
         let msg = match msg.downcast::<serde_json::Value>() {
             Ok(v) => return self.said(st, &v),
             Err(m) => m,
@@ -293,6 +296,11 @@ impl Part for DownloadsStack {
 
     /// Glass: the card's shape on the plugin's glass, scaled about the dock
     fn after_frame(&mut self, st: &mut State) {
+        // (open, it closes on a press on another screen too: outside.rs)
+        match self.win.as_ref() {
+            Some(w) => tessera_core::outside::open(&st.tx, STACK_NAME, &w.output),
+            None => tessera_core::outside::close(&st.tx, STACK_NAME),
+        }
         let Some(w) = self.win.as_mut() else { return };
         crate::picture::second_frame(&w.surface, &mut w.settled);
         let StackUi::Glass(u) = &w.ui else { return };

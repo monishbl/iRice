@@ -68,6 +68,8 @@ pub struct FrameStats {
     pub culled: u32,
     pub layers_full: u32,
     pub layers_partial: u32,
+    /// layer textures made in it
+    pub layers_new: u32,
     /// the frame was culled to its damage
     pub partial: bool,
 }
@@ -402,7 +404,7 @@ impl<B: GraphicsBackend> FemtoVGRenderer<B> {
                     collector.measure_frame_rendered(&mut item_renderer, metrics);
                 }
                 let c = item_renderer.counts;
-                (stats.drawn, stats.culled, stats.layers_full, stats.layers_partial) = (c.drawn, c.culled, c.layers_full, c.layers_partial);
+                (stats.drawn, stats.culled, stats.layers_full, stats.layers_partial, stats.layers_new) = (c.drawn, c.culled, c.layers_full, c.layers_partial, c.layers_new);
                 stats.items_ms = t_items.elapsed().as_secs_f32() * 1000.;
 
                 let t_flush = std::time::Instant::now();

@@ -38,6 +38,7 @@ pub mod items;
 pub mod menus;
 pub mod settings;
 pub mod spaces;
+pub mod spring;
 
 use tessera_core::icons::glyph;
 use tessera_core::services::bluez::Bluetooth;
@@ -65,6 +66,11 @@ use std::rc::Rc;
 pub const BAR_NS: &str = "tessera:bar";
 pub const MENU_NS: &str = "tessera:barmenu";
 const NAME: &str = "menubar";
+/// The HUD's level bar, px (IslandEvent's hudBar in the open island: the
+/// spring's epsilon, 0.5 px, is in these)
+const HUD_BAR_PX: f64 = 280.0;
+/// The island's size spring stops within half a pixel (and as slow)
+const ISLAND_EPSILON: f64 = 0.5;
 const BAR_H: u32 = 30;
 /// with the island: room for it to open below the bar (MenuBar.qml's 420)
 const ISLAND_H: u32 = 420;
@@ -165,6 +171,10 @@ struct BarEntry {
     alerts_key: String,
     /// the island has the keyboard (an alert clicked: Esc dismisses the newest)
     keys: bool,
+    /// the island's width and height on Qt's spring (spring.rs), stepped
+    /// once a frame by `size_tick` while they move
+    size: Option<Rc<std::cell::RefCell<(spring::Spring, spring::Spring)>>>,
+    size_tick: tessera_core::pacing::FrameTimer,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -241,6 +251,10 @@ pub struct Menubar {
     alert_kids: HashMap<u64, (Rows<ui::Ring>, Rows<SharedString>, Rows<SharedString>)>,
     /// a menu closes 5 s after the pointer left it (Popover.autoClose)
     menu_timer: slint::Timer,
+    /// the HUD's level, on Qt's spring (spring.rs: a new step keeps the
+    /// bar's speed), in pixels of HUD_BAR_PX; stepped once a frame by `hud_tick`
+    hud_spring: Option<std::rc::Rc<std::cell::RefCell<spring::Spring>>>,
+    hud_tick: tessera_core::pacing::FrameTimer,
     /// the HUD's inline list (IslandLevels): open, and its lines
     levels_open: bool,
     /// its page: "" the list, "apps" App volumes
@@ -284,6 +298,112 @@ fn luma(c: slint::Color) -> f32 {
 }
 
 impl Menubar {
+    /// The bars' input regions, glass shapes and accessibility, once a frame is drawn
+    fn after_frame_drawn(&mut self, st: &mut State) {
+        let cfg = Self::cfg(st);
+        let mut changed = false;
+        for b in &mut self.bars {
+            let h = b.ui.get_hovered();
+            if h != b.hovered {
+                b.hovered = h;
+                changed |= cfg.auto_hide;
+            }
+        }
+        if changed {
+            self.refresh(st);
+        }
+        for b in &mut self.bars {
+            let keys = b.ui.get_island_keys();
+            if keys != b.keys {
+                b.keys = keys;
+                b.surface.layer.set_keyboard_interactivity(if keys { KeyboardInteractivity::OnDemand } else { KeyboardInteractivity::None });
+                b.surface.layer.commit();
+            }
+            if !b.surface.mapped.get() {
+                continue;
+            }
+            let r = Self::region(b, &cfg);
+            let key = format!("{r:?}");
+            if key != b.region_sent {
+                st.set_input_region(&b.surface, Some(&r));
+                b.region_sent = key;
+            }
+        }
+        let kbd = st.keyboard_surface();
+        for b in &mut self.bars {
+            let f = kbd.as_ref().is_some_and(|k| Rc::ptr_eq(k, &b.surface));
+            if let Some(a) = b.a11y.as_mut() {
+                a.update(false, f);
+            }
+        }
+        if let Some(m) = self.menu.as_mut() {
+            let f = kbd.as_ref().is_some_and(|k| Rc::ptr_eq(k, &m.surface));
+            if let Some(a) = m.a11y.as_mut() {
+                a.update(false, f);
+            }
+            if m.open && m.surface.mapped.get() {
+                // the whole screen takes the pointer: a click outside the panel
+                // closes it; one on the bar's strip is passed on to the bar
+                let (w, h) = m.surface.logical_size();
+                let r = [(0, 0, w as i32, h as i32)];
+                let key = format!("{r:?}");
+                if key != m.region_sent {
+                    st.set_input_region(&m.surface, Some(&r));
+                    m.region_sent = key;
+                }
+            }
+        }
+        if !st.shell.plugin || st.shell.look.material {
+            return;
+        }
+        let look = st.shell.look.clone();
+        let strip = cfg.background || cfg.auto_hide;
+        for b in &mut self.bars {
+            if !b.surface.mapped.get() {
+                continue;
+            }
+            let ui = &b.ui;
+            let (w, _) = b.surface.logical_size();
+            let mut shapes: Vec<tessera_core::theme::GlassShape> = Vec::new();
+            if strip && ui.get_chrome() && ui.get_revealed() {
+                shapes.push(theme::shadow_margin(theme::glass_shape(&look, 0.0, 0.0, w as f32, BAR_H as f32, 0.0, 1.0, 1.0), 0.0));
+            }
+            // the island: glass under its lower rim as it opens
+            let fade = ui.get_isl_fade();
+            if cfg.island && fade > 0.01 && ui.get_revealed() {
+                shapes.push(theme::shadow_margin(theme::glass_shape(&look, ui.get_isl_x(), ui.get_isl_y(), ui.get_isl_w(), ui.get_isl_h(), ui.get_isl_r(), fade, 1.0), 16.0));
+            }
+            // the hover tip
+            let o = ui.get_tip_o();
+            if o > 0.01 {
+                shapes.push(theme::glass_shape(&look, ui.get_tip_x(), ui.get_tip_y(), ui.get_tip_w(), ui.get_tip_h(), 10.0, o, 0.35));
+            }
+            let key = format!("{shapes:?}");
+            if key != b.glass_sent {
+                st.shell.glass.set(&b.output, BAR_NS, &shapes);
+                b.glass_sent = key;
+            }
+        }
+        if let Some(m) = &mut self.menu {
+            if !m.surface.mapped.get() {
+                return;
+            }
+            let ui = &m.ui;
+            let open = ui.get_openness();
+            let s = ui.get_panel_scale();
+            let (px, py, pw, ph) = (ui.get_panel_x(), ui.get_panel_y(), ui.get_panel_width(), ui.get_panel_height());
+            // scaled about (18, 0) in the panel, as in menubar.slint
+            let x = px + (if ui.get_context() { pw / 2.0 } else { 18.0 }) * (1.0 - s);
+            let opacity = (open * 1.6).min(1.0);
+            let shape = theme::glass_shape(&look, x, py, pw * s, ph * s, 14.0 * s, opacity, 0.35);
+            let key = format!("{shape:?}");
+            if key != m.glass_sent {
+                st.shell.glass.set(&m.output, MENU_NS, if opacity > 0.002 { std::slice::from_ref(&shape) } else { &[] });
+                m.glass_sent = key;
+            }
+        }
+    }
+
     fn spec<'a>(output: &'a WlOutput, name: &'a str, height: u32, exclusive: i32, layer: Layer) -> Spec<'a> {
         Spec {
             layer,
@@ -973,6 +1093,8 @@ impl Menubar {
             }
         }
         self.bars = bars;
+        self.hud_level(st);
+        self.island_size(st);
         // the HUD's inline list: the outputs (and the apps playing) or the inputs
         let hud = self.hud_kind();
         if hud.is_none() {
@@ -1128,6 +1250,9 @@ impl Menubar {
     fn apply_theme(&mut self, st: &State) {
         for b in &mut self.bars {
             st.shell.apply_theme(&b.ui.global::<ui::Theme>());
+            // (the look's motion: its island spring is made again, at rest)
+            b.size = None;
+            b.size_tick.stop();
             b.glass_sent.clear();
             b.chips_key.clear();
             b.live_key.clear();
@@ -1504,6 +1629,136 @@ impl Menubar {
 
     fn qml_uid(&self, uid: i32) -> i64 {
         self.island.alerts.iter().find(|a| a.uid == uid as u64).map(|a| a.qml_uid).unwrap_or(0)
+    }
+
+    /// Each island's size follows where its layout wants it on Qt's spring
+    /// (IslandView.qml's SpringAnimation): a new size while it moves is a new
+    /// target, from where it is with the speed it has
+    fn island_size(&mut self, st: &State) {
+        // (Reduce motion, and battery saver, which turns it on: the new size at once)
+        let still = spring::still(&st.shell.cfg, tessera_core::saver::on());
+        let trace = tessera_core::env::is_set("FRAMELOG");
+        for b in &mut self.bars {
+            let want = (b.ui.get_isl_want_w() as f64, b.ui.get_isl_want_h() as f64);
+            let Some(sz) = b.size.clone() else {
+                let t = b.ui.global::<ui::Theme>();
+                // (Theme.motion.spring + 1.2, damping + 0.04; QML's epsilon 0.01)
+                let (k, d) = if t.get_material() || t.get_snappy() { (7.28, 0.54) } else if t.get_expressive() { (4.2, 0.26) } else { (5.0, 0.36) };
+                // (epsilon half a pixel, as the HUD's: Qt's 0.01 kept a whole bar
+                // redrawing for a second of sub-pixel tail after each change)
+                b.size = Some(Rc::new(std::cell::RefCell::new((spring::Spring::at(want.0, k, d, ISLAND_EPSILON), spring::Spring::at(want.1, k, d, ISLAND_EPSILON)))));
+                b.ui.set_isl_spring_w(want.0 as f32);
+                b.ui.set_isl_spring_h(want.1 as f32);
+                continue;
+            };
+            {
+                let mut s = sz.borrow_mut();
+                if (s.0.target() - want.0).abs() < 0.01 && (s.1.target() - want.1).abs() < 0.01 {
+                    continue;
+                }
+                if tessera_core::env::is_set("DEBUG") && (s.0.moving() || s.1.moving()) {
+                    eprintln!("debug: island {} size retargeted while moving: {:.0}x{:.0} -> {:.0}x{:.0}", b.output, s.0.target(), s.1.target(), want.0, want.1);
+                }
+                // (a pixel or less, at rest: a text's width changed under the pill;
+                // no animation worth a frame for it)
+                let small = !s.0.moving() && !s.1.moving() && (s.0.target() - want.0).abs() <= 1.0 && (s.1.target() - want.1).abs() <= 1.0;
+                if still || small {
+                    s.0.jump(want.0);
+                    s.1.jump(want.1);
+                    b.size_tick.stop();
+                    b.ui.set_isl_spring_w(want.0 as f32);
+                    b.ui.set_isl_spring_h(want.1 as f32);
+                    continue;
+                }
+                s.0.retarget(want.0);
+                s.1.retarget(want.1);
+            }
+            if b.size_tick.running() {
+                continue; // (the running tick carries it to the new size)
+            }
+            let ui = b.ui.as_weak();
+            let out = b.output.clone();
+            let mut last = std::time::Instant::now();
+            let mut shown = (b.ui.get_isl_spring_w(), b.ui.get_isl_spring_h());
+            b.size_tick.start_while(move || {
+                let now = std::time::Instant::now();
+                let ms = now.duration_since(last).as_secs_f64() * 1000.0;
+                last = now;
+                let mut s = sz.borrow_mut();
+                s.0.advance(ms);
+                s.1.advance(ms);
+                // (only a change that shows: a tenth of a pixel or more, or the end)
+                let (w, h) = (s.0.value() as f32, s.1.value() as f32);
+                let done = !s.0.moving() && !s.1.moving();
+                if done || (w - shown.0).abs() >= 0.1 || (h - shown.1).abs() >= 0.1 {
+                    shown = (w, h);
+                    if let Some(ui) = ui.upgrade() {
+                        ui.set_isl_spring_w(w);
+                        ui.set_isl_spring_h(h);
+                    }
+                }
+                if trace {
+                    let t = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0.0, |d| d.as_secs_f64());
+                    eprintln!("framelog spring island@{out} {t:.6} +{ms:.1} {:.1}x{:.1}", s.0.value(), s.1.value());
+                }
+                s.0.moving() || s.1.moving()
+            });
+        }
+    }
+
+    /// The HUD's level bar follows its value on Qt's spring: a step while
+    /// it moves retargets it (the speed kept), never starts it over
+    fn hud_level(&mut self, st: &State) {
+        let want = self.island.alerts.iter().find(|a| a.kind() == "hud" && !a.leaving).map(|a| a.event["value"].as_f64().unwrap_or(0.0).clamp(0.0, 1.0) * HUD_BAR_PX);
+        let Some(to) = want else {
+            if self.hud_spring.take().is_some() {
+                self.hud_tick.stop();
+            }
+            return;
+        };
+        let still = st.shell.look.material || spring::still(&st.shell.cfg, tessera_core::saver::on());
+        let set = |bars: &[BarEntry], v: f64| {
+            for b in bars {
+                b.ui.set_hud_level((v / HUD_BAR_PX) as f32);
+            }
+        };
+        let Some(sp) = self.hud_spring.clone() else {
+            // (a new HUD: its bar starts at the level, as the QML's binding does)
+            self.hud_spring = Some(std::rc::Rc::new(std::cell::RefCell::new(spring::Spring::at(to, 5.0, 0.4, 0.5))));
+            set(&self.bars, to);
+            return;
+        };
+        if (sp.borrow().target() - to).abs() < 1e-6 {
+            // (at rest: a bar made since, another screen's, gets it too; the same value changes nothing)
+            if !sp.borrow().moving() {
+                set(&self.bars, sp.borrow().value());
+            }
+            return;
+        }
+        if still {
+            sp.borrow_mut().jump(to);
+            self.hud_tick.stop();
+            set(&self.bars, to);
+            return;
+        }
+        let was_moving = sp.borrow().moving() && self.hud_tick.running();
+        sp.borrow_mut().retarget(to);
+        if was_moving {
+            return; // (the running tick carries it to the new target)
+        }
+        let bars: Vec<slint::Weak<ui::Bar>> = self.bars.iter().map(|b| b.ui.as_weak()).collect();
+        let mut last = std::time::Instant::now();
+        self.hud_tick.start_while(move || {
+            let now = std::time::Instant::now();
+            let mut s = sp.borrow_mut();
+            s.advance(now.duration_since(last).as_secs_f64() * 1000.0);
+            last = now;
+            let v = (s.value() / HUD_BAR_PX) as f32;
+            for b in bars.iter().filter_map(|w| w.upgrade()) {
+                b.set_hud_level(v);
+            }
+            s.moving()
+        });
     }
 
     /// The HUD showing: volume | mic | brightness
@@ -2366,6 +2621,8 @@ impl Part for Menubar {
             live_key: String::new(),
             alerts_key: String::new(),
             keys: false,
+            size: None,
+            size_tick: Default::default(),
         });
         self.refresh(st);
     }
@@ -2537,6 +2794,13 @@ impl Part for Menubar {
     }
 
     fn message(&mut self, st: &mut State, msg: Box<dyn Any + Send>) {
+        // (a press on another screen: the open menu closes, as one outside it here)
+        if msg.is::<tessera_core::outside::Elsewhere>() {
+            if self.menu.as_ref().is_some_and(|m| m.open) {
+                self.close_menu(st);
+            }
+            return;
+        }
         // `qs ipc call island next|previous` (the host tells it): the focus moves
         let msg = match msg.downcast::<serde_json::Value>() {
             Ok(v) => {
@@ -2622,108 +2886,16 @@ impl Part for Menubar {
     /// The pointer (auto-hide), the input region, the glass shapes for the
     /// plugin (the strip, the island, the tip, the menu), then accessibility
     fn after_frame(&mut self, st: &mut State) {
-        let cfg = Self::cfg(st);
-        let mut changed = false;
-        for b in &mut self.bars {
-            let h = b.ui.get_hovered();
-            if h != b.hovered {
-                b.hovered = h;
-                changed |= cfg.auto_hide;
-            }
+        // (an open menu closes on a press on another screen too: outside.rs)
+        match self.menu.as_ref().filter(|m| m.open) {
+            Some(m) => tessera_core::outside::open(&st.tx, NAME, &m.output),
+            None => tessera_core::outside::close(&st.tx, NAME),
         }
-        if changed {
-            self.refresh(st);
-        }
-        for b in &mut self.bars {
-            let keys = b.ui.get_island_keys();
-            if keys != b.keys {
-                b.keys = keys;
-                b.surface.layer.set_keyboard_interactivity(if keys { KeyboardInteractivity::OnDemand } else { KeyboardInteractivity::None });
-                b.surface.layer.commit();
-            }
-            if !b.surface.mapped.get() {
-                continue;
-            }
-            let r = Self::region(b, &cfg);
-            let key = format!("{r:?}");
-            if key != b.region_sent {
-                st.set_input_region(&b.surface, Some(&r));
-                b.region_sent = key;
-            }
-        }
-        let kbd = st.keyboard_surface();
-        for b in &mut self.bars {
-            let f = kbd.as_ref().is_some_and(|k| Rc::ptr_eq(k, &b.surface));
-            if let Some(a) = b.a11y.as_mut() {
-                a.update(false, f);
-            }
-        }
-        if let Some(m) = self.menu.as_mut() {
-            let f = kbd.as_ref().is_some_and(|k| Rc::ptr_eq(k, &m.surface));
-            if let Some(a) = m.a11y.as_mut() {
-                a.update(false, f);
-            }
-            if m.open && m.surface.mapped.get() {
-                // the whole screen takes the pointer: a click outside the panel
-                // closes it; one on the bar's strip is passed on to the bar
-                let (w, h) = m.surface.logical_size();
-                let r = [(0, 0, w as i32, h as i32)];
-                let key = format!("{r:?}");
-                if key != m.region_sent {
-                    st.set_input_region(&m.surface, Some(&r));
-                    m.region_sent = key;
-                }
-            }
-        }
-        if !st.shell.plugin || st.shell.look.material {
-            return;
-        }
-        let look = st.shell.look.clone();
-        let strip = cfg.background || cfg.auto_hide;
-        for b in &mut self.bars {
-            if !b.surface.mapped.get() {
-                continue;
-            }
-            let ui = &b.ui;
-            let (w, _) = b.surface.logical_size();
-            let mut shapes: Vec<tessera_core::theme::GlassShape> = Vec::new();
-            if strip && ui.get_chrome() && ui.get_revealed() {
-                shapes.push(theme::shadow_margin(theme::glass_shape(&look, 0.0, 0.0, w as f32, BAR_H as f32, 0.0, 1.0, 1.0), 0.0));
-            }
-            // the island: glass under its lower rim as it opens
-            let fade = ui.get_isl_fade();
-            if cfg.island && fade > 0.01 && ui.get_revealed() {
-                shapes.push(theme::shadow_margin(theme::glass_shape(&look, ui.get_isl_x(), ui.get_isl_y(), ui.get_isl_w(), ui.get_isl_h(), ui.get_isl_r(), fade, 1.0), 16.0));
-            }
-            // the hover tip
-            let o = ui.get_tip_o();
-            if o > 0.01 {
-                shapes.push(theme::glass_shape(&look, ui.get_tip_x(), ui.get_tip_y(), ui.get_tip_w(), ui.get_tip_h(), 10.0, o, 0.35));
-            }
-            let key = format!("{shapes:?}");
-            if key != b.glass_sent {
-                st.shell.glass.set(&b.output, BAR_NS, &shapes);
-                b.glass_sent = key;
-            }
-        }
-        if let Some(m) = &mut self.menu {
-            if !m.surface.mapped.get() {
-                return;
-            }
-            let ui = &m.ui;
-            let open = ui.get_openness();
-            let s = ui.get_panel_scale();
-            let (px, py, pw, ph) = (ui.get_panel_x(), ui.get_panel_y(), ui.get_panel_width(), ui.get_panel_height());
-            // scaled about (18, 0) in the panel, as in menubar.slint
-            let x = px + (if ui.get_context() { pw / 2.0 } else { 18.0 }) * (1.0 - s);
-            let opacity = (open * 1.6).min(1.0);
-            let shape = theme::glass_shape(&look, x, py, pw * s, ph * s, 14.0 * s, opacity, 0.35);
-            let key = format!("{shape:?}");
-            if key != m.glass_sent {
-                st.shell.glass.set(&m.output, MENU_NS, if opacity > 0.002 { std::slice::from_ref(&shape) } else { &[] });
-                m.glass_sent = key;
-            }
-        }
+        self.after_frame_drawn(st);
+        // (the island's next size, after this frame's glass shapes went out:
+        // set before them, the glass took the size a frame ahead of the
+        // island it's under, and the island flickered as it closed)
+        self.island_size(st);
     }
 
     fn a11y(&mut self) -> Vec<&mut crate::a11y::A11y> {
