@@ -128,9 +128,12 @@ if [[ -z "$tty_ctl" && -d "$RUN/hypr/$SIG" ]]; then
     flock -w 10 6
 fi
 
+# (a repair or an update's restart isn't a failed start: the standalone
+# count goes, and the shell gets 6 s for its orderly exit, 18 Nov)
+rm -f "${XDG_STATE_HOME:-$HOME/.local/state}/tessera/standalone-starts"
 if [[ ${#mine[@]} -gt 0 ]]; then
     kill "${mine[@]}" 2>/dev/null
-    for _ in $(seq 20); do
+    for _ in $(seq 60); do
         sleep 0.1
         left=()
         for p in "${mine[@]}"; do kill -0 "$p" 2>/dev/null && left+=("$p"); done

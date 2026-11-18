@@ -339,10 +339,11 @@ fn main() {
     if standalone {
         tessera_core::host::set_standalone(tx.clone());
         // (launch-shell.sh counts standalone starts: a crash is retried once,
-        // a second start that didn't last is the QML fallback. Up 5 minutes,
-        // this one counts as good: the count and the fallback's note go)
+        // a second start that didn't last is the QML fallback. Up a minute,
+        // this one counts as good: the count and the fallback's note go.
+        // 18 Nov: 5 minutes let restarts and reboots inside that window add up)
         std::thread::spawn(|| {
-            std::thread::sleep(std::time::Duration::from_secs(300));
+            std::thread::sleep(std::time::Duration::from_secs(60));
             let state = tessera_core::util::xdg("XDG_STATE_HOME", ".local/state");
             let _ = std::fs::remove_file(state.join("tessera/standalone-starts"));
             let _ = std::fs::remove_file(state.join("tessera/fallback"));
@@ -520,7 +521,8 @@ fn no_gl(e: &str, standalone: bool) -> ! {
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".local/state"));
     let _ = std::fs::create_dir_all(state.join("tessera"));
-    let _ = std::fs::write(state.join("tessera/standalone-starts"), "2\n");
+    // (with this session's name: launch-shell.sh starts the count again on a new login)
+    let _ = std::fs::write(state.join("tessera/standalone-starts"), format!("2\n{}\n", std::env::var("HYPRLAND_INSTANCE_SIGNATURE").unwrap_or_default()));
     // (the QML fallback shows why: modules/fallback)
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
     let _ = std::fs::write(state.join("tessera/fallback"), format!("The Rust shell can't draw on this computer's graphics (EGL: {})\n{now}\n{}\n", e.chars().take(120).collect::<String>(), std::env::var("HYPRLAND_INSTANCE_SIGNATURE").unwrap_or_default()));

@@ -139,9 +139,14 @@ start() {
 stop() {
     local pids
     pids="$(shell_pids)"
+    # (a stop asked for, an update's or a restart's, isn't a failed start:
+    # 18 Nov a shell killed hard mid-exit kept the count, and the next start
+    # fell back to the QML shell as "crashed twice")
+    rm -f "${XDG_STATE_HOME:-$HOME/.local/state}/tessera/standalone-starts"
     [[ -z "$pids" ]] && return 0
     kill $pids 2>/dev/null
-    for _ in $(seq 20); do
+    # (6 s: its own orderly exit flushes for up to 2 s before it goes)
+    for _ in $(seq 60); do
         sleep 0.1
         pids="$(for p in $pids; do kill -0 "$p" 2>/dev/null && echo "$p"; done)"
         [[ -z "$pids" ]] && return 0
