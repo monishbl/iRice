@@ -21,6 +21,9 @@
 		play normally.
 
 		  Footage: capture/capture.sh calm islands fix2 mat fix3 … fix9   (hidden sandbox)
+		           capture/takes-rust.sh   (18 Nov recut: the island's note and volume,
+		                                    the Halo lock screen, Material's Quick Settings,
+		                                    from the Rust shell; snap/l.jpg and q.jpg again)
 		           capture/make-frames.sh                               (→ frames/)
 		  Preview: from site/film:  python3 -m http.server 4173
 		           http://localhost:4173/tessera/film.html?player=1
@@ -1363,7 +1366,7 @@
 			const $ = f.$;
 
 			/* ═══ footage: real iRice, a frame at a time (clips.sh) ═══════════ */
-			const CLIPN = { charge: 90, note: 116, wifi: 90, vol: 92, music: 165, fastpair: 461, card: 501, mswitch: 290, mqs: 107, mlock: 75, circle: 115, livetext: 198, ask: 295, chats: 130, colour: 237, spotask: 312, lockseq: 316, glassramp: 129 };
+			const CLIPN = { charge: 90, note: 118, wifi: 90, vol: 106, music: 165, fastpair: 461, card: 501, mswitch: 290, mqs: 39, mlock: 75, circle: 115, livetext: 198, ask: 295, chats: 130, colour: 237, spotask: 312, lockseq: 278, glassramp: 129 };
 			/* Tessera's own takes (re-recorded with generic names, and the new chapters) are in
 				   frames/; the rest are the original film's, in ../hero/frames/ */
 				const OWN = new Set(['note', 'fastpair', 'card', 'circle', 'livetext', 'ask', 'chats', 'colour', 'mswitch', 'mqs', 'spotask', 'lockseq', 'glassramp', 'vol']);
@@ -2046,7 +2049,7 @@
 			const LK = 57.6, SLD = LK + 0.35;
 			f.show('#lk', LK - 0.95, 62.45);
 			f.tw('#lk', [[LK - 1.0, { x: 960, y: 540, s: 1, o: 1 }], [61.95, { s: 1, o: 1 }], [62.45, { s: 1.04, o: 0 }, 'i']]);
-			play('#lkImg', 'lockseq', [[LK - 1.0, 0.1], [SLD, 1.38], [SLD + 0.01, 1.47], [LK + 1.25, 3.2], [LK + 1.95, 4.15], [LK + 2.15, 4.95], [LK + 2.85, 6.4], [LK + 2.95, 6.65], [LK + 3.55, 7.85], [LK + 3.65, 8.0], [62.45, 8.9]], LK - 1.0, 62.45);
+			play('#lkImg', 'lockseq', [[LK - 1.0, 0.1], [SLD, 1.55], [SLD + 0.01, 1.8], [LK + 1.25, 3.3], [LK + 1.95, 4.2], [LK + 2.15, 4.97], [LK + 2.85, 6.08], [LK + 2.95, 6.2], [LK + 3.55, 7.6], [LK + 3.65, 7.85], [62.45, 8.75]], LK - 1.0, 62.45);
 			/* the slide: the widgets out to the left, the clock in from the right */
 			f.fx((t) => {
 				const p = E.io(ramp(t, SLD, SLD + 0.45)), on = t >= SLD && t < SLD + 0.45;
@@ -2054,8 +2057,9 @@
 				$('#lkSlide').style.transform = `translateX(${(-1920 * p).toFixed(1)}px)`;
 				$('#lkImg').style.transform = on ? `translateX(${(1920 * (1 - p)).toFixed(1)}px)` : '';
 			});
-			/* (the field: the reader's glyph at 1064, 956) */
-			inner('#lkIn', keys([[LK - 1.0, { sx: 960, sy: 540, k: 1.04 }], [LK + 1.6, { k: 1.0 }, 'lin'], [LK + 2.3, { sx: 1000, sy: 870, k: 2.6 }, 'io'], [LK + 3.4, { sx: 1010, sy: 875, k: 2.7 }, 'lin'], [LK + 3.75, { sx: 1040, sy: 905, k: 3.4 }, 'io'], [62.45, { k: 3.5 }, 'lin']]));
+			/* (the Halo island: the field's glass round the face or the finger, at 962, 915,
+			   the account picture above it) */
+			inner('#lkIn', keys([[LK - 1.0, { sx: 960, sy: 540, k: 1.04 }], [LK + 1.6, { k: 1.0 }, 'lin'], [LK + 2.3, { sx: 962, sy: 822, k: 2.4 }, 'io'], [LK + 3.4, { sx: 962, sy: 826, k: 2.5 }, 'lin'], [LK + 3.75, { sx: 962, sy: 835, k: 2.8 }, 'io'], [62.45, { k: 2.9 }, 'lin']]));
 			title('#hSB', LK - 0.6, LK + 1.65, 960, 150);
 			f.tw('#hSB', [[LK + 1.45, { o: 1 }], [LK + 1.65, { o: 0 }, 'i']]);
 			title('#hUn', LK + 2.05, 62.2, 960, 150);
