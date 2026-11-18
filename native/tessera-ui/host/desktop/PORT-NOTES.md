@@ -139,10 +139,21 @@ update (a new `due` clears `notified`), remove (returns the item with its
 place) / restore, `on(day)`, due label, overdue, sorted, the 30 s notify of
 timed to-dos ("Reminders", "Due now", not for ones over an hour old).
 Calls: `todos.toggle [key]`, `todo [key]`, `todoAdd [text]`.
-Differs: Google / Microsoft To Do tasks are the system host's. Adding while
-`google.taskListId` is set only tells you (notify-send "Task not added");
-toggling a non-local key is logged.
-Check: Today screen: tick a to-do; `tessera-ui ipc call ...` n/a. Desktop
+The accounts' tasks (18 Nov, F6): Google Tasks ("google/…"), Microsoft To Do
+and iCloud Reminders ("cloud/…") follow yours in `list()` (core
+services/accounts.rs, from the system host's Google and CloudAccounts).
+Adding to the list `google.taskListId` names, ticking, renaming, moving and
+removing (with Undo) ask `google.addTask|updateTask|removeTask|restoreTask` or
+`cloudaccounts.…` with the task as the system host published it. What can't
+be done says what to do instead (a notification "Task not added", or the
+Notification Center editor's error): Google Tasks and Microsoft To Do keep a
+date but no time (Google refuses a time, as the QML did; Microsoft keeps the
+date), iCloud Reminders keep the time; a list that went away or Google
+signed out points to Settings → Calendar / Google. An account's timed task
+(iCloud) says "Due now" once a session.
+Check: sandbox with TESSERA_FAKE_ACCOUNTS (sandbox/tools/fake-accounts.py):
+Notification Center's To-do lists "Pay rent", "Buy milk", "Call mum" after
+yours; tick one: requests.log has the taskUpdate/taskPatch. Desktop
 Reminders widget: add "pay rent tomorrow 5pm": it appears due tomorrow 5 PM.
 
 ### Timers.qml + Alarms.qml -> `timers.rs`
@@ -163,10 +174,20 @@ tab counts down; `skip` posts "Time for a break" (island off) or the island.
 Ported: your events' writes (`events.json`, mode 600), alerts every 30 s
 (once, within 10 minutes of the alert time), `eventsOn`, `timeText`,
 `dailyIn`/`seriesOf`, and ipc `calendar remind "<text>"` / `refresh`.
-Differs: accounts' calendars (Google, iCloud, Microsoft 365) are the system
-host's; subscription events have no VALARM/location/notes in the reader, so
-they alert with the default alert (10 min, none all-day) and have no location
-line. Subscriptions over the network are not fetched here.
+The accounts' calendars (18 Nov, F6): Google, iCloud and Microsoft 365
+events are in core's `Calendar::between` (each with its calendar's colour,
+name and account), so Notification Center, Today, the desktop widgets, the
+lock's calendar, Search and the alerts have them. The editor changes, moves
+and deletes (Undo 8 s) those whose calendar lets you (`google.updateEvent
+[e, fields, every]`, `cloudaccounts.updateEvent [{source}, fields]`, …); a
+repeating Google event asks "this or all?"; repeating iCloud/Outlook events
+and read-only calendars say where to change them. New events can go to any
+writable shown calendar (`targets`; the choice is kept in
+`google.newEventCalendar`, as the QML did).
+Differs: an account's timed event alerts with its own alarm (iCloud's
+VALARM, read now for subscriptions too, with LOCATION) or the default alert;
+the QML gave Google's and Microsoft's events none. Subscriptions have no
+notes in the reader. Subscriptions over the network are not fetched here.
 Check: `tessera-ui ipc call calendar remind "call mum in 1 minute"` returns
 "Call mum — Fri 9:41 AM"; a notification arrives at that time.
 
@@ -179,7 +200,8 @@ to the Today surface (`open, effect, screen, options, motion, accounts`).
 Ipc: `today preview <bloom|shrink|drop|"">`, `today close`. Calls:
 `today.close`, `today.pin`, `today.set`, `today [options?]`, `today.show [fx]`
 (for Spotlight's "Show Today").
-Differs: `accounts` is `{events:[],todos:[]}` (system host); `Wallpaper.started`
+Differs: `accounts` is `{events:[],todos:[]}`: the accounts' items reach the
+Today surface inside the Calendar and Todos it reads; `Wallpaper.started`
 taken as true; "locked" comes from the shell state `locked`; motion scale 1.
 Check: `tessera-ui ipc call today preview drop`: the morning screen opens with
 the drop entrance and the chime; Esc closes; Pin for today puts a Today widget

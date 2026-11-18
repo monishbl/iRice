@@ -45,6 +45,23 @@ struct Mirror {
     seen: Option<u64>,
     /// INBOUND's values as last put on the bus
     inbound: [Value; INBOUND.len()],
+    /// Google's and CloudAccounts' bus generations as last handed to core
+    /// (services::accounts: their events and tasks join the calendar and
+    /// the to-dos)
+    accounts_seen: Option<(u64, u64)>,
+}
+
+impl Mirror {
+    /// The accounts' events and tasks for every calendar and to-do list,
+    /// when Google's or CloudAccounts' state changed (`force`: the settings did)
+    fn accounts(&mut self, cfg: &Value, force: bool) {
+        let seen = (bus::generation_of("google"), bus::generation_of("cloudaccounts"));
+        if !force && self.accounts_seen == Some(seen) {
+            return;
+        }
+        self.accounts_seen = Some(seen);
+        tessera_core::services::accounts::set(tessera_core::services::accounts::from_bus(&bus::get("google"), &bus::get("cloudaccounts"), cfg));
+    }
 }
 
 use serde_json::Value;
@@ -194,12 +211,15 @@ impl Service for Mirror {
             return;
         }
         self.seen = Some(g);
+        self.accounts(h.cfg(), false);
         self.publish(h);
     }
     fn data(&mut self, h: &mut tessera_core::host::Host, _what: std::any::TypeId) {
         self.publish(h);
     }
     fn config_changed(&mut self, h: &mut tessera_core::host::Host) {
+        let cfg = h.cfg().clone();
+        self.accounts(&cfg, true);
         self.publish(h);
     }
     fn message(&mut self, h: &mut tessera_core::host::Host, msg: Box<dyn std::any::Any + Send>) {

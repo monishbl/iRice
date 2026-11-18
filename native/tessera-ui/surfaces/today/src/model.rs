@@ -259,6 +259,7 @@ pub fn accounts(v: &serde_json::Value) -> (Vec<Event>, Vec<Todo>) {
                     end: n(&e["end"]).max(n(&e["start"])),
                     all_day: e["allDay"].as_bool().unwrap_or(false),
                     color: e["color"].as_str().unwrap_or("").to_string(),
+                    ..Default::default()
                 })
                 .collect()
         })
@@ -331,7 +332,7 @@ mod tests {
     #[test]
     fn the_days_rows() {
         let now = make(2026, 10, 5, 13, 0, 0);
-        let ev = |t: &str, s: i64, e: i64, all: bool| Event { key: t.into(), title: t.into(), start: s, end: e, all_day: all, color: String::new() };
+        let ev = |t: &str, s: i64, e: i64, all: bool| Event { key: t.into(), title: t.into(), start: s, end: e, all_day: all, ..Default::default() };
         let mine = vec![ev("Lunch", make(2026, 10, 5, 12, 0, 0), make(2026, 10, 5, 12, 30, 0), false)];
         let (a, b) = calendar::day_bounds(now);
         let acct = [ev("Holiday", a, b, true), ev("Review", make(2026, 10, 5, 15, 0, 0), make(2026, 10, 5, 16, 0, 0), false), ev("Tomorrow", b + 3_600_000, b + 7_200_000, false)];

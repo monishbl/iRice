@@ -6,13 +6,18 @@
 //! COUNT, UNTIL, BYDAY, BYMONTHDAY, BYMONTH, BYSETPOS, WKST; EXDATE and moved
 //! instances; a rule with other parts shows its first date only).
 //!
-//! Not here, on purpose: subscriptions over the network and the accounts'
-//! calendars (Google, iCloud, Microsoft 365). They need the accounts' sign-in,
-//! which only the QML shell holds; a surface that shows them gets them from
-//! the shell (Today: RustUi.tell's `accounts`).
+//! The accounts' calendars (Google, iCloud, Microsoft 365) join in
+//! standalone: the system host reads them (its Google and CloudAccounts
+//! services hold the sign-in) and hands them over as services::accounts::Data
+//! (accounts.rs), which every `Calendar` carries (`accounts`) and `between`
+//! includes, as Calendar.between did with Google.events and
+//! CloudAccounts.between. Under the QML shell `accounts` stays empty (it holds
+//! the sign-in there; Today gets its items from RustUi.tell's `accounts`).
+//! Not here: subscriptions over the network.
 //!
 //! The files are watched (their times, every 2 s); a change sends a new
-//! `Calendar` (Msg::Data). A surface asks `Calendar::between(from, to)`.
+//! `Calendar` (Msg::Data), and so does a change to the accounts' items. A
+//! surface asks `Calendar::between(from, to)`.
 
 use crate::Msg;
 use smithay_client_toolkit::reexports::calloop::channel::Sender;
@@ -80,7 +85,7 @@ pub fn make_utc(y: i32, mo: i32, d: i32, h: i32, mi: i32, s: i32) -> i64 {
 // ── Events ───────────────────────────────────────────────────────────────
 
 /// One occurrence, as Calendar.between gives it (times in ms)
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Event {
     pub key: String,
     pub title: String,
@@ -89,6 +94,21 @@ pub struct Event {
     pub all_day: bool,
     /// the calendar's colour ("" for your own)
     pub color: String,
+    /// An account's event (Google, iCloud, Microsoft 365): its calendar's
+    /// name and the account ("jane@gmail.com", "iCloud", "Microsoft 365");
+    /// both "" for yours and the subscriptions'
+    pub calendar: String,
+    pub account: String,
+    pub location: String,
+    pub notes: String,
+    /// its own alert in minutes before (None: the default alert)
+    pub alert: Option<i64>,
+    /// an account's event you may change from here
+    pub writable: bool,
+    /// one occurrence of a repeating account event
+    pub recurring: bool,
+    /// an account's event's series (Calendar.seriesOf); "" none
+    pub series: String,
 }
 
 /// Your own event (events.json)
@@ -130,6 +150,9 @@ pub struct IcsEvent {
     pub exdates: Vec<i64>,
     pub recurrence: Option<i64>,
     pub cancelled: bool,
+    pub location: String,
+    /// the first VALARM's TRIGGER before the start, in minutes
+    pub alert: Option<i64>,
 }
 
 /// What the service reads: your events and the file subscriptions, parsed
@@ -139,6 +162,8 @@ pub struct Calendar {
     pub sources: Vec<Source>,
     /// parsed events by subscription url (files only)
     pub parsed: HashMap<String, Vec<IcsEvent>>,
+    /// the accounts' events and tasks (standalone; empty otherwise)
+    pub accounts: std::sync::Arc<super::accounts::Data>,
 }
 
 impl Calendar {
@@ -149,7 +174,7 @@ impl Calendar {
         for e in &self.local {
             let end = if e.end != 0 { e.end } else { e.start };
             if e.start < to && (end > from || ((e.end == 0 || e.end == e.start) && e.start >= from)) {
-                out.push(Event { key: format!("local:{}", e.id), title: e.title.clone(), start: e.start, end, all_day: e.all_day, color: String::new() });
+                out.push(Event { key: format!("local:{}", e.id), title: e.title.clone(), start: e.start, end, all_day: e.all_day, ..Default::default() });
             }
         }
         for src in &self.sources {
@@ -158,10 +183,11 @@ impl Calendar {
             }
             for ev in self.parsed.get(&src.url).map(Vec::as_slice).unwrap_or(&[]) {
                 for (s, e) in expand(ev, from, to) {
-                    out.push(Event { key: format!("{}|{}|{}", src.url, ev.uid, s), title: ev.title.clone(), start: s, end: e, all_day: ev.all_day, color: src.color.clone() });
+                    out.push(Event { key: format!("{}|{}|{}", src.url, ev.uid, s), title: ev.title.clone(), start: s, end: e, all_day: ev.all_day, color: src.color.clone(), location: ev.location.clone(), alert: ev.alert, ..Default::default() });
                 }
             }
         }
+        out.extend(super::accounts::between(&self.accounts, from, to));
         sort(&mut out);
         out
     }
@@ -183,12 +209,19 @@ pub fn name_of(c: &Calendar, e: &Event) -> String {
     if e.key.starts_with("local:") {
         return "Reminders".into();
     }
+    if !e.calendar.is_empty() {
+        return e.calendar.clone();
+    }
     let url = e.key.rsplitn(3, '|').nth(2).unwrap_or("");
     c.sources.iter().find(|s| s.url == url).map(|s| s.name.clone()).unwrap_or_default()
 }
 
 /// Calendar.seriesOf: the event's series (its key without the instance)
 pub fn series_of(e: &Event) -> String {
+    // (an account's: its own series, "" for a single event)
+    if !e.account.is_empty() {
+        return e.series.clone();
+    }
     e.key.rfind('|').map(|i| e.key[..i].to_string()).unwrap_or_default()
 }
 
@@ -320,6 +353,20 @@ pub fn parse_ics(text: &str) -> Vec<IcsEvent> {
             in_alarm = false;
             continue;
         }
+        if in_alarm {
+            // (the first alarm before the start, "TRIGGER:-PT15M"; one at a
+            // set time or from the end isn't an alert here)
+            if e.alert.is_none() {
+                if let Some((params, v)) = line.strip_prefix("TRIGGER").and_then(|r| r.split_once(':')) {
+                    if !params.contains("VALUE=DATE-TIME") && !params.contains("RELATED=END") {
+                        if let Some(m) = duration(v.trim()).filter(|m| *m <= 0) {
+                            e.alert = Some(-m);
+                        }
+                    }
+                }
+            }
+            continue;
+        }
         if line == "END:VEVENT" {
             if *started {
                 if !has_end {
@@ -339,9 +386,6 @@ pub fn parse_ics(text: &str) -> Vec<IcsEvent> {
             ev = None;
             continue;
         }
-        if in_alarm {
-            continue;
-        }
         let Some(colon) = line.find(':') else { continue };
         let (head, value) = (&line[..colon], &line[colon + 1..]);
         let name = head.split(';').next().unwrap_or("").to_uppercase();
@@ -349,6 +393,7 @@ pub fn parse_ics(text: &str) -> Vec<IcsEvent> {
         match name.as_str() {
             "UID" => e.uid = value.to_string(),
             "SUMMARY" => e.title = unescape(value),
+            "LOCATION" => e.location = unescape(value),
             "DTSTART" => {
                 let (d, all) = ics_date(value, params);
                 e.start = d;
@@ -665,6 +710,7 @@ fn read_all() -> (Calendar, Vec<(PathBuf, Option<SystemTime>)>) {
         local: std::fs::read_to_string(&events).map(|t| read_local(&t)).unwrap_or_default(),
         sources: std::fs::read_to_string(&sources).map(|t| read_sources(&t)).unwrap_or_default(),
         parsed: HashMap::new(),
+        accounts: Default::default(),
     };
     let mut watched = vec![(events.clone(), mtime(&events)), (sources.clone(), mtime(&sources))];
     for s in cal.sources.iter().filter(|s| s.enabled && s.is_file()) {
@@ -681,8 +727,9 @@ fn read_all() -> (Calendar, Vec<(PathBuf, Option<SystemTime>)>) {
 
 pub fn spawn(tx: Sender<Msg>) {
     std::thread::spawn(move || {
+        // (sent with the accounts' items: accounts.rs keeps both halves)
         let (cal, mut watched) = read_all();
-        if tx.send(Msg::Data(Box::new(cal))).is_err() {
+        if !super::accounts::calendar_read(cal, &tx) {
             return;
         }
         loop {
@@ -690,7 +737,7 @@ pub fn spawn(tx: Sender<Msg>) {
             if watched.iter().any(|(p, t)| mtime(p) != *t) {
                 let (cal, w) = read_all();
                 watched = w;
-                if tx.send(Msg::Data(Box::new(cal))).is_err() {
+                if !super::accounts::calendar_read(cal, &tx) {
                     return;
                 }
             }

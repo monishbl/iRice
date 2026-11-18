@@ -3,8 +3,10 @@
 //! watched (its time, every second); a change sends new `Todos` (Msg::Data).
 //!
 //! Changing one (ticking it off) is the shell's: it owns state.json while it
-//! runs and the accounts' tasks (Google Tasks, Microsoft To Do). A surface
-//! asks it (`shell::ask("todos.toggle", [key])`) and sees the change here.
+//! runs and the accounts' tasks (Google Tasks, Microsoft To Do, iCloud
+//! Reminders). A surface asks it (`shell::ask("todos.toggle", [key])`) and
+//! sees the change here. Standalone, `list` has the accounts' open tasks
+//! after yours (keys "google/…", "cloud/…": services::accounts).
 
 use crate::Msg;
 use smithay_client_toolkit::reexports::calloop::channel::Sender;
@@ -65,7 +67,7 @@ pub fn spawn(tx: Sender<Msg>) {
                 first = false;
                 seen = t;
                 let todos = std::fs::read_to_string(&path).map(|s| read(&s)).unwrap_or_default();
-                if tx.send(Msg::Data(Box::new(todos))).is_err() {
+                if !super::accounts::todos_read(todos, &tx) {
                     return;
                 }
             }

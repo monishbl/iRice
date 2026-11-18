@@ -100,6 +100,7 @@ case "${1:-help}" in
             done
             exec setsid -f "${BOXCMD[@]}" env HOME="$TESSERA_HOME" TESSERA_ARENA="$TESSERA_ARENA" TESSERA_HOST_WAYLAND="${WAYLAND_DISPLAY:-}" TESSERA_HYPRLAND="${TESSERA_HYPRLAND:-}" \
                 TESSERA_VISIBLE="${TESSERA_VISIBLE:-${IRICE_VISIBLE:-0}}" TESSERA_HOST_AUDIO="${TESSERA_HOST_AUDIO:-${IRICE_HOST_AUDIO:-0}}" \
+                TESSERA_FAKE_ACCOUNTS="${TESSERA_FAKE_ACCOUNTS:-}" \
                 "$ROOT/sandbox/inner.sh" >/dev/null 2>&1
         )
         for _ in $(seq 50); do running && [[ -d "$RT/hypr" ]] && break; sleep 0.2; done
@@ -236,6 +237,8 @@ Every command works on another identical sandbox with TESSERA_ARENA=2..19 (or IR
 Sandboxes are hidden and silent: they draw into a private headless display
 (see them with shot) and play into a silent Speakers. TESSERA_VISIBLE=1 up puts
 the window on your desktop again; TESSERA_HOST_AUDIO=1 up uses your real audio.
+TESSERA_FAKE_ACCOUNTS=<folder> up gives the Rust shell stand-in Google, iCloud and
+Microsoft 365 accounts (sandbox/tools/fake-accounts.py; never real ones).
 EOF
         ;;
 esac

@@ -10,14 +10,22 @@ an "error" when something went wrong).
     (secret-tool, the Secret Service), never to a file. Events go to the
     shell as their iCalendar text, which it reads and repeats itself (the
     same reader as subscribed calendars). Repeating events are shown, not
-    changed: change those on the iPhone.
+    changed: change those on the iPhone. Reminders lists (VTODO
+    collections) sync as task lists: open reminders, with a due date or a
+    due time; added, ticked, renamed, moved and deleted here. (Reminders
+    upgraded to Apple's newer format, iOS 13 and later, are no longer
+    shared over CalDAV, so those lists don't appear.)
   Microsoft 365: Outlook calendars and Microsoft To Do over Microsoft Graph,
     signed in through GNOME Online Accounts (its Microsoft 365 account:
     calendars and tasks read/write), so Tessera never holds a password or a
     refresh token. Graph repeats events itself (calendarView); occurrences
     of a series are shown, not changed.
 
-Requests: {"cmd": "status"} | {"cmd": "sync"} |
+Offline: a change that can't reach the server is kept in outbox.json and
+shown as made (the cache changes here); "flush", and every sync, send them
+in order. One the server turns away then is dropped and said ("dropped").
+
+Requests: {"cmd": "status"} | {"cmd": "sync"} | {"cmd": "flush"} |
   {"cmd": "connectICloud", "appleId", "password", "server"?, "cardServer"?} |
   {"cmd": "connectMicrosoft", "goa": "<GOA account path>", "identity"} |
   {"cmd": "disconnect", "account"} |
@@ -27,10 +35,12 @@ Requests: {"cmd": "status"} | {"cmd": "sync"} |
   {"cmd": "taskInsert" | "taskPatch" | "taskDelete", "account", "listId",
    "id"?, "fields"?}
   fields: {title, start, end (ms), allDay, location, notes} for events;
-  {text, done, date ("yyyy-mm-dd" or "")} for tasks.
+  {text, done, date ("yyyy-mm-dd" or ""), dueAt (ms, iCloud's due time; 0
+  none)} for tasks.
 
 What's kept (0600 in a 0700 directory, $XDG_STATE_HOME/tessera/cloud):
-accounts.json (who, never secrets) and cache.json (the last sync).
+accounts.json (who, never secrets), cache.json (the last sync) and outbox.json
+(changes made offline).
 No third-party dependencies.
 """
 import base64
@@ -310,6 +320,161 @@ def ics_props(text):
             "repeats": any(l.upper().startswith(("RRULE", "RDATE")) for l in lines)}
 
 
+def when_of(ms, all_day):
+    """{date} (local) or {dateTime} (UTC), as the shell reads Microsoft's events."""
+    if all_day:
+        return {"date": datetime.fromtimestamp(ms / 1000).strftime("%Y-%m-%d")}
+    return {"dateTime": datetime.fromtimestamp(ms / 1000, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
+
+
+def ics_unescape(s):
+    out, i = [], 0
+    while i < len(s):
+        c = s[i]
+        if c == "\\" and i + 1 < len(s):
+            n = s[i + 1]
+            out.append("\n" if n in "nN" else n)
+            i += 2
+            continue
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
+def ics_due(value, params):
+    """A reminder's DUE -> (date "yyyy-mm-dd", dueAt ms or 0 for a date).
+    A time with a TZID or none is read as local time (as the calendar does)."""
+    v = value.strip()
+    try:
+        if len(v) == 8 or "VALUE=DATE" in params.upper() and "DATE-TIME" not in params.upper():
+            d = datetime.strptime(v[:8], "%Y%m%d")
+            return d.strftime("%Y-%m-%d"), 0
+        if v.endswith("Z"):
+            d = datetime.strptime(v[:15], "%Y%m%dT%H%M%S").replace(tzinfo=timezone.utc)
+        else:
+            d = datetime.strptime(v[:15], "%Y%m%dT%H%M%S")
+    except ValueError:
+        return "", 0
+    at = int(d.timestamp() * 1000)
+    return datetime.fromtimestamp(at / 1000).strftime("%Y-%m-%d"), at
+
+
+def _vtodo_lines(text):
+    """(before, the VTODO's own lines, its nested parts by position, after)"""
+    lines = [l for l in unfold(text) if l]
+    try:
+        start = next(i for i, l in enumerate(lines) if l.upper() == "BEGIN:VTODO")
+        end = next(i for i in range(len(lines) - 1, start, -1) if lines[i].upper() == "END:VTODO")
+    except StopIteration:
+        raise Failed("That reminder isn't one Tessera can read. Change it on your iPhone or at icloud.com.") from None
+    return lines[:start + 1], lines[start + 1:end], lines[end:]
+
+
+def vtodo_props(text):
+    """A reminder: {uid, text, done, date, dueAt}"""
+    p = {"uid": "", "text": "", "done": False, "date": "", "dueAt": 0}
+    try:
+        _, body, _ = _vtodo_lines(text)
+    except Failed:
+        return p
+    depth = 0
+    for line in body:
+        up = line.upper()
+        if up.startswith("BEGIN:"):
+            depth += 1
+            continue
+        if up.startswith("END:"):
+            depth = max(0, depth - 1)
+            continue
+        if depth or ":" not in line:
+            continue
+        head, value = line.split(":", 1)
+        name = head.split(";")[0].upper()
+        if name == "UID":
+            p["uid"] = value.strip()
+        elif name == "SUMMARY":
+            p["text"] = ics_unescape(value)
+        elif name == "STATUS":
+            p["done"] = p["done"] or value.strip().upper() == "COMPLETED"
+        elif name == "COMPLETED":
+            p["done"] = True
+        elif name == "DUE":
+            p["date"], p["dueAt"] = ics_due(value, head)
+    return p
+
+
+def _due_line(fields):
+    if fields.get("dueAt"):
+        return "DUE:" + datetime.fromtimestamp(fields["dueAt"] / 1000, tz=timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    if fields.get("date"):
+        return "DUE;VALUE=DATE:" + fields["date"].replace("-", "")
+    return None
+
+
+def _status_lines(done, now):
+    return ["STATUS:COMPLETED", "COMPLETED:" + now, "PERCENT-COMPLETE:100"] if done else ["STATUS:NEEDS-ACTION"]
+
+
+def new_vtodo(uid, fields):
+    now = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Tessera//Reminders//EN", "BEGIN:VTODO", "UID:" + uid,
+             "DTSTAMP:" + now, "CREATED:" + now, "LAST-MODIFIED:" + now, "SUMMARY:" + ics_escape(fields.get("text", ""))]
+    due = _due_line(fields)
+    if due:
+        lines.append(due)
+    lines += _status_lines(bool(fields.get("done")), now)
+    lines += ["END:VTODO", "END:VCALENDAR"]
+    return "\r\n".join(fold(l) for l in lines) + "\r\n"
+
+
+def patch_vtodo(text, fields):
+    """The reminder's iCalendar text with `fields` ({text, done, date,
+    dueAt}) changed and the rest (alarms, notes, the app's own properties)
+    kept. A new due time moves an alarm set for the old one."""
+    before, body, after = _vtodo_lines(text)
+    now = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    moving = "date" in fields or "dueAt" in fields
+    new_due = _due_line(fields) if moving else None
+    out, depth = [], 0
+    for line in body:
+        up = line.upper()
+        name = re.split(r"[;:]", line, maxsplit=1)[0].upper()
+        if up.startswith("BEGIN:"):
+            depth += 1
+        elif up.startswith("END:"):
+            depth = max(0, depth - 1)
+        elif depth:
+            # (an alarm at the old due time follows it)
+            if name == "TRIGGER" and moving and "VALUE=DATE-TIME" in up and fields.get("dueAt"):
+                line = "TRIGGER;VALUE=DATE-TIME:" + datetime.fromtimestamp(fields["dueAt"] / 1000, tz=timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        else:
+            if name == "SUMMARY" and "text" in fields:
+                continue
+            if name in ("STATUS", "COMPLETED", "PERCENT-COMPLETE") and "done" in fields:
+                continue
+            if name in ("DUE", "DTSTART") and moving:
+                continue  # (a start after the new due date would be wrong)
+            if name in ("DTSTAMP", "LAST-MODIFIED"):
+                line = name + ":" + now
+            elif name == "SEQUENCE":
+                try:
+                    line = "SEQUENCE:" + str(int(line.split(":", 1)[1]) + 1)
+                except ValueError:
+                    pass
+        out.append(line)
+    # (the changed ones before the nested parts)
+    head = []
+    if "text" in fields:
+        head.append("SUMMARY:" + ics_escape(fields["text"]))
+    if "done" in fields:
+        head += _status_lines(bool(fields["done"]), now)
+    if new_due:
+        head.append(new_due)
+    at = next((i for i, l in enumerate(out) if l.upper().startswith("BEGIN:")), len(out))
+    out[at:at] = head
+    return "\r\n".join(fold(l) for l in before + out + after) + "\r\n"
+
+
 def vcards(text):
     """Contacts from vCards: [{name, emails, phones}]."""
     out = []
@@ -389,13 +554,31 @@ class Dav:
             if prop is None or prop.find("d:resourcetype/c:calendar", NS) is None:
                 continue
             comps = [c.get("name") for c in prop.findall("c:supported-calendar-component-set/c:comp", NS)]
-            if comps and "VEVENT" not in comps:
-                continue  # (reminders lists)
+            # (kind: "events", or "todos" for a Reminders list; other collections aren't shown)
+            if not comps or "VEVENT" in comps:
+                kind = "events"
+            elif "VTODO" in comps:
+                kind = "todos"
+            else:
+                continue
             privs = [p.tag.split("}")[1] for p in prop.findall("d:current-user-privilege-set/d:privilege/*", NS)]
             color = (prop.findtext("ical:calendar-color", "", NS) or "").strip()
-            out.append({"id": href, "title": prop.findtext("d:displayname", "", NS) or "Calendar",
-                        "color": color[:7] if color.startswith("#") else "",
+            out.append({"id": href, "title": prop.findtext("d:displayname", "", NS) or ("Calendar" if kind == "events" else "Reminders"),
+                        "color": color[:7] if color.startswith("#") else "", "kind": kind,
                         "writable": not privs or bool({"write", "write-content", "all"} & set(privs))})
+        return out
+
+    def todos(self, lst):
+        """A Reminders list's reminders: [{href, etag, ics}]"""
+        body = ('<c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:prop><d:getetag/><c:calendar-data/></d:prop>'
+                '<c:filter><c:comp-filter name="VCALENDAR"><c:comp-filter name="VTODO"/></c:comp-filter></c:filter></c:calendar-query>')
+        st, _, text = http("REPORT", lst, body, {"Depth": "1", "Content-Type": "application/xml; charset=utf-8"}, auth=self.auth)
+        _check(st, "the reminders")
+        out = []
+        for r in _xml(text).findall("d:response", NS):
+            ics = r.findtext(".//c:calendar-data", "", NS)
+            if ics:
+                out.append({"href": self.href(lst, r.find("d:href", NS)), "etag": r.findtext(".//d:getetag", "", NS), "ics": ics})
         return out
 
     def events(self, cal, start, end):
@@ -546,12 +729,15 @@ class Hub:
     def __init__(self):
         self.accounts = read("accounts.json", [])
         self.cache = read("cache.json", {})
+        self.outbox = read("outbox.json", [])
+        self.dropped = []
         self.secrets = Secrets()
         self.passwords = {}
 
     def save(self):
         write("accounts.json", self.accounts)
         write("cache.json", self.cache)
+        write("outbox.json", self.outbox)
 
     def account(self, aid):
         a = next((a for a in self.accounts if a["id"] == aid), None)
@@ -606,13 +792,17 @@ class Hub:
         self.accounts = [x for x in self.accounts if x["id"] != aid]
         for k in ("calendars", "events", "taskLists", "tasks", "contacts"):
             self.cache[k] = [x for x in self.cache.get(k, []) if x.get("account") != aid]
+        self.outbox = [r for r in self.outbox if r.get("account") != aid]
         self.save()
 
     # Syncing: all of an account, or nothing of it (the last good copy stays)
     def sync(self, only=None, contacts=True):
         """Every account, or `only` that one (after a change to it: another
         account's trouble isn't this change's). contacts=False: the contacts
-        are kept as they were (a change to an event doesn't touch them)."""
+        are kept as they were (a change to an event doesn't touch them).
+        Changes made offline go first; those still waiting stay shown."""
+        if self.outbox and not only:
+            self.flush(refresh=False)
         errors = []
         for a in self.accounts:
             if only and a["id"] != only:
@@ -627,6 +817,8 @@ class Hub:
                     continue
                 self.cache[k] = [x for x in self.cache.get(k, []) if x.get("account") != a["id"]] + got.get(k, [])
             a["syncedAt"] = int(time.time() * 1000)
+        for r in self.outbox:
+            self.apply_local(r)
         self.cache["syncedAt"] = int(time.time() * 1000)
         self.save()
         if errors:
@@ -647,14 +839,31 @@ class Hub:
         home = a.get("home") or d.home("calendar-home-set")
         a["home"] = home
         now = datetime.now(timezone.utc)
-        cals = d.calendars(home)
+        found = d.calendars(home)
+        cals = [c for c in found if c["kind"] == "events"]
         events = []
         for c in cals:
             for e in d.events(c["id"], now - BACK, now + AHEAD):
                 p = ics_props(e["ics"])
                 events.append(dict(e, account=a["id"], calendarId=c["id"], uid=p["uid"],
                                    writable=c["writable"] and not p["repeats"]))
-        out = {"calendars": [dict(c, account=a["id"]) for c in cals], "events": events}
+        # Reminders: the lists iCloud still shares over CalDAV (open ones)
+        lists, tasks = [], []
+        for l in (c for c in found if c["kind"] == "todos"):
+            try:
+                items = d.todos(l["id"])
+            except Offline:
+                raise
+            except Failed:
+                continue  # (a list it won't give: the calendars still sync)
+            lists.append({"account": a["id"], "id": l["id"], "title": l["title"]})
+            for it in items:
+                p = vtodo_props(it["ics"])
+                if p["uid"] and not p["done"]:
+                    tasks.append({"account": a["id"], "listId": l["id"], "id": it["href"], "etag": it["etag"], "text": p["text"],
+                                  "done": False, "date": p["date"], "dueAt": p["dueAt"], "writable": l["writable"]})
+        strip = lambda c: {k: v for k, v in c.items() if k != "kind"}  # noqa: E731
+        out = {"calendars": [dict(strip(c), account=a["id"]) for c in cals], "events": events, "taskLists": lists, "tasks": tasks}
         if not with_contacts:
             return out
         contacts = []
@@ -693,17 +902,21 @@ class Hub:
         return {"calendars": cals, "events": events, "taskLists": lists, "tasks": tasks}
 
     # Changes
-    def event_insert(self, req):
+    def event_insert(self, req, refresh=True):
+        """Returns the new event's id (Microsoft's; iCloud's is its link)."""
         a, f = self.account(req["account"]), req.get("fields", {})
         if a["provider"] == "icloud":
-            uid = str(uuid.uuid4()).upper()
-            url = req["calendarId"].rstrip("/") + "/" + uid + ".ics"
+            uid = req.get("uid") or str(uuid.uuid4()).upper()
+            url = req.get("href") or req["calendarId"].rstrip("/") + "/" + uid + ".ics"
             self.dav(a).put(url, new_ics(uid, f), create=True)
+            new = url
         else:
-            self.graph(a).call("POST", f"/me/calendars/{urllib.parse.quote(req['calendarId'])}/events", graph_event_body(f))
-        self.refreshed(a)
+            new = self.graph(a).call("POST", f"/me/calendars/{urllib.parse.quote(req['calendarId'])}/events", graph_event_body(f)).get("id", "")
+        if refresh:
+            self.refreshed(a)
+        return new
 
-    def event_patch(self, req):
+    def event_patch(self, req, refresh=True):
         a, f = self.account(req["account"]), req.get("fields", {})
         if a["provider"] == "icloud":
             d = self.dav(a)
@@ -714,21 +927,42 @@ class Hub:
             d.put(req["id"], patch_ics(text, f), etag=etag or req.get("etag"))
         else:
             self.graph(a).call("PATCH", f"/me/events/{urllib.parse.quote(req['id'])}", graph_event_body(f), etag=req.get("etag"))
-        self.refreshed(a)
+        if refresh:
+            self.refreshed(a)
 
-    def event_delete(self, req):
+    def event_delete(self, req, refresh=True):
         a = self.account(req["account"])
         if a["provider"] == "icloud":
             self.dav(a).delete(req["id"], req.get("etag"))
         else:
             self.graph(a).call("DELETE", f"/me/events/{urllib.parse.quote(req['id'])}")
-        self.refreshed(a)
+        if refresh:
+            self.refreshed(a)
 
-    def task(self, req):
+    def task(self, req, refresh=True):
+        """Microsoft To Do over Graph; iCloud Reminders over CalDAV (a
+        reminder is a VTODO in its list). Returns a new task's id."""
         a = self.account(req["account"])
-        if a["provider"] != "microsoft":
-            raise Failed("To-dos sync with Microsoft To Do only.")
-        g, f = self.graph(a), req.get("fields", {})
+        f = req.get("fields", {})
+        new = ""
+        if a["provider"] == "icloud":
+            d = self.dav(a)
+            if req["cmd"] == "taskInsert":
+                uid = req.get("uid") or str(uuid.uuid4()).upper()
+                new = req.get("href") or req["listId"].rstrip("/") + "/" + uid + ".ics"
+                d.put(new, new_vtodo(uid, f), create=True)
+            elif req["cmd"] == "taskPatch":
+                text, etag = d.get(req["id"])
+                if req.get("etag") and etag and etag != req["etag"]:
+                    self.refreshed(a)
+                    raise Failed("This reminder changed on your other devices. It shows as it is there now.")
+                d.put(req["id"], patch_vtodo(text, f), etag=etag or req.get("etag"))
+            else:
+                d.delete(req["id"], req.get("etag"))
+            if refresh:
+                self.refreshed(a)
+            return new
+        g = self.graph(a)
         base = f"/me/todo/lists/{urllib.parse.quote(req['listId'])}/tasks"
         body = {}
         if "text" in f:
@@ -738,18 +972,150 @@ class Hub:
         if "date" in f:
             body["dueDateTime"] = {"dateTime": f["date"] + "T00:00:00", "timeZone": "UTC"} if f["date"] else None
         if req["cmd"] == "taskInsert":
-            g.call("POST", base, body)
+            new = g.call("POST", base, body).get("id", "")
         elif req["cmd"] == "taskPatch":
             g.call("PATCH", base + "/" + urllib.parse.quote(req["id"]), body, etag=req.get("etag"))
         else:
             g.call("DELETE", base + "/" + urllib.parse.quote(req["id"]))
-        self.refreshed(a)
+        if refresh:
+            self.refreshed(a)
+        return new
+
+    def change(self, req, refresh=True):
+        cmd = req["cmd"]
+        if cmd == "eventInsert":
+            return self.event_insert(req, refresh)
+        if cmd == "eventPatch":
+            return self.event_patch(req, refresh)
+        if cmd == "eventDelete":
+            return self.event_delete(req, refresh)
+        return self.task(req, refresh)
+
+    # ── Offline: the outbox ────────────────────────────────────────────
+    # A change that couldn't reach the server is kept (outbox.json, 0600),
+    # shown as made (the cache changed here), and sent first at the next
+    # sync or "flush". A new item gets its id now: iCloud's link is chosen
+    # here anyway; Microsoft's is "pending-…" until the server gives one.
+    def keep(self, req):
+        req = dict(req)
+        a = self.account(req["account"])
+        if req["cmd"] in ("eventInsert", "taskInsert"):
+            uid = str(uuid.uuid4()).upper()
+            if a["provider"] == "icloud":
+                req["uid"] = uid
+                req["href"] = req["calendarId" if req["cmd"] == "eventInsert" else "listId"].rstrip("/") + "/" + uid + ".ics"
+            else:
+                req["pending"] = "pending-" + uid
+        elif req["cmd"] in ("eventDelete", "taskDelete"):
+            # (deleting what never left this computer: neither goes)
+            made = next((r for r in self.outbox if r.get("href", r.get("pending")) == req.get("id")), None)
+            if made:
+                self.outbox = [r for r in self.outbox if r is not made and r.get("id") != req.get("id")]
+                self.apply_local(req)
+                self.save()
+                return
+        self.outbox.append(req)
+        self.apply_local(req)
+        self.save()
+
+    def apply_local(self, r):
+        """Shows a change in the cache as if the server had it."""
+        cmd, f = r["cmd"], r.get("fields", {})
+        if cmd.startswith("event"):
+            events = self.cache.setdefault("events", [])
+            if cmd == "eventInsert":
+                new = r.get("href") or r.get("pending")
+                if any(e.get("href", e.get("id")) == new for e in events):
+                    return
+                if r.get("href"):
+                    events.append({"account": r["account"], "calendarId": r["calendarId"], "href": new, "etag": "",
+                                   "ics": new_ics(r["uid"], f), "uid": r["uid"], "writable": True})
+                else:
+                    events.append({"account": r["account"], "calendarId": r["calendarId"], "id": new, "etag": "", "title": f.get("title", ""),
+                                   "start": when_of(f["start"], f.get("allDay")), "end": when_of(f.get("end") or f["start"], f.get("allDay")),
+                                   "location": f.get("location", ""), "notes": f.get("notes", ""), "series": "", "writable": True})
+                return
+            for e in events:
+                if e.get("account") == r["account"] and e.get("href", e.get("id")) == r.get("id"):
+                    if cmd == "eventDelete":
+                        events.remove(e)
+                    elif "ics" in e:
+                        e["ics"] = patch_ics(e["ics"], f)
+                    else:
+                        for k in ("title", "location", "notes"):
+                            if k in f:
+                                e[k] = f[k]
+                        if "start" in f:
+                            e["start"] = when_of(f["start"], f.get("allDay"))
+                            e["end"] = when_of(f.get("end") or f["start"], f.get("allDay"))
+                    return
+            return
+        tasks = self.cache.setdefault("tasks", [])
+        if cmd == "taskInsert":
+            new = r.get("href") or r.get("pending")
+            if not any(t.get("id") == new for t in tasks):
+                tasks.append({"account": r["account"], "listId": r["listId"], "id": new, "etag": "", "text": f.get("text", ""),
+                              "done": bool(f.get("done")), "date": f.get("date", ""), "dueAt": f.get("dueAt", 0) or 0})
+            return
+        for t in tasks:
+            if t.get("account") == r["account"] and t.get("listId") == r["listId"] and t.get("id") == r.get("id"):
+                if cmd == "taskDelete":
+                    tasks.remove(t)
+                else:
+                    for k in ("text", "done", "date", "dueAt"):
+                        if k in f:
+                            t[k] = f[k]
+                return
+
+    def flush(self, refresh=True):
+        """Sends the outbox in order until the network goes again. A change
+        the server turns away is dropped and said ("dropped"). True when
+        the network went again with changes still waiting."""
+        ids, touched, offline = {}, set(), False
+        while self.outbox:
+            r = dict(self.outbox[0])
+            pid = str(r.get("id", ""))
+            if pid.startswith("pending-"):
+                if pid not in ids:
+                    self.outbox.pop(0)  # (its new item never got made)
+                    continue
+                r["id"] = ids[pid]
+            try:
+                new = self.change(r, refresh=False)
+                if r.get("pending") and new:
+                    ids[r["pending"]] = new
+                touched.add(r["account"])
+            except Offline:
+                offline = True
+                break
+            except Failed as e:
+                what = "A change to " + ("an event" if r["cmd"].startswith("event") else "a task")
+                self.dropped.append(f"{what} made while you were offline wasn't saved: {e}")
+                touched.add(r.get("account"))
+            except KeyError:
+                pass  # (its account went away)
+            self.outbox.pop(0)
+            self.save()
+        if refresh:
+            for aid in touched:
+                a = next((x for x in self.accounts if x["id"] == aid), None)
+                if a:
+                    self.refreshed(a)
+        self.save()
+        return offline
 
     def state(self):
         c = self.cache
-        return {"accounts": [{k: a.get(k, "") for k in ("id", "provider", "identity", "syncedAt")} for a in self.accounts],
-                "calendars": c.get("calendars", []), "events": c.get("events", []), "taskLists": c.get("taskLists", []),
-                "tasks": c.get("tasks", []), "contacts": c.get("contacts", []), "syncedAt": c.get("syncedAt", 0)}
+        out = {"accounts": [{k: a.get(k, "") for k in ("id", "provider", "identity", "syncedAt")} for a in self.accounts],
+               "calendars": c.get("calendars", []), "events": c.get("events", []), "taskLists": c.get("taskLists", []),
+               "tasks": c.get("tasks", []), "contacts": c.get("contacts", []), "syncedAt": c.get("syncedAt", 0),
+               "outbox": len(self.outbox)}
+        if self.dropped:
+            out["dropped"] = self.dropped
+        return out
+
+
+CHANGES = ("eventInsert", "eventPatch", "eventDelete", "taskInsert", "taskPatch", "taskDelete")
 
 
 def main():
@@ -763,6 +1129,9 @@ def main():
     try:
         if cmd == "sync":
             hub.sync()
+        elif cmd == "flush":
+            if hub.flush():
+                raise Offline("You're offline. Changes made here go to your accounts when you're back online.")
         elif cmd == "connectICloud":
             hub.connect_icloud(req)
         elif cmd == "connectMicrosoft":
@@ -771,14 +1140,19 @@ def main():
             out["goaAccounts"] = OnlineAccounts().accounts()
         elif cmd == "disconnect":
             hub.disconnect(req["account"])
-        elif cmd == "eventInsert":
-            hub.event_insert(req)
-        elif cmd == "eventPatch":
-            hub.event_patch(req)
-        elif cmd == "eventDelete":
-            hub.event_delete(req)
-        elif cmd in ("taskInsert", "taskPatch", "taskDelete"):
-            hub.task(req)
+        elif cmd in CHANGES and any(r.get("href", r.get("pending")) == req.get("id") for r in hub.outbox):
+            # (a change to something made offline goes after it)
+            hub.keep(req)
+            if hub.flush():
+                raise Offline("You're offline. The change is saved on this computer and goes to your account when you're back online.")
+        elif cmd in CHANGES:
+            try:
+                hub.change(req)
+            except Offline:
+                # (kept here and sent later: the shell shows it as made)
+                where = "iCloud" if hub.account(req["account"])["provider"] == "icloud" else "Microsoft 365"
+                hub.keep(req)
+                raise Offline(f"You're offline. The change is saved on this computer and goes to {where} when you're back online.") from None
     except Offline as e:
         out.update(error=str(e), offline=True)
     except Failed as e:

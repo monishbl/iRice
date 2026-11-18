@@ -6,16 +6,25 @@
 //! and the "calendar" ipc target (`qs ipc call calendar remind "call mum at
 //! 5pm"` | `refresh`).
 //!
-//! Differences: the accounts' calendars (Google, iCloud, Microsoft 365) are
-//! the system host's, and the reader has no VALARM, location or notes for
-//! subscriptions, so their alerts use the default alert (10 min; none for
-//! all-day) and a notification has no location line.
+//! The accounts' events (Google, iCloud, Microsoft 365) are in the reader's
+//! `between` too (core services/accounts.rs; the system host holds the
+//! sign-in). Changing one here asks the system host's service
+//! (`google.updateEvent|addEvent|removeEvent|restoreEvent`,
+//! `cloudaccounts.…`), which shows the change at once and sends it (Google
+//! keeps an outbox while offline, CloudAccounts too); what it can't do comes
+//! back as a notification that says what to do.
+//!
+//! Differences: an account's timed event alerts with its own alarm (iCloud's
+//! VALARM) or else the default alert, where the QML gave Google's and
+//! Microsoft's none (Google and Outlook ring on the phone; this computer had
+//! nothing). Subscriptions have no notes in the reader.
 
 use super::common::*;
 use super::parse;
 use serde_json::{json, Value};
 use std::collections::HashSet;
 use tessera_core::host::Host;
+use tessera_core::services::accounts::{self, AccEvent, Times};
 use tessera_core::services::calendar::{self as cal, Calendar, Event};
 
 pub const DAY: i64 = 86_400_000;
@@ -149,9 +158,36 @@ fn ymd(day: &str) -> Option<(i32, i32, i32)> {
     Some((p.next()?.ok()?, p.next()?.ok()? - 1, p.next()?.ok()?))
 }
 
+/// What an account's event the editor can't change says (CalendarWidget's info line)
+pub fn read_only_text(e: &AccEvent) -> String {
+    if e.provider != "google" && e.recurring {
+        format!("From {} ({}). Change repeating events on your phone or on the web.", e.calendar, e.account)
+    } else {
+        format!("From {} ({}). You can view this calendar but not change it.", e.calendar, e.account)
+    }
+}
+
+/// Calendar.change for an account's event: the system host's service shows
+/// it at once and sends it (`every`: a repeating Google event's whole series)
+fn ask_update(h: &mut Host, e: &AccEvent, fields: Value, every: bool) {
+    if e.provider == "google" {
+        h.ask("google.updateEvent", json!([e.source, fields, every]));
+    } else {
+        h.ask("cloudaccounts.updateEvent", json!([{"source": e.source, "recurring": e.recurring}, fields]));
+    }
+}
+
+/// When an account's event is: (start, end, all day)
+fn times_of(e: &AccEvent) -> (i64, i64, bool) {
+    match &e.times {
+        Times::Fixed { start, end, all_day } => (*start, *end, *all_day),
+        Times::Ics(l) => l.first().map_or((0, 0, false), |x| (x.start, x.end, x.all_day)),
+    }
+}
+
 /// editor.save: `{key, todo, day, title, allDay, start, end (minutes; a
-/// to-do's start -1 for no time), alert, notes, location, target}`; your own
-/// events and to-dos (the accounts' are the system host's: an error says so)
+/// to-do's start -1 for no time), alert, notes, location, target, every}`:
+/// your events and to-dos here, the accounts' through the system host
 pub fn nc_save(h: &mut Host, e: &Value) -> Result<(), String> {
     let (y, mo, d) = ymd(e["day"].as_str().unwrap_or("")).ok_or("That date isn't valid.")?;
     let title = e["title"].as_str().unwrap_or("").trim().to_string();
@@ -161,26 +197,47 @@ pub fn nc_save(h: &mut Host, e: &Value) -> Result<(), String> {
         let t = n("start");
         let due = if t < 0 { cal::make(y, mo, d, 23, 59, 0) } else { cal::make(y, mo, d, 0, t, 0) };
         let patch = json!({"text": title, "due": due, "allDay": t < 0});
-        let saved = if key.is_empty() {
+        if key.is_empty() {
             let mut item = patch;
             item["done"] = json!(false);
-            super::todos::add_item(h, item)
-        } else {
-            super::todos::update(key, &patch)
-        };
-        return if saved { Ok(()) } else { Err("Could not save the task.".into()) };
+            return super::todos::add_item(h, item);
+        }
+        return super::todos::update(h, key, &patch);
     }
     let all_day = e["allDay"].as_bool().unwrap_or(false);
     let (start, end) = if all_day { (cal::make(y, mo, d, 0, 0, 0), cal::make(y, mo, d + 1, 0, 0, 0)) } else { (cal::make(y, mo, d, 0, n("start"), 0), cal::make(y, mo, d, 0, n("end").max(n("start")), 0)) };
     let alert = if all_day { -1 } else { e["alert"].as_i64().unwrap_or_else(default_alert) };
     let notes = e["notes"].as_str().unwrap_or("");
+    let location = e["location"].as_str().unwrap_or("");
+    // (the accounts keep their own alerts)
+    let fields = json!({"title": title, "start": start, "end": end, "allDay": all_day, "location": location, "notes": notes});
     if !key.is_empty() {
+        if accounts::is_account_key(key) {
+            let data = accounts::current();
+            let ev = data.event(key).ok_or("That event is gone. It may have been deleted on another device.")?;
+            if !ev.writable {
+                return Err(read_only_text(ev));
+            }
+            ask_update(h, ev, fields, e["every"].as_bool().unwrap_or(false));
+            return Ok(());
+        }
         let id = key.strip_prefix("local:").ok_or("This calendar is read-only here. Change the event in its own calendar.")?;
         update(id, &json!({"title": title, "start": start, "end": end, "allDay": all_day, "alert": alert, "notes": notes}));
         return Ok(());
     }
-    if !e["target"].as_str().unwrap_or("").is_empty() {
-        return Err("That calendar isn't available. Choose another one.".into());
+    let target = e["target"].as_str().unwrap_or("");
+    if !target.is_empty() {
+        let data = accounts::current();
+        if data.target(target).is_none() {
+            return Err("That calendar isn't available any more. Choose another one, or This computer.".into());
+        }
+        match target.strip_prefix("cloud|").and_then(|r| r.split_once('|')) {
+            Some((account, calendar)) => h.ask("cloudaccounts.addEvent", json!([account, calendar, fields])),
+            None => h.ask("google.addEvent", json!([target, fields])),
+        }
+        // (the next new event goes there too, as the QML remembered it)
+        cfg_set("google.newEventCalendar", json!(target));
+        return Ok(());
     }
     add(&title, start, end, all_day, Some(alert), notes);
     if cfg_get("google.newEventCalendar").as_str().is_some_and(|c| !c.is_empty()) {
@@ -189,32 +246,49 @@ pub fn nc_save(h: &mut Host, e: &Value) -> Result<(), String> {
     Ok(())
 }
 
-/// remove: your event or to-do, kept for Undo (`{kind, item, title}`)
-pub fn nc_remove(key: &str) -> Result<Value, String> {
+/// remove: an event or a to-do, kept for Undo (`{kind, item, title}`); an
+/// account's is hidden now and deleted when its Undo has run out (the
+/// system host's 8 s)
+pub fn nc_remove(h: &mut Host, key: &str, every: bool) -> Result<Value, String> {
     if let Some(id) = key.strip_prefix("local:") {
         let e = remove(id).ok_or("That event is gone already.")?;
         let title = e["title"].clone();
         return Ok(json!({"kind": "event", "item": e, "title": title}));
     }
-    if key.starts_with("local/") {
-        let t = super::todos::remove(key).ok_or("That to-do is gone already.")?;
+    if key.starts_with("local/") || key.starts_with("google/") || key.starts_with("cloud/") {
+        let t = super::todos::remove(h, key).ok_or("That to-do is gone already.")?;
         let title = t["text"].clone();
         return Ok(json!({"kind": "todo", "item": t, "title": title}));
+    }
+    if accounts::is_account_key(key) {
+        let data = accounts::current();
+        let ev = data.event(key).ok_or("That event is gone already.")?;
+        if !ev.writable {
+            return Err(read_only_text(ev));
+        }
+        if ev.provider == "google" {
+            h.ask("google.removeEvent", json!([ev.source, every]));
+        } else {
+            h.ask("cloudaccounts.removeEvent", json!([{"source": ev.source, "recurring": ev.recurring}]));
+        }
+        return Ok(json!({"kind": "accountEvent", "provider": ev.provider, "item": ev.source, "title": ev.title}));
     }
     Err("This calendar is read-only here.".into())
 }
 
 /// Undo
-pub fn nc_restore(u: &Value) {
-    if u["kind"] == "event" {
-        restore(&u["item"]);
-    } else {
-        super::todos::restore(&u["item"]);
+pub fn nc_restore(h: &mut Host, u: &Value) {
+    match u["kind"].as_str().unwrap_or("") {
+        "event" => restore(&u["item"]),
+        "accountEvent" if u["provider"] == "google" => h.ask("google.restoreEvent", json!([u["item"]])),
+        "accountEvent" => h.ask("cloudaccounts.restoreEvent", json!([{"source": u["item"]}])),
+        _ => super::todos::restore(h, &u["item"]),
     }
 }
 
-/// moveTo: to another day, keeping its time
-pub fn nc_move(key: &str, day: &str) -> Result<(), String> {
+/// moveTo: to another day, keeping its time (`every`: a repeating Google
+/// event's whole series)
+pub fn nc_move(h: &mut Host, key: &str, day: &str, every: bool) -> Result<(), String> {
     let (y, mo, d) = ymd(day).ok_or("That date isn't valid.")?;
     if let Some(id) = key.strip_prefix("local:") {
         let src = local_raw().into_iter().find(|e| e["id"].as_str() == Some(id)).ok_or("That event is gone.")?;
@@ -225,10 +299,25 @@ pub fn nc_move(key: &str, day: &str) -> Result<(), String> {
         update(id, &json!({"start": s0 + shift, "end": (if e0 != 0 { e0 } else { s0 }) + shift}));
         return Ok(());
     }
-    if key.starts_with("local/") {
+    if key.starts_with("local/") || key.starts_with("google/") || key.starts_with("cloud/") {
         let t = super::todos::find(key).ok_or("That to-do is gone.")?;
         let at = cal::local(t.due);
-        super::todos::update(key, &json!({"due": cal::make(y, mo, d, at.h, at.mi, 0)}));
+        return super::todos::update(h, key, &json!({"due": cal::make(y, mo, d, at.h, at.mi, 0), "allDay": t.all_day}));
+    }
+    if accounts::is_account_key(key) {
+        let data = accounts::current();
+        let ev = data.event(key).ok_or("That event is gone.")?;
+        if !ev.writable {
+            return Err(read_only_text(ev));
+        }
+        // (this occurrence's start: its key's for an iCloud one)
+        let (mut s0, mut e0, all_day) = times_of(ev);
+        if let Some(at) = key.rsplit_once('|').and_then(|(_, s)| s.parse::<i64>().ok()) {
+            (s0, e0) = (at, at + (e0 - s0));
+        }
+        let t = cal::local(s0);
+        let start = cal::make(y, mo, d, t.h, t.mi, 0);
+        ask_update(h, ev, json!({"start": start, "end": start + (e0 - s0).max(0), "allDay": all_day}), every);
         return Ok(());
     }
     Err("This calendar is read-only here.".into())
@@ -281,6 +370,34 @@ pub use cal::{daily_in, name_of, series_of};
 
 // ── Alerts ──────────────────────────────────────────────────────────────
 
+/// The minutes before `e` its alert comes (-1 none): your event's own, an
+/// alarm the calendar has (iCloud's, a subscription's), else the default for
+/// a timed event
+pub fn alert_of(e: &Event, raw: &[Value], def: i64) -> i64 {
+    if let Some(id) = e.key.strip_prefix("local:") {
+        return raw.iter().find(|r| r["id"].as_str() == Some(id)).and_then(|r| r["alert"].as_i64()).unwrap_or(def);
+    }
+    match e.alert {
+        Some(a) => a,
+        None if e.all_day => -1,
+        None => def,
+    }
+}
+
+/// The notification's line: "Now", "Today", "At 9:30 AM · in 10 min", and
+/// the place under it
+pub fn alert_text(e: &Event, alert: i64, now: i64) -> String {
+    let local = e.key.starts_with("local:");
+    let when = if alert == 0 || (local && e.start <= now) {
+        "Now".to_string()
+    } else if e.all_day {
+        "Today".to_string()
+    } else {
+        format!("At {}{}", hm(e.start), if alert > 0 { format!(" · in {alert} min") } else { String::new() })
+    };
+    if e.location.is_empty() { when } else { format!("{when}\n{}", e.location) }
+}
+
 impl Cal {
     pub fn check_alerts(&mut self, h: &mut Host) {
         let now = now();
@@ -288,15 +405,7 @@ impl Cal {
         let def = default_alert();
         let raw = local_raw();
         for e in c.between(now - 3_600_000, now + 24 * 3_600_000) {
-            let local = e.key.starts_with("local:");
-            let alert = if local {
-                let id = &e.key["local:".len()..];
-                raw.iter().find(|r| r["id"].as_str() == Some(id)).and_then(|r| r["alert"].as_i64()).unwrap_or(def)
-            } else if e.all_day {
-                -1
-            } else {
-                def
-            };
+            let alert = alert_of(&e, &raw, def);
             if alert < 0 || self.alerted.contains(&e.key) {
                 continue;
             }
@@ -304,14 +413,7 @@ impl Cal {
             // Fire once, within ten minutes of the alert time (not for alerts long past)
             if now >= at && now - at < 600_000 {
                 self.alerted.insert(e.key.clone());
-                let when = if alert == 0 || (local && e.start <= now) {
-                    "Now".to_string()
-                } else if e.all_day {
-                    "Today".to_string()
-                } else {
-                    format!("At {}{}", hm(e.start), if alert > 0 { format!(" · in {alert} min") } else { String::new() })
-                };
-                notify_send("Calendar", Some("x-office-calendar"), Some("normal"), &e.title, &when);
+                notify_send("Calendar", Some("x-office-calendar"), Some("normal"), &e.title, &alert_text(&e, alert, now));
             }
         }
     }
@@ -322,7 +424,7 @@ mod tests {
     use super::*;
 
     fn ev(key: &str, start: i64) -> Event {
-        Event { key: key.into(), title: "Pill".into(), start, end: start + 1, all_day: false, color: String::new() }
+        Event { key: key.into(), title: "Pill".into(), start, end: start + 1, ..Default::default() }
     }
 
     #[test]
@@ -333,13 +435,50 @@ mod tests {
         assert_eq!(m.len(), 1);
         assert!(daily_in(&list[..3], from, from + 3 * DAY).is_empty());
         assert_eq!(series_of(&ev("u|uid|99", 0)), "u|uid");
+        // (an account's own series; a single event has none)
+        let g = Event { account: "jane@gmail.com".into(), series: "google:s1".into(), ..ev("google:a:c:e", 0) };
+        assert_eq!(series_of(&g), "google:s1");
+        assert_eq!(series_of(&Event { series: String::new(), ..g }), "");
     }
 
     #[test]
     fn days_read() {
         assert_eq!(ymd("2026-11-07"), Some((2026, 10, 7)));
         assert_eq!(ymd("nope"), None);
-        assert!(nc_remove("u|uid|1").is_err());
+    }
+
+    #[test]
+    fn account_events_alert_with_their_own_alarm_or_the_default() {
+        let raw = vec![json!({"id": "a", "alert": 30})];
+        assert_eq!(alert_of(&ev("local:a", 0), &raw, 10), 30);
+        let icloud = Event { alert: Some(15), location: "Park".into(), ..ev("cloud:i:/h.ics|0", cal::make(2026, 10, 7, 9, 0, 0)) };
+        assert_eq!(alert_of(&icloud, &raw, 10), 15);
+        assert_eq!(alert_of(&ev("google:a:c:e", 0), &raw, 10), 10);
+        assert_eq!(alert_of(&Event { all_day: true, ..ev("google:a:c:h", 0) }, &raw, 10), -1);
+        let text = alert_text(&icloud, 15, icloud.start - 15 * 60_000);
+        assert!(text.starts_with("At ") && text.contains("in 15 min") && text.ends_with("\nPark"), "{text}");
+    }
+
+    #[test]
+    fn read_only_account_events_say_where_to_change_them() {
+        let e = AccEvent {
+            key: "cloud:i:/h.ics".into(),
+            provider: "icloud".into(),
+            account: "iCloud".into(),
+            calendar: "Home".into(),
+            color: String::new(),
+            title: "Run".into(),
+            location: String::new(),
+            notes: String::new(),
+            writable: false,
+            recurring: true,
+            series: String::new(),
+            times: Times::Fixed { start: 5, end: 9, all_day: false },
+            source: json!({}),
+        };
+        assert_eq!(read_only_text(&e), "From Home (iCloud). Change repeating events on your phone or on the web.");
+        assert!(read_only_text(&AccEvent { provider: "google".into(), ..e.clone() }).ends_with("You can view this calendar but not change it."));
+        assert_eq!(times_of(&e), (5, 9, false));
     }
 
     #[test]
