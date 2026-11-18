@@ -1068,7 +1068,7 @@ impl<'a, R: femtovg::Renderer + TextureImporter> LayerRenderer<'a> for GLItemRen
             *self.metrics.layers_created.as_mut().unwrap() += 1;
             self.counts.layers_new += 1;
             // (a size not seen before: room to grow, in steps of LAYER_STEP px)
-            let (w, h) = if self.layer_cache.with_entry(item_rc, |e| e.is_some()) {
+            let (w, h) = if self.layer_cache.with_entry(item_rc, |e| e.as_ref().map(|_| ())).is_some() {
                 ((size.width + LAYER_STEP).div_ceil(LAYER_STEP) * LAYER_STEP, (size.height + LAYER_STEP).div_ceil(LAYER_STEP) * LAYER_STEP)
             } else {
                 (size.width, size.height)
