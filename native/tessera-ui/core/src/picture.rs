@@ -80,6 +80,86 @@ fn trim() {
     }
 }
 
+// ── A screen's copy, kept for the next start ────────────────────────────────
+// The wallpaper as decoded for a screen (cropped and shrunk: `decode`), kept
+// in the XDG cache as its raw pixels, so the next start shows it without
+// decoding the original again: a read of a few MB instead of a JPEG decode and
+// resize (a 2400×1800 one ~0.1 s of the start; a 5K one several times that),
+// the background's first frame that much sooner. The key is the picture's
+// path, size and modification time and the box: a changed picture is never
+// shown from an old copy. The newest KEEP copies stay; a copy that doesn't
+// read back whole is ignored (decoded as before).
+
+const COPY_MAGIC: &[u8; 4] = b"TWP1";
+const COPY_KEEP: usize = 3;
+
+fn copy_file(dir: &std::path::Path, path: &str, bw: u32, bh: u32) -> Option<std::path::PathBuf> {
+    use std::hash::{Hash, Hasher};
+    let m = std::fs::metadata(path).ok()?;
+    let mtime = m.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()?.as_nanos();
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    (path, m.len(), mtime, bw, bh).hash(&mut h);
+    Some(dir.join(format!("{:016x}.rgb", h.finish())))
+}
+
+/// The copy of `path` kept for a `bw`×`bh` box, if there is a whole one
+pub fn read_copy(dir: &std::path::Path, path: &str, bw: u32, bh: u32) -> Option<SharedPixelBuffer<Rgb8Pixel>> {
+    use std::io::Read;
+    let mut f = std::fs::File::open(copy_file(dir, path, bw, bh)?).ok()?;
+    let mut head = [0u8; 12];
+    f.read_exact(&mut head).ok()?;
+    if &head[..4] != COPY_MAGIC {
+        return None;
+    }
+    let (w, h) = (u32::from_le_bytes(head[4..8].try_into().ok()?), u32::from_le_bytes(head[8..12].try_into().ok()?));
+    // (never more than the box: `decode` keeps at most that)
+    if w == 0 || h == 0 || w > bw.max(1) || h > bh.max(1) || f.metadata().ok()?.len() != 12 + w as u64 * h as u64 * 3 {
+        return None;
+    }
+    let mut buf = SharedPixelBuffer::<Rgb8Pixel>::new(w, h);
+    f.read_exact(buf.make_mut_bytes()).ok()?;
+    // (in use: the newest, so pruning keeps it)
+    let _ = f.set_modified(std::time::SystemTime::now());
+    Some(buf)
+}
+
+/// Keep `pixels` (decoded from `path` for a `bw`×`bh` box) for the next
+/// start; the oldest copies beyond COPY_KEEP go
+pub fn write_copy(dir: &std::path::Path, path: &str, bw: u32, bh: u32, pixels: &SharedPixelBuffer<Rgb8Pixel>) {
+    use std::io::Write;
+    let Some(file) = copy_file(dir, path, bw, bh) else { return };
+    if std::fs::create_dir_all(dir).is_err() {
+        return;
+    }
+    let tmp = file.with_extension("tmp");
+    let ok = (|| -> std::io::Result<()> {
+        let mut f = std::io::BufWriter::new(std::fs::File::create(&tmp)?);
+        f.write_all(COPY_MAGIC)?;
+        f.write_all(&pixels.width().to_le_bytes())?;
+        f.write_all(&pixels.height().to_le_bytes())?;
+        f.write_all(pixels.as_bytes())?;
+        f.flush()?;
+        // (no sync: a copy cut short reads back as no copy, its length checked)
+        std::fs::rename(&tmp, &file)
+    })();
+    if ok.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+        return;
+    }
+    let Ok(rd) = std::fs::read_dir(dir) else { return };
+    let mut copies: Vec<(std::time::SystemTime, std::path::PathBuf)> = rd
+        .flatten()
+        .filter(|e| e.path().extension().is_some_and(|x| x == "rgb"))
+        .filter_map(|e| Some((e.metadata().ok()?.modified().ok()?, e.path())))
+        .collect();
+    copies.sort_by(|a, b| b.0.cmp(&a.0));
+    for (_, p) in copies.into_iter().skip(COPY_KEEP) {
+        if p != file {
+            let _ = std::fs::remove_file(p);
+        }
+    }
+}
+
 // ── Worker threads ──────────────────────────────────────────────────────────
 
 type Job = Box<dyn FnOnce() + Send>;
@@ -240,6 +320,49 @@ mod tests {
         let px = b.as_slice()[0];
         assert_eq!((px.r, px.g, px.b), (64, 64, 64));
         let _ = std::fs::remove_file(&d);
+    }
+
+    #[test]
+    fn a_screen_copy_reads_back_until_the_picture_changes() {
+        let root = std::env::temp_dir().join(format!("tessera-ui-copy-{}", std::process::id()));
+        let dir = root.join("copies");
+        let _ = std::fs::create_dir_all(&root);
+        let pic = root.join("wall.png");
+        let mut img = image::RgbImage::new(40, 30);
+        for (i, p) in img.pixels_mut().enumerate() {
+            *p = image::Rgb([(i % 251) as u8, (i % 13) as u8 * 9, 200]);
+        }
+        img.save(&pic).unwrap();
+        let path = pic.to_str().unwrap();
+        assert!(read_copy(&dir, path, 16, 9).is_none());
+        let px = decode(path, 16, 9).unwrap();
+        write_copy(&dir, path, 16, 9, &px);
+        let back = read_copy(&dir, path, 16, 9).unwrap();
+        assert_eq!((back.width(), back.height(), back.as_bytes()), (px.width(), px.height(), px.as_bytes()));
+        // another box: no copy
+        assert!(read_copy(&dir, path, 32, 18).is_none());
+        // a copy cut short: none
+        let file = copy_file(&dir, path, 16, 9).unwrap();
+        let bytes = std::fs::read(&file).unwrap();
+        std::fs::write(&file, &bytes[..bytes.len() - 1]).unwrap();
+        assert!(read_copy(&dir, path, 16, 9).is_none());
+        std::fs::write(&file, &bytes).unwrap();
+        // the picture changed (its size and time): the old copy isn't it
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let mut img2 = image::RgbImage::new(41, 30);
+        img2.pixels_mut().for_each(|p| *p = image::Rgb([1, 2, 3]));
+        img2.save(&pic).unwrap();
+        assert!(read_copy(&dir, path, 16, 9).is_none());
+        // only the newest few are kept
+        for (w, h) in [(8, 8), (9, 9), (10, 10), (11, 11)] {
+            // (apart: file times are coarse)
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            let p = decode(path, w, h).unwrap();
+            write_copy(&dir, path, w, h, &p);
+        }
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), COPY_KEEP);
+        assert!(read_copy(&dir, path, 11, 11).is_some());
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
