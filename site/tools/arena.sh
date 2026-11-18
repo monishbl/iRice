@@ -27,10 +27,10 @@ set -uo pipefail
 BIN=$(realpath "$1") OUT=$(realpath -m "$2"); shift 2
 HERE="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$HERE"
-export TESSERA_ARENA=${TESSERA_ARENA:-60} IRICE_ARENA=${TESSERA_ARENA:-60} TESSERA_NO_BOX=1
+export TESSERA_ARENA=${TESSERA_ARENA:-60} TESSERA_NO_BOX=1
 . site/film/tessera/capture/lib.sh
 mkdir -p "$OUT"
-RT=/tmp/irice-rt-$TESSERA_ARENA
+RT=/tmp/tessera-rt-$TESSERA_ARENA
 # a battery of its own (TESSERA_FAKE_BATTERY: the sandbox only), "bat" sets it
 export TESSERA_FAKE_BATTERY="$OUT/battery"
 echo "80 charging" >"$TESSERA_FAKE_BATTERY"

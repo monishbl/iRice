@@ -18,14 +18,14 @@ LEAVES="$HERE/../film/hero/assets/leaves.jpg"
 # Settings' new pages, the overview, the lock screen's island, Quick Share
 A radios up glass wall-tiles.jpg 2 \
     P "move 3830 2150" \
-    ipc "panels open controlCenter IRICE-TEST" wait 2.5 shot qs-g ipc "panels close" wait 1 \
+    ipc "panels open controlCenter TESSERA-TEST" wait 2.5 shot qs-g ipc "panels close" wait 1 \
     ipc "island demo parts" wait 2.5 shot island-g sh "ipc island dismissNewest" wait 2 \
     ipc "island demo output" wait 0.9 shot hud-g wait 3 \
     cfg power.saver '"low"' \
     bat "60 discharging" wait 3 bat "21 discharging" wait 3 bat "19 discharging" wait 4 \
     bat "12 discharging" wait 3 bat "9 discharging" wait 4 bat "6 discharging" wait 3 bat "4 discharging" wait 4 \
     shot battery-g sh "ipc island dismissNewest" wait 2 \
-    ipc "panels open notificationCenter IRICE-TEST" wait 2.5 shot nc-g \
+    ipc "panels open notificationCenter TESSERA-TEST" wait 2.5 shot nc-g \
     P "move 3215 330" wait 0.4 P "click" wait 1.5 shot nc-open-g \
     ipc "panels close" wait 1 \
     ipc "panels settings health" wait 3 shot set-health \
@@ -33,7 +33,7 @@ A radios up glass wall-tiles.jpg 2 \
     ipc "panels settings security" wait 3 shot set-security \
     ipc "panels settings about" wait 3 shot set-about \
     P "move 3830 2150" \
-    ipc "panels open overview IRICE-TEST" wait 3 shot overview-g ipc "panels close" wait 1 \
+    ipc "panels open overview TESSERA-TEST" wait 3 shot overview-g ipc "panels close" wait 1 \
     sh "ipc panels closeSettings; key -k Escape; ipc panels close" wait 1 \
     ipc "lock lock" wait 3 \
     ipc "lock demo face" wait 1.6 ipc "lock demo face-reading" wait 1.2 shot lock-face-g \
@@ -46,7 +46,7 @@ A radios up glass wall-tiles.jpg 2 \
 # Material over the tiles: Quick Settings (the split's other half), its lock
 A up material wall-tiles.jpg 2 \
     P "move 3830 2150" \
-    ipc "panels open controlCenter IRICE-TEST" wait 2.5 shot qs-m ipc "panels close" wait 1 \
+    ipc "panels open controlCenter TESSERA-TEST" wait 2.5 shot qs-m ipc "panels close" wait 1 \
     ipc "lock lock" wait 3 ipc "lock demo face" wait 1.6 ipc "lock demo face-reading" wait 1.2 shot lock-face-m \
     ipc "lock demo off" ipc "lock unlock" wait 1 \
     down

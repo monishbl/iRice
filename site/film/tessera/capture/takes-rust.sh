@@ -34,6 +34,6 @@ A up glass "$LEAVES" 1 \
 # Material's Quick Settings springing open (1x, over the ocean)
 A up material "$OCEAN" 1 \
     P "move 1915 1075" \
-    rec mqs "0,0 1920x1080" 0.4 1.2 'ipc panels open controlCenter IRICE-TEST; sleep 2' \
+    rec mqs "0,0 1920x1080" 0.4 1.2 'ipc panels open controlCenter TESSERA-TEST; sleep 2' \
     ipc "panels close" \
     down radios
