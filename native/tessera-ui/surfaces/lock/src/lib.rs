@@ -174,6 +174,8 @@ enum M {
     IdleOver,
     /// a reader's match has been seen (the island's green tick): unlock now
     MatchShown,
+    /// a password check that never answered (its conversation id)
+    PassTimeout(u64),
     FingerRetry,
     FingerMissOver,
     /// the camera's "not recognised" has shown long enough (the island's miss)
@@ -345,6 +347,8 @@ pub struct Lock {
     t_retake: slint::Timer,
     /// holds the unlock while a reader's match shows
     t_match: slint::Timer,
+    /// stops a password check that never answers
+    t_pass: slint::Timer,
 }
 
 impl Default for Lock {
@@ -408,6 +412,7 @@ impl Default for Lock {
             retakes: 0,
             t_retake: slint::Timer::default(),
             t_match: slint::Timer::default(),
+            t_pass: slint::Timer::default(),
         }
     }
 }
@@ -1331,6 +1336,10 @@ impl Lock {
         self.busy = true;
         self.conv_id += 1;
         self.pass_conv = Some(auth::start(&self.backend, Kind::Password, self.conv_id, self.password.clone(), Self::send(st)));
+        // A check never hangs: 20 s without an answer stops it (18 Nov: after
+        // a sleep it said "checking" until a restart)
+        let (to, id) = (Self::send(st), self.conv_id);
+        self.t_pass.start(slint::TimerMode::SingleShot, Duration::from_secs(20), move || to(Box::new(M::PassTimeout(id))));
         self.rules(st);
     }
 
@@ -1374,6 +1383,7 @@ impl Lock {
                 }
             }
             Auth::Done(Kind::Password, id, out) if id == self.conv_id => {
+                self.t_pass.stop();
                 // (what happened, never what was typed)
                 eprintln!("tessera-ui: lock: password check: {}", match &out { Outcome::Success => "success", Outcome::Failure(_) => "failure", Outcome::Error(_) => "error" });
                 self.pass_conv = None;
@@ -1446,7 +1456,10 @@ impl Lock {
                         self.finger.text.clear();
                         self.finger.state.clear();
                     } else {
-                        self.finger_retry(st, 300);
+                        // (backing off, 0.3 s up to 5 s: it retried every
+                        // 0.3 s while a reader stayed busy after a sleep)
+                        let ms = (300u64 << self.finger.busy.min(5)).min(5000);
+                        self.finger_retry(st, ms);
                     }
                     self.field();
                     return;
@@ -1852,6 +1865,20 @@ impl Part for Lock {
                 }
             }
             M::MatchShown => self.unlocked(),
+            M::PassTimeout(id) => {
+                if id == self.conv_id && self.busy {
+                    eprintln!("tessera-ui: lock: password check: no answer in 20 s, stopped");
+                    if let Some(c) = self.pass_conv.take() {
+                        c.abort();
+                    }
+                    self.busy = false;
+                    self.conv_id += 1; // (a late answer from it is ignored)
+                    self.error = "Couldn't check your password. Try again.".into();
+                    self.error_count += 1;
+                    self.field();
+                    self.rules(st);
+                }
+            }
             M::IdleOver => {
                 if self.held && self.can_standby(st) {
                     self.sb.idle = true;
@@ -1917,6 +1944,19 @@ impl Part for Lock {
                 }
             }
             M::Sleep(going) => {
+                // Readers stop before a sleep and start fresh after it: a
+                // fingerprint check left running across one kept fprintd's
+                // reader claimed, every new one was refused at once, and the
+                // lock retried in a loop (18 Nov)
+                self.t_finger.stop();
+                self.t_face.stop();
+                if let Some(c) = self.finger.conv.take() {
+                    c.abort();
+                }
+                if let Some(c) = self.face.conv.take() {
+                    c.abort();
+                }
+                eprintln!("tessera-ui: lock: {}", if going { "going to sleep: readers stopped" } else { "awake: readers start again in 1.5 s" });
                 if going {
                     self.sleeping = true;
                 } else {
@@ -1925,7 +1965,8 @@ impl Part for Lock {
                     self.finger.busy = 0;
                     self.tick_ms = crate::util::now_ms();
                     if self.finger_wanted() {
-                        self.finger_retry(st, 300);
+                        // (the USB reader comes back a moment after the system)
+                        self.finger_retry(st, 1500);
                     }
                     if self.held {
                         self.face.armed = true;
