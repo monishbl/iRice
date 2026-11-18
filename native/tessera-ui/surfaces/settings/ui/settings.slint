@@ -36,6 +36,11 @@ component Control {
     // label no longer pushes it past the row's edge)
     min-width: body.min-width;
     preferred-width: body.preferred-width;
+    // (its own width, said as it changes: the row puts it under the text when there's no room beside it)
+    callback measured(length);
+    out property <length> natural: body.preferred-width;
+    changed natural => { root.measured(self.natural); }
+    init => { root.measured(self.natural); }
     min-height: body.min-height;
     preferred-height: body.preferred-height;
     body := HorizontalLayout {
@@ -309,6 +314,24 @@ component RowView {
     property <length> pad: Theme.material ? 20px : 14px;
     property <bool> link: r.kind == "link";
     property <bool> has-icon: r.icon.p != "" || r.icon.m != "";
+    property <bool> has-ctl: !link && r.control != "" && r.kind == "row";
+    // The control's own width (reported by whichever copy is shown: it
+    // doesn't depend on where it sits) and whether it goes under the text:
+    // when beside it the text would get less than STACK_TEXT_MIN, a wide
+    // control (a segmented choice, buttons with long labels) at a narrow
+    // width squeezed the text to a sliver and ran past the row (18 Nov)
+    property <length> ctl-w;
+    property <length> icon-w: !has-icon ? 0 : (Theme.material ? 40px : 32px);
+    property <length> gap: Theme.material ? 16px : 12px;
+    // (set, not bound: what's stacked changes the row's own size, which a
+    // binding on its width would loop through)
+    property <bool> stacked;
+    function restack() {
+        root.stacked = has-ctl && root.width > 0 && root.width - 2 * pad - icon-w - gap - ctl-w < 200px;
+    }
+    changed width => { root.restack(); }
+    changed has-ctl => { root.restack(); }
+    init => { root.restack(); }
     min-height: max(r.kind == "custom" ? 0 : Theme.material ? 56px : 44px, body.preferred-height);
     // Material: the row's tile, the group's outer corners round
     if Theme.material && r.kind != "custom": Rectangle {
@@ -367,7 +390,6 @@ component RowView {
                 // it: a wrapped Text in a layout is measured at the width it's
                 // handed, or its own; nested here it got the row's, so a long
                 // description was given one line and spilled into the next row)
-                property <bool> has-ctl: !link && r.control != "";
                 property <length> text-w: max(40px, root.width - self.padding-left - self.padding-right
                     - iconbox.preferred-width - linkbox.preferred-width - ctlbox.preferred-width - textcol.padding-right);
                 padding-left: pad;
@@ -391,7 +413,7 @@ component RowView {
                     spacing: 2px;
                     padding-top: Theme.material ? 12px : 10px;
                     padding-bottom: Theme.material ? 12px : 10px;
-                    padding-right: link ? 12px : r.control != "" ? (Theme.material ? 16px : 12px) : 0;
+                    padding-right: link ? 12px : has-ctl && !stacked ? gap : 0;
                     // (each a box as tall as its text wrapped at text-w, measured
                     // by a hidden copy: only heights flow back, no width loop)
                     Rectangle {
@@ -470,9 +492,26 @@ component RowView {
                     // of the spare width and pushed the text right)
                     horizontal-stretch: 0;
                     alignment: center;
-                    padding-top: has-ctl ? 8px : 0;
-                    padding-bottom: has-ctl ? 8px : 0;
-                    if has-ctl: Control { r: r; menu-open: root.menu-open; }
+                    padding-top: has-ctl && !stacked ? 8px : 0;
+                    padding-bottom: has-ctl && !stacked ? 8px : 0;
+                    if has-ctl && !stacked: Control {
+                        r: r;
+                        menu-open: root.menu-open;
+                        measured(w) => { root.ctl-w = w; root.restack(); }
+                    }
+                }
+            }
+            // (stacked: the control on a line of its own under the text, at
+            // the row's right edge as beside it)
+            if has-ctl && stacked: HorizontalLayout {
+                padding-left: pad + icon-w;
+                padding-right: pad;
+                padding-bottom: Theme.material ? 12px : 10px;
+                alignment: end;
+                Control {
+                    r: r;
+                    menu-open: root.menu-open;
+                    measured(w) => { root.ctl-w = w; root.restack(); }
                 }
             }
         }

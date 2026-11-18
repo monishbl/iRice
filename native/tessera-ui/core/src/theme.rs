@@ -95,7 +95,10 @@ pub fn look_with(v: &Value, look_override: Option<&str>, wallpaper: impl Fn(&str
     } else {
         BASELINE.into()
     };
-    let dark = s("mode", "dark") != "light"; // ("auto" follows the sun in the shell; dark here)
+    // ("auto": light from sunrise to sunset, Theme.qml's Daylight.day; the
+    // sun as the shell last said it, else 6:30 and 18:30. It was always dark
+    // here, 18 Nov: Auto never turned light in the standalone shell)
+    let dark = crate::wallpaper::dark_now(v);
     let accent_name = s("accent", "blue");
     let accent = if accent_name == "wallpaper" {
         // (Wallpaper.qml: the tone — the shell's when it said one, else the
@@ -1064,6 +1067,16 @@ mod tests {
 
     fn none(_: &str) -> Option<String> {
         None
+    }
+
+    #[test]
+    fn auto_follows_the_sun() {
+        // (it was always dark: now light between sunrise and sunset, as Theme.qml)
+        let auto = json!({"appearance": {"mode": "auto"}});
+        assert_eq!(look_from(&auto, None, none).dark, crate::wallpaper::dark_now(&auto));
+        assert!(look_from(&json!({"appearance": {"mode": "dark"}}), None, none).dark);
+        assert!(!look_from(&json!({"appearance": {"mode": "light"}}), None, none).dark);
+        assert!(look_from(&json!({}), None, none).dark);
     }
 
     #[test]

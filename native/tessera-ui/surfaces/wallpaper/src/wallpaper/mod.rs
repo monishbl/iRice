@@ -375,7 +375,10 @@ impl Part for WallpaperPicker {
             // From the shell (RustUi.tell): the day's sunrise and sunset (the
             // ring round the picture a time-of-day wallpaper shows now)
             Ok(v) => {
-                if wallpaper::told_sun(&v) && self.win.is_some() {
+                // (either part may hear it first, and only the first sees it
+                // change: the open picker follows a sun message either way)
+                let sun = v["sunrise"].is_i64() && v["sunset"].is_i64();
+                if (wallpaper::told_sun(&v) || sun) && self.win.is_some() {
                     let applied = self.applied(st);
                     self.win.as_ref().unwrap().ui.set_applied(applied);
                 }

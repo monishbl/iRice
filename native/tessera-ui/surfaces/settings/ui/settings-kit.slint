@@ -998,3 +998,68 @@ export component SSwatch inherits Rectangle {
         clicked => { root.clicked(); }
     }
 }
+
+// Text wrapped at the width it's told (`avail`), as tall as that makes it. A
+// wrapped Text in a nested layout is measured at its one-line width, so its
+// box came out one line tall and the rest ran over what follows (the update
+// notes over the next group, 18 Nov)
+export component SWrap {
+    in property <string> text;
+    in property <color> color;
+    in property <length> font-size;
+    in property <int> font-weight: 400;
+    in property <length> avail;
+    min-height: mt.preferred-height;
+    preferred-height: mt.preferred-height;
+    Text {
+        x: 0;
+        y: 0;
+        width: parent.width;
+        height: parent.height;
+        text: root.text;
+        wrap: word-wrap;
+        vertical-alignment: top;
+        color: root.color;
+        font-size: root.font-size;
+        font-weight: root.font-weight;
+    }
+    mt := Text {
+        visible: false;
+        width: max(1px, root.avail);
+        text: root.text;
+        wrap: word-wrap;
+        font-size: root.font-size;
+        font-weight: root.font-weight;
+        accessible-role: none;
+    }
+}
+
+// The same for Markdown (StyledText): links in the accent, reported by link-clicked
+export component SWrapStyled {
+    in property <styled-text> text;
+    in property <color> color;
+    in property <color> link-color;
+    in property <length> font-size;
+    in property <length> avail;
+    callback link-clicked(string);
+    min-height: ms.preferred-height;
+    preferred-height: ms.preferred-height;
+    StyledText {
+        x: 0;
+        y: 0;
+        width: parent.width;
+        height: parent.height;
+        text: root.text;
+        default-color: root.color;
+        default-font-size: root.font-size;
+        link-color: root.link-color;
+        link-clicked(l) => { root.link-clicked(l); }
+    }
+    ms := StyledText {
+        visible: false;
+        width: max(1px, root.avail);
+        text: root.text;
+        default-font-size: root.font-size;
+        accessible-role: none;
+    }
+}

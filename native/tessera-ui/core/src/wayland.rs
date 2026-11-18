@@ -1489,6 +1489,7 @@ impl State {
                         if wakes_on() {
                             pressed_now(&s.namespace);
                         }
+                        self.each_part(|p, st| p.pointer_pressed(st, &s));
                         s.dispatch(WindowEvent::PointerPressed { position, button });
                     } else {
                         if wakes_on() {

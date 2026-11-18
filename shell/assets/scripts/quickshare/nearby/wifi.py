@@ -28,7 +28,7 @@ import shutil
 import sys
 
 from . import debuglog, offline
-from .transport import StreamTransport
+from .transport import READ_LIMIT, StreamTransport
 
 UPGRADE_PORT = 53319  # next to the Quick Share port (53318), for firewall rules
 HELPER = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "qs-wifi-helper.py")
@@ -179,6 +179,8 @@ async def network():
     station = stations[0] if stations else None
     freq = parse_iw_link(await _run("iw", "dev", station, "link")) if station else None
     caps = parse_iw_list(await _run("iw", "list")) if station else {"5ghz": False, "p2p_go": False, "client_beside": False}
+    # (the channels this Wi-Fi may use: told to a phone that hosts, medium_metadata)
+    chans = parse_iw_phy(await _run("iw", "phy")) if station else {}
     nm = nm_manages(await _run("nmcli", "-t", "-f", "DEVICE,STATE", "device"), station) if station else False
     # iwd running isn't iwd running the Wi-Fi: NetworkManager may use
     # wpa_supplicant (its default) while something has started iwd beside it
@@ -186,7 +188,7 @@ async def network():
     if iwd and nm:
         iwd = nm_wifi_backend(await _run("NetworkManager", "--print-config")) == "iwd"
     return {"addresses": addresses, "station": station, "frequency": freq, "nm": nm, "iwd": iwd,
-            "shield": nm and helper_shields(), "driver": wifi_driver(station) if station else "", **caps}
+            "shield": nm and helper_shields(), "driver": wifi_driver(station) if station else "", "channels": chans, **caps}
 
 
 def helper_script():
@@ -251,11 +253,39 @@ def no_direct_reason(net):
     return "Wi-Fi Direct isn't available here"
 
 
+def channel_of(freq):
+    """A 2.4 or 5 GHz frequency (MHz) as its channel number, else None."""
+    if freq == 2484:
+        return 14
+    if 2412 <= freq <= 2472 and (freq - 2407) % 5 == 0:
+        return (freq - 2407) // 5
+    if 5160 <= freq <= 5885 and freq % 5 == 0:
+        return (freq - 5000) // 5
+    return None
+
+
+def client_channels(chans, has_5ghz=True):
+    """The channels we can join a phone's group or hotspot on (`iw phy`'s,
+    not disabled: a client may join on a "no IR" or radar channel the phone
+    started), 5 GHz first, as channel numbers."""
+    five = sorted(c for f, st in chans.items() if st != "disabled" and f >= 5000 and has_5ghz and (c := channel_of(f)))
+    two = sorted(c for f, st in chans.items() if st != "disabled" and f < 3000 and (c := channel_of(f)))
+    return five + two
+
+
 def medium_metadata(net):
     """What the ConnectionRequest says about our Wi-Fi (a phone that hosts
-    picks its group's channel from it: ours, on 5 GHz when we can)."""
+    picks its group's channel from it: ours, on 5 GHz when we can). With the
+    channels we can join on (Nearby's wifi_direct_cli_usable_channels and
+    wifi_hotspot_sta_usable_channels, 18 Nov: sending to a phone averaged
+    1.6 MB/s; a phone that knows we take 5 GHz needn't host on 2.4).
+    TESSERA_QS_NO_CHANNELS=1 leaves them out (if a phone takes them amiss)."""
     m = offline.MediumMetadata(supports_5_ghz=bool(net.get("5ghz")), supports_6_ghz=False, mobile_radio=False)
     m.ap_frequency = net["frequency"] if net.get("frequency") else -1
+    usable = client_channels(net.get("channels") or {}, bool(net.get("5ghz")))
+    if usable and os.environ.get("TESSERA_QS_NO_CHANNELS") != "1":
+        m.wifi_direct_cli_usable_channels.channels.extend(usable)
+        m.wifi_hotspot_sta_usable_channels.channels.extend(usable)
     for ifname, iface in net.get("addresses", []):
         if ifname == net.get("station"):
             m.ip_address = iface.ip.packed
@@ -633,9 +663,9 @@ class Listener:
         async def incoming(reader, writer):
             self._arrived.put_nowait(StreamTransport(reader, writer, self.medium))
         try:
-            self.server = await asyncio.start_server(incoming, host=host, port=port)
+            self.server = await asyncio.start_server(incoming, host=host, port=port, limit=READ_LIMIT)
         except OSError:
-            self.server = await asyncio.start_server(incoming, host=host, port=0)
+            self.server = await asyncio.start_server(incoming, host=host, port=0, limit=READ_LIMIT)
         self.port = self.server.sockets[0].getsockname()[1]
         return self.port
 

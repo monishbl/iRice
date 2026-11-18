@@ -147,7 +147,13 @@ sys.exit(1 if off else 0)' "$c" 2>/dev/null && return 1
         if [[ -s "$FALLBACK" && "$(sed -n 3p "$FALLBACK")" != "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]]; then
             rm -f "$FALLBACK" "$STARTS"
         fi
-        if (( $(cat "$STARTS" 2>/dev/null || echo 0) >= 2 )); then
+        # (the count is per login too: its second line is the session it was
+        # counted in. 18 Nov it survived a reboot without a note, and every
+        # login after started the QML shell)
+        if [[ -s "$STARTS" && "$(sed -n 2p "$STARTS")" != "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]]; then
+            rm -f "$STARTS"
+        fi
+        if (( $(head -1 "$STARTS" 2>/dev/null || echo 0) >= 2 )); then
             echo "launch-shell: tessera-ui didn't stay up twice: the QML shell this time ($STARTS)" >&2
             # (why, for the fallback's notice: the crash's own line when the
             # log has one; an EGL failure wrote its note already. A panic in
@@ -189,7 +195,7 @@ if ui="$(standalone_ui)"; then
     TESSERA_QML_FALLBACK="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../.." && pwd -P)"
     export TESSERA_QML_FALLBACK
     mkdir -p "$(dirname "$STARTS")"
-    echo $(( $(cat "$STARTS" 2>/dev/null || echo 0) + 1 )) > "$STARTS"
+    printf '%s\n%s\n' $(( $(head -1 "$STARTS" 2>/dev/null || echo 0) + 1 )) "${HYPRLAND_INSTANCE_SIGNATURE:-}" > "$STARTS"
     # (its messages, and a crash's, in tessera-ui.log; the run before's in .1)
     log="$(dirname "$STARTS")/tessera-ui.log"
     [[ -f "$log" ]] && mv -f "$log" "$log.1"

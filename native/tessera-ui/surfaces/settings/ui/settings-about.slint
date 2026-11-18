@@ -11,7 +11,7 @@
 // Markdown shows as plain text (links not clickable).
 
 import { Theme } from "@tessera/theme.slint";
-import { SIc, SOpt, SetRow, SBlock, SBus, SG, SM, SIcon, SFocusRing, SSwitch, SSlider, SSegmented, SChoice, SButton, SField, SChip, SSwatch, SFilled, STip, SWavy } from "settings-kit.slint";
+import { SIc, SOpt, SetRow, SBlock, SBus, SG, SM, SIcon, SFocusRing, SSwitch, SSlider, SSegmented, SChoice, SButton, SField, SChip, SSwatch, SFilled, STip, SWavy, SWrap, SWrapStyled } from "settings-kit.slint";
 
 // (no custom blocks in this group: its views are rows)
 export component AboutBlock inherits VerticalLayout {
@@ -237,36 +237,42 @@ export component AboutCtl {
             spacing: 16px;
             for e in r.data: VerticalLayout {
                 spacing: 6px;
+                // (a long title wraps in the width the date leaves it, the
+                // date beside its first line; each part as tall as it wraps:
+                // a one-line box let the notes run over the next group)
                 HorizontalLayout {
                     spacing: 8px;
                     alignment: start;
-                    Text {
+                    SWrap {
+                        horizontal-stretch: 1;
+                        avail: root.width - 2 * pad - (e.detail != "" ? dt.preferred-width + 8px : 0);
                         text: e.text;
                         color: Theme.label;
                         font-size: 16px;
                         font-weight: 600;
-                        vertical-alignment: bottom;
                     }
-                    if e.detail != "": Text {
+                    dt := Text {
+                        horizontal-stretch: 0;
                         text: e.detail;
                         color: Theme.secondary;
                         font-size: Theme.small;
-                        vertical-alignment: bottom;
+                        vertical-alignment: top;
                     }
                 }
                 // (its Markdown: bold, lists, `code`, links in the accent
                 // that open in the browser: UpdateNotes.qml 45–57)
-                StyledText {
+                SWrapStyled {
+                    avail: root.width - 2 * pad;
                     text: e.md;
-                    default-color: Theme.label;
-                    default-font-size: 14px;
+                    color: Theme.label;
+                    font-size: 14px;
                     link-color: Theme.accent-ink;
                     link-clicked(l) => { SBus.act(r.id, 0, 0, l); }
                 }
             }
-            if r.text != "": Text {
+            if r.text != "": SWrap {
+                avail: root.width - 2 * pad;
                 text: r.text;
-                wrap: word-wrap;
                 color: Theme.label;
                 font-size: 14px;
             }
@@ -311,8 +317,13 @@ export component AboutCtl {
                     HorizontalLayout {
                         padding-left: pad;
                         padding-right: pad;
-                        spacing: 0;
+                        spacing: 12px;
+                        // (a long name takes at most 260 px and elides, the
+                        // versions or reason the rest: they ran together; a
+                        // share of the row's width would loop through its size)
                         Text {
+                            horizontal-stretch: 0;
+                            max-width: 260px;
                             text: l.text;
                             overflow: elide;
                             vertical-alignment: center;
@@ -321,18 +332,20 @@ export component AboutCtl {
                             font-weight: 500;
                         }
                         if l.id != "": HorizontalLayout {
-                            padding-left: 8px;
+                            horizontal-stretch: 0;
                             alignment: center;
                             VerticalLayout {
                                 alignment: center;
+                                // (the badge whole: "removed" came out "re…")
                                 Rectangle {
+                                    min-width: badge.preferred-width + 12px;
                                     height: 18px;
                                     border-radius: 9px;
                                     background: Theme.fill;
                                     HorizontalLayout {
                                         padding-left: 6px;
                                         padding-right: 6px;
-                                        Text {
+                                        badge := Text {
                                             text: l.id;
                                             overflow: elide;
                                             horizontal-alignment: center;
@@ -346,6 +359,7 @@ export component AboutCtl {
                         }
                         Text {
                             horizontal-stretch: 1;
+                            min-width: 40px;
                             text: l.detail;
                             overflow: elide;
                             horizontal-alignment: right;
@@ -396,6 +410,10 @@ export component AboutCtl {
                         font-size: Theme.small;
                     }
                     Text {
+                        // (the step it's on keeps its words, up to 240 px; the
+                        // others shrink first)
+                        horizontal-stretch: st.on ? 0 : 1;
+                        min-width: st.on ? min(self.preferred-width, 240px) : 0;
                         text: st.text;
                         vertical-alignment: center;
                         overflow: elide;

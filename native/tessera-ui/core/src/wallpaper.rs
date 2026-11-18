@@ -55,6 +55,12 @@ impl Day {
     }
 }
 
+/// Theme.qml's `dark` now: "auto" by today's sunrise and sunset (`sun`)
+pub fn dark_now(cfg: &Value) -> bool {
+    let (r, s) = sun();
+    dark(cfg, &Day::now(r, s))
+}
+
 /// Theme.qml's `dark`: appearance.mode, "auto" following the sun
 pub fn dark(cfg: &Value, day: &Day) -> bool {
     match cfg["appearance"]["mode"].as_str().unwrap_or("dark") {

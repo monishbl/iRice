@@ -807,8 +807,8 @@ impl Row {
                 Kind::Custom => "custom",
             }
             .into(),
-            label: self.label.as_str().into(),
-            detail: self.detail.as_str().into(),
+            label: soft_breaks(&self.label).as_ref().into(),
+            detail: soft_breaks(&self.detail).as_ref().into(),
             icon: ic(&self.icon),
             tone: self.tone,
             value: self.value.as_str().into(),
@@ -1375,8 +1375,68 @@ impl Pages {
     }
 }
 
+/// A word longer than this is given places to break (`soft_breaks`)
+pub const LONG_WORD: usize = 24;
+
+/// Text with zero-width spaces in its long words (a commit hash, a version
+/// with its build, a path, a package name), after `/ - _ . + : ,` and at
+/// least every 16 characters: Slint's word wrap never breaks inside a word,
+/// so one longer than the row's text column ran past it, under the row's
+/// buttons or off the card (Software Update, 18 Nov). Shorter words, and
+/// everything else, as they were.
+pub fn soft_breaks(text: &str) -> std::borrow::Cow<'_, str> {
+    if !text.split(char::is_whitespace).any(|w| w.chars().count() > LONG_WORD) {
+        return std::borrow::Cow::Borrowed(text);
+    }
+    let mut out = String::with_capacity(text.len() + 16);
+    for (i, word) in text.split(' ').enumerate() {
+        if i > 0 {
+            out.push(' ');
+        }
+        if word.chars().count() <= LONG_WORD || word.contains('\n') {
+            // (a word spanning a line break: each line's part on its own)
+            if word.contains('\n') && word.split('\n').any(|w| w.chars().count() > LONG_WORD) {
+                let parts: Vec<String> = word.split('\n').map(|w| soft_breaks(w).into_owned()).collect();
+                out.push_str(&parts.join("\n"));
+            } else {
+                out.push_str(word);
+            }
+            continue;
+        }
+        let mut run = 0;
+        let n = word.chars().count();
+        for (j, c) in word.chars().enumerate() {
+            out.push(c);
+            run += 1;
+            let last = j + 1 == n;
+            if !last && ("/-_.+:,".contains(c) || run >= 16) {
+                out.push('\u{200B}');
+                run = 0;
+            }
+        }
+    }
+    std::borrow::Cow::Owned(out)
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn long_words_get_places_to_break() {
+        use super::soft_breaks;
+        // (short words and ordinary sentences: untouched)
+        assert_eq!(soft_breaks("Built locally from the branch version."), "Built locally from the branch version.");
+        // (a version with its whole commit: breaks after the + and every 16)
+        let v = soft_breaks("On Beta: version 0.1.0+1c236def85aff8775a6062089d8595ae1aae8401, from 2026-11-18");
+        assert_eq!(v.replace('\u{200B}', ""), "On Beta: version 0.1.0+1c236def85aff8775a6062089d8595ae1aae8401, from 2026-11-18");
+        for piece in v.split(|c: char| c == ' ' || c == '\u{200B}') {
+            assert!(piece.chars().count() <= 16, "{piece}");
+        }
+        // (a path: after each slash; lines kept)
+        let p = soft_breaks("Saved to\n~/.local/share/tessera/bin/tessera-ui-1c236def");
+        assert!(p.contains("~/\u{200B}.\u{200B}local/\u{200B}") && p.contains("Saved to\n"));
+        assert_eq!(p.replace('\u{200B}', ""), "Saved to\n~/.local/share/tessera/bin/tessera-ui-1c236def");
+    }
+
     use super::*;
 
     #[test]
