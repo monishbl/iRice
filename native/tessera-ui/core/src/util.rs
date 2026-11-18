@@ -427,8 +427,10 @@ pub fn watch_dir(dir: PathBuf, retry: std::time::Duration, on_change: impl Fn() 
                 }
                 let (mut off, mut gone) = (0usize, false);
                 while off + ev_size <= n as usize {
-                    // SAFETY: the kernel wrote whole events into buf
-                    let ev = unsafe { &*(buf.as_ptr().add(off) as *const libc::inotify_event) };
+                    // SAFETY: the kernel wrote whole events into buf; read
+                    // unaligned (a byte buffer: dereferencing it as the
+                    // 4-aligned struct panicked in debug builds, 18 Nov)
+                    let ev = unsafe { std::ptr::read_unaligned(buf.as_ptr().add(off) as *const libc::inotify_event) };
                     gone |= ev.mask & (libc::IN_DELETE_SELF | libc::IN_MOVE_SELF | libc::IN_IGNORED) != 0;
                     off += ev_size + ev.len as usize;
                 }

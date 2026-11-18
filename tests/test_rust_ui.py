@@ -68,6 +68,7 @@ FROZEN_QML = {
     "island.forget",
     "island.hud",
     "launch.openLink",
+    "openLink",
     "panels.appExpose",
     "panels.openSettings",
     "saverToggle",
