@@ -95,7 +95,11 @@ const CULL_MARGIN: f32 = 16.;
 /// TESSERA_UI_NO_CULL=1: every item and layer drawn whole
 pub(crate) fn cull_off() -> bool {
     static OFF: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *OFF.get_or_init(|| std::env::var("TESSERA_UI_NO_CULL").is_ok_and(|v| v == "1"))
+    // Off by default since 18 Nov: on the user's real display (Intel iris,
+    // Hyprland 0.56, two screens) panels stopped redrawing after a change
+    // (Control Center tiles, Notification Center cards) and the island
+    // stuttered; arenas never showed it. TESSERA_UI_CULL=1 turns it on to test
+    *OFF.get_or_init(|| !std::env::var("TESSERA_UI_CULL").is_ok_and(|v| v == "1") || std::env::var("TESSERA_UI_NO_CULL").is_ok_and(|v| v == "1"))
 }
 #[cfg(feature = "opengl")]
 pub mod opengl;
