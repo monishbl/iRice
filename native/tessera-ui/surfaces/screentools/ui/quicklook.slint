@@ -45,7 +45,7 @@ component QlButton inherits Rectangle {
         : !enabled ? transparent : touch.pressed ? Theme.fill-pressed : touch.has-hover ? Theme.fill-hover : transparent;
     animate background { duration: Theme.hover; }
     transform-scale: touch.pressed && enabled ? (Theme.material ? 1.06 : 0.97) : 1;
-    animate transform-scale { duration: Theme.material ? 290ms : 100ms; easing: Theme.material ? spring(0.57) : cubic-bezier(0.33, 1, 0.68, 1); }
+    animate transform-scale { duration: Theme.material ? 290ms : 100ms; easing: Theme.material ? spring(0.57) : cubic-bezier(0.3333, 1, 0.6667, 1); }
     accessible-role: button;
     accessible-label: done ? done-tooltip : tooltip;
     accessible-enabled: enabled;
@@ -207,7 +207,7 @@ export component QuickLook inherits Window {
 
     animate progress {
         duration: shown ? 200ms : 140ms;
-        easing: shown ? cubic-bezier(0.33, 1, 0.68, 1) : cubic-bezier(0.32, 0, 0.67, 0);
+        easing: shown ? cubic-bezier(0.3333, 1, 0.6667, 1) : cubic-bezier(0.3333, 0, 0.6667, 0);
     }
     changed progress => {
         if !shown && progress <= 0.001 { closed(); }
@@ -572,7 +572,7 @@ export component QuickLook inherits Window {
                 border-radius: Theme.material ? (ot.pressed ? 12px : self.height / 2) : Theme.radius-control;
                 animate border-radius { duration: 222ms; easing: spring(0.4); } // (springFast)
                 transform-scale: ot.pressed ? (Theme.material ? 1.04 : 0.97) : 1;
-                animate transform-scale { duration: Theme.material ? 290ms : 100ms; easing: Theme.material ? spring(0.57) : cubic-bezier(0.33, 1, 0.68, 1); }
+                animate transform-scale { duration: Theme.material ? 290ms : 100ms; easing: Theme.material ? spring(0.57) : cubic-bezier(0.3333, 1, 0.6667, 1); }
                 background: Theme.material ? Theme.m3-primary.mix(Theme.m3-on-primary, ot.pressed ? 0.88 : ot.has-hover ? 0.92 : 1)
                     : ot.pressed ? Theme.accent.darker(0.2) : ot.has-hover ? Theme.accent.darker(0.1) : Theme.accent;
                 animate background { duration: Theme.hover; }

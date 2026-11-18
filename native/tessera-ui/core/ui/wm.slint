@@ -43,7 +43,7 @@ export component WPreview inherits Rectangle {
     in property <length> radius: 4px;
     property <bool> roomy: root.height >= 56px && root.width >= 72px;
     property <float> shown: has-picture ? 1 : 0;
-    animate shown { duration: 150ms; easing: cubic-bezier(0.33, 1, 0.68, 1); } // (OutCubic, WindowPreview.qml)
+    animate shown { duration: 150ms; easing: cubic-bezier(0.3333, 1, 0.6667, 1); } // (OutCubic, WindowPreview.qml)
     accessible-role: none;
     Rectangle {
         border-radius: radius;

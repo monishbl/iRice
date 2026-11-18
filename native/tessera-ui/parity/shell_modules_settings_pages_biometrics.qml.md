@@ -1,5 +1,7 @@
 # shell/modules/settings/pages/biometrics.qml ↔ surfaces/settings (src/pages/system/security.rs `biometrics`, ui/settings-system.slint `pick-add`)
 
+_Re-checked 17 Nov (B5, parity-settings) against main 18628a5 + the B5 ports: statuses below say what's there now; [12 Nov: …] is the old status._
+
 Fingerprint and Face, the untitled part at the top of Privacy & Security.
 Both groups exist only with a reader / an IR camera. One popup: the finger
 **Dropdown** (Dropdown.qml, its own list). State: feed.system.fingerprint /
@@ -15,7 +17,7 @@ face (RustBridgeSystem.qml).
 | 4 | "Set Up Reader"/"Setting up…" (fingerprint, primary, busy fixing) only slowStart && nothing missing → Fingerprint.fix() (42–49) | 216–218 | same |
 | 5 | "Install"/"Installing…" (download-simple, primary, busy installing, disabled while Updates.running) when packages missing → Fingerprint.install() (50–58) | 219–222 | same |
 | 6 | A row per enrolled finger (icon fingerprint, name); Remove (danger) → asks: detail "It's deleted from the reader…", buttons Keep + "Remove <name>"; second press removes (62–92) | 229–251 | same (name fallback: key instead of "fingerprint" when unnamed — negligible) |
-| 7 | "Add a fingerprint"/"Add another" + detail; **Dropdown** 190 wide of free fingers (fingerNames order), value = picked while free else first; Add (fingerprint, primary, disabled while enrolling/waiting or none) → sheet.open(finger) (93–120) | 252–281, settings-system.slint 196–221 | **different**: the Dropdown is drawn as SChoice without `dropdown: true` and the row's control is "custom", so `model::dropdowns()` misses it: its list opens as an ActionMenu (44/32 px items, ≥ 240/220 wide) not Dropdown's (36/28 px, ≥ max(control,200)); no Up/Down stepping while closed; Material caret 20 px not 14 |
+| 7 | "Add a fingerprint"/"Add another" + detail; **Dropdown** 190 wide of free fingers (fingerNames order), value = picked while free else first; Add (fingerprint, primary, disabled while enrolling/waiting or none) → sheet.open(finger) (93–120) | 252–281, settings-system.slint 196–221 | **same (fixed before 17 Nov: pick-add uses SChoice)** [12 Nov: **different**: the Dropdown is drawn as SChoice without `dropdown: true` and the row's control is "custom", so `model::dropdowns()` misses it: its list opens as an ActionMenu (44/32 px items, ≥ 240/220 wide) not Dropdown's (36/28 px, ≥ max(control,200)); no Up/Down stepping while closed; Material caret 20 px not 14] |
 | 8 | "Unlock the lock screen" switch lock.fingerprint (default true) (123–128) | 284–286 | same |
 | 9 | Password prompts / sudo in terminals / Login screen (GDM text when info.gdm): switch = pam[key], disabled while pamBusy, detail "Changing…" for the busy one → setPam(key, !checked) (129–145) | 287–306 | same |
 | 10 | Sheet's addAnother: next free finger ≠ current → open(next) (149–156) | 126–138 (sheet's Add Another Finger) | same |

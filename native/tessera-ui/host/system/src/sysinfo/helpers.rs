@@ -133,7 +133,10 @@ pub fn island_wants(h: &Host, kind: &str) -> bool {
 /// too (it goes to the notification server over D-Bus)
 pub fn notify_send(args: &[&str]) {
     let n = notify_args(args);
-    tessera_core::util::notify(n[0], n[1], n[2], n[3], n[4]);
+    // (a live entry's event id, -h string:x-tessera-key:…: core notify/live.rs)
+    let key = args.windows(2).find(|w| w[0] == "-h" && w[1].starts_with("string:x-tessera-key:")).map(|w| &w[1]["string:x-tessera-key:".len()..]).unwrap_or("");
+    let live = tessera_core::util::Live { key: key.to_string(), ..Default::default() };
+    tessera_core::util::notify_live(n[0], n[1], n[2], &live, n[3], n[4]);
 }
 
 /// [app, icon, urgency, title, body] of notify-send's arguments
@@ -146,6 +149,9 @@ pub fn notify_args<'a>(args: &[&'a str]) -> [&'a str; 5] {
             "-a" => out[0] = it.next().copied().unwrap_or(""),
             "-i" => out[1] = it.next().copied().unwrap_or(""),
             "-u" => out[2] = it.next().copied().unwrap_or(""),
+            "-h" => {
+                it.next(); // (a hint: notify_send reads the live entry's key)
+            }
             "--" => rest.extend(it.by_ref().copied()),
             x => rest.push(x),
         }
@@ -223,6 +229,8 @@ mod tests {
         assert_eq!(notify_args(&["-a", "Tessera sandbox", "Skipped x"]), ["Tessera sandbox", "", "", "Skipped x", ""]);
         // (after --, a title may start with a dash)
         assert_eq!(notify_args(&["-u", "critical", "--", "-5 °C", "Cold"]), ["", "", "critical", "-5 °C", "Cold"]);
+        // (hints aren't the title)
+        assert_eq!(notify_args(&["-a", "Tessera", "-h", "string:x-tessera-key:sysupdate", "Updated", "All done"]), ["Tessera", "", "", "Updated", "All done"]);
     }
     #[test]
     fn versions() {

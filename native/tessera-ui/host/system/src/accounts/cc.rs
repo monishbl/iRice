@@ -22,7 +22,6 @@ use super::common::*;
 use serde_json::{json, Value};
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
-use std::time::Duration;
 use tessera_core::host::{Host, Service};
 use tessera_core::services::{bluez::Bluetooth, mpris::Players, status::Wifi};
 
@@ -38,7 +37,6 @@ enum M {
 enum Do {
     Ask(&'static str, Value),
     Cmd(Vec<String>),
-    Page(String),
     Asking(String),
     Config(&'static str, Value),
     Bt(String, &'static str),
@@ -78,10 +76,6 @@ impl Item {
     }
     fn danger(mut self) -> Self {
         self.danger = true;
-        self
-    }
-    fn checked(mut self, c: bool) -> Self {
-        self.checked = c;
         self
     }
 }
@@ -215,6 +209,23 @@ pub fn bt_icon(icon: &str) -> &'static str {
     }
 }
 
+/// Every tile's page ends the same way: a row to its settings (Settings'
+/// page, its part, the row's words). A tile's right-click or long press opens
+/// its page, all of them alike (the page's header, its switch, its rows,
+/// this link): Sharing's used to open a small menu of its own instead.
+pub fn settings_link(page: &str) -> Option<(&'static str, &'static str, &'static str)> {
+    Some(match page {
+        "wifi" => ("network", "", "Wi-Fi settings…"),
+        "bluetooth" => ("network", "Bluetooth", "Bluetooth settings…"),
+        "focus" => ("focus", "", "Focus settings…"),
+        "caffeine" => ("power", "", "Battery & Power settings…"),
+        "sharing" => ("phone", "Sharing", "Sharing settings…"),
+        "mirroring" | "cast" => ("displays", "", "Display settings…"),
+        "resources" => ("health", "", "Health settings…"),
+        _ => return None,
+    })
+}
+
 fn note(text: &str, tone: &str, center: bool) -> Value {
     json!({"t": "note", "text": text, "tone": tone, "center": center})
 }
@@ -269,7 +280,6 @@ pub struct ControlCenter {
     share_retry: bool,
     /// the Resources page asked for samples (resources.use "graph")
     res_used: bool,
-    poll: slint::Timer,
 }
 
 impl Default for ControlCenter {
@@ -305,7 +315,6 @@ impl Default for ControlCenter {
             share_copied: 0,
             share_retry: false,
             res_used: false,
-            poll: slint::Timer::default(),
         }
     }
 }
@@ -368,17 +377,9 @@ impl ControlCenter {
                 // level; on whenever it isn't No one; "10 min" counts down
                 "sharing" => {
                     let (level, status) = sharing_level(&sharing, cfg);
-                    let mut d = def("Sharing", "share-network", level != "off", &status);
-                    d.menu = vec![
-                        Item::new("Send files…", Do::Ask("panels.pickShare", json!([]))),
-                        Item::sep(),
-                        Item::new("No one", Do::Ask("sharing.setLevel", json!(["off"]))).checked(level == "off"),
-                        Item::new("Everyone for 10 minutes", Do::Ask("sharing.setLevel", json!(["10min"]))).checked(level == "10min"),
-                        Item::new("Everyone", Do::Ask("sharing.setLevel", json!(["everyone"]))).checked(level == "everyone"),
-                        Item::sep(),
-                        Item::new("Sharing settings…", Do::Page("sharing".into())),
-                    ];
-                    d
+                    // (right-click opens its page, as every tile does: the
+                    // same levels, Send files…, Nearby and its settings)
+                    def("Sharing", "share-network", level != "off", &status)
                 }
                 "mirroring" => {
                     let active = bs(&mirr, "active");
@@ -572,7 +573,7 @@ impl ControlCenter {
         if name.is_empty() || name == "sound" || name == "mic" {
             return None;
         }
-        Some(match name {
+        let mut page = match name {
             "wifi" => self.wifi_page(h),
             "bluetooth" => self.bt_page(h),
             "focus" => self.focus_page(h),
@@ -582,7 +583,14 @@ impl ControlCenter {
             "cast" => self.cast_page(h),
             "resources" => self.resources_page(),
             _ => json!({"name": name, "title": name, "blocks": []}),
-        })
+        };
+        // the same last row on every page (not Wi-Fi's password form or its QR code)
+        let sub_view = name == "wifi" && !matches!(self.wifi_view, WifiView::List);
+        if let (Some((_, _, label)), false, Some(blocks)) = (settings_link(name), sub_view, page["blocks"].as_array_mut()) {
+            blocks.push(json!({"t": "gap", "h": 6}));
+            blocks.push(row(json!({"id": "settings", "icon": "gear-six", "title": label})));
+        }
+        Some(page)
     }
 
     fn wifi_menu(n: &Net) -> Vec<Item> {
@@ -803,8 +811,6 @@ impl ControlCenter {
         blocks.push(json!({"t": "gap", "h": 12}));
         blocks.push(json!({"t": "head", "text": "Turn on"}));
         blocks.push(json!({"t": "seg", "id": "len", "options": ["Until off", "For 1 hour", "Until evening"], "cur": if self.focus_duration == 3_600_000 { 1 } else if self.focus_duration == -1 { 2 } else { 0 }}));
-        blocks.push(json!({"t": "gap", "h": 6}));
-        blocks.push(row(json!({"id": "settings", "icon": "gear-six", "title": "Focus settings…"})));
         let _ = h;
         json!({"name": "focus", "title": "Focus", "blocks": blocks})
     }
@@ -1003,7 +1009,6 @@ impl ControlCenter {
         match d {
             Do::Ask(c, a) => h.ask(c, a),
             Do::Cmd(c) => spawn_cmd(c),
-            Do::Page(p) => self.set_page(h, &p),
             Do::Asking(n) => self.asking = n,
             Do::Config(k, v) => crate::util::config_set(k, v),
             Do::Settings(page, target) => h.ask("panels.openSettings", json!([page, target])),
@@ -1370,6 +1375,13 @@ impl ControlCenter {
     }
 
     fn block(&mut self, h: &mut Host, page: &str, id: &str, what: &str, text: &str) {
+        // (every page's last row: settings_link)
+        if id == "settings" {
+            if let Some((p, part, _)) = settings_link(page) {
+                h.ask("panels.openSettings", json!([p, part]));
+                return;
+            }
+        }
         match (page, what) {
             ("wifi", "switch") => {
                 let net = g("network");
@@ -1400,9 +1412,7 @@ impl ControlCenter {
                 }
             }
             ("focus", _) => {
-                if id == "settings" {
-                    h.ask("panels.openSettings", json!(["focus", ""]));
-                } else if id == "len" {
+                if id == "len" {
                     if let Some(i) = what.strip_prefix("seg:").and_then(|s| s.parse::<usize>().ok()) {
                         self.focus_duration = [0, 3_600_000, -1].get(i).copied().unwrap_or(0);
                     }
@@ -1668,6 +1678,11 @@ impl Service for ControlCenter {
     fn name(&self) -> &'static str {
         "ControlCenter"
     }
+    fn every_second(&mut self, h: &mut Host, n: u64) {
+        // (the host's shared second: was a timer of its own)
+        let _ = n;
+        self.message(h, Box::new(M::Poll));
+    }
     fn calls(&self) -> &'static [&'static str] {
         &["cc"]
     }
@@ -1678,7 +1693,6 @@ impl Service for ControlCenter {
         h.st.shell.want("weather");
         let tx = Tx::new(h.sender("ControlCenter"));
         self.tx = Some(tx.clone());
-        self.poll.start(slint::TimerMode::Repeated, Duration::from_secs(1), move || tx.send(M::Poll));
         h.set_state("ccPage", json!(""));
         h.set_state("ccEditing", json!(false));
     }
@@ -1765,6 +1779,15 @@ impl Service for ControlCenter {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn every_tile_page_ends_with_its_settings() {
+        for page in ["wifi", "bluetooth", "focus", "caffeine", "sharing", "mirroring", "cast", "resources"] {
+            let (p, _, label) = super::settings_link(page).unwrap_or_else(|| panic!("{page} has no settings row"));
+            assert!(!p.is_empty() && label.ends_with(" settings…"), "{page}: {label}");
+        }
+        assert_eq!(super::settings_link("sharing"), Some(("phone", "Sharing", "Sharing settings…")));
+    }
+
     use super::*;
     #[test]
     fn the_sharing_tile_says_and_shows_one_level() {

@@ -334,9 +334,9 @@ impl TesseraUpdate {
                     "Your settings and shortcuts are as you left them".into()
                 };
                 if helpers::island_enabled(h) {
-                    helpers::island_post(h, json!({"kind": "sysupdate", "icon": "check-circle", "title": title, "subtitle": sub, "color": "#30D158", "action": "What's new", "onAction": {"call": "panels.openSettings", "args": ["update"]}}), 10000);
+                    helpers::island_post(h, json!({"kind": "sysupdate", "key": "tessera-update", "icon": "check-circle", "title": title, "subtitle": sub, "color": "#30D158", "action": "What's new", "onAction": {"call": "panels.openSettings", "args": ["update"]}}), 10000);
                 } else {
-                    helpers::notify_send(&["-a", "Tessera", "-i", "system-software-update", title, &format!("{sub}. Settings → Software Update shows what's new.")]);
+                    helpers::notify_send(&["-a", "Tessera", "-h", "string:x-tessera-key:tessera-update", "-i", "system-software-update", title, &format!("{sub}. Settings → Software Update shows what's new.")]);
                 }
             }
             _ => {}

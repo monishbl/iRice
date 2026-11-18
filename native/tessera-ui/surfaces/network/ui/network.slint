@@ -124,7 +124,7 @@ component WaveBar inherits Rectangle {
         Rectangle {
             x: 0;
             width: parent.width * root.value;
-            animate width { duration: 250ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+            animate width { duration: 250ms; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
             height: parent.height;
             border-radius: 2px;
             background: Theme.accent;
@@ -134,7 +134,7 @@ component WaveBar inherits Rectangle {
         width: 100%;
         height: 100%;
         property <length> end: self.width * root.value;
-        animate end { duration: 250ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+        animate end { duration: 250ms; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
         property <float> phase: mod(animation-tick() / 1000ms, 1);
         // the track after a gap, with its stop dot
         Rectangle {
@@ -594,11 +594,11 @@ export component WifiMenu inherits Window {
     property <length> pad: 16px;
     property <length> mpad: m3 ? 4px : 5px;
     property <angle> spin;
-    animate spin { duration: 500ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+    animate spin { duration: 500ms; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
 
     animate openness {
-        duration: shown ? 420ms : 154ms;
-        easing: shown ? spring(0.3) : cubic-bezier(0.4, 0, 1, 1);
+        duration: shown ? 420ms : Theme.popover * 0.7;
+        easing: shown ? spring(0.3) : Theme.material ? cubic-bezier(0.3, 0, 0.8, 0.15) : cubic-bezier(0.4, 0, 1, 1);
     }
     changed openness => {
         if !shown && openness <= 0.001 { closed(); }

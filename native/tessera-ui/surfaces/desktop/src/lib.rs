@@ -89,7 +89,6 @@ enum M {
     StackFile(i32),
     StackFileMenu(i32, f32, f32),
     Tick,
-    Sample,
     Slow,
     SaveNote,
     Image(String, Option<Pixels>),
@@ -238,7 +237,6 @@ pub struct Desktop {
     sampler: sysstat::Sampler,
     stats: Vec<sysstat::Stat>,
     tick: slint::Timer,
-    sample_timer: slint::Timer,
     slow_timer: slint::Timer,
     minute: i64,
     ghost: Option<(i32, i32, String)>,
@@ -1494,15 +1492,16 @@ impl Desktop {
         mw.ui.invoke_open();
     }
 
-    /// Close the menu: its exit animation (120 ms), then unmapped (a timer
-    /// here: the overlay must never stay up over the desktop, taking clicks)
+    /// Close the menu: gone at once (ContextMenu.qml has no exit animation),
+    /// then click-through on the loop's next turn (M::MenuClosed: the overlay
+    /// must never stay up over the desktop, taking clicks)
     fn close_menu(&mut self, st: &State) {
         if let Some(mw) = &mut self.menu {
             if mw.open {
                 mw.open = false;
                 mw.ui.set_shown(false);
                 let to = st.shell.sender(NAME);
-                self.menu_timer.start(slint::TimerMode::SingleShot, Duration::from_millis(180), move || to(Box::new(M::MenuClosed)));
+                self.menu_timer.start(slint::TimerMode::SingleShot, Duration::ZERO, move || to(Box::new(M::MenuClosed)));
             }
         }
     }
@@ -1579,9 +1578,9 @@ impl Desktop {
     fn start_timers(&mut self, st: &State) {
         let to = st.shell.sender(NAME);
         let t = to.clone();
+        // (one second for the clocks, the folder and the system widget's
+        // sample: two timers of a second each woke the loop twice, 17 Nov)
         self.tick.start(slint::TimerMode::Repeated, Duration::from_secs(1), move || t(Box::new(M::Tick)));
-        let t = to.clone();
-        self.sample_timer.start(slint::TimerMode::Repeated, Duration::from_secs(1), move || t(Box::new(M::Sample)));
         self.slow_timer.start(slint::TimerMode::Repeated, Duration::from_secs(300), move || to(Box::new(M::Slow)));
     }
 
@@ -1869,8 +1868,6 @@ impl Part for Desktop {
                 if (now / 1000) % 3 == 0 && Self::cfg(st).icons && self.win.is_some() {
                     self.refresh_folder(st);
                 }
-            }
-            M::Sample => {
                 if self.kinds_shown().contains("system") {
                     self.sampler.sample(crate::util::now_ms() as f64 / 1000.0);
                     self.stats = self.sampler.stats();

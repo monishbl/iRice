@@ -1,5 +1,7 @@
 # shell/modules/settings/pages/menubar.qml ↔ surfaces/settings (src/pages/look/menubar.rs `menubar`)
 
+_Re-checked 17 Nov (B5, parity-settings) against main 18628a5 + the B5 ports: statuses below say what's there now; [12 Nov: …] is the old status._
+
 Menu Bar & Dock (page id `menubar`). Plain rows only (Row/Group/MoreOptions/
 PagePart); the Dock and Quick Settings parts have their own parity files
 (pages_dock, pages_controlcenter). No Popup, no Timer, no animation of its own.
@@ -14,7 +16,7 @@ PagePart); the Dock and Quick Settings parts have their own parity files
 | 4 | Status switches wifi, bluetooth, sound, resources "CPU and memory", weather, keyboardLayout (+hint), collapseTray "Tuck away app icons" (+hint), search/ai/controlCenter/clock with the live key combo in the hint (KeyNames.combo of SUPER Space / SUPER A / SUPER C / SUPER N), appMenu, windowMenu (+ SUPER CTRL F) (72–84) | 68–89, `keys::combo` | same |
 | 5 | Group "Clock": showDate, showSeconds (87–92) | 91–95 | same |
 | 6 | More options folded (95) | `p.more` / `p.end_more` (MoreOptions parity) | same |
-| 7 | More › Behaviour › "Screens" (+ "Show the menu bar on these screens."): a chip per screen, solid (Glass: on = accent fill), checked when the list is empty or holds it; click toggles, all chosen → []. Flow 260 wide, **RightToLeft** (first screen at the right edge), wraps (99–122) | 100–113 `.chips(..).width(260)` | **different**: chips are one HorizontalLayout (alignment end), first screen at the left of the run, no wrap; `width` ignored by the chips control |
+| 7 | More › Behaviour › "Screens" (+ "Show the menu bar on these screens."): a chip per screen, solid (Glass: on = accent fill), checked when the list is empty or holds it; click toggles, all chosen → []. Flow 260 wide, **RightToLeft** (first screen at the right edge), wraps (99–122) | 100–113 `.chips(..).width(260)` | **same (fixed before 17 Nov: chips reversed (first screen at the right edge))** [12 Nov: **different**: chips are one HorizontalLayout (alignment end), first screen at the left of the run, no wrap; `width` ignored by the chips control] |
 | 8 | More › Left and centre: "Spaces always shown" slider 1–10 step 1 (200), detail "N space(s); more appear when used"; "When there are more spaces" Segmented 220 Arrows/Dynamic dots + its two details; "Spaces on other displays" switch + detail; all three hidden while workspaces == "off" (124–151) | 115–136 | same |
 | 9 | More › Status items › "Unread notifications" Segmented 320, 5 options ↔ bellDot/dot/count/bellCount/off + detail (152–166) | 138–144 | same |
 | 10 | More › Buttons: 7 switches (screenshot "Screenshot tools", colorPicker "Colour picker", mic, keyboard, darkMode, powerProfile "Energy mode", record) toggling the id in `menubar.utilButtons` (167–185) | 146–168 | same |

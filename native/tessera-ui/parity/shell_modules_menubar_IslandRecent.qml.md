@@ -11,18 +11,18 @@ publishes it (`host/shell/src/island.rs` `record` 329-367,
 
 | behaviour | QML line | Rust place | status |
 |---|---|---|---|
-| Appear: 280 ms × motionScale OutCubic, rises 8 px (none with reduce motion) | 32-35 | — | missing |
-| Minute clock for "5m" while visible | 38-42 | — | missing |
-| Header: "Recent" (collapsed: "Recent · N"), caret when collapsible; hover 0.1 / press 0.16, focus ring; Enter/Space/click toggles; a11y Show/Hide recent alerts | 45-90 | — | missing |
-| Clear: hover / press, focus ring, Enter/Space/click → clearHistory; a11y | 91-120 | host island.rs:914-918 `clear` | missing in the UI |
-| Flickable list, momentum, clipped, max height from IslandView | 124-134 | — | missing |
-| Up to 8 lines of Island.history, 36 px | 139, 25, 24 | host state `island.list` | missing in the UI |
-| Swipe sideways: follows, > 72 px or 500 px/s slides off (150 ms × motionScale InCubic) then forget; else back (popover ms OutCubic) | 147-184 | host island.rs:908-913 `forget` | missing |
-| Tap a line with a remembered button (Open a download / drive, What's new) | 185-189 | host island.rs:903-907 `alertAct` | missing in the UI |
-| Line hover background 0.08 (150 ms) | 196-201 | — | missing |
-| Badge 24: picture, else icon on colour 0.22 (Material tint / onTint) | 202-225 | — | missing |
-| Title small DemiBold (≤ 60 %), then subtitle · battery % · ×times | 226-242 | — | missing |
-| Ago ("now", "5m", "2h", time) caption dim 0.45; × button while hovered (Remove <title>) | 243-283 | — | missing |
+| Appear: 280 ms × motionScale OutCubic, rises 8 px (none with reduce motion) | 32-35 | island.slint `RecentList` `appear` (280 ms OutCubic, its own clock) | different: fades in without the 8 px rise (a layout can't be offset; padding would bounce the island's height) |
+| Minute clock for "5m" while visible | 38-42 | lib.rs `tick` (refresh on the minute) → `island::ago` | same (fixed after batch 1) |
+| Header: "Recent" (collapsed: "Recent · N"), caret when collapsible; hover 0.1 / press 0.16, focus ring; Enter/Space/click toggles; a11y Show/Hide recent alerts | 45-90 | island.slint `RecentList` header (caption 600, caret-up when collapsible, hover / press, a11y "Hide recent alerts") | same (17 Nov: caption size, the caret, a11y). "Recent · N" never shows in either: collapsed, the list is hidden (IslandView 744). No Tab focus: the island takes keys only after a click on an alert |
+| Clear: hover / press, focus ring, Enter/Space/click → clearHistory; a11y | 91-120 | island.slint Clear (caption, hover / press, a11y "Clear recent alerts") → `island.clear` | same (fixed after batch 1; caption size 17 Nov) |
+| Flickable list, momentum, clipped, max height from IslandView | 124-134 | island.slint `Flickable` (300 px at most) | same (fixed after batch 1) |
+| Up to 8 lines of Island.history, 36 px | 139, 25, 24 | lib.rs `recent_rows` (8 of `island.list`); island.slint lines 36 px | same (fixed after batch 1) |
+| Swipe sideways: follows, > 72 px or 500 px/s slides off (150 ms × motionScale InCubic) then forget; else back (popover ms OutCubic) | 147-184 | island.slint line drag (`dx`, speed, 72 px / 500 px/s, 150 ms) → `island.forget` | same (fixed after batch 1; snaps back at once instead of over Theme.motion.popover) |
+| Tap a line with a remembered button (Open a download / drive, What's new) | 185-189 | island.slint line click (`has-act`) → `island.alertAct` | same (fixed after batch 1) |
+| Line hover background 0.08 (150 ms) | 196-201 | island.slint line background | same (fixed after batch 1) |
+| Badge 24: picture, else icon on colour 0.22 (Material tint / onTint) | 202-225 | island.slint `badge` | same (fixed after batch 1) |
+| Title small DemiBold (≤ 60 %), then subtitle · battery % · ×times | 226-242 | island.slint `what` + detail; lib.rs detail join | same (fixed after batch 1) |
+| Ago ("now", "5m", "2h", time) caption dim 0.45; × button while hovered (Remove <title>) | 243-283 | island.slint `trail` (ago caption 0.45 / Material 0.7, × while hovered, a11y "Remove …") | same (fixed after batch 1) |
 
 ## Summary
 
@@ -79,3 +79,7 @@ Retest the FAIL steps above.
 - Open the island with history: Recent fades in (record: not one frame).
 
 ## Test results (batch 4)
+
+## Re-check 17 Nov (B4)
+
+The Recent list had been built after batch 1 (`RecentList`) but every row still said missing. Ported now: the header's caption size, caret and a11y name; Clear's caption size. Before: 12 missing; after: 11 same, 1 different (no 8 px rise).

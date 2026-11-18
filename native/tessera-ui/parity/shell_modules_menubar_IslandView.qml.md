@@ -42,20 +42,20 @@ button handlers in `surfaces/menubar/src/lib.rs`, the host half
 | Click on the compact pill opens it | 788-791 | `over.clicked` → `hover-open` | same |
 | Right-click anywhere on it pins / unpins | 793-796 | `over.pointer-event` right up → `pin` → host `island.pin` (config `island.pinned`) | same |
 | Pin button top-right (26×26, icon 14, push-pin / push-pin-slash), only open and h > 40, gone at once while closing | 770-785 | `IconButton` at `parent.width - 32`, `opacity: content-in` | same |
-| Recent button top-left (clock-counter-clockwise) and the Recent list | 737-768 | — | missing (next batch: IslandRecent) |
+| Recent button top-left (clock-counter-clockwise) and the Recent list | 737-768 | island.slint `recb` (26 px, a11y "Recent alerts · N") + `RecentList` | same (fixed after batch 1) |
 | Compact: live activity's controls clickable (stop recording, pause timer, play/pause music…) | IslandLive | `trail` IconButtons → `control(kind, i, false)` → lib.rs `island_control` (music: MPRIS on a thread; others: host `island.live <kind> <i>`) | same (fixed: kept models, overControls) |
-| Open: the focused activity's card with every control (music prev/play/next; timer reset/play/skip; recording discard/mute/pause/stop) | IslandFocusCard, LiveInfo.controls | `card` + `control(kind, i, true)` → host `island.live <kind> <i> all` | different: the card is simplified (no seek bar, volume, open-player, cast — IslandFocusCard is the next batch) |
+| Open: the focused activity's card with every control (music prev/play/next; timer reset/play/skip; recording discard/mute/pause/stop) | IslandFocusCard, LiveInfo.controls | `card` + `control(kind, i, true)` → host `island.live <kind> <i> all` | same (17 Nov: see IslandFocusCard.qml.md) |
 | All at once: music card + other activities as rows with controls (no reset), 45 ms stagger, 280 ms fade + 8 px rise | 711-730, IslandActivity | `ActivityRow` list (`act-rows`), `control(kind, i, true)` with the reset-less index mapped back | same (fixed; was missing) |
 | Wheel / two-finger swipe over the compact pill or the open card switches activity | 494-500, 670-674 | `over.scroll-event` → `cycle` (Wheel::step, tested) | same; the swap's collapse-and-reopen animation (110 ms in, 260 ms OutBack out) missing |
-| Page dots under the card when several (one-at-a-time), click selects | 676-699 | dots drawn, `!all-mode` | different: dots not clickable yet |
+| Page dots under the card when several (one-at-a-time), click selects | 676-699 | island.slint dots → `focus-at(i)` | same (17 Nov) |
 | Alerts in the island, their buttons (action, action 2, more, card buttons), wheel up dismisses | 581-632 | `AlertView` Pills → `act(uid, …)` → host `island.act` (desktop-made alerts → `today.islandAct`); scroll → `dismiss` | same (fixed: kept models) |
 | HUD row: mute on the symbol, drag/click/scroll the level, outputs button | IslandLevels | `AlertView` hud | same (outputs open the Sound menu, not inline) |
 | Pointer resting on alerts holds their time | 109-116 | `holding` → `island.hold` | same |
-| Esc dismisses the newest alert after a click on it | 117-145 | — | missing |
+| Esc dismisses the newest alert after a click on it | 117-145 | island.slint `keys` FocusScope (focused by a press on an alert) → lib.rs `M::IslandEscape` | same (fixed batch 2) |
 | Status line | 731-736 | `IslandStatus` | see IslandStatus.qml.md (fixed) |
 | Size springs (w/h), corners min(tile, h/2), content fades in Theme.motion.hover, gone at once closing | 186-228 | `shape` animate 480 ms spring(0.22); `content-in` | different: Slint's spring curve, not Qt's SpringAnimation (measured close; tester to time) |
 | Material: tonal surface (surfaceContainerHigh, Highest with an alert), shadow while floating open, hot tint | 251-280 | `if Theme.material: Rectangle` | same |
-| Glass: black melting into glass, rim; hot ripples/arch | 298-431 | gradient rectangle, rim; glow only | different: no shaders (ripples, arch, album art as the island, edge fade) |
+| Glass: black melting into glass, rim; hot ripples/arch | 298-431 | `Squircle` gradient, rim; `island-art` (the album art as the island, its fade drawn in bands); hot: a red glow | different: running hot has a glow, not the shader's ripples and arch (no shaders in Slint) |
 | Over a fullscreen app: pill mode (newest alert, click opens) | 36-53, 503-565 | `mode == 3`, `open-pill` | same |
 
 ## Test plan (Sonnet tester)
@@ -89,3 +89,7 @@ Setup inside the arena (`inbox`/`dev run`):
 - Recording stop (batch 1 FAIL): the island sends `screen.stopRecording` (and the pill's stop the same); `ipc recorder stop` failing too and wf-recorder surviving SIGINT in the arena point at host/desktop's recorder (not this group's code): reported to the lead.
 
 Retest the FAIL steps above.
+
+## Re-check 17 Nov (B4)
+
+Before: 2 missing, 4 different; after: 2 different (the spring's curve; running hot without the shader's ripples). The Recent list, Esc, the album art as the island had been done after their batches; the full card and clickable dots now.

@@ -28,6 +28,7 @@ export struct SOpt {
     image: image,
     num: float,
     id: string, // (a custom view's own key)
+    md: styled-text, // text with its marks (update notes' Markdown)
 }
 
 // One row in a group (Row.qml, SubpageLink.qml, or a custom view's)
@@ -125,6 +126,11 @@ export global SBus {
     // (bumped a few times in the first seconds: the row says where it is
     // again, for a window laid out late on a busy machine)
     in-out property <int> reveal-again;
+    // a row that just opened wants to be seen (Wi-Fi's password row):
+    // the page scrolls the least it can to show it all
+    in-out property <length> ensure-y;
+    in-out property <length> ensure-h;
+    in-out property <int> ensure-seq;
     // the window's width for the page (custom views size from it)
     in-out property <length> page-width: 600px;
     // the shown page's height (the kept pages sit on top of each other;
@@ -660,7 +666,7 @@ export component SChoice {
         color: Theme.secondary;
         // (Material: the caret turns over while the list is open)
         transform-rotation: Theme.material && root.open ? 180deg : 0deg;
-        animate transform-rotation { duration: Theme.material ? 200ms : 0ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+        animate transform-rotation { duration: Theme.material ? 200ms : 0ms; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
     }
     ta := TouchArea {
         enabled: root.enabled;
@@ -669,6 +675,57 @@ export component SChoice {
             fs.focus();
             show();
         }
+    }
+}
+
+// Material 3 Expressive's wavy bar (WavyProgress.qml, Material): the done
+// part a moving wave (amplitude 3, wavelength 40, a wavelength a second),
+// flat near 0 and 100 %, a gap, then the track and its stop dot. `value`
+// < 0: not known yet (a short stretch slides back and forth, InOutCubic
+// 900 ms each way). No shapes: the wave is a row of 4 px dots, as many as
+// the done part needs.
+export component SWavy inherits Rectangle {
+    in property <float> value;
+    property <bool> ind: value < 0;
+    property <float> shown: ind ? 0.3 : max(0, min(1, value));
+    property <duration> t: animation-tick();
+    property <float> phase: mod(t / 1000ms, 1);
+    property <float> u: mod(t / 1800ms, 1);
+    property <float> half: u < 0.5 ? u * 2 : 2 - u * 2;
+    property <float> eased: half < 0.5 ? 4 * half * half * half : 1 - (2 - 2 * half) * (2 - 2 * half) * (2 - 2 * half) / 2;
+    property <length> start: ind ? eased * (root.width - root.width * 0.3) : 0;
+    property <length> end: start + root.width * shown;
+    property <float> amplitude: !ind && (shown <= 0.1 || shown >= 0.95) ? 0 : 3;
+    animate amplitude { duration: 300ms; }
+    height: 10px;
+    accessible-role: progress-indicator;
+    accessible-value: ind ? "In progress" : round(shown * 100) + "%";
+    // the track, after a gap, with its stop dot
+    Rectangle {
+        x: min(root.width, root.end + 4px + (root.end > 0 ? 2px : 0));
+        y: (root.height - self.height) / 2;
+        width: max(0, root.width - self.x);
+        height: 4px;
+        border-radius: 2px;
+        background: Theme.m3-secondary-container;
+        if !root.ind: Rectangle {
+            x: parent.width - 4px;
+            width: 4px;
+            height: 4px;
+            border-radius: 2px;
+            background: Theme.m3-primary;
+        }
+    }
+    // (enough dots for the widest the done part gets: the bar's width)
+    for i in max(1, ceil(root.width / 2px)): Rectangle {
+        property <length> at: root.start + i * 2px;
+        visible: at <= root.end - 2px || (i == 0 && root.end > root.start + 1px);
+        x: at;
+        y: root.height / 2 - 2px + root.amplitude * sin((at / 40px - root.phase) * 360deg) * 1px;
+        width: 4px;
+        height: 4px;
+        border-radius: 2px;
+        background: Theme.m3-primary;
     }
 }
 
@@ -716,6 +773,8 @@ export component SButton {
     in property <string> label; // (what it's for, for screen readers: its row's label)
     // Glass: 26 px tall, 20 px wider than its label (the dock's Add, Clear all)
     in property <bool> compact;
+    // a tooltip after 600 ms (an icon alone: ImportExport's "Dismiss")
+    in property <string> tip;
     callback clicked();
     property <bool> active: enabled && !busy;
     property <bool> round: text == "" && (icon.p != "" || icon.m != "");
@@ -804,6 +863,7 @@ export component SButton {
             root.clicked();
         }
     }
+    STip { text: root.tip; hovered: ta.has-hover; }
 }
 
 // ── TextField (TextField.qml): commits on Enter and when it loses focus ─

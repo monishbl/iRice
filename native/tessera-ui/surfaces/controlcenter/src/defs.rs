@@ -61,7 +61,7 @@ pub const DEFS: &[Def] = &[
     d("focus", "Focus", Toggle, S21_11, "focus", "moon"),
     d("nightLight", "Night Light", Toggle, S11_21, "", "moon-stars"),
     d("darkMode", "Dark Mode", Toggle, S11_21, "", "circle-half"),
-    Def { id: "sharing", label: "Sharing", kind: Toggle, sizes: S11_21, page: "sharing", icon: "share-network", menu: true },
+    d("sharing", "Sharing", Toggle, S11_21, "sharing", "share-network"),
     d("mirroring", "Screen Mirroring", Toggle, S21_11, "mirroring", "screencast"),
     d("captions", "Live Captions", Toggle, S11_21, "", "closed-captioning"),
     d("keepAwake", "Caffeine", Toggle, S11_21, "caffeine", "coffee"),
@@ -97,6 +97,32 @@ pub const DEFAULT_LAYOUT: &[&str] = &["wifi:2x1", "nowPlaying:2x2", "bluetooth:1
 
 pub fn def(id: &str) -> Option<&'static Def> {
     DEFS.iter().find(|d| d.id == id)
+}
+
+/// What a tile's right-click or long press does
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Secondary {
+    /// a small menu of its choices (none has one now: see `secondary`)
+    Menu,
+    /// its page: the same one for every tile (header, switch, rows, its
+    /// settings at the end)
+    Page(&'static str),
+    /// its switch (a large tile's name, `detail`)
+    Act,
+    Nothing,
+}
+
+/// A tile's right-click or long press: its page when it has one, as Wi-Fi's
+/// does (Sharing's used to open a small menu instead: 17 Nov, every tile
+/// alike), a menu only for a tile that has choices and no page
+pub fn secondary(id: &str, has_menu: bool, detail: bool) -> Secondary {
+    let d = def(id);
+    match d {
+        Some(d) if !d.page.is_empty() => Secondary::Page(d.page),
+        Some(d) if d.menu && has_menu => Secondary::Menu,
+        _ if detail => Secondary::Act,
+        _ => Secondary::Nothing,
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -324,6 +350,21 @@ pub fn bare(cfg: &Value) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn every_tile_with_a_page_opens_it_like_wifi() {
+        for d in super::DEFS {
+            let s = super::secondary(d.id, true, false);
+            if d.page.is_empty() {
+                assert_ne!(s, super::Secondary::Menu, "{} opens a menu of its own", d.id);
+            } else {
+                assert_eq!(s, super::Secondary::Page(d.page), "{}", d.id);
+            }
+        }
+        // Sharing (the user's report): its page, never a menu
+        assert_eq!(super::secondary("sharing", true, false), super::Secondary::Page("sharing"));
+        assert_eq!(super::secondary("nightLight", false, true), super::Secondary::Act);
+    }
+
     use super::*;
     use serde_json::json;
 

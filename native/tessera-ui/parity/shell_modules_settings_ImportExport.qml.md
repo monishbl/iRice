@@ -1,5 +1,7 @@
 # shell/modules/settings/ImportExport.qml ↔ surfaces/settings (src/pages/input/importexport.rs `block`, ui/settings-input.slint fieldbtns/line/buttons/skip)
 
+_Re-checked 17 Nov (B5, parity-settings) against main 18628a5 + the B5 ports: statuses below say what's there now; [12 Nov: …] is the old status._
+
 Import and export of shortcuts and gestures, a part of Keyboard Shortcuts
 (`shortcuts`: all three sections, "Import and export") and Gestures
 (`mouse/gestures`: gestures only). The work is the shell's Keymap through
@@ -19,10 +21,10 @@ src/pages/input/importexport.rs.
 | 4 | "Everything" (more than one section): Import… / Export all (158–168) | 42–46 | same |
 | 5 | "end4 (illogical-impulse)": detail by keybinds; "Import from end4" busy/disabled while busy (169–179) | 47–57 | same |
 | 6 | File dialog: zenity (save with confirm-overwrite / open, JSON filter) or kdialog; Cancel does nothing; a dialog that fails → the path field (53–80) | RustBridgeInput.qml | same |
-| 7 | Path field group (no dialog): "Save as"/"Open file", field 260 with the default path, **focused at once**; Export/Import primary (disabled empty or busy), Enter = go; Cancel (182–208) | 64–96 (`fieldbtns`, gen refills the text) | **missing**: the field isn't focused when it appears (InField has `focus-input()` but fieldbtns never calls it) |
+| 7 | Path field group (no dialog): "Save as"/"Open file", field 260 with the default path, **focused at once**; Export/Import primary (disabled empty or busy), Enter = go; Cancel (182–208) | 64–96 (`fieldbtns`, gen refills the text) | **same (fixed before 17 Nov: settings-input.slint fieldbtns `init => { self.focus-input(); }`)** [12 Nov: **missing**: the field isn't focused when it appears (InField has `focus-input()` but fieldbtns never calls it)] |
 | 8 | Export: "Exported to ~/…" or "Couldn't write … Choose a folder you can write to…" (86–96) | bridge | same |
 | 9 | Import: read → preview, or "Couldn't read … Check the path…"; preview errors (97–116) | bridge | same |
-| 10 | Error group "Couldn't import or export" + detail; **IconButton x, tooltip "Dismiss"** (211–223) | 99–104 `btn("").icon("x")` | different (small): no tooltip |
+| 10 | Error group "Couldn't import or export" + detail; **IconButton x, tooltip "Dismiss"** (211–223) | 99–104 `btn("").icon("x")` | **same (ported 17 Nov, B5: SButton `tip`: an icon-only button shows its detail as a tooltip; Dismiss)** [12 Nov: different (small): no tooltip] |
 | 11 | Status group (status, no preview): label status; Undo (arrow-counter-clockwise) while undoSnap → restore, "Import undone."; 8 s timer clears (37–41, 224–241) | 105–115 | same |
 | 12 | Preview group: title, footer note; summary row "Nothing changes until you apply." with Apply changes (primary) + Cancel, or Close alone (244–278) | 118–143 | same |
 | 13 | Lines: first 8 (all when shown), icon plus/power/pencil-simple 12 tertiary at 20/14, text small wrapped, +14 px (279–302) | 144–151 | same |

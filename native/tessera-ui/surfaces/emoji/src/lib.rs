@@ -272,6 +272,9 @@ pub struct Emoji {
     /// clicks pass through); the window is kept, hidden, afterwards
     prewarm: bool,
     prewarm_timer: slint::Timer,
+    /// the shell's made-ahead turn came (Part::prewarm): the unseen frame
+    /// is drawn then, or as soon as the emoji are read
+    warm_asked: bool,
 }
 
 impl Default for Emoji {
@@ -305,6 +308,7 @@ impl Default for Emoji {
             retire_timer: slint::Timer::default(),
             prewarm: false,
             prewarm_timer: slint::Timer::default(),
+            warm_asked: false,
         }
     }
 }
@@ -527,6 +531,31 @@ impl Emoji {
         }
         self.glass_from = w.surface.rendered.get().wrapping_add(1);
         w.ui.set_shown(true);
+    }
+
+    /// The unseen frame, drawn before anyone opens it (the first frame is the
+    /// slow one: the emoji font's glyphs). Only if nobody opened it meanwhile
+    /// and a screen is there
+    fn warm_ahead(&mut self, st: &mut State) {
+        if self.open || self.win.is_some() || self.data.is_none() {
+            return;
+        }
+        let Some(output) = st.outputs_now().first().map(|o| o.1.clone()) else { return };
+        if !self.window(st, &output) {
+            return;
+        }
+        self.rebuild();
+        self.push(st);
+        let w = self.win.as_mut().unwrap();
+        w.warmed = true;
+        w.ui.set_warm(true);
+        st.set_input_region(&w.surface, Some(&[]));
+        w.surface.show(0, 0);
+        let next = w.surface.rendered.get().wrapping_add(1);
+        self.prewarm = true;
+        self.warm = Some(next);
+        let (to, n) = (Self::send(st), self.opening);
+        self.warm_timer.start(slint::TimerMode::SingleShot, Duration::from_millis(1500), move || to(Box::new(M::WarmTimeout(n))));
     }
 
     /// The unseen frame is on screen (or it took too long): open
@@ -1101,6 +1130,13 @@ impl Part for Emoji {
         self.load(st);
     }
 
+    /// The unseen frame with the other windows made ahead (src/main.rs: the
+    /// first quiet turns after the start), or as soon as the emoji are read
+    fn prewarm(&mut self, st: &mut State) {
+        self.warm_asked = true;
+        self.warm_ahead(st);
+    }
+
     fn command(&mut self, st: &mut State, cmd: &Command) {
         match cmd.cmd.as_str() {
             "open" => self.open(st, cmd.screen.clone()),
@@ -1170,33 +1206,15 @@ impl Part for Emoji {
                 self.rebuild();
                 self.push(st);
                 self.open_when_ready(st);
-                if self.win.is_none() && !self.open {
+                // (read after the shell's made-ahead turn: the unseen frame on
+                // a turn of its own, soon. It was 3 s after reading, ~3.5 s
+                // after the bar: the start's last layer and frames)
+                if self.warm_asked && self.win.is_none() && !self.open {
                     let to = st.shell.sender(NAME);
-                    self.prewarm_timer.start(slint::TimerMode::SingleShot, Duration::from_secs(3), move || to(Box::new(M::Prewarm)));
+                    self.prewarm_timer.start(slint::TimerMode::SingleShot, Duration::from_millis(100), move || to(Box::new(M::Prewarm)));
                 }
             }
-            M::Prewarm => {
-                // (only if nobody opened it meanwhile and a screen is there)
-                if self.open || self.win.is_some() || self.data.is_none() {
-                    return;
-                }
-                let Some(output) = st.outputs_now().first().map(|o| o.1.clone()) else { return };
-                if !self.window(st, &output) {
-                    return;
-                }
-                self.rebuild();
-                self.push(st);
-                let w = self.win.as_mut().unwrap();
-                w.warmed = true;
-                w.ui.set_warm(true);
-                st.set_input_region(&w.surface, Some(&[]));
-                w.surface.show(0, 0);
-                let next = w.surface.rendered.get().wrapping_add(1);
-                self.prewarm = true;
-                self.warm = Some(next);
-                let (to, n) = (Self::send(st), self.opening);
-                self.warm_timer.start(slint::TimerMode::SingleShot, Duration::from_millis(1500), move || to(Box::new(M::WarmTimeout(n))));
-            }
+            M::Prewarm => self.warm_ahead(st),
             M::Placed(p) => {
                 self.placement = p;
                 if self.open {

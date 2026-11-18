@@ -136,9 +136,9 @@ pub fn wallpaper(cx: &mut Ctx, p: &mut Page) {
         .row(Row::new("Pictures")
             .visible(dynamic == "time")
             .detail("A folder of pictures in name order: the first half spans the day, the rest the night. Empty uses the built-in set.")
-            .path(cx.s("wallpaper.dynamicFolder"), "Built-in set", folder))
-        .row(Row::new("Light picture").visible(dynamic == "appearance").path(cx.s("wallpaper.lightPath"), "Built-in day", light))
-        .row(Row::new("Dark picture").visible(dynamic == "appearance").path(cx.s("wallpaper.darkPath"), "Built-in dusk", dark));
+            .path(cx.s("wallpaper.dynamicFolder"), "Built-in set", folder).busy(busy))
+        .row(Row::new("Light picture").visible(dynamic == "appearance").path(cx.s("wallpaper.lightPath"), "Built-in day", light).busy(busy))
+        .row(Row::new("Dark picture").visible(dynamic == "appearance").path(cx.s("wallpaper.darkPath"), "Built-in dusk", dark).busy(busy));
 
     let live = cx.s("wallpaper.live");
     // The video's poster frame: the shell's, else the one the QML and the
@@ -159,7 +159,7 @@ pub fn wallpaper(cx: &mut Ctx, p: &mut Page) {
         .footer("Plays muted and loops. It pauses while windows cover most of the screen, so it only costs power while you can see it.")
         .row(Row::new("Video")
             .detail(if !live.is_empty() && poster.is_empty() { "Couldn't read this video. Check the path, or install ffmpeg." } else { "An .mp4, .webm or .mkv file" })
-            .path(live, "~/Videos/wallpaper.mp4", lp));
+            .path(live, "~/Videos/wallpaper.mp4", lp).busy(busy));
 
     // The login screen keeps its own copy (./install.sh --greeter); the
     // shell copies it (its root helper, else the password)
@@ -214,7 +214,7 @@ pub fn wallpaper(cx: &mut Ctx, p: &mut Page) {
     p.more(cx);
     {
         let fa = path_action(cx, "wallpaper.directory", true, "", "~/Pictures");
-        p.group("").row(Row::new("Folder").detail("Images in this folder appear below and in the wallpaper picker.").path(cx.s("wallpaper.directory"), "~/Pictures/Wallpapers", fa));
+        p.group("").row(Row::new("Folder").detail("Images in this folder appear below and in the wallpaper picker.").path(cx.s("wallpaper.directory"), "~/Pictures/Wallpapers", fa).busy(busy));
         let pause = cx.b("wallpaper.livePauseOnBattery");
         let pt = cx.toggle("wallpaper.livePauseOnBattery");
         p.group("Live wallpaper").row(Row::new("Pause on battery").switch(pause, pt));

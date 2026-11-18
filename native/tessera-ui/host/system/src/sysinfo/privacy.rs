@@ -230,6 +230,18 @@ impl Privacy {
         h.set_state("privacy.location", json!(location));
         h.set_state("privacy.share", json!(share_dot));
         h.set_state("privacy.micStreams", json!(self.mic_streams)); // (calls read these: Privacy.micStreams)
+        // (the island's screen-sharing activity: LiveInfo's screenShare)
+        h.set_state(
+            "privacy.screen",
+            json!({
+                "inIsland": share_in_island, "count": self.shares.len(),
+                "app": first.map(|s| s["app"].clone()).unwrap_or(json!("")),
+                "target": first.map(|s| s["target"].clone()).unwrap_or(json!("")),
+                "started": first.map(|s| s["started"].clone()).unwrap_or(json!(0)),
+                "window": first.is_some_and(|s| s["window"].as_bool().unwrap_or(false)),
+                "stopping": self.stopping, "stopFailed": self.stop_failed,
+            }),
+        );
     }
 
     fn mic_list(&mut self) {

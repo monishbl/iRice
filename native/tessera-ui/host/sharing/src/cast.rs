@@ -269,7 +269,7 @@ impl Sharing {
     }
     fn cast_fail(&mut self, h: &mut Host, title: &str, why: &str) {
         self.cast.error = why.to_string();
-        self.island(h, json!({"kind": "custom", "icon": "screencast", "title": title, "subtitle": why, "color": crate::DANGER}), 7000);
+        self.island(h, json!({"kind": "custom", "key": "cast", "icon": "screencast", "title": title, "subtitle": why, "color": crate::DANGER}), 7000);
     }
 
     /// The cast, as Control Center's Cast page and the island read it

@@ -972,16 +972,16 @@ impl ControlCenter {
         if self.editing {
             return;
         }
-        let d = defs::def(id);
         let items = self.said.modules.get(id).map(|m| m.menu.clone()).unwrap_or_default();
-        if d.is_some_and(|d| d.menu) && !items.is_empty() {
-            self.show_menu(MenuOf::Module(id.into()), items, x, y);
-        } else if let Some(page) = d.map(|d| d.page).filter(|p| !p.is_empty()) {
-            // (the page beside the module, level with its top, not the pointer)
-            let y = self.module_y_of(st, id);
-            self.set_page(st, page, id, y, true);
-        } else if detail {
-            self.act(st, id);
+        match defs::secondary(id, !items.is_empty(), detail) {
+            defs::Secondary::Menu => self.show_menu(MenuOf::Module(id.into()), items, x, y),
+            defs::Secondary::Page(page) => {
+                // (the page beside the module, level with its top, not the pointer)
+                let y = self.module_y_of(st, id);
+                self.set_page(st, page, id, y, true);
+            }
+            defs::Secondary::Act => self.act(st, id),
+            defs::Secondary::Nothing => {}
         }
     }
 
@@ -1015,7 +1015,9 @@ impl ControlCenter {
         let Some(b) = self.shown_page.blocks.get(i).cloned() else { return };
         if bridge::local(&self.page) {
             let snd = st.shell.get::<Sound>().cloned().unwrap_or_default();
-            if b.id.starts_with("prof:") {
+            if b.id == "settings" {
+                shell::ask("panels.openSettings", json!(["sound", ""]));
+            } else if b.id.starts_with("prof:") {
                 shell::ask("cc.block", json!(["sound", b.id, "click", ""]));
             } else if let Some(name) = b.id.strip_prefix("out:") {
                 audio::send(Cmd::DefaultSink(name.into()));

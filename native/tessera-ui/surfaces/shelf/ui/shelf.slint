@@ -38,7 +38,7 @@ component ShelfButton inherits Rectangle {
     background: Theme.material ? (touch.pressed ? Theme.m3-on-surface-variant.with-alpha(0.1) : touch.has-hover ? Theme.m3-on-surface-variant.with-alpha(0.08) : transparent)
         : touch.pressed ? Theme.fill-pressed : touch.has-hover ? Theme.fill : transparent;
     animate background { duration: Theme.hover; }
-    animate border-radius { duration: 150ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+    animate border-radius { duration: 150ms; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
     // (ElasticControl: Material swells 1 + min(6 %, 10 px) = 1.06 on springPress
     // 7.5/0.3 → 290 ms spring(0.57); Glass squishes to 0.95 on spring 6 /
     // damping 0.37 → ω 19.4, ζ 0.60: 325 ms spring(0.4); no rubber band)
@@ -209,9 +209,9 @@ export component ShelfCard inherits Window {
 
     animate fade {
         duration: instant ? 0ms : shown ? 200ms : 130ms;
-        easing: shown ? cubic-bezier(0.33, 1, 0.68, 1) : cubic-bezier(0.32, 0, 0.67, 0);
+        easing: shown ? cubic-bezier(0.3333, 1, 0.6667, 1) : cubic-bezier(0.3333, 0, 0.6667, 0);
     }
-    animate slide { duration: instant ? 0ms : 200ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+    animate slide { duration: instant ? 0ms : 200ms; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
 
     card := Rectangle {
         x: 24px + slide;
@@ -416,7 +416,7 @@ component Target inherits Rectangle {
     border-color: Theme.material ? Theme.m3-primary : over ? Theme.accent : #ffffff1f;
     transform-scale: over ? 1.03 : 1;
     transform-origin: { x: self.width / 2, y: self.height / 2 };
-    animate transform-scale { duration: Theme.hover; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+    animate transform-scale { duration: Theme.hover; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
     accessible-role: groupbox;
     accessible-label: title + ": " + detail;
     VerticalLayout {
@@ -474,7 +474,7 @@ export component ShelfZone inherits Window {
     animate shown {
         duration: open ? 320ms : 180ms;
         // (Easing.OutBack, overshoot 1.2: peaks ≈ 5.3 % over)
-        easing: open ? cubic-bezier(0.34, 1.4, 0.64, 1) : cubic-bezier(0.33, 1, 0.68, 1);
+        easing: open ? cubic-bezier(0.34, 1.4, 0.64, 1) : cubic-bezier(0.3333, 1, 0.6667, 1);
     }
 
     zone := Rectangle {

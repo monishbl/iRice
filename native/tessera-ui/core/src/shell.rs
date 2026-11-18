@@ -231,6 +231,13 @@ pub trait Part {
     fn plugin_changed(&mut self, st: &mut State) {}
     /// A service's new reading (read it with st.shell.get::<T>())
     fn data(&mut self, st: &mut State, what: TypeId) {}
+    /// This kind of reading can't wait while a window animates (runloop's
+    /// deferral): the part gets it at once. The menu bar's highlight of the
+    /// item whose panel is closing fades with the panel, as the QML's
+    /// binding to Panels does, not two frames into it.
+    fn urgent_data(&self, what: TypeId) -> bool {
+        false
+    }
     /// Its own message (Msg::Part with its name)
     fn message(&mut self, st: &mut State, msg: Box<dyn Any + Send>) {}
     /// A command from the shell (stdin) with its name: "open" (on

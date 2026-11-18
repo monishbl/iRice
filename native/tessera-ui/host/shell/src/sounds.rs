@@ -127,12 +127,10 @@ pub struct Sounds {
     screens: usize,
     heard: usize,
     settle_gen: u64,
-    poll: Option<slint::Timer>,
 }
 
 enum Tick {
     Armed,
-    Poll,
     Settle(u64),
 }
 
@@ -222,10 +220,31 @@ impl Service for Sounds {
         self.startup(h);
         let send = h.sender("Sounds");
         slint::Timer::single_shot(std::time::Duration::from_secs(5), move || send(Box::new(Tick::Armed)));
-        let send = h.sender("Sounds");
-        let t = slint::Timer::default();
-        t.start(slint::TimerMode::Repeated, std::time::Duration::from_secs(1), move || send(Box::new(Tick::Poll)));
-        self.poll = Some(t);
+    }
+    /// The charger, the lock and a recording, as they change (Sounds.qml's
+    /// onOnBatteryChanged, onLockedChanged, onRecordingNowChanged): after
+    /// every turn of the host, which is when the state and the battery's
+    /// readings change (it was a timer polling them every second, 17 Nov)
+    fn settled(&mut self, h: &mut Host) {
+        let charging = h.st.shell.get::<tessera_core::services::status::Battery>().map(|b| b.charging);
+        let locked = h.state("locked").as_bool().unwrap_or(false);
+        let recording = h.state("recording.on").as_bool().unwrap_or(false);
+        if self.armed {
+            if let (Some(was), Some(now)) = (self.charging, charging) {
+                if was != now && now {
+                    self.play(h, "charging", false);
+                }
+            }
+            if locked != self.locked {
+                self.play(h, if locked { "lock" } else { "unlock" }, false);
+            }
+            if recording != self.recording {
+                self.play(h, if recording { "recording" } else { "recordingOff" }, false);
+            }
+        }
+        self.charging = charging.or(self.charging);
+        self.locked = locked;
+        self.recording = recording;
     }
     fn call(&mut self, h: &mut Host, call: &str, args: &Value) {
         let a = if args.is_array() { args.clone() } else { json!([]) };
@@ -285,27 +304,6 @@ impl Service for Sounds {
                     }
                 }
                 self.heard = self.screens;
-            }
-            Tick::Poll => {
-                let charging = h.st.shell.get::<tessera_core::services::status::Battery>().map(|b| b.charging);
-                let locked = h.state("locked").as_bool().unwrap_or(false);
-                let recording = h.state("recording.on").as_bool().unwrap_or(false);
-                if self.armed {
-                    if let (Some(was), Some(now)) = (self.charging, charging) {
-                        if was != now && now {
-                            self.play(h, "charging", false);
-                        }
-                    }
-                    if locked != self.locked {
-                        self.play(h, if locked { "lock" } else { "unlock" }, false);
-                    }
-                    if recording != self.recording {
-                        self.play(h, if recording { "recording" } else { "recordingOff" }, false);
-                    }
-                }
-                self.charging = charging.or(self.charging);
-                self.locked = locked;
-                self.recording = recording;
             }
         }
     }

@@ -107,7 +107,32 @@ pub fn plain_locale(c: &mut std::process::Command) -> &mut std::process::Command
 /// else straight to the notification server over D-Bus (notify-send is
 /// libnotify-bin on Debian, not always there). On a thread
 pub fn notify(app: &str, icon: &str, urgency: &str, title: &str, body: &str) {
-    let (app, icon, urgency, title, body) = (app.to_string(), icon.to_string(), urgency.to_string(), title.to_string(), body.to_string());
+    notify_live(app, icon, urgency, &Live::default(), title, body);
+}
+
+/// What makes one of the shell's notifications a live entry (services/
+/// notify/live.rs): its event id (the same id again changes the one entry,
+/// quietly unless it's more urgent), how urgent it is (0–3), and whether it's
+/// over ("done": it stays as this last state; "remove": it goes)
+#[derive(Clone, Debug, Default)]
+pub struct Live {
+    pub key: String,
+    pub severity: Option<u8>,
+    pub resolved: String,
+}
+
+impl Live {
+    pub fn key(key: &str, severity: u8) -> Self {
+        Self { key: key.to_string(), severity: Some(severity), resolved: String::new() }
+    }
+    pub fn resolved(key: &str, how: &str) -> Self {
+        Self { key: key.to_string(), severity: None, resolved: how.to_string() }
+    }
+}
+
+/// notify, as one live entry (`live`: its event id, severity, resolution)
+pub fn notify_live(app: &str, icon: &str, urgency: &str, live: &Live, title: &str, body: &str) {
+    let (app, icon, urgency, title, body, live) = (app.to_string(), icon.to_string(), urgency.to_string(), title.to_string(), body.to_string(), live.clone());
     std::thread::spawn(move || {
         if on_path("notify-send") {
             let mut c = std::process::Command::new("notify-send");
@@ -117,6 +142,15 @@ pub fn notify(app: &str, icon: &str, urgency: &str, title: &str, body: &str) {
             }
             if !urgency.is_empty() {
                 c.args(["-u", &urgency]);
+            }
+            if !live.key.is_empty() {
+                c.args(["-h", &format!("string:x-tessera-key:{}", live.key)]);
+            }
+            if let Some(v) = live.severity {
+                c.args(["-h", &format!("int:x-tessera-severity:{v}")]);
+            }
+            if !live.resolved.is_empty() {
+                c.args(["-h", &format!("string:x-tessera-resolved:{}", live.resolved)]);
             }
             let _ = c.arg("--").arg(&title).arg(&body).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status();
             return;
@@ -129,6 +163,15 @@ pub fn notify(app: &str, icon: &str, urgency: &str, title: &str, body: &str) {
         };
         let mut hints: std::collections::HashMap<&str, zbus::zvariant::Value> = std::collections::HashMap::new();
         hints.insert("urgency", zbus::zvariant::Value::U8(level));
+        if !live.key.is_empty() {
+            hints.insert("x-tessera-key", zbus::zvariant::Value::from(live.key.as_str()));
+        }
+        if let Some(v) = live.severity {
+            hints.insert("x-tessera-severity", zbus::zvariant::Value::I32(v as i32));
+        }
+        if !live.resolved.is_empty() {
+            hints.insert("x-tessera-resolved", zbus::zvariant::Value::from(live.resolved.as_str()));
+        }
         let _ = conn.call_method(
             Some("org.freedesktop.Notifications"),
             "/org/freedesktop/Notifications",
@@ -351,6 +394,55 @@ pub fn on_path(bin: &str) -> bool {
     std::env::var_os("PATH").is_some_and(|p| std::env::split_paths(&p).any(|d| d.join(bin).is_file()))
 }
 
+/// Calls `on_change` on a thread of its own: once when `dir` is being
+/// watched, then whenever an entry is added to it, removed or moved (one
+/// call per batch of events read together). Inotify, not a timer: nothing
+/// runs while the folder doesn't change. While `dir` doesn't exist (or goes
+/// away) it looks again every `retry`.
+pub fn watch_dir(dir: PathBuf, retry: std::time::Duration, on_change: impl Fn() + Send + 'static) {
+    let _ = std::thread::Builder::new().name("tessera-watch".into()).spawn(move || {
+        let Ok(c) = std::ffi::CString::new(dir.as_os_str().as_encoded_bytes()) else { return };
+        let mask = libc::IN_CREATE | libc::IN_DELETE | libc::IN_MOVED_FROM | libc::IN_MOVED_TO | libc::IN_DELETE_SELF | libc::IN_MOVE_SELF | libc::IN_ONLYDIR;
+        let ev_size = std::mem::size_of::<libc::inotify_event>();
+        loop {
+            // SAFETY: plain inotify calls on an fd this loop owns and closes
+            let fd = unsafe { libc::inotify_init1(libc::IN_CLOEXEC) };
+            if fd < 0 {
+                return;
+            }
+            if unsafe { libc::inotify_add_watch(fd, c.as_ptr(), mask) } < 0 {
+                unsafe { libc::close(fd) };
+                std::thread::sleep(retry);
+                continue;
+            }
+            on_change();
+            let mut buf = [0u8; 4096];
+            'read: loop {
+                let n = unsafe { libc::read(fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) };
+                if n <= 0 {
+                    if n < 0 && std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted {
+                        continue;
+                    }
+                    break;
+                }
+                let (mut off, mut gone) = (0usize, false);
+                while off + ev_size <= n as usize {
+                    // SAFETY: the kernel wrote whole events into buf
+                    let ev = unsafe { &*(buf.as_ptr().add(off) as *const libc::inotify_event) };
+                    gone |= ev.mask & (libc::IN_DELETE_SELF | libc::IN_MOVE_SELF | libc::IN_IGNORED) != 0;
+                    off += ev_size + ev.len as usize;
+                }
+                on_change();
+                if gone {
+                    break 'read;
+                }
+            }
+            unsafe { libc::close(fd) };
+            std::thread::sleep(retry);
+        }
+    });
+}
+
 /// encodeURIComponent
 pub fn encode(s: &str) -> String {
     let mut out = String::new();
@@ -367,6 +459,25 @@ pub fn encode(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_watched_folder_says_when_it_changes() {
+        let dir = std::env::temp_dir().join(format!("tessera-watch-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let (tx, rx) = std::sync::mpsc::channel();
+        watch_dir(dir.clone(), std::time::Duration::from_millis(50), move || {
+            let _ = tx.send(());
+        });
+        let wait = || rx.recv_timeout(std::time::Duration::from_secs(5)).is_ok();
+        assert!(wait(), "once when watched");
+        std::fs::write(dir.join("a"), b"x").unwrap();
+        assert!(wait(), "a file added");
+        while rx.try_recv().is_ok() {}
+        std::fs::remove_file(dir.join("a")).unwrap();
+        assert!(wait(), "a file removed");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn xdg_folders_ignore_empty_and_relative_values() {

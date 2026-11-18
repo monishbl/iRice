@@ -1,5 +1,7 @@
 # shell/modules/settings/pages/update.qml ↔ surfaces/settings (src/pages/about/update.rs `page`, ui/settings-about.slint notes/pkgs/steps/progress/log)
 
+_Re-checked 17 Nov (B5, parity-settings) against main 18628a5 + the B5 ports: statuses below say what's there now; [12 Nov: …] is the old status._
+
 Software Update (page `update`). The updater is the shell's (SoftwareUpdate,
 TesseraUpdate, Updates, BootSnapshots); Rust reads feed.about.su/tu/up/bs
 (RustBridgeAbout.qml 171–245) and asks `su.*`, `tu.*`, `up.*`, `bs.*`.
@@ -13,7 +15,7 @@ UpdateNotes.qml and LogView.qml have their own parity files.
 | 2 | showPlan = checked && !running && !over && anything; over = job && state ≠ running && !running (23, 28) | update.rs 127–128 | same |
 | 3 | Status footer: sandbox text / "Tessera was updated… backed up to <~path>." / "Nothing is checked on its own…" (43) | 133–140 (bridge `home()` makes the ~) | same |
 | 4 | Status label: Updating… / Checking for updates… / Software Update / Updates are ready / Everything is up to date (45) | 141–151 | same |
-| 5 | Status detail: before a check the pacman/AUR text; else "Tessera <current>[ → <latest>]**[ · <report.ui.label>]**[ · Hyprland <now>]" (46) | 153–164 | **missing**: the ` · <report.ui.label>` part (feed has no `ui`) |
+| 5 | Status detail: before a check the pacman/AUR text; else "Tessera <current>[ → <latest>]**[ · <report.ui.label>]**[ · Hyprland <now>]" (46) | 153–164 | **same (fixed before 17 Nov: bridge_about report.ui = report.ui.label; update.rs adds ` · <ui>`)** [12 Nov: **missing**: the ` · <report.ui.label>` part (feed has no `ui`)] |
 | 6 | "Check for updates"/"Check again" (arrow-clockwise, busy while checking), hidden while running → check() (47–53) | 165–173 | same |
 | 7 | "Restart to finish the last update" (restartPending, not running): Restart → systemctl reboot (56–65) | 174 | same |
 | 8 | Error group: "Tessera's part can't go ahead", detail error, "Try again" → check() (69–80) | 177–179 | same |
@@ -25,8 +27,8 @@ UpdateNotes.qml and LogView.qml have their own parity files.
 | 14 | "Include AUR updates" switch (aurList) and "Remove packages Tessera no longer uses" switch (dropped) (296–313) | 305–309 | same |
 | 15 | Update group (plan): "N things left to decide" / "Ready to update"; detail choose-text / plan parts joined, first letter capital; "Update" (arrow-circle-up, primary), disabled (0.45) unless canUpdate (317–333) | 313–321, plan_detail 37–50 | same |
 | 16 | Progress group (running or over), title "Update", footer fake / keeps going / ""; label & detail per interrupted / running (applying, job.text, auth) / done (undo, N packages updated, Updated) / error / restart; buttons Cancel (cancellable), Restart (done + restart), Done (over) (336–364) | 324–391 | same |
-| 17 | Steps line (steps > 1): names joined "  ·  ", current bold, 30 px, **elided** (366–378) | 366, 392–394; slint 351–371 | different (small): no elide (a long list runs past the row) |
-| 18 | Progress (Updates.running): WavyProgress max(0.02, p) + "N%" tnum, 32 px (379–394) | 395–397; slint 374–418 | different: Material is a flat bar, not the wave (documented in settings-about.slint) |
+| 17 | Steps line (steps > 1): names joined "  ·  ", current bold, 30 px, **elided** (366–378) | 366, 392–394; slint 351–371 | **same (ported 17 Nov, B5: each step elides and the line is clipped at the row's edge)** [12 Nov: different (small): no elide (a long list runs past the row)] |
+| 18 | Progress (Updates.running): WavyProgress max(0.02, p) + "N%" tnum, 32 px (379–394) | 395–397; slint 374–418 | **same (ported 17 Nov, B5: Material progress is the wavy bar (SWavy); Glass's not-known bar slides there and back (InOutCubic 900 ms) as WavyProgress.qml)** [12 Nov: different: Material is a flat bar, not the wave (documented in settings-about.slint)] |
 | 19 | "Details" row (job): detail pacman (+ " and the AUR helper"); Copy (when shown) + Show/Hide details (terminal-window / caret-up) (396–414) | 368–380, 398–399 | same |
 | 20 | Output: LogView 240 tall (margins 10), follow, "Waiting for output…", @@step lines dropped; Updates.logUsers counted while shown (415–427) | 400–404; bridge 38–39, 234 | same |
 | 21 | "Going back" (not running, and snapshot/undo/skipped/canMenu); footer unless booted from snapshot (434–441) | 409–413, 506–509 | same |

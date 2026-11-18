@@ -207,7 +207,7 @@ export component OverviewPanel inherits Window {
     // Closes in popover × 0.7 (154 ms) InCubic.
     animate openness {
         duration: shown ? (Theme.material ? 307ms : 419ms) : Theme.popover * 0.7;
-        easing: shown ? (Theme.material ? spring(0.11) : spring(0.37)) : cubic-bezier(0.32, 0, 0.67, 0);
+        easing: shown ? (Theme.material ? spring(0.11) : spring(0.37)) : cubic-bezier(0.3333, 0, 0.6667, 0);
     }
     changed openness => {
         if !shown && openness <= 0.001 { closed(); }
@@ -447,7 +447,7 @@ export component OverviewPanel inherits Window {
                         // a new place glides there (once settled; not while dragged)
                         animate x, y, width, height {
                             duration: root.settled && drag-win != w.address ? 200ms : 0ms;
-                            easing: cubic-bezier(0.33, 1, 0.68, 1);
+                            easing: cubic-bezier(0.3333, 1, 0.6667, 1);
                         }
                         radius: w.radius;
                         picture: w.picture;

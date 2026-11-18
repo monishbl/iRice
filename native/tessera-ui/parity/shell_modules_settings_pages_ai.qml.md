@@ -1,5 +1,7 @@
 # shell/modules/settings/pages/ai.qml ↔ surfaces/settings (src/pages/accounts/ai.rs `page`, ui/settings-accounts.slint "note", "field")
 
+_Re-checked 17 Nov (B5, parity-settings) against main 18628a5 + the B5 ports: statuses below say what's there now; [12 Nov: …] is the old status._
+
 AI & Sidebar (page `ai`; sidebar.qml is its part "Sidebar", own parity
 file). Models are config `ai.models` (core services/ai/models.rs as
 AiModels.js); saving, removing (8 s undo) and credentials go to the shell
@@ -30,13 +32,13 @@ Selected model, Provider, Authentication, Style, Delete chats older than.
 | 17 | "Style" Dropdown 200 Balanced…Playful → ai.style (261–276) | 299–323 | same |
 | 18 | "Your note" row, detail "… N of 600" live (277–280) | 324 | same |
 | 19 | Note box 112 tall: Glass fill + hairline (accent on focus), Material FilledField r20; margins 20/14, bottom 16/12; TextArea wraps, placeholder, saved (cleaned) on editingFinished (282–315) | 327; slint "note" 188–245 | same at a glance |
-| 20 | Note **kept to 600 characters while typing** (onTextChanged removes beyond MAX_NOTE) (310) | ai.rs 308–316 truncates only the stored copy | **different**: the field itself keeps the 601st+ characters on screen (the field isn't re-synced when the stored text stays the same); the counter sticks at 600 |
+| 20 | Note **kept to 600 characters while typing** (onTextChanged removes beyond MAX_NOTE) (310) | ai.rs 308–316 truncates only the stored copy | **same (fixed before 17 Nov: noteRev re-syncs the field with the cut text)** [12 Nov: **different**: the field itself keeps the 601st+ characters on screen (the field isn't re-synced when the stored text stays the same); the counter sticks at 600] |
 | 21 | Group "Chat history" + footer; "Keep chat history" switch, detail by state (320–328) | 330–358 | same |
 | 22 | "Delete chats older than" Dropdown 200 Never/30 days/90 days (329–338) | 333–359 | same |
-| 23 | "Saved chats": detail count/pinned text, or the question while confirming; "Keep chats" (confirming) → stop; "Delete all chats" danger (disabled with none) → confirm, **focus moves to "Keep chats"**; "Delete N chats" → deleteAllChats (339–369) | 336–360, `saved_chats` 373–392 | **different**: no focus move to "Keep chats" on the first press |
+| 23 | "Saved chats": detail count/pinned text, or the question while confirming; "Keep chats" (confirming) → stop; "Delete all chats" danger (disabled with none) → confirm, **focus moves to "Keep chats"**; "Delete N chats" → deleteAllChats (339–369) | 336–360, `saved_chats` 373–392 | **different (small, remaining): after "Delete all chats" keyboard focus isn't moved to "Keep chats"** [12 Nov: **different**: no focus move to "Keep chats" on the first press] |
 | 24 | More options › "Conversation": "Show reasoning summary" switch (373–382) | 362–367 | same |
 | 25 | PagePart "Sidebar" (385–388) | 369 `p.part(cx, "Sidebar", sidebar)` | same |
-| 26 | Page state (form, message, confirming, note draft) starts over when the page loads again | lib.rs 511/579 keep `ai.*` locals | **different**: the form, "Delete N chats?" question and message survive leaving the page |
+| 26 | Page state (form, message, confirming, note draft) starts over when the page loads again | lib.rs 511/579 keep `ai.*` locals | **same (fixed before 17 Nov: ai.* in PAGE_TRANSIENT)** [12 Nov: **different**: the form, "Delete N chats?" question and message survive leaving the page] |
 
 ## Test plan
 

@@ -161,11 +161,116 @@ fn fetch(url: &str) -> (String, u32) {
     (body.to_string(), code)
 }
 
+// ── The last good reading, kept for the next start ──────────────────────────
+// wttr.in takes seconds to answer (5-6 s from a start, 17 Nov): until then the
+// bar had no weather, and the reading's arrival (weather and daylight on the
+// bus) redrew the bar ~6 s after the start. The last reading (XDG cache,
+// weather.json) is said at once when it is fresh (FRESH_MS) for the same place
+// and units; the fetch follows as always, and an unchanged answer changes
+// nothing on screen. (A cache wiped: as before, the reading when it comes.)
+
+/// A kept reading younger than this is said at the start (the service reads
+/// every 30 minutes; battery saver every 2 hours)
+pub const FRESH_MS: i64 = 2 * 3600 * 1000;
+
+/// Every icon `icon_for` gives (a kept reading's names back as &'static str)
+const ICONS: [&str; 9] = ["sun", "moon-stars", "cloud-sun", "cloud-moon", "cloud", "cloud-fog", "cloud-lightning", "cloud-snow", "cloud-rain"];
+
+fn icon_named(name: &str) -> &'static str {
+    ICONS.iter().copied().find(|i| *i == name).unwrap_or("cloud")
+}
+
+/// The kept reading
+#[derive(Clone, Debug, PartialEq)]
+pub struct Cached {
+    pub age_ms: i64,
+    /// Settings' location and units it was read for
+    pub place: String,
+    pub metric: bool,
+    pub reading: Weather,
+}
+
+impl Cached {
+    /// The reading to say at the start: fresh, for these settings
+    pub fn fresh_for(&self, place: &str, metric: bool) -> Option<&Weather> {
+        (self.age_ms < FRESH_MS && self.place == place && self.metric == metric && self.reading.ready).then_some(&self.reading)
+    }
+}
+
+fn cache_file() -> std::path::PathBuf {
+    crate::wallpaper::cache_dir().join("weather.json")
+}
+
+fn to_json(place: &str, metric: bool, at_ms: i64, w: &Weather) -> serde_json::Value {
+    serde_json::json!({
+        "at": at_ms, "place": place, "metric": metric,
+        "reading": {
+            "place": w.place, "temp": w.temp, "feelsLike": w.feels_like, "high": w.high, "low": w.low,
+            "condition": w.condition, "icon": w.icon, "rainChance": w.rain_chance, "sunrise": w.sunrise, "sunset": w.sunset,
+            "hourly": w.hourly.iter().map(|h| serde_json::json!({"hour": h.hour, "temp": h.temp, "icon": h.icon, "rain": h.rain})).collect::<Vec<_>>(),
+        }
+    })
+}
+
+fn from_json(v: &serde_json::Value, now_ms: i64) -> Option<Cached> {
+    let r = &v["reading"];
+    let i = |x: &serde_json::Value| x.as_i64().map(|n| n as i32);
+    let at = v["at"].as_i64()?;
+    let reading = Weather {
+        ready: true,
+        error: String::new(),
+        place: r["place"].as_str()?.to_string(),
+        temp: i(&r["temp"])?,
+        feels_like: i(&r["feelsLike"]).unwrap_or(0),
+        high: i(&r["high"]).unwrap_or(0),
+        low: i(&r["low"]).unwrap_or(0),
+        condition: r["condition"].as_str().unwrap_or("").to_string(),
+        icon: icon_named(r["icon"].as_str().unwrap_or("")),
+        hourly: r["hourly"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .map(|h| Hour { hour: h["hour"].as_u64().unwrap_or(0).min(23) as u32, temp: i(&h["temp"]).unwrap_or(0), icon: icon_named(h["icon"].as_str().unwrap_or("")), rain: i(&h["rain"]).unwrap_or(0) })
+                    .collect()
+            })
+            .unwrap_or_default(),
+        rain_chance: i(&r["rainChance"]).unwrap_or(0),
+        sunrise: i(&r["sunrise"]).unwrap_or(-1),
+        sunset: i(&r["sunset"]).unwrap_or(-1),
+    };
+    // (a clock set back: as good as new; one far ahead of it: too old)
+    Some(Cached { age_ms: (now_ms - at).max(0), place: v["place"].as_str()?.to_string(), metric: v["metric"].as_bool()?, reading })
+}
+
+/// The kept reading, if there is one
+pub fn cached() -> Option<Cached> {
+    let text = std::fs::read_to_string(cache_file()).ok()?;
+    from_json(&serde_json::from_str(&text).ok()?, crate::util::now_ms())
+}
+
+fn keep(place: &str, metric: bool, w: &Weather) {
+    let path = cache_file();
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let _ = crate::util::write_atomic(&path, to_json(place, metric, crate::util::now_ms(), w).to_string().as_bytes());
+}
+
 pub fn spawn(tx: Sender<Msg>) {
     let (ptx, prx) = mpsc::channel();
     let _ = POKE.set(Mutex::new(ptx));
     std::thread::spawn(move || {
         let mut last = Weather { icon: "cloud", sunrise: 390, sunset: 1110, ..Default::default() };
+        // (the last start's reading, at once, while wttr.in is asked)
+        {
+            let (place, metric) = settings(&crate::theme::read_json());
+            if let Some(w) = cached().as_ref().and_then(|c| c.fresh_for(&place, metric)) {
+                last = w.clone();
+                if tx.send(Msg::Data(Box::new(last.clone()))).is_err() {
+                    return;
+                }
+            }
+        }
         loop {
             let (place, metric) = settings(&crate::theme::read_json());
             let url = crate::env::var("WEATHER_URL").filter(|u| !u.is_empty()).unwrap_or_else(|| format!("https://wttr.in/{}?format=j1", encode(&place)));
@@ -179,7 +284,10 @@ pub fn spawn(tx: Sender<Msg>) {
                 };
             } else {
                 match parse(&body, t.h as u32, t.mi as u32, metric, &place, (last.sunrise, last.sunset)) {
-                    Some(w) => last = w,
+                    Some(w) => {
+                        keep(&place, metric, &w);
+                        last = w;
+                    }
                     None => last.error = "Weather unavailable".into(),
                 }
             }
@@ -222,6 +330,23 @@ mod tests {
         assert_eq!((f.temp, f.icon, f.place.as_str()), (52, "cloud-moon", "Paris"));
         assert_eq!(f.hourly.len(), 1);
         assert!(parse("<html>", 10, 0, true, "", (390, 1110)).is_none());
+    }
+
+    #[test]
+    fn a_kept_reading_comes_back_the_same() {
+        let w = parse(J1, 10, 15, true, "", (390, 1110)).unwrap();
+        let v = to_json("", true, 1_000, &w);
+        let c = from_json(&serde_json::from_str(&v.to_string()).unwrap(), 1_000 + 60_000).unwrap();
+        assert_eq!(c.reading, w);
+        assert_eq!(c.age_ms, 60_000);
+        // said at the start only while fresh, for the same place and units
+        assert_eq!(c.fresh_for("", true), Some(&w));
+        assert_eq!(c.fresh_for("", false), None);
+        assert_eq!(c.fresh_for("Oslo", true), None);
+        assert_eq!(from_json(&v, 1_000 + FRESH_MS).unwrap().fresh_for("", true), None);
+        // an icon it doesn't know: a cloud
+        assert_eq!(icon_named("rainbow"), "cloud");
+        assert!(from_json(&serde_json::json!({"at": 1}), 2).is_none());
     }
 
     #[test]

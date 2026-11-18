@@ -50,6 +50,7 @@ STANDALONE_ONLY_SOURCES = ("surfaces/screenfx/", "surfaces/desktop/src/gallery.r
 FROZEN_QML = {
     "ai.continueCircle",
     "apps.activateOrLaunch",
+    "brightness.setFor",
     "build.copyLog",
     "build.details",
     "build.dismiss",

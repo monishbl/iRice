@@ -1,5 +1,7 @@
 # shell/modules/settings/pages/security.qml ↔ surfaces/settings (src/pages/system/security.rs `security`)
 
+_Re-checked 17 Nov (B5, parity-settings) against main 18628a5 + the B5 ports: statuses below say what's there now; [12 Nov: …] is the old status._
+
 Privacy & Security (page `security`). Its untitled part is biometrics.qml
 (own parity file); the add-a-finger sheet is FingerprintSheet.qml (own file).
 State from feed.system (RustBridgeSystem.qml: `check` = sharing-check.py
@@ -18,7 +20,7 @@ status, `quickShare`, `ports`).
 | 7 | Row "Fast transfers without asking": hidden when sharing.quickShareHotspot === false; detail trustError / trusted / off texts; label red on trustError; Switch checked = trusted, disabled while trustBusy → QuickShare.setTrusted(!checked) (75–87) | 488–501 (`tone 2`, `quickShareTrust`) | same |
 | 8 | Row "Firewall": label red on SharingPorts.error; detail: error / no firewall / open now "while you're <why or sharing>" / only while visible (+ " Closed now." when asked) (90–98) | 461–469, `firewall_detail` 45–55 | same |
 | 9 | Firewall button only with an error: failedWith 64 → "Open Software Update" (arrow-circle-up) → Panels.openSettings("update"); else "Try again" (shield-check) → SharingPorts.retry(); busy while SharingPorts.busy (99–105) | 470–479 (`cx.go("update")`, `portsRetry`, `.on(pbusy)`) | same |
-| 10 | While the add-a-finger sheet is open the page is still shown under it (FingerprintSheet is its own overlay window) | 422–426: the sheet **replaces** the page | different (see FingerprintSheet parity) |
+| 10 | While the add-a-finger sheet is open the page is still shown under it (FingerprintSheet is its own overlay window) | 422–426: the sheet **replaces** the page | **intentional: the sheet takes the page area (in-window)** [12 Nov: different (see FingerprintSheet parity)] |
 
 ## Test plan
 

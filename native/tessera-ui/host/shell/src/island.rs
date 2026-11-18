@@ -28,6 +28,7 @@ use serde_json::{json, Value};
 use std::any::Any;
 use std::collections::BTreeMap;
 use tessera_core::host::{Host, Service};
+use tessera_core::services::notify::live;
 
 /// The alerts kinds that may be shown over a fullscreen app in "important" mode
 const IMPORTANT: &[&str] = &["ringing", "battery", "temperature", "timer"];
@@ -109,11 +110,37 @@ pub struct Island {
     hot_mem: u32,
     // charger and battery
     battery: Option<(bool, f64, bool)>,
-    low_step: i64,
     low_uid: i64,
     sweep: Option<slint::Timer>,
     live_timer: Option<slint::Timer>,
     scroll: Option<Value>,
+    /// Focus as last seen (its on/off alert) and the track playing (the new-song alert)
+    focus_was: Option<bool>,
+    track_was: String,
+}
+
+/// A device's drawing (shell/assets/devices/<kind>.svg: Devices.pictureFor's files)
+fn device_picture(kind: &str) -> String {
+    tessera_core::env::root().join("shell/assets/devices").join(format!("{kind}.svg")).to_string_lossy().into_owned()
+}
+
+/// A live control's accessible name: its own, else from its piece ("Pause", "Skip"…)
+fn ctl_name(b: &Value) -> String {
+    if let Some(n) = b["name"].as_str().filter(|n| !n.is_empty()) {
+        return n.to_string();
+    }
+    let icon = b["icon"].as_str().unwrap_or("");
+    match b["piece"].as_str().unwrap_or("") {
+        "play" | "pause" => if icon == "pause" { "Pause" } else { "Play" },
+        "reset" => "Reset",
+        "skip" => "Skip",
+        "lap" => "Lap",
+        "discard" => "Discard the recording",
+        "mute" => if icon.ends_with("slash") { "Unmute the microphone" } else { "Mute the microphone" },
+        "stop" => "Stop",
+        p => p,
+    }
+    .to_string()
 }
 
 /// Seconds-resolution milliseconds
@@ -200,11 +227,32 @@ impl Island {
         if gate.as_deref().is_some_and(|g| !self.wants(h, g)) {
             return 0;
         }
-        let uid = self.post_here(h, &mut e, ms);
+        let (uid, quiet) = self.post_here(h, &mut e, ms);
         if uid != 0 {
-            self.forward(h, "post", uid, &e, ms);
+            // (a live entry's quiet change: in place, no pop: live.rs)
+            self.forward(h, if quiet { "update" } else { "post" }, uid, &e, ms);
         }
         uid
+    }
+
+    /// An event's state, as live.rs's rules see it: its `severity` (else its
+    /// colour's), its `failure` (else what it says)
+    fn event_state(e: &Value, at: i64) -> live::State {
+        let (t, sub) = (e["title"].as_str().unwrap_or(""), e["subtitle"].as_str().unwrap_or(""));
+        let text = if sub.is_empty() { t.to_string() } else { format!("{t} · {sub}") };
+        let severity = e["severity"].as_u64().map_or_else(|| live::severity_of_color(e["color"].as_str().unwrap_or("")), |v| v.min(3) as u8);
+        let failure = e["failure"].as_bool().unwrap_or_else(|| live::says_failure(&text));
+        live::State { severity, failure, text, at }
+    }
+
+    /// A history line's (the entry's) latest state
+    fn line_state(l: &Value) -> live::State {
+        live::State {
+            severity: l["severity"].as_u64().unwrap_or(0) as u8,
+            failure: l["failure"].as_bool().unwrap_or(false),
+            text: l["changes"].as_array().and_then(|c| c.last()).and_then(|c| c["text"].as_str()).unwrap_or("").to_string(),
+            at: l["at"].as_i64().unwrap_or(0),
+        }
     }
 
     fn take_actions(e: &mut Value) -> (Option<Value>, Option<Value>, Vec<Option<Value>>) {
@@ -214,14 +262,59 @@ impl Island {
         (a, a2, more)
     }
 
-    fn post_here(&mut self, h: &mut Host, e: &mut Value, ms: i64) -> i64 {
+    /// The uid it shows as (0: not shown), and whether that's a quiet
+    /// change of a live entry (no pop)
+    fn post_here(&mut self, h: &mut Host, e: &mut Value, ms: i64) -> (i64, bool) {
         if !self.enabled(h) || now_ms() - self.started_at < 4000 {
-            return 0; // (ignore the initial values)
+            return (0, false); // (ignore the initial values)
+        }
+        // A live entry (core notify/live.rs): Tessera's stateful alerts are
+        // one entry each, by their key (or kind), changed in place
+        let key = live::island_key(e["kind"].as_str().unwrap_or(""), e["key"].as_str().unwrap_or(""));
+        if !key.is_empty() && e["key"].as_str().map_or(true, str::is_empty) {
+            e["key"] = json!(key);
+        }
+        // (Settings' previews show every time: not an entry)
+        if !key.is_empty() && !e["demo"].as_bool().unwrap_or(false) {
+            let resolved = live::Resolve::from_str(e["resolved"].as_str().unwrap_or(""));
+            if resolved == live::Resolve::Remove {
+                // over: its card and its entry go
+                let gone: Vec<i64> = self.alerts.iter().filter(|a| a.event["key"].as_str() == Some(key.as_str())).map(|a| a.uid).collect();
+                for u in gone {
+                    self.remove(h, u, 0);
+                }
+                if self.history.iter().any(|l| l["key"].as_str() == Some(key.as_str())) {
+                    self.history.retain(|l| l["key"].as_str() != Some(key.as_str()));
+                    self.publish_history(h);
+                }
+                return (0, false);
+            }
+            let now = now_ms();
+            let new = Self::event_state(e, now);
+            let was = self.history.iter().find(|l| l["key"].as_str() == Some(key.as_str())).map(Self::line_state);
+            let up = self.alerts.iter().position(|x| x.event["key"].as_str() == Some(key.as_str()));
+            // (its card gone a while: what happens now is news, shown)
+            let again = was.as_ref().map_or(true, |w| live::realert(w, &new) || (up.is_none() && new.at - w.at >= live::THREAD_MS)) && resolved == live::Resolve::No;
+            if !again && was.is_some() {
+                let hid = self.record(h, e, 0);
+                match up {
+                    // its card is up: changed in place, quietly (its time as it was)
+                    Some(i) => {
+                        let (a, a2, more) = Self::take_actions(e);
+                        let al = &mut self.alerts[i];
+                        al.event = e.clone();
+                        (al.on_action, al.on_action2, al.more, al.hid) = (a, a2, more, hid);
+                        return (al.uid, true);
+                    }
+                    // not up: only its entry changes
+                    None => return (0, false),
+                }
+            }
         }
         // Not now (a fullscreen app, "Only important"): only into the history
         if self.fs_quiet(h) && !Self::important(e) {
             self.record(h, e, 0);
-            return 0;
+            return (0, false);
         }
         let now = now_ms();
         let (a, a2, more) = Self::take_actions(e);
@@ -234,7 +327,7 @@ impl Island {
                 al.event = e.clone();
                 (al.on_action, al.on_action2, al.more) = (a, a2, more);
                 (al.at, al.expires, al.hid) = (now, now + ms, hid);
-                return al.uid;
+                return (al.uid, false);
             }
         }
         // HUD and music update their row in place
@@ -242,7 +335,7 @@ impl Island {
             if let Some(al) = self.alerts.iter_mut().find(|x| x.event["kind"] == kind.as_str()) {
                 al.event = e.clone();
                 (al.at, al.expires) = (now, now + ms);
-                return al.uid;
+                return (al.uid, false);
             }
         }
         // The same thing again while its alert is up: that alert changes in place and stays a little longer
@@ -253,7 +346,7 @@ impl Island {
                 al.event = e.clone();
                 (al.on_action, al.on_action2, al.more) = (a, a2, more);
                 (al.at, al.expires, al.hid) = (now, al.expires.max(now + ms), hid);
-                return al.uid;
+                return (al.uid, false);
             }
         }
         self.burst_index = if now - self.burst_at < 400 { self.burst_index + 1 } else { 0 };
@@ -277,7 +370,7 @@ impl Island {
         }
         self.newest = uid;
         self.start_sweep(h);
-        uid
+        (uid, false)
     }
 
     /// Island.update: change a live alert in place; its line in the history follows
@@ -338,7 +431,11 @@ impl Island {
             self.history
                 .iter()
                 .find(|l| {
-                    (if !key.is_empty() { l["key"] == key.as_str() } else { l["kind"] == kind.as_str() && l["title"] == e["title"] }) && now - l["at"].as_i64().unwrap_or(0) < 60_000 && (kind != "missedCall" || l["subtitle"].as_str().unwrap_or("") == e["subtitle"].as_str().unwrap_or(""))
+                    // (a live entry, by its key: whenever; else the same title within a minute)
+                    if !key.is_empty() {
+                        return l["key"] == key.as_str();
+                    }
+                    l["kind"] == kind.as_str() && l["title"] == e["title"] && now - l["at"].as_i64().unwrap_or(0) < 60_000 && (kind != "missedCall" || l["subtitle"].as_str().unwrap_or("") == e["subtitle"].as_str().unwrap_or(""))
                 })
                 .cloned()
         });
@@ -350,7 +447,12 @@ impl Island {
             }
         };
         let times = old.as_ref().map_or(1, |o| o["times"].as_i64().unwrap_or(1) + if kept.is_some() { 0 } else { 1 });
-        let mut line = json!({"hid": hid, "kind": kind, "icon": e["icon"].as_str().unwrap_or("bell"), "title": e["title"], "subtitle": e["subtitle"].as_str().unwrap_or(""), "color": e["color"].as_str().unwrap_or("#FFFFFF"), "at": now, "times": times});
+        // its history (live.rs): every state it had, with its time
+        let st = Self::event_state(e, now);
+        let mut changes: Vec<live::Change> = old.as_ref().and_then(|o| serde_json::from_value(o["changes"].clone()).ok()).unwrap_or_default();
+        live::push_change(&mut changes, live::Change { at: now, text: st.text.clone() });
+        let mut line = json!({"hid": hid, "kind": kind, "icon": e["icon"].as_str().unwrap_or("bell"), "title": e["title"], "subtitle": e["subtitle"].as_str().unwrap_or(""), "color": e["color"].as_str().unwrap_or("#FFFFFF"), "at": now, "times": times,
+            "severity": st.severity, "failure": st.failure, "changes": changes});
         for k in ["battery", "key", "picture"] {
             if !e[k].is_null() {
                 line[k] = e[k].clone();
@@ -374,7 +476,9 @@ impl Island {
             .iter()
             .map(|l| {
                 let mut l = l.clone();
-                l["act"] = json!(l["hid"].as_i64().is_some_and(|hid| self.history_acts.contains_key(&hid)));
+                let label = l["hid"].as_i64().and_then(|hid| self.history_acts.get(&hid)).map(|a| a.0.clone());
+                l["act"] = json!(label.is_some());
+                l["actLabel"] = json!(label.unwrap_or_default());
                 l
             })
             .collect();
@@ -518,6 +622,8 @@ impl Island {
             want.push(("stopwatch", Some(json!({
                 "icon": "timer", "color": accent("green"), "title": "Stopwatch",
                 "time": fmt(secs), "detail": fmt(secs), "progress": -1.0,
+                // (the open card counts hundredths on its own clock from here: IslandFocusCard's fineClock)
+                "fine": {"ms": sw["elapsed"].as_i64().unwrap_or(0), "running": on},
                 "controls": [
                     ctl("reset", "arrow-counter-clockwise", false, !on, false, nc("sw.reset")),
                     ctl("lap", "flag", false, on, false, nc("sw.lap")),
@@ -526,6 +632,11 @@ impl Island {
             }))));
         } else {
             want.push(("stopwatch", None));
+        }
+        // the kinds other services own (island_live.rs: LiveInfo's mirroring … transfer)
+        for (kind, a) in crate::island_live::derive(h, now_ms()) {
+            let a = if kind == "sysupdate" && !self.wants(h, "sysupdate") { None } else { a };
+            want.push((kind, a));
         }
         for (kind, a) in want {
             match a {
@@ -548,13 +659,13 @@ impl Island {
             let controls: Vec<Value> = if music {
                 vec![]
             } else {
-                a["controls"].as_array().map(|l| l.iter().filter(|b| self.shows(h, kind, b["piece"].as_str().unwrap_or(""))).map(|b| json!({"icon": b["icon"], "fill": b["fill"].as_bool().unwrap_or(false), "on": b["on"].as_bool().unwrap_or(true), "danger": b["danger"].as_bool().unwrap_or(false)})).collect()).unwrap_or_default()
+                a["controls"].as_array().map(|l| l.iter().filter(|b| self.shows(h, kind, b["piece"].as_str().unwrap_or(""))).map(|b| json!({"icon": b["icon"], "fill": b["fill"].as_bool().unwrap_or(false), "on": b["on"].as_bool().unwrap_or(true), "danger": b["danger"].as_bool().unwrap_or(false), "name": ctl_name(b)})).collect()).unwrap_or_default()
             };
             // (every control, for the stacked rows and the open card: LiveInfo.controls)
             let all: Vec<Value> = if music {
                 vec![]
             } else {
-                a["controls"].as_array().map(|l| l.iter().map(|b| json!({"piece": b["piece"], "icon": b["icon"], "fill": b["fill"].as_bool().unwrap_or(false), "on": b["on"].as_bool().unwrap_or(true), "danger": b["danger"].as_bool().unwrap_or(false)})).collect()).unwrap_or_default()
+                a["controls"].as_array().map(|l| l.iter().map(|b| json!({"piece": b["piece"], "icon": b["icon"], "fill": b["fill"].as_bool().unwrap_or(false), "on": b["on"].as_bool().unwrap_or(true), "danger": b["danger"].as_bool().unwrap_or(false), "name": ctl_name(b)})).collect()).unwrap_or_default()
             };
             acts.push(json!({
                 "kind": kind, "icon": a["icon"], "color": a["color"].as_str().unwrap_or(""),
@@ -562,6 +673,11 @@ impl Island {
                 "time": if music { json!("") } else { a["time"].clone() },
                 "detail": a["detail"].as_str().unwrap_or(""),
                 "progress": a["progress"].as_f64().unwrap_or(-1.0),
+                // (the open card: the caption over the big number, a call's app, the captions' lines, the stopwatch's hundredths)
+                "caption": if music { String::new() } else { crate::island_live::caption(kind, a, h) },
+                "appIcon": a["appIcon"].as_str().unwrap_or(""),
+                "lines": a["lines"].clone(),
+                "fine": a["fine"].clone(),
                 "all": all,
                 "lead": self.shows(h, kind, if music { "art" } else { "icon" }),
                 "name": self.shows(h, kind, if music { "title" } else if *kind == "timer" { "label" } else { "name" }),
@@ -588,6 +704,39 @@ impl Island {
 
     // ── The watches: charger, battery, heat ─────────────────────────────
 
+    /// Focus turned on or off (Island.qml's Connections on Focus): its mode's
+    /// icon and name with its status, or "Focus off"
+    fn watch_focus(&mut self, h: &mut Host) {
+        let on = h.state("focus.on").as_bool();
+        let Some(on) = on else { return };
+        let was = self.focus_was.replace(on);
+        if was.is_none() || was == Some(on) {
+            return;
+        }
+        let e = if on {
+            json!({"kind": "focus", "gate": "focus", "icon": h.state("focus.icon").as_str().unwrap_or("moon"), "title": h.state("focus.name").as_str().unwrap_or("Focus"), "subtitle": h.state("focus.status").as_str().unwrap_or(""), "color": tessera_core::theme::accent_hex("purple", h.st.shell.look.dark)})
+        } else {
+            json!({"kind": "focus", "gate": "focus", "icon": h.state("focus.icon").as_str().unwrap_or("moon"), "title": "Focus off", "subtitle": "", "color": tessera_core::theme::accent_hex("purple", h.st.shell.look.dark)})
+        };
+        self.post(h, e, 3000);
+    }
+
+    /// A new song while it plays (Island.qml's onTrackChanged): 3.5 s, with its art
+    fn watch_track(&mut self, h: &mut Host) {
+        let Some(p) = h.st.shell.get::<tessera_core::services::mpris::Players>().and_then(|p| p.chosen().cloned()) else { return };
+        if p.track.title.is_empty() {
+            return;
+        }
+        let track = format!("{}\n{}", p.track.title, p.track.artist);
+        if track == self.track_was {
+            return;
+        }
+        self.track_was = track;
+        if p.playing && self.wants(h, "music") {
+            self.post(h, json!({"kind": "music", "icon": "music-notes", "title": p.track.title, "subtitle": p.track.artist, "art": p.track.art_url, "color": ""}), 3500);
+        }
+    }
+
     fn level_pct(l: f64) -> i64 {
         (l * 100.0).round() as i64
     }
@@ -603,33 +752,35 @@ impl Island {
             return;
         }
         if charging != prev.2 {
-            if charging && self.low_uid != 0 {
-                let u = self.low_uid;
-                self.remove(h, u, 0);
+            // (plugged in: the low battery entry is resolved, card and all:
+            // Power's or the demo's)
+            if charging {
+                let low: Vec<i64> = self.alerts.iter().filter(|a| a.uid == self.low_uid).map(|a| a.uid).collect();
+                for u in low {
+                    self.remove(h, u, 0);
+                }
                 self.low_uid = 0;
+                self.post(h, json!({"kind": "battery", "key": "battery", "resolved": "remove"}), 0);
             }
             if self.wants(h, "charging") {
                 let pct = Self::level_pct(level);
                 self.post(h, json!({"kind": "charging", "icon": if charging { "lightning" } else { "plug" }, "title": if charging { "Charging" } else { "Charger removed" }, "subtitle": format!("{pct}%{}", if charging && level < 1.0 { " · on power" } else { "" }), "value": level, "color": if charging { "#30D158" } else { "rgba(255,255,255,0.6)" }}), 3000);
             }
         }
-        if charging || !self.wants(h, "battery") || (level - prev.1).abs() < f64::EPSILON {
-            return;
-        }
-        let pct = Self::level_pct(level);
-        if self.low_step == 0 {
-            self.low_step = 100;
-        }
-        for step in [20, 10, 5] {
-            if pct <= step && self.low_step > step {
-                self.low_step = step;
-                self.post(h, json!({"kind": "battery", "icon": "battery-warning", "title": "Low battery", "subtitle": format!("{pct}% left · plug in soon"), "value": level, "color": "#FF453A"}), UNTIL_OVER);
-                self.low_uid = self.alerts.iter().rev().find(|a| a.event["kind"] == "battery").map_or(0, |a| a.uid);
-                return;
+        // The low battery alerts themselves are Power's (one per mark:
+        // power_policy::BatteryAlerts): the island posting its own 20/10/5%
+        // ones as well showed two cards at 10%. Its card follows the level.
+        if !charging && (level - prev.1).abs() >= f64::EPSILON {
+            let pct = Self::level_pct(level);
+            if let Some(u) = self.alerts.iter().find(|a| a.event["key"] == "battery" && a.event["kind"] == "battery").map(|a| a.uid) {
+                let sub = self.alerts.iter().find(|a| a.uid == u).and_then(|a| a.event["subtitle"].as_str().map(String::from)).unwrap_or_default();
+                let rest = sub.split_once(" · ").map(|(_, r)| r.to_string());
+                let mut patch = json!({"value": level});
+                if let Some(r) = rest.filter(|_| sub.contains("% left")) {
+                    patch["subtitle"] = json!(format!("{pct}% left · {r}"));
+                }
+                self.update(h, u, patch);
             }
-        }
-        if pct > 25 {
-            self.low_step = 100;
         }
     }
 
@@ -768,6 +919,10 @@ impl Island {
         if let Some(a) = act {
             if let Some(call) = a["call"].as_str() {
                 h.ask(call, a["args"].clone());
+                // (a second step: a live control's "Details" shows them, then opens Settings)
+                if a["then"].is_object() {
+                    self.run(h, &Some(a["then"].clone()));
+                }
             } else if let Some(ipc) = a["ipc"].as_array() {
                 let args: Vec<String> = ipc.iter().map(|x| x.as_str().unwrap_or("").to_string()).collect();
                 tessera_core::host::route_ipc(&args, None);
@@ -793,7 +948,7 @@ impl Island {
                 "onAction": {"call": "island.post", "args": [{"kind": "custom", "key": "bt:demo", "icon": "headphones", "title": "Maya's earbuds", "subtitle": "Connecting… keep the case open nearby", "color": "#0A84FF"}, 20000]}}),
             "linked" => json!({"kind": "device", "key": "bt:demo", "icon": "headphones", "title": "Maya's earbuds", "subtitle": "Connected", "color": "#0A84FF"}),
             "parts" => json!({"kind": "device", "key": "bt:demo", "icon": "headphones", "title": "Maya's earbuds", "subtitle": "Connected", "color": "#0A84FF", "batteries": [{"label": "L", "value": 0.8}, {"label": "R", "value": 0.76}, {"label": "Case", "value": 0.18}]}),
-            "lowbuds" => json!({"kind": "device", "key": "bt:demo", "icon": "headphones", "title": "Maya's earbuds", "subtitle": "Battery low · 18%", "color": "#FF453A", "battery": 0.18}),
+            "lowbuds" => json!({"kind": "device", "key": "bt:demo", "icon": "headphones", "title": "Maya's earbuds", "subtitle": "Low battery · 18% left", "color": "#FF453A", "battery": 0.18}),
             "connected" => json!({"kind": "device", "key": "bt:demo", "icon": "headphones", "title": "Maya's earbuds", "subtitle": "Connected", "color": "#0A84FF", "battery": 0.8}),
             "burst" => {
                 for k in ["device", "charging", "audio"] {
@@ -805,12 +960,29 @@ impl Island {
                 self.hud(h, "volume", "Maya's earbuds");
                 return;
             }
+            // every device drawing, one after another (Devices.pictureFor's kinds)
+            "pictures" => {
+                let was = self.started_at;
+                self.started_at = 0;
+                for (pic, name) in [("headphones", "WH-CH720N"), ("speaker", "Speaker"), ("soundbar", "Samsung Soundbar"), ("controller", "Wireless Controller"), ("keyboard", "Keyboard"), ("mouse", "MX Master"), ("phone", "Pixel"), ("watch", "Galaxy Watch"), ("laptop", "Laptop"), ("bluetooth", "Tag")] {
+                    self.post(h, json!({"kind": "device", "icon": "bluetooth", "picture": device_picture(pic), "title": name, "subtitle": "Connected", "color": "#0A84FF"}), 8000);
+                }
+                self.started_at = was;
+                return;
+            }
             _ => json!({"kind": "custom", "icon": "bell", "title": "Hello", "subtitle": "A custom alert", "color": "#0A84FF"}),
         };
+        // (the earbuds' drawing, as Devices.pictureFor gives it)
+        let mut d = d;
+        if ["device", "connect", "linked", "parts", "lowbuds", "connected"].contains(&kind) {
+            d["picture"] = json!(device_picture("earbuds"));
+        }
         let ms = if kind == "battery" || kind == "temperature" { UNTIL_OVER } else if ["usb", "download", "connect"].contains(&kind) { LONG_MS } else { 5000 };
         // (the demo posts whatever the arming time: it shows at once)
         let was = self.started_at;
         self.started_at = 0;
+        let mut d = d;
+        d["demo"] = json!(true);
         self.post(h, d, ms);
         self.started_at = was;
         if kind == "temperature" {
@@ -835,9 +1007,9 @@ impl Service for Island {
     fn start(&mut self, h: &mut Host) {
         self.started_at = now_ms();
         self.next_hid = 1;
-        self.low_step = 100;
         h.st.shell.want("status");
         h.st.shell.want("hypr");
+        h.st.shell.want("mpris");
         self.publish(h);
         self.ask_resources(h);
         // (the battery now comes as data: Service::data below, no 3 s look)
@@ -845,10 +1017,14 @@ impl Service for Island {
     fn settled(&mut self, h: &mut Host) {
         self.derive_live(h);
         self.push_live(h);
+        self.watch_focus(h);
     }
     fn data(&mut self, h: &mut Host, what: std::any::TypeId) {
         if what == std::any::TypeId::of::<tessera_core::services::status::Battery>() {
             self.watch_battery(h);
+        }
+        if what == std::any::TypeId::of::<tessera_core::services::mpris::Players>() {
+            self.watch_track(h);
         }
     }
     fn config_changed(&mut self, h: &mut Host) {

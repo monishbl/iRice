@@ -65,8 +65,11 @@ component FpSheet inherits Rectangle {
     // (modal: what's behind is dimmed and takes no clicks)
     border-radius: 16px;
     property <float> progress: 0;
+    // (Cancel or Done: it fades and shrinks away, 0.66 × as long, InCubic)
+    property <bool> closing: has-meta && b.data[11].on;
     init => { progress = 1; keys.focus(); }
-    animate progress { duration: 300ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+    changed closing => { progress = closing ? 0 : 1; }
+    animate progress { duration: closing ? 200ms : 300ms; easing: closing ? cubic-bezier(0.3333, 0, 0.6667, 0) : cubic-bezier(0.3333, 1, 0.6667, 1); }
     background: (Theme.dark ? #000000 : #000000).with-alpha((Theme.dark ? 0.5 : 0.3) * progress);
     TouchArea {}
     // Esc: Cancel (or Done), the sheet's last button (FingerprintSheet.qml 118–122)
@@ -141,7 +144,9 @@ component FpSheet inherits Rectangle {
                                     stroke-width: 7px;
                                     stroke-line-cap: round;
                                     stroke: done ? Theme.success : o.on ? Theme.accent : o.off ? (o.style == 1 ? Theme.danger : Theme.accent.with-alpha(0.42)) : root.faint;
-                                    animate stroke { duration: o.style == 1 ? 60ms : o.off ? 380ms : 700ms; easing: o.style == 1 || o.off ? ease-out : ease-in; }
+                                    // (to red in 60 ms; a section taken fills in over 380 ms OutCubic;
+                                    // the miss's red fades back over 700 ms InCubic: FingerprintArt.qml 251–286)
+                                    animate stroke { duration: o.style == 1 ? 60ms : o.on ? 380ms : 700ms; easing: o.style == 1 ? ease-out : o.on ? cubic-bezier(0.33, 1, 0.68, 1) : cubic-bezier(0.32, 0, 0.67, 0); }
                                 }
                             }
                             // done: a check at the bottom right of the print

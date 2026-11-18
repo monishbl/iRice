@@ -79,7 +79,6 @@ fn idle_key(c: &Value) -> String {
 // ── The power daemon, over D-Bus ───────────────────────────────────────────
 
 enum M {
-    Tick,
     /// (profile, has a Performance profile); None: no daemon
     Ppd(Option<(String, bool)>),
     GuardDone(String),
@@ -169,13 +168,16 @@ pub struct Power {
     prev_percent: f64,
     saver_dismissed: bool,
     warned: u8,
+    /// the battery's alerts, once per mark per discharge
+    marks: policy::BatteryAlerts,
+    /// a battery alert went out as a notification (taken back when plugged in)
+    notified: bool,
     guard_active: bool,
     guard_error: String,
     guard_synced: bool,
     own_hypridle: bool,
     idle_key: String,
     idle_timer: slint::Timer,
-    tick: slint::Timer,
     lid: Vec<Watch>,
     /// logind's lid inhibitor, held by this process (closes with it)
     lid_fd: Option<zbus::zvariant::OwnedFd>,
@@ -214,13 +216,14 @@ impl Default for Power {
             prev_percent: -1.0,
             saver_dismissed: false,
             warned: 0,
+            marks: policy::BatteryAlerts::default(),
+            notified: false,
             guard_active: false,
             guard_error: String::new(),
             guard_synced: false,
             own_hypridle: false,
             idle_key: String::new(),
             idle_timer: Default::default(),
-            tick: Default::default(),
             lid: vec![],
             lid_fd: None,
             lid_is_closed: false,
@@ -296,24 +299,37 @@ impl Power {
         self.ask_mode("battery", "power-saver", &why, 0.0);
     }
 
-    fn offer_saver(&mut self, h: &mut Host) {
-        if !self.cfg["batterySaver"].as_bool().unwrap_or(true) || self.saver_dismissed || self.requests.contains_key("battery") || self.mode() == "power-saver" || !self.ppd {
-            return;
+    /// Low Power at its level (power.batterySaverLevel): on by itself
+    /// (batterySaverAuto) or offered. True when it posted an alert; `quiet`:
+    /// another alert speaks for this moment (the saver's notice), so Low
+    /// Power comes on without one of its own and nothing is offered.
+    fn offer_saver(&mut self, h: &mut Host, quiet: bool) -> bool {
+        if !self.low() || !self.cfg["batterySaver"].as_bool().unwrap_or(true) || self.saver_dismissed || self.requests.contains_key("battery") || self.mode() == "power-saver" || !self.ppd {
+            return false;
         }
+        let auto = self.cfg["batterySaverAuto"].as_bool().unwrap_or(false);
         // One alert at the low mark, not two: while the shell's own battery
         // saver comes on by itself (its notice says so, and its "Also use Low
         // Power" setting covers the profile), this offer stays quiet
-        if policy::SaverMode::from_cfg(&self.cfg) != policy::SaverMode::Off && !self.cfg["batterySaverAuto"].as_bool().unwrap_or(false) {
-            return;
+        if policy::SaverMode::from_cfg(&self.cfg) != policy::SaverMode::Off && !auto {
+            return false;
         }
         self.saver_dismissed = true;
-        let p = format!("{}%", self.percent().round());
-        if self.cfg["batterySaverAuto"].as_bool().unwrap_or(false) {
+        if auto {
             self.saver_on();
-            island_post(h, json!({"kind": "custom", "icon": "leaf", "title": "Low Power on", "subtitle": format!("Battery at {p}"), "color": accent::YELLOW, "action": "Undo", "actionCall": "power.release", "actionArgs": ["battery"]}), 8000);
-        } else {
-            island_post(h, json!({"kind": "custom", "icon": "leaf", "title": format!("Battery at {p}"), "subtitle": "Turn on Low Power?", "color": accent::YELLOW, "action": "Turn on", "actionCall": "power.saverOn", "actionArgs": []}), 15000);
         }
+        if quiet {
+            return false;
+        }
+        let p = format!("{}% left", self.percent().round());
+        let color = if self.percent() <= 10.0 { accent::DANGER } else { accent::YELLOW };
+        let value = (self.percent() / 100.0).clamp(0.0, 1.0);
+        if auto {
+            island_post(h, json!({"kind": "battery", "key": "battery", "icon": "leaf", "title": "Low Power is on", "subtitle": format!("{p} · until you plug in"), "value": value, "color": color, "severity": 0, "action": "Undo", "actionCall": "power.release", "actionArgs": ["battery"]}), 8000);
+        } else {
+            island_post(h, json!({"kind": "battery", "key": "battery", "icon": "leaf", "title": "Low battery", "subtitle": format!("{p} · turn on Low Power?"), "value": value, "color": color, "severity": 0, "action": "Turn on", "actionCall": "power.saverOn", "actionArgs": []}), 15000);
+        }
+        true
     }
 
     /// Applied when the answer changes; what we set is remembered, so a
@@ -332,18 +348,69 @@ impl Power {
         }
     }
 
-    fn warn(&mut self, h: &mut Host, icon: &str, title: &str, text: &str, action: Option<&str>) {
-        h.ask("sound.play", json!(["battery"]));
-        if island_enabled(h.cfg()) {
-            let mut ev = json!({"kind": "custom", "icon": icon, "title": title, "subtitle": text, "color": accent::DANGER});
-            if let Some(a) = action {
-                ev["action"] = json!(a);
-                ev["actionCall"] = json!("system.power");
-                ev["actionArgs"] = json!(["sleep"]);
+    /// A battery mark reached: its one alert (power_policy::battery_alert), as
+    /// an island card (kind battery, key "battery": the next mark's takes its
+    /// place, and plugging in clears it) when the island shows battery
+    /// alerts, else a notification; never both. Empty also sleeps.
+    fn battery_alerts(&mut self, h: &mut Host, percent: f64, on_battery: bool) {
+        let level = policy::saver_level(&self.cfg);
+        let critical = self.cfg["critical"].as_bool().unwrap_or(true);
+        let mark = policy::battery_mark(percent, on_battery, level, critical);
+        let Some(mark) = self.marks.step(mark, percent, on_battery, level) else {
+            self.warned = self.marks.shown().stage();
+            return;
+        };
+        self.warned = mark.stage();
+        let saver = mark == policy::BatteryMark::Saver && self.saver.came_on_by_itself(policy::SaverMode::from_cfg(&self.cfg));
+        if mark == policy::BatteryMark::Saver {
+            // (the Low Power offer at the same level would be a second alert:
+            // it's this mark's alert when the shell's saver didn't come on)
+            if self.offer_saver(h, saver) {
+                return;
             }
-            island_post(h, ev, 15000);
+            self.saver_dismissed = true;
+        }
+        let guard_sleeps = mark == policy::BatteryMark::Empty && self.guard_active && !tessera_core::env::sandboxed();
+        if !guard_sleeps {
+            if let Some(a) = policy::battery_alert(mark, percent, saver) {
+                self.show_battery_alert(h, &a, percent);
+            }
+        }
+        if mark == policy::BatteryMark::Empty && !self.guard_active && !tessera_core::env::sandboxed() {
+            h.ask("system.power", json!(["sleep"])); // the guard does it when it's running
+        }
+    }
+
+    fn show_battery_alert(&mut self, h: &mut Host, a: &policy::BatteryAlert, percent: f64) {
+        if a.urgent {
+            h.ask("sound.play", json!(["battery"]));
+        }
+        let cfg = h.cfg();
+        if island_enabled(cfg) && island_wants(cfg, "battery") {
+            let mut ev = json!({"kind": "battery", "key": "battery", "icon": a.icon, "title": a.title, "subtitle": a.subtitle,
+                "value": (percent / 100.0).clamp(0.0, 1.0), "color": if a.urgent { accent::DANGER } else { accent::YELLOW }, "severity": a.severity});
+            if let Some((label, call)) = a.action {
+                ev["action"] = json!(label);
+                ev["actionCall"] = json!(call);
+                ev["actionArgs"] = if call == "system.power" { json!(["sleep"]) } else { json!([]) };
+            }
+            // (red ones stay until it's plugged in; the saver's notice goes)
+            island_post(h, ev, if a.urgent { 86_400_000 } else { 8000 });
+        } else if let Some(("Turn off", _)) = a.action {
+            // (a notification with its Turn off: notify-send waits for the answer)
+            let send = h.sender(NAME);
+            self.notified = true;
+            let (title, text, sev) = (a.title.to_string(), a.subtitle.clone(), format!("int:x-tessera-severity:{}", a.severity));
+            std::thread::spawn(move || {
+                let out = std::process::Command::new("notify-send").args(["-a", "Tessera", "-i", "battery-caution", "-h", "string:x-tessera-key:battery", "-h", &sev, "-A", "off=Turn off", "--wait", &title, &text]).stdin(std::process::Stdio::null()).stderr(std::process::Stdio::null()).output();
+                if out.is_ok_and(|o| String::from_utf8_lossy(&o.stdout).trim() == "off") {
+                    send(Box::new(M::SaverOff));
+                }
+            });
         } else {
-            tessera_core::util::notify("Tessera", "", "critical", title, text);
+            // (one live entry, the battery guard's "Battery empty" too: core notify/live.rs)
+            self.notified = true;
+            tessera_core::util::notify_live("Tessera", "battery-caution", if a.urgent { "critical" } else { "normal" }, &tessera_core::util::Live::key("battery", a.severity), a.title, &a.subtitle);
         }
     }
 
@@ -489,21 +556,8 @@ impl Power {
             eprintln!("tessera-ui: battery saver {} (battery at {:.0}%, {})", if self.saver.on { "on" } else { "off" }, self.percent(), if self.on_battery() { "on battery" } else { "plugged in" });
             let _ = h.st.shell.tx.send(tessera_core::Msg::ConfigChanged);
         }
-        if changed == Some(true) && self.saver.came_on_by_itself(mode) {
-            let (title, text) = ("Battery saver is on", "The shell runs lighter until you plug in.");
-            if island_enabled(h.cfg()) {
-                island_post(h, json!({"kind": "custom", "icon": "leaf", "title": title, "subtitle": text, "color": accent::YELLOW, "action": "Turn off", "actionCall": "power.saverOff", "actionArgs": []}), 8000);
-            } else {
-                // (a notification with its Turn off: notify-send waits for the answer)
-                let send = h.sender(NAME);
-                std::thread::spawn(move || {
-                    let out = std::process::Command::new("notify-send").args(["-a", "Tessera", "-i", "battery-caution", "-A", "off=Turn off", "--wait", title, text]).stdin(std::process::Stdio::null()).stderr(std::process::Stdio::null()).output();
-                    if out.is_ok_and(|o| String::from_utf8_lossy(&o.stdout).trim() == "off") {
-                        send(Box::new(M::SaverOff));
-                    }
-                });
-            }
-        }
+        // (its notice, when it came on by itself, is the saver mark's alert: battery_alerts)
+        let _ = changed;
     }
 
     /// A pass of the one-second tick: the battery, what depends on it
@@ -516,18 +570,27 @@ impl Power {
         if self.has_battery() && !self.guard_synced {
             self.guard_synced = true;
             self.sync_guard(h);
-            if self.low() {
-                self.offer_saver(h);
-            }
         }
         let (on_battery, percent, low) = (self.on_battery(), self.percent(), self.low());
-        if low && !self.prev_low {
-            self.offer_saver(h);
+        // The battery's alerts: one per mark (saver level, 10%, 5%, 3%), and
+        // the empty one sleeps (the guard does both when it runs). After the
+        // first seconds, so the island is listening.
+        if self.ticks >= 5 {
+            self.battery_alerts(h, percent, on_battery);
+        }
+        // (the Low Power offer at its own level, when that isn't the saver mark's)
+        if low && !self.prev_low && self.ticks >= 5 {
+            self.offer_saver(h, false);
         }
         self.prev_low = low;
         if self.prev_on_battery && !on_battery {
             self.saver_dismissed = false;
             self.release("battery");
+            // plugged in: the low battery entry is over (the island resolves
+            // its own; a notification is taken back here)
+            if std::mem::take(&mut self.notified) {
+                tessera_core::util::notify_live("Tessera", "", "low", &tessera_core::util::Live::resolved("battery", "remove"), "Battery", "Charging");
+            }
         }
         self.prev_on_battery = on_battery;
         self.closed_lid_guard(h, on_battery);
@@ -544,29 +607,12 @@ impl Power {
         } else if !game_wanted {
             self.release("game");
         }
-        // Critical battery
-        let stage = if self.cfg["critical"].as_bool().unwrap_or(true) { policy::battery_stage(percent, on_battery) } else { 0 };
-        if stage == 0 {
-            self.warned = 0;
-        } else if stage > self.warned {
-            self.warned = stage;
-            let p = format!("{}%", percent.round());
-            match stage {
-                1 => self.warn(h, "battery-low", "Battery low", &format!("{p} left. Plug in soon."), None),
-                2 => self.warn(h, "battery-warning", "Battery very low", &format!("{p} left. It sleeps at 3% to keep your work."), Some("Sleep now")),
-                _ => {
-                    if !self.guard_active && !tessera_core::env::sandboxed() {
-                        h.ask("system.power", json!(["sleep"])); // the guard does it when it's running
-                    }
-                }
-            }
-        }
         // A note when it's full (the charger can come out): when the state
         // changes to full (Power.qml's onStateChanged), not on the first
         // reading, which posted it at every start while full
         if self.has_battery() {
             if self.battery.state == 4 && self.prev_state != 4 && self.prev_state != NO_STATE {
-                tessera_core::util::notify("Battery", "battery-full-charged", "", "Fully charged", "You can unplug your computer.");
+                tessera_core::util::notify_live("Battery", "battery-full-charged", "", &tessera_core::util::Live::key("battery-full", 0), "Fully charged", "You can unplug your computer.");
             }
             self.prev_state = self.battery.state;
         }
@@ -634,9 +680,11 @@ impl Service for Power {
         self.idle_key = idle_key(&self.cfg);
         spawn_ppd(h.sender(NAME));
         self.idle_later(h);
-        let send = h.sender(NAME);
-        self.tick.start(slint::TimerMode::Repeated, Duration::from_secs(1), move || send(Box::new(M::Tick)));
         self.last_mode = self.mode();
+    }
+    fn every_second(&mut self, h: &mut Host, _n: u64) {
+        self.tick(h);
+        self.publish(h);
     }
     fn config_changed(&mut self, h: &mut Host) {
         let old = std::mem::replace(&mut self.cfg, cfg_with_defaults(h.cfg()));
@@ -715,7 +763,6 @@ impl Service for Power {
     fn message(&mut self, h: &mut Host, msg: Box<dyn Any + Send>) {
         let Ok(m) = msg.downcast::<M>() else { return };
         match *m {
-            M::Tick => self.tick(h),
             M::Ppd(None) => {
                 self.ppd = false;
             }
@@ -766,7 +813,6 @@ impl Service for Power {
         self.publish(h);
     }
     fn quit(&mut self, _h: &mut Host) {
-        self.tick.stop();
         self.lid.drain(..).for_each(|w| w.stop());
     }
 }

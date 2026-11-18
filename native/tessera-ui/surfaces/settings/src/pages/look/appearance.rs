@@ -306,9 +306,20 @@ pub fn appearance(cx: &mut Ctx, p: &mut Page) {
         let ep = cx.on(move |cx, a| {
             if a.i == 100 {
                 let s = cx.s("emoji.style");
-                cx.ask("look", "installEmoji", json!([s]));
-                // (looked for again: the next build after it's installed finds it)
-                cx.local.remove("look.emojiFonts");
+                cx.ask("look", "installEmoji", json!([s.clone()]));
+                // (EmojiFont.install: looked for again every 5 s for two
+                // minutes, so the row updates when the terminal's done)
+                cx.spawn("look.emojiFonts", move || {
+                    let mut f = emoji_fonts();
+                    for _ in 0..24 {
+                        if f[s.as_str()] == true {
+                            break;
+                        }
+                        std::thread::sleep(std::time::Duration::from_secs(5));
+                        f = emoji_fonts();
+                    }
+                    f
+                });
             } else if let Some(v) = evalues.get(a.i.max(0) as usize) {
                 cx.set("emoji.style", *v);
             }

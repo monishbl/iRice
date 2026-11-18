@@ -74,7 +74,7 @@ impl Sharing {
                 let name = self.mirror_target_name();
                 let proto = self.mirror_current().map(|d| js(&d["protocol"])).unwrap_or_default();
                 let sub = if !self.mirror.p2p && proto == "miracast" { "This computer's Wi-Fi can't do Wi-Fi Direct, which Miracast needs." } else { "Check the TV is on and showing its screen-mirroring page, then try again." };
-                self.island(h, json!({"kind": "custom", "icon": "screencast", "title": format!("Couldn't mirror to {name}"), "subtitle": sub, "color": crate::DANGER}), 8000);
+                self.island(h, json!({"kind": "custom", "key": format!("mirror:{name}"), "icon": "screencast", "title": format!("Couldn't mirror to {name}"), "subtitle": sub, "color": crate::DANGER}), 8000);
                 self.mirror_stop();
             }
         }

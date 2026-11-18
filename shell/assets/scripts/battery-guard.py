@@ -66,8 +66,12 @@ def main():
             return
         if done["armed"] and should_sleep(p, s, args.sleep_at):
             done["armed"] = False
-            subprocess.run(["notify-send", "-u", "critical", "-a", "Tessera", "Battery empty",
-                            f"Sleeping at {p:.0f}% so you don't lose your work. Plug in to keep going."],
+            # (the shell's own "Battery empty" says the same: power_policy.rs
+            # battery_alert; while this guard runs, it's the only one that does)
+            subprocess.run(["notify-send", "-u", "critical", "-a", "Tessera", "-i", "battery-caution",
+                            # (the battery's one live entry: x-tessera-key, live.rs)
+                            "-h", "string:x-tessera-key:battery", "-h", "int:x-tessera-severity:3", "Battery empty",
+                            f"{p:.0f}% left · sleeping now to keep your work"],
                            check=False, timeout=5)
             try:
                 login = Gio.DBusProxy.new_sync(bus, Gio.DBusProxyFlags.NONE, None, "org.freedesktop.login1",

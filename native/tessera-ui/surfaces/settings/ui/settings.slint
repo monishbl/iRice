@@ -112,6 +112,8 @@ component Control {
                     busy: o.on;
                     enabled: r.enabled && !o.off;
                     label: r.label;
+                    // (an icon alone says what it does: its detail)
+                    tip: o.text == "" ? o.detail : "";
                     clicked => { SBus.act(r.id, i, 0, ""); }
                 }
             }
@@ -584,7 +586,7 @@ component MoreButton {
                 size: 12px;
                 color: Theme.material ? Theme.m3-on-secondary-container : Theme.accent-ink;
                 transform-rotation: b.on ? 180deg : 0deg;
-                animate transform-rotation { duration: SM.hover; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+                animate transform-rotation { duration: SM.hover; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
             }
         }
         ta := TouchArea {
@@ -787,6 +789,19 @@ export component SettingsWindow inherits Window {
     changed reveal-seq => {
         let top = SBus.reveal-y - page-scroll.absolute-position.y - page-scroll.content-y;
         page-scroll.content-y = -max(0px, min(page-scroll.content-height - page-scroll.height, top - 80px));
+    }
+
+    // A row that opened wants to be seen (WifiList.revealAsking): scrolled
+    // just enough, up or down, to show it whole
+    property <int> ensure-seq: SBus.ensure-seq;
+    changed ensure-seq => {
+        let top = SBus.ensure-y - page-scroll.absolute-position.y - page-scroll.content-y;
+        let view = -page-scroll.content-y;
+        if top < view {
+            page-scroll.content-y = -max(0px, top);
+        } else if top + SBus.ensure-h > view + page-scroll.height {
+            page-scroll.content-y = -max(0px, min(page-scroll.content-height - page-scroll.height, top + SBus.ensure-h - page-scroll.height));
+        }
     }
 
     forward-focus: side-keys;
@@ -1393,7 +1408,7 @@ export component SettingsWindow inherits Window {
         // ── The toast (Toast.qml): what just changed, with Undo ──
         toast := Rectangle {
             property <float> p: toast-shown ? 1 : 0;
-            animate p { duration: toast-shown ? 200ms : 140ms; easing: toast-shown ? cubic-bezier(0.33, 1, 0.68, 1) : cubic-bezier(0.32, 0, 0.67, 0); }
+            animate p { duration: toast-shown ? 200ms : 140ms; easing: toast-shown ? cubic-bezier(0.3333, 1, 0.6667, 1) : cubic-bezier(0.3333, 0, 0.6667, 0); }
             visible: self.p > 0.01;
             opacity: self.p;
             width: Theme.material ? max(288px, min(560px, toast-row.preferred-width)) : min(520px, toast-row.preferred-width);

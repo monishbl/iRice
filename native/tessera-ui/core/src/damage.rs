@@ -1,18 +1,26 @@
-//! What changed in a frame, so the compositor repaints only that.
+//! What changed in a frame, so only that is drawn and repainted.
 //!
-//! Slint's FemtoVG renderer has no partial rendering: it clears and draws
-//! the whole surface every frame, and EGL then tells the compositor all of
-//! it changed, so Hyprland repaints (and re-blurs, and the glass plugin
-//! re-refracts) the whole area under a full-screen surface for a menu that
-//! opens in one corner. The frame is still drawn whole here, but before it
-//! is, Slint core's own dirty tracking (partial_renderer, the one its
-//! software and Skia renderers use) walks the item tree with a renderer that
-//! draws nothing and only reads what each item would draw with, so each
-//! item's tracker learns its dependencies; the rectangles of the items whose
-//! geometry or drawing changed since the last frame are the damage handed to
-//! eglSwapBuffersWithDamage (egl.rs). Text inputs are always counted as
+//! Slint's FemtoVG renderer has no partial rendering of its own: it would
+//! clear and draw the whole surface every frame, and EGL then tell the
+//! compositor all of it changed, so Hyprland repaints (and re-blurs, and the
+//! glass plugin re-refracts) the whole area under a full-screen surface for
+//! a menu that opens in one corner. Before each frame, Slint core's own
+//! dirty tracking (partial_renderer, the one its software and Skia renderers
+//! use) walks the item tree with a renderer that draws nothing and only
+//! reads what each item would draw with, so each item's tracker learns its
+//! dependencies; the rectangles of the items whose geometry or drawing
+//! changed since the last frame are the damage. It goes three ways:
+//! eglSwapBuffersWithDamage (the compositor repaints only that), the GL
+//! scissor (egl.rs, vendor/femtovg: only that part of the back buffer is
+//! filled, with the frames since that buffer was drawn), and the vendored
+//! Slint FemtoVG renderer (vendor/i-slint-renderer-femtovg: the items
+//! outside it are skipped before FemtoVG sees them, and a cached layer
+//! redraws only its changed part). Text inputs are always counted as
 //! changed (their caret and preedit live outside their properties).
-//! TESSERA_UI_FULL_DAMAGE=1 turns it off (every frame damages everything).
+//! TESSERA_UI_FULL_DAMAGE=1 turns it all off (every frame damages
+//! everything), TESSERA_UI_FULL_REDRAW=1 keeps the damage but draws whole
+//! frames, TESSERA_UI_NO_CULL=1 keeps the scissor but draws every item.
+//! TESSERA_DRAW_STATS=1 logs each frame's costs (wayland.rs).
 
 use i_slint_core::graphics::euclid;
 use i_slint_core::item_rendering::{

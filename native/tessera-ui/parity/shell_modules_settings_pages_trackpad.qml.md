@@ -1,5 +1,7 @@
 # shell/modules/settings/pages/trackpad.qml ↔ surfaces/settings (src/pages/input/mouse.rs `trackpad`)
 
+_Re-checked 17 Nov (B5, parity-settings) against main 18628a5 + the B5 ports: statuses below say what's there now; [12 Nov: …] is the old status._
+
 The Trackpad part of Mouse & Trackpad (page `mouse`, PagePart "Trackpad").
 No popups, timers or animations of its own.
 
@@ -14,7 +16,7 @@ No popups, timers or animations of its own.
 | 5 | Group "Scrolling": "Natural scrolling" + "Content follows your fingers"; "Scroll speed" WordSlider 0.2–3 round 0.05 (59–78) | 153–159 | same |
 | 6 | "Three-finger drag" switch ↔ Keymap.threeFingerDrag (live), toggled → Keymap.setThreeFingerDrag(!checked); detail by state (80–90) | 161–165 (feed `keymap.threeFingerDrag`, ask `threeFingerDrag` → RustBridgeInput 67) | same |
 | 7 | SubpageLink icon hand-swipe-right "Gestures", detail "Swipe and pinch with several fingers: spaces, All Windows, apps" → mouse/gestures (92–100) | 167–168 `Row::link` | same |
-| 8 | More › "Point and click": "Drag lock" switch, **row disabled and the whole row (label, detail, switch) at opacity 0.5** unless tapToClick && tapAndDrag (107–113) | 180 `.switch(..).enabled(tap && drag)` | **different**: only the switch dims (0.45 Glass / M3 disabled colours); the label and detail stay at full strength (settings.slint RowView doesn't dim a disabled row) |
+| 8 | More › "Point and click": "Drag lock" switch, **row disabled and the whole row (label, detail, switch) at opacity 0.5** unless tapToClick && tapAndDrag (107–113) | 180 `.switch(..).enabled(tap && drag)` | **same (fixed before 17 Nov: faded(): the whole row at 0.5)** [12 Nov: **different**: only the switch dims (0.45 Glass / M3 disabled colours); the label and detail stay at full strength (settings.slint RowView doesn't dim a disabled row)] |
 | 9 | "Middle click" switch, detail by rightClick (corner → "Click both bottom corners together", else "Click or tap with three fingers") (114–118) | 181 | same |
 | 10 | "Ignore the trackpad while typing" switch + "Stops a resting palm from moving the pointer" (119–123) | 182 | same |
 

@@ -44,6 +44,7 @@ export component SessionDialog inherits Window {
     callback choose(int);
     callback pressing(int, bool);
     callback dismissed();
+    callback closed(); // the close animation ended
     callback key(string, bool) -> bool;
     background: transparent;
     title: "Session";
@@ -51,7 +52,10 @@ export component SessionDialog inherits Window {
 
     // Opens on a spring, closes quickly (Dialog.qml)
     property <float> progress: shown ? 1 : 0;
-    animate progress { duration: shown ? (Theme.material ? 312ms : 388ms) : 192ms; easing: shown ? (Theme.material ? spring(0.1) : spring(0.23)) : (Theme.material ? cubic-bezier(0.3, 0, 0.8, 0.15) : cubic-bezier(0.4, 0, 1, 1)); }
+    animate progress { duration: shown ? (Theme.material ? 312ms : 388ms) : Theme.motion-panel * 0.6; easing: shown ? (Theme.material ? spring(0.1) : spring(0.23)) : (Theme.material ? cubic-bezier(0.3, 0, 0.8, 0.15) : cubic-bezier(0.4, 0, 1, 1)); }
+    changed progress => {
+        if !shown && progress <= 0.001 { closed(); }
+    }
     property <length> m: 24px;
     property <length> pad: Theme.material ? 24px : 20px;
     property <length> content-w: which == "about" ? 300px : Theme.material ? 5 * 96px + 4 * 8px : 5 * 80px + 4 * 12px;

@@ -10,6 +10,7 @@
 //!     NotificationGroups.js), and its file (history.rs's format: see
 //!     `History`).
 
+use super::live::{self, Change, Resolve};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -60,6 +61,34 @@ pub struct Note {
     pub at: i64,
     /// where it went when it arrived (Route's names)
     pub route: String,
+    /// A live entry (live.rs): Tessera's event id (x-tessera-key), "" none
+    pub key: String,
+    /// how urgent it is now (live::Severity: x-tessera-severity, else its urgency)
+    pub severity: u8,
+    /// every state it had, newest last (at most live::CHANGES_MAX)
+    pub changes: Vec<Change>,
+    /// when it last popped up (arrived, or got more urgent): the shell
+    /// plays its sound then, and only then
+    pub alerted: i64,
+    /// x-tessera-resolved: "" going on, "done" over (it stays, quietly), "remove"
+    pub resolved: String,
+    /// how the server joined it to one that's here (in this run only)
+    #[serde(skip)]
+    pub merged: Merged,
+}
+
+/// How a notification joined one that's already listed (the server decides)
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Merged {
+    /// it didn't: a new one
+    #[default]
+    No,
+    /// the same Tessera event id (x-tessera-key)
+    Key,
+    /// the app's replaces_id
+    Replaces,
+    /// the same app and title again within live::THREAD_MS
+    Thread,
 }
 
 impl Note {
@@ -85,6 +114,10 @@ pub struct Hints {
     pub sound_file: String,
     pub value: Option<i32>,
     pub reply_placeholder: String,
+    /// Tessera's live entries (live.rs): x-tessera-key, x-tessera-severity, x-tessera-resolved
+    pub key: String,
+    pub severity: Option<u8>,
+    pub resolved: String,
 }
 
 /// A Note from Notify's arguments (the picture is the server's: a file it
@@ -108,8 +141,13 @@ pub fn note_from(id: u32, app_name: &str, app_icon: &str, summary: &str, body: &
         sound_file: hints.sound_file.clone(),
         value: hints.value.map_or(-1, |v| v.clamp(0, 100)),
         at,
+        key: hints.key.clone(),
+        resolved: hints.resolved.clone(),
+        alerted: at,
         ..Default::default()
     };
+    n.severity = live::severity_of_urgency(hints.severity, n.urgency);
+    n.changes = vec![Change { at, text: change_text(&n) }];
     if actions.len() % 2 == 0 {
         for pair in actions.chunks(2) {
             if pair[0] == "inline-reply" {
@@ -137,6 +175,47 @@ pub fn assign_id(live: impl Fn(u32) -> bool, next: &mut u32, replaces: u32) -> (
     let id = *next;
     *next = next.wrapping_add(1).max(1);
     (id, false)
+}
+
+// ── Live entries (live.rs) ──────────────────────────────────────────────────
+
+/// What a state says, for its line in the history: "Title · body"
+pub fn change_text(n: &Note) -> String {
+    let body = super::markup::plain(&n.body);
+    if body.is_empty() {
+        n.summary.clone()
+    } else if n.summary.is_empty() {
+        body
+    } else {
+        format!("{} · {}", n.summary, body)
+    }
+}
+
+/// A notification's state, as live.rs's rules see it
+pub fn state_of(n: &Note) -> live::State {
+    let text = change_text(n);
+    let failure = live::category_failure(&n.category) || live::says_failure(&text);
+    let at = n.changes.last().map_or(n.at, |c| c.at);
+    live::State { severity: n.severity, failure, text, at }
+}
+
+/// A notification that joins one that's listed (`old`): the same entry,
+/// changed in place, its history carried on with this state added. True
+/// when it should pop up again (a banner and its sound): it got more urgent
+/// (live::realert); for an app's thread (the same title again), also when it
+/// says something new (a second message from Ann), never the same again.
+/// A resolved one ("done") never pops up.
+pub fn merge(old: &Note, mut new: Note) -> (Note, bool) {
+    let (was, now) = (state_of(old), state_of(&new));
+    let mut changes = old.changes.clone();
+    for c in std::mem::take(&mut new.changes) {
+        live::push_change(&mut changes, c);
+    }
+    new.changes = changes;
+    let urgent = live::realert(&was, &now) || (new.merged == Merged::Thread && now.text != was.text);
+    let again = urgent && Resolve::from_str(&new.resolved) == Resolve::No;
+    new.alerted = if again { new.at } else { old.alerted };
+    (new, again)
 }
 
 // ── Where a new one goes ────────────────────────────────────────────────────
@@ -344,7 +423,8 @@ impl Store {
     }
     pub fn add(&mut self, n: Note) -> Added {
         if let Some(old) = self.list.iter_mut().find(|x| x.id == n.id) {
-            // (keeps its place, its arrival time and where it went)
+            // (keeps its place, its arrival time and where it went; the
+            // caller merged its history: merge)
             let (at, route) = (old.at, old.route.clone());
             *old = n;
             old.at = at;
@@ -402,6 +482,45 @@ mod tests {
 
     fn note(summary: &str, body: &str) -> Note {
         note_from(1, "Chat", "", summary, body, &[], &Hints::default(), -1, "", 1000)
+    }
+
+    #[test]
+    fn a_live_entry_changes_in_place() {
+        let h = |sev: u8| Hints { key: "battery".into(), severity: Some(sev), ..Default::default() };
+        let first = note_from(5, "Tessera", "", "Low battery", "30% left", &[], &h(1), -1, "", 1000);
+        assert_eq!(first.changes.len(), 1);
+        assert_eq!(first.alerted, 1000);
+        // 25%: the same severity, quietly
+        let n = Note { merged: Merged::Key, ..note_from(5, "Tessera", "", "Low battery", "25% left", &[], &h(1), -1, "", 2000) };
+        let (m, again) = merge(&first, n);
+        assert!(!again);
+        assert_eq!(m.alerted, 1000);
+        assert_eq!(m.changes.iter().map(|c| c.text.as_str()).collect::<Vec<_>>(), vec!["Low battery · 30% left", "Low battery · 25% left"]);
+        // 10%: more urgent, so it pops up again
+        let n = Note { merged: Merged::Key, ..note_from(5, "Tessera", "", "Low battery", "10% left", &[], &h(2), -1, "", 3000) };
+        let (m, again) = merge(&m, n);
+        assert!(again);
+        assert_eq!(m.alerted, 3000);
+        assert_eq!(m.changes.len(), 3);
+        // resolved: the last state, quietly, even more urgent
+        let n = Note { merged: Merged::Key, resolved: "done".into(), ..note_from(5, "Tessera", "", "Battery", "Plugged in", &[], &h(3), -1, "", 4000) };
+        assert!(!merge(&m, n).1);
+    }
+
+    #[test]
+    fn an_apps_thread_pops_up_for_news_only() {
+        let a = note_from(8, "Chat", "", "Ann", "Hi", &[], &Hints::default(), -1, "", 1000);
+        let same = Note { merged: Merged::Thread, ..note_from(8, "Chat", "", "Ann", "Hi", &[], &Hints::default(), -1, "", 2000) };
+        assert!(!merge(&a, same).1); // the same again: quiet
+        let news = Note { merged: Merged::Thread, ..note_from(8, "Chat", "", "Ann", "Lunch?", &[], &Hints::default(), -1, "", 3000) };
+        let (m, again) = merge(&a, news);
+        assert!(again);
+        assert_eq!(m.changes.len(), 2);
+        // replaces_id (a download's progress): quiet unless more urgent
+        let p = Note { merged: Merged::Replaces, ..note_from(8, "Chat", "", "Ann", "Lunch at 1?", &[], &Hints::default(), -1, "", 4000) };
+        assert!(!merge(&m, p).1);
+        let failed = Note { merged: Merged::Replaces, category: "transfer.error".into(), ..note_from(8, "Files", "", "Copy", "Stopped", &[], &Hints::default(), -1, "", 5000) };
+        assert!(merge(&m, failed).1);
     }
 
     #[test]

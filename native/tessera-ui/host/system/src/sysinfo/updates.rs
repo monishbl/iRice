@@ -146,7 +146,10 @@ impl Updates {
     pub fn publish(&self) {
         crate::bus::put(
             "updates",
-            json!({"running": self.running(), "count": self.count, "aurCount": self.aur_count, "total": self.total(), "checking": self.checking, "available": self.available, "interrupted": self.interrupted, "fake": self.fake}),
+            json!({"running": self.running(), "count": self.count, "aurCount": self.aur_count, "total": self.total(), "checking": self.checking, "available": self.available, "interrupted": self.interrupted, "fake": self.fake,
+                // (the island's activity while it runs: LiveInfo's sysupdate)
+                "job": self.job.clone().unwrap_or(Value::Null), "progress": self.progress(), "cancellable": self.cancellable(),
+                "step": super::software_update::step_name(self.job.as_ref().and_then(|j| j["step"].as_str()).filter(|s| !s.is_empty()).unwrap_or("system"))}),
         );
     }
 
@@ -387,7 +390,7 @@ impl Updates {
                 8000,
             );
         } else {
-            helpers::notify_send(&["-a", "Tessera", "-i", if ok { "system-software-update" } else { "dialog-error" }, &title, &sub]);
+            helpers::notify_send(&["-a", "Tessera", "-h", "string:x-tessera-key:sysupdate", "-i", if ok { "system-software-update" } else { "dialog-error" }, &title, &sub]);
         }
     }
 }

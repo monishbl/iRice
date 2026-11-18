@@ -13,7 +13,7 @@ decision), wired in `surfaces/menubar/src/lib.rs`.
 | behaviour | QML line | Rust place | status |
 |---|---|---|---|
 | Music lingers 60 s after pausing (with a track) | 24-41 | lib.rs:1554-1563, `music()` 301-310 | same |
-| Activities list and order (mirroring … transfer) | 44-71 | host island.rs:46 `LIVE_ORDER`, `derive_live` 446-530, `activity` 936; menubar island.rs:320 `with_music` | same |
+| Activities list and order (mirroring … transfer) | 44-71 | host island.rs `LIVE_ORDER`, `derive_live` (recording, timer, stopwatch) + island_live.rs `derive` (mirroring from `mirroring`, casting `cast`, dictation `dictation`, captions `livecaptions`, a call `calls`, sharing `privacy.screen`, an update `sysupdate`, transfers `transfers`); menubar island.rs `with_music` | same (17 Nov: re-checked, it was not — only recording, the timer and the stopwatch ever showed standalone; nobody called `island.activity`. Now every kind is derived from its owner's state, with LiveInfo's icon, title, time, detail, progress and controls) |
 | A new activity takes the focus; music doesn't take it from captions | 74-86 | menubar island.rs:279-289 | same |
 | cycle(step) / scroll(dx, dy) via IslandCycle (notch 120, swipe = 1 step, 320 ms lock, 400 ms idle) | 87-104 | menubar island.rs:106-135, 296-317; lib.rs:1218-1223 (Slint px × 8 → angleDelta) | same (×8 is an approximation of a notch) |
 | shows / customised / liveDefaults | 106-114 | host island.rs:49-61, 427-441; settings.rs `shows` | same |
@@ -27,32 +27,32 @@ decision), wired in `surfaces/menubar/src/lib.rs`.
 | Same kind + title while up: in place, at least as long | 237-250 | host 249-258; menubar 200-205 | same |
 | Burst: within 400 ms, delay 110·i, +600·i ms | 251-256 | host 259-262, 272; menubar 206-213 | same |
 | At most 4, oldest first, sticky (ringing) stays | 258-265 | host 274-277; menubar 214-221 | same |
-| note() + Notifications.islandSaid (a notification about the same thing stays quiet) | 155-161, 269-272 | — | missing |
+| note() + Notifications.islandSaid (a notification about the same thing stays quiet) | 155-161, 269-272 | — | missing — alert plumbing: agent X1 (polish-1, live alert entries) owns it this round |
 | update(uid, patch), history line follows | 277-291 | host 284-303; menubar 226-232 | same |
 | remove(uid, since) | 293-300 | host 306-317 | same |
 | dismiss(since) keeps sticky and newer | 315-322 | host 321-324; menubar 243-245 | same |
 | find(key) | 324-329 | host island.rs:870-874 (state `island.found`) | same |
 | History: unrecorded kinds, same thing within 60 s updates (missed calls by caller), max 50, times, remembered buttons for transfer / usb / sysupdate / missedCall | 336-374 | host 329-367 | same |
 | forget / clearHistory | 375-381 | host 908-918 | same |
-| ago() | 383-386 | — | missing (no Recent list) |
-| History kept across shell reloads (PersistentProperties) | 387-400 | — (in memory) | different: lost when the host restarts |
+| ago() | 383-386 | menubar island.rs `ago` ("now", "5m", "2h", a time) | same (fixed with the Recent list) |
+| History kept across shell reloads (PersistentProperties) | 387-400 | — (in memory) | different: lost when the host restarts — alert history: X1's this round (polish-1 rewrites the history lines) |
 | hold(key, on): nothing times out; on release + time held + 1 s | 406-428 | host 378-396; menubar 248-262; lib.rs:1269-1273 | same |
 | Sweep every 250 ms (not while held): expiring at expiry, removed 700 ms later | 434-454 | host 398-423; menubar 264-276 (sets `leaving`); lib.rs:1144-1149 | same |
 | wants(kind) with newKinds | 463-468 | host 143-147 | same |
-| New track → music alert (3.5 s, with art) | 470-479 | — | missing (standalone: no track watch) |
+| New track → music alert (3.5 s, with art) | 470-479 | host island.rs `watch_track` (MPRIS data: a new title + artist while playing, `music` wanted) | same (17 Nov) |
 | Charging / Charger removed alert; removes the low-battery alert | 482-493 | host 586-604 | same; "Charger removed" colour `rgba(…)` isn't parsed by the bar (accent glyph) |
 | Low battery at 20 / 10 / 5 %, until charged; resets above 25 % | 494-513 | host 608-622 | same |
-| Timers phase ended → "Focus session done" / "Break's over" alert | 515-522 | — (timers.rs:90 sends a desktop notification) | missing |
+| Timers phase ended → "Focus session done" / "Break's over" alert | 515-522 | host desktop timers.rs `advance` → `island.post` (gate `timers`, 4 s; the desktop notification only when the island doesn't take it) | same (17 Nov; before, with the island on, the phase end said nothing at all) |
 | Recording started / saved (Open, Show in Folder) / discarded (Undo) / failed / notice | 524-548 | host/desktop recorder.rs:259-402 | same; colours "danger" / "orange" aren't hex → the bar tints them accent |
-| Focus on / off alert | 550-557 | — | missing |
+| Focus on / off alert | 550-557 | host island.rs `watch_focus` (state `focus.on` / icon / name / status, gate `focus`) | same (17 Nov) |
 | Resources sampled while resources / temperature alerts are on | 562-566 | host 134-141 | same |
 | Heat: hot after 30 s ≥ hotTemp, cool after 60 s ≤ hotTemp−5; one alert per spell, kept live; ask mode (Cool down / Not now) | 575-661 | host 627-690 | same |
 | Hot → CoolDown.hot, Low Power via Power (ask mode: after the yes) | 600-628 | host 692-714 (`cooldown.hot`, `power.ask`), answer via `cooldown.answer` (676) | same (ask-mode Low Power delegated to the cooldown service) |
 | CPU busy (4 readings > 90 %), memory nearly full (3) | 663-677 | host 955-966 (with `gate: resources`) | same |
 | hud(kind, device): volume / mic / brightness row, 1.6 s (2.5 s with a device) | 681-684 | host 721-736 | same |
 | IPC post / pin / hot / dismissNewest (declines a ringing call) / holdAlerts / history / clearHistory / timeLeft | 687-724 | host 985-1028 | same |
-| IPC next / previous (cycle the activity) | 693-694 | host 991-994 → `tell("menubar", {island})`; lib.rs `message` (1629-1643) only takes TrayMenu / M | missing: the message is dropped |
-| IPC demo kinds incl. device pictures, `pictures`, `output`, `burst` | 726-777 | host 749-795 | different: no device pictures (Devices.pictureFor), no `pictures` demo |
+| IPC next / previous (cycle the activity) | 693-694 | host → `tell("menubar", {island})`; menubar lib.rs `message` (`v["island"]` next / previous → `island.scroll`) | same (fixed batch 1) |
+| IPC demo kinds incl. device pictures, `pictures`, `output`, `burst` | 726-777 | host island.rs `demo` (earbuds drawing on the device kinds, `pictures` posts every drawing, `output`, `burst`) | same (17 Nov) |
 | event / hasCard / ringingUp | 144-146, 180 | menubar island.rs:154-163 | same |
 
 ## Summary
@@ -89,3 +89,7 @@ Arena with the user's settings plus `cooling.whenHot: true`, `cooling.hotAction:
 4. `ipc island next` / `ipc island previous` with two activities in one-at-a-time mode: the pill switches.
 
 ## Test results
+
+## Re-check 17 Nov (B4)
+
+Before: 6 missing, 2 different; after: 1 missing and 1 different, both alert plumbing left to X1 (islandSaid, history persistence). The "same" on the activities row was wrong: standalone, only three kinds ever showed. Ported: the other eight live kinds (host island_live.rs, with new states from their owners: `livecaptions` from captions.rs, `privacy.screen` from privacy.rs, `sysupdate` and `displays` from the system mirror), the new-song, phase-end and Focus alerts, the demo's device drawings.

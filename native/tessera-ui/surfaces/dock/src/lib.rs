@@ -146,7 +146,6 @@ pub struct Dock {
     /// the text colour (symbolic icons)
     ink: [u8; 3],
     trash: usize,
-    trash_timer: slint::Timer,
     /// the Downloads stack is up (the dock stays out meanwhile, as with its menu)
     stack_open: bool,
     /// unread counts by entry id (the host's `badges` state)
@@ -705,9 +704,12 @@ impl Dock {
         if let Some(mw) = &mut self.menu {
             if mw.open {
                 mw.open = false;
-                mw.ui.set_shown(false); // the close animation, then MenuClosed hides it
+                mw.ui.set_shown(false);
             }
         }
+        // (gone at once, as the QML's: ContextMenu.qml has no exit animation,
+        // its Loader drops it on `dismissed`)
+        self.menu_closed(st);
         self.update(st);
     }
 
@@ -799,11 +801,10 @@ impl Dock {
 
     fn watch_trash(&mut self, st: &State) {
         let to = st.shell.sender(NAME);
-        // (a folder count every 2 s: cheap, and the icon follows within a moment)
-        self.trash_timer.start(slint::TimerMode::Repeated, Duration::from_secs(2), move || {
-            let to = to.clone();
-            std::thread::spawn(move || to(Box::new(M::Trash(count_trash()))));
-        });
+        // (counted when the folder changes: inotify on its own thread; a
+        // count every 2 s, each on a new thread, before 17 Nov. Until the
+        // first file is trashed there's no folder: looked for every 5 s)
+        tessera_core::util::watch_dir(trash_dir(), Duration::from_secs(5), move || to(Box::new(M::Trash(count_trash()))));
     }
 }
 

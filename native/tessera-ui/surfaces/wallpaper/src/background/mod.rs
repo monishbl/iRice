@@ -257,13 +257,22 @@ impl Background {
         let dark = st.shell.look.dark;
         let fallback = self.bundled.get_or_insert_with(Bundled::find).file(material, if !material { "tahoe-dusk.jpg" } else if dark { "material-dark.jpg" } else { "material-light.jpg" });
         let pool = self.pool.get_or_insert_with(|| Pool::new(1, "tessera-wallpaper"));
+        // (the screen's copy kept from the last decode: picture.rs)
+        let copies = wallpaper::cache_dir().join("wallpaper-first");
         pool.replace(
             jobs.into_iter()
                 .map(|(path, (w, h))| {
                     let tx = st.tx.clone();
                     let fallback = fallback.clone();
+                    let copies = copies.clone();
                     Box::new(move || {
+                        if let Some(px) = picture::read_copy(&copies, &path, w, h) {
+                            let _ = tx.send(crate::Msg::Part(NAME, Box::new(M::Decoded(Decoded { path, size: (w, h), pixels: Some(px) }, false))));
+                            return;
+                        }
                         let mut pixels = picture::decode(&path, w, h);
+                        // (kept for the next start, once this one is shown)
+                        let keep = pixels.clone();
                         let mut stand_in = false;
                         if pixels.is_none() {
                             eprintln!("tessera-ui: wallpaper {path} can't be read{}", if std::path::Path::new(&path).exists() { "" } else { " (it isn't there)" });
@@ -272,7 +281,11 @@ impl Background {
                                 stand_in = pixels.is_some();
                             }
                         }
+                        let path_kept = keep.is_some().then(|| path.clone());
                         let _ = tx.send(crate::Msg::Part(NAME, Box::new(M::Decoded(Decoded { path, size: (w, h), pixels }, stand_in))));
+                        if let (Some(px), Some(p)) = (keep, path_kept) {
+                            picture::write_copy(&copies, &p, w, h, &px);
+                        }
                     }) as Box<dyn FnOnce() + Send>
                 })
                 .collect(),

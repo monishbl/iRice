@@ -275,8 +275,11 @@ pub fn windowrules(cx: &mut Ctx, p: &mut Page) {
     }
 
     // Errors (the shell couldn't write the rules file)
+    // (WindowRules.available: the config has its windowRules section)
     let error = feed(cx)["rulesError"].as_str().unwrap_or("").to_string();
-    if !error.is_empty() {
+    if cx.get("windowRules").is_null() {
+        p.group("").row(Row::new("Window rules aren't set up").detail("The windowRules section is missing from the Tessera config. Update Tessera, then open this page again."));
+    } else if !error.is_empty() {
         p.group("").row(Row::new("Rules weren't saved").detail(error));
     }
 
@@ -483,9 +486,15 @@ fn edit_view(cx: &mut Ctx, p: &mut Page, rules: &[Rule], floating: bool) {
     let shell = cx.shell;
     let current = shell.get::<crate::services::clients::Windows>().and_then(|w| w.clients.iter().find(|c| c.class == class && c.size.0 > 0).map(|c| c.size));
     let use_size = cx.on(move |cx, _| {
+        // (into the fields, then saved as typed ones are: checked first)
         if let Some((w, h)) = current {
-            cx.local.remove("wr.sizeError");
-            change(cx, json!({ "width": (w as i64).max(200), "height": (h as i64).max(150) }));
+            match size_of(&(w as i64).max(200).to_string(), &(h as i64).max(150).to_string()) {
+                Ok((w, h)) => {
+                    cx.local.remove("wr.sizeError");
+                    change(cx, json!({ "width": w, "height": h }));
+                }
+                Err(e) => cx.local_set("wr.sizeError", e),
+            }
         }
     });
     let g = p.group("Size");

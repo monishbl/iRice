@@ -199,7 +199,17 @@ pub trait Service {
     /// The glass plugin was found or lost (`h.st.shell.plugin`; a plugin that
     /// has just loaded starts blank: GlassPlugin.qml's `ready`)
     fn plugin_changed(&mut self, h: &mut Host) {}
+    /// The host's one shared second (`n` counts them from 1): a service
+    /// that polls once a second (or every few: `n % k == 0`) does it here
+    /// instead of keeping a timer of its own. Each own timer woke the loop
+    /// at its own phase and cost a whole host turn apiece (every service's
+    /// `settled`, the state sent); this is one turn for all of them, just
+    /// after the wall clock's second.
+    fn every_second(&mut self, h: &mut Host, n: u64) {}
 }
+
+/// The shared second's message to the host (HostPart::arm_second)
+struct Second;
 
 fn prefix(call: &str) -> &str {
     call.split('.').next().unwrap_or(call)
@@ -211,11 +221,31 @@ pub struct HostPart {
     state: Value,
     state_dirty: bool,
     pending: Vec<Ask>,
+    /// the shared second (Service::every_second)
+    second: slint::Timer,
+    seconds: u64,
+}
+
+/// How long until just after the wall clock's next whole second (a few ms
+/// after, so a clock read then shows the new second)
+fn to_next_second(now: std::time::SystemTime) -> std::time::Duration {
+    let ms = now.duration_since(std::time::UNIX_EPOCH).map(|d| d.subsec_millis()).unwrap_or(0) as u64;
+    std::time::Duration::from_millis(1000 - ms + 5)
 }
 
 impl HostPart {
     pub fn new(services: Vec<Box<dyn Service>>) -> Self {
-        Self { services, state: json!({}), state_dirty: false, pending: Vec::new() }
+        Self { services, state: json!({}), state_dirty: false, pending: Vec::new(), second: slint::Timer::default(), seconds: 0 }
+    }
+
+    /// The next shared second (single shot, armed again each time: it stays
+    /// on the wall clock's second, and a loop that stalled doesn't queue up
+    /// ticks behind it)
+    fn arm_second(&mut self, st: &State) {
+        let tx = st.tx.clone();
+        self.second.start(slint::TimerMode::SingleShot, to_next_second(std::time::SystemTime::now()), move || {
+            let _ = tx.send(Msg::Part(NAME, Box::new(Second)));
+        });
     }
 
     fn each(&mut self, st: &mut State, mut f: impl FnMut(&mut dyn Service, &mut Host)) {
@@ -292,6 +322,7 @@ impl crate::shell::Part for HostPart {
                 eprintln!("tessera-ui: slow start: host {} {ms} ms", s.name());
             }
         });
+        self.arm_second(st);
     }
     fn config_changed(&mut self, st: &mut State, _look: bool) {
         self.each(st, |s, h| s.config_changed(h));
@@ -309,6 +340,18 @@ impl crate::shell::Part for HostPart {
         self.each(st, |s, h| s.plugin_changed(h));
     }
     fn message(&mut self, st: &mut State, msg: Box<dyn Any + Send>) {
+        let msg = match msg.downcast::<Second>() {
+            Ok(_) => {
+                if crate::wayland::wakes_on() {
+                    crate::wayland::WAKE_MSGS.with(|w| *w.borrow_mut().entry("host/second".into()).or_default() += 1);
+                }
+                self.seconds += 1;
+                let n = self.seconds;
+                self.arm_second(st);
+                return self.each(st, |s, h| s.every_second(h, n));
+            }
+            Err(m) => m,
+        };
         let msg = match msg.downcast::<Ask>() {
             Ok(a) => {
                 self.answer(st, *a);
@@ -345,6 +388,7 @@ impl crate::shell::Part for HostPart {
         }
     }
     fn quit(&mut self, st: &mut State) {
+        self.second.stop();
         self.each(st, |s, h| s.quit(h));
     }
 }
@@ -352,6 +396,14 @@ impl crate::shell::Part for HostPart {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_second_lands_just_after_the_clocks() {
+        let at = |ms: u64| std::time::UNIX_EPOCH + std::time::Duration::from_millis(1_700_000_000_000 + ms);
+        assert_eq!(to_next_second(at(0)).as_millis(), 1005);
+        assert_eq!(to_next_second(at(250)).as_millis(), 755);
+        assert_eq!(to_next_second(at(999)).as_millis(), 6);
+    }
 
     #[test]
     fn calls_go_by_their_first_word() {

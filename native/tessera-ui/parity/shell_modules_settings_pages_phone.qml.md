@@ -1,5 +1,7 @@
 # shell/modules/settings/pages/phone.qml ↔ surfaces/settings (src/pages/devices/phone.rs `phone`, ui/settings-devices.slint `qr`)
 
+_Re-checked 17 Nov (B5, parity-settings) against main 18628a5 + the B5 ports: statuses below say what's there now; [12 Nov: …] is the old status._
+
 Phone & Sharing (page `phone`), with the PagePart "Sharing" (sharing.qml, its
 own parity file). Page spacing 24. No popups. One Timer (camera restart
 800 ms, in the bridge for Rust).
@@ -13,11 +15,11 @@ own parity file). Page spacing 24. No popups. One Timer (camera restart
 | 3 | "What it needs" (needsTools: no adb, no scrcpy or no qrencode) + footer about scrcpy: "Android tools and scrcpy", detail installError or "To see and use your phone here…", label red on an error; primary "Install"/"Installing…" (download-simple), busy, disabled while updating → Phone.install(false) (21–38) | 69–78 | same |
 | 4 | Group "Phone", footer by phone/no phone (44–45) | 87–93 | same |
 | 5 | Phone row: label model; detail "Android N · B% charging · Wireless/USB" (empties dropped); "Show Screen"/"Showing" (device-mobile), primary when not mirroring and tools present, enabled with scrcpy → Phone.mirror(serial) (46–57) | 94–97 (`phone_detail` tested; feed `mirroring`) | same |
-| 6 | "Allow this computer on your phone" (no phone, waiting): **label in the accent colour** + detail (58–63) | 98–100 | **different**: label in the normal label colour (Row has no accent tone) |
+| 6 | "Allow this computer on your phone" (no phone, waiting): **label in the accent colour** + detail (58–63) | 98–100 | **same (fixed before 17 Nov: tone 4: accent label)** [12 Nov: **different**: label in the normal label colour (Row has no accent tone)] |
 | 7 | "No phone connected": detail "Connect it with a USB cable, or pair it without one below." / "Looking for phones is off." (64–68) | 101–103 | same |
 | 8 | Group "Without a cable" + footer; "Network discovery is off" (Needs checked, no avahi) + "Turn On"/"Turning on…" busy → Needs.turnOnAvahi() (72–85) | 106–124 | same |
 | 9 | Pair row: label/detail by pairStage (7 cases), red label on error; "Pair"/"Cancel" (while starting/waiting/pairing/connecting), enabled with adb (86–103) | 109–125 (`pair_text` tested) | same |
-| 10 | QR code while waiting: 196 tall item, white squircle 176 (radius module) centred, the SVG at 10 px margins, sourceSize 312, **not smoothed**, cache off; accessible "QR code to pair your phone" (104–126) | 111–116 `qr` row: `cx.picture(&qr, 312, 312)`; slint 889–908 (pixelated) | **missing**: phone.py writes the code as an **SVG** (qrencode -t SVG); `cx.picture` → core/picture.rs `decode` uses the `image` crate, which can't read SVG → None, the white square stays empty. (It also resizes with a Triangle filter: blurred modules.) |
+| 10 | QR code while waiting: 196 tall item, white squircle 176 (radius module) centred, the SVG at 10 px margins, sourceSize 312, **not smoothed**, cache off; accessible "QR code to pair your phone" (104–126) | 111–116 `qr` row: `cx.picture(&qr, 312, 312)`; slint 889–908 (pixelated) | **same (fixed before 17 Nov: the SVG goes through the icon loader (reads SVG), drawn crisp at 312)** [12 Nov: **missing**: phone.py writes the code as an **SVG** (qrencode -t SVG); `cx.picture` → core/picture.rs `decode` uses the `image` crate, which can't read SVG → None, the white square stays empty. (It also resizes with a Triangle filter: blurred modules.)] |
 | 11 | Group "Webcam", footer camError or the "Your phone's camera as a webcam…" text (130–134) | 165–169 | same |
 | 12 | Not ready: "Phone camera", detail installError (tools fine) / "Needs a virtual camera (v4l2loopback[, built for your K kernel])…" / "Set up a virtual camera…"; "Install"/"Installing…" (no module; busy; disabled while updating) → install(true) or "Set Up"/"Setting up…" (busy) → setUpCam (135–154) | 136–152 | same |
 | 13 | Ready: "Use as webcam" switch (enabled with a phone and scrcpy), detail "Connect your phone first" / "On: the phone's front/back camera" / "Off" → setWebcam(!checked) (155–164) | 153–158 | same |

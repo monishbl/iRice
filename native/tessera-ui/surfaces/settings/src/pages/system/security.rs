@@ -92,6 +92,9 @@ pub fn sheet_texts(done: bool, failed: bool, edges: bool, finger: &str, retry: &
     (title, text)
 }
 
+/// How long the sheet takes to go (Theme.motion.panel 300 ms × 0.66)
+const SHEET_CLOSE_MS: u64 = 200;
+
 /// The add-a-finger sheet, in the page's place while it's open
 fn sheet(cx: &mut Ctx, p: &mut Page, finger: &str) {
     let feed = cx.feed;
@@ -121,7 +124,7 @@ fn sheet(cx: &mut Ctx, p: &mut Page, finger: &str) {
         .map(|(i, path)| Opt::new(path.clone()).on(i < taken).off(i as i32 == target).style(if flash && i as i32 == target { 1 } else { 0 }).num(i as f32))
         .collect();
     // (the misses and takes so far: the print shakes and bumps with each)
-    data.push(Opt::new("").id("meta").num(sh["misses"].as_f64().unwrap_or(0.0) as f32).style(sh["takes"].as_i64().unwrap_or(0) as i32));
+    data.push(Opt::new("").id("meta").num(sh["misses"].as_f64().unwrap_or(0.0) as f32).style(sh["takes"].as_i64().unwrap_or(0) as i32).on(cx.local_b("fp.closing")));
 
     // Buttons: Add Another Finger (done, another free), Try Again (failed), Done / Cancel
     let enrolled = strings(&fp["enrolled"]);
@@ -147,7 +150,16 @@ fn sheet(cx: &mut Ctx, p: &mut Page, finger: &str) {
         if enrolling {
             cx.ask("system", "fpCancel", Value::Null);
         }
-        cx.local_set("fp.sheet", "");
+        // (it fades and shrinks away first: FingerprintSheet.qml 70–82,
+        // close 0.66 × the panel's 300 ms; then the page comes back)
+        if !cx.local_b("fp.closing") {
+            cx.local_set("fp.closing", true);
+            cx.local.remove("fp.closed");
+            cx.spawn("fp.closed", || {
+                std::thread::sleep(std::time::Duration::from_millis(SHEET_CLOSE_MS));
+                Value::Bool(true)
+            });
+        }
     });
     let b = Row::new("").button(if done { "Done" } else { "Cancel" }, close);
     rows.push(if done { b.primary() } else { b });
@@ -322,6 +334,7 @@ pub fn biometrics(cx: &mut Ctx, p: &mut Page) {
             });
             let ch = chosen.clone();
             let add = cx.on(move |cx, _| {
+                cx.local_set("fp.closing", false);
                 cx.local_set("fp.sheet", ch.clone());
                 cx.ask("system", "fpEnroll", json!([ch.clone()]));
             });
@@ -523,6 +536,12 @@ pub fn biometrics(cx: &mut Ctx, p: &mut Page) {
 /// Privacy & Security (security.qml)
 pub fn security(cx: &mut Ctx, p: &mut Page) {
     // The add-a-finger sheet takes the page while it's open
+    // (its close animation over: gone)
+    if cx.local_b("fp.closing") && cx.local_b("fp.closed") {
+        cx.local_set("fp.closing", false);
+        cx.local.remove("fp.closed");
+        cx.local_set("fp.sheet", "");
+    }
     let finger = cx.local_s("fp.sheet");
     if !finger.is_empty() {
         sheet(cx, p, &finger);

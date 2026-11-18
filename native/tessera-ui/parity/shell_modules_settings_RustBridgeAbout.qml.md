@@ -1,5 +1,7 @@
 # shell/modules/settings/RustBridgeAbout.qml ↔ host/system/src/sysinfo/bridge_about.rs (About service: page_changed 131–154, feed 156–238, act 381–490, call 512–575), software_update.rs, tessera_update.rs, updates.rs; host/shell probes.rs (health, conflicts, bugreport, needs); input_bridge.rs (keymap.* replies)
 
+_Re-checked 17 Nov (B5, parity-settings) against main 18628a5 + the B5 ports: statuses below say what's there now; [12 Nov: …] is the old status._
+
 The "about" page group (Software Update, System health, Report a Bug, cloud drive folders,
 shortcut/gesture import–export on About's backup). The About service owns the three update
 models itself (fine) and reads the rest from host-system's private bus: "clouddrives",
@@ -15,7 +17,7 @@ Page on show (QML 25–39):
 |---|---|---|---|
 | 1 | update: SoftwareUpdate.checkUndo, BootSnapshots.refresh (27–29) | bridge_about.rs 136–138 | same |
 | 2 | about/health: Health.check (30–31) | 139–140 → health.check (probes.rs 736) | same |
-| 3 | about/bugreport: gather when no log and not gathering (32–34) | 141–145 (reads bus "bugreport" → never put → always asks) | **different**: re-gathers every time the page opens; read `h.state("bugreport")` |
+| 3 | about/bugreport: gather when no log and not gathering (32–34) | 141–145 (reads bus "bugreport" → never put → always asks) | **same (fixed before 17 Nov: reads h.state("bugreport") before gathering)** [12 Nov: **different**: re-gathers every time the page opens; read `h.state("bugreport")`] |
 | 4 | Update output read only while shown (logUsers ±1) (37–39) | 147–152 | same |
 
 Feed (QML 171–294):
@@ -26,14 +28,14 @@ Feed (QML 171–294):
 | 6 | `tu` {allowed, available, error, applying, report, result, conflicts, choices, missing, dropped, reasons} (211–223) | 203–208 | same |
 | 7 | `up` {job, list, aurList, fake, interrupted, cancellable, running, progress, showDetails, log} (224–235) | 209–213 | same |
 | 8 | `bs` {booted, assistant, canMenu, grubBtrfs, menuOn, error, busy} (236–244) | 214 (bus "bootsnapshots", boot_snapshots.rs 88–93) | same |
-| 9 | `needsInstalling` (245) | 215 bus "needs" never put | **missing**: `h.state("needs")["installing"]` |
-| 10 | `health` {checks[…], groups, checking, fixing, error, checkedAt hh:mm} (246–253) | 175–177, 216–219 (bus "health" never put) | **missing**: System health shows no checks. Source: `h.state("health")` (probes.rs 406: checks, checking, checkedAt, fixing, error — no `groups`) |
-| 11 | `conflicts` [id, name, what, fix, muted] (254) | 178–180 (bus "conflicts" never put) | **missing**: `h.state("conflicts")` (probes.rs 402: found, muted) |
-| 12 | `bug` {title … issueUrl, info from sysinfo} (255–273) | 181–182, 220–224 (bus "bugreport" never put) | **missing**: Report a Bug form never shows its log/info/state; `h.state("bugreport")` (probes.rs 443) |
-| 13 | `welcomeName` Today.accountName (274) | 228 (bus "today" never put) | **missing** (host-desktop) |
-| 14 | `healthChecks`, `healthAttention` counts (275–276) | 229–230 (bus "health") | **missing** (About's health row shows nothing; `attention` isn't in probes' state either) |
+| 9 | `needsInstalling` (245) | 215 bus "needs" never put | **same (fixed before 17 Nov: h.state("needs").installing)** [12 Nov: **missing**: `h.state("needs")["installing"]`] |
+| 10 | `health` {checks[…], groups, checking, fixing, error, checkedAt hh:mm} (246–253) | 175–177, 216–219 (bus "health" never put) | **same (fixed before 17 Nov: h.state("health") + Health.groups order)** [12 Nov: **missing**: System health shows no checks. Source: `h.state("health")` (probes.rs 406: checks, checking, checkedAt, fixing, error — no `groups`)] |
+| 11 | `conflicts` [id, name, what, fix, muted] (254) | 178–180 (bus "conflicts" never put) | **same (fixed before 17 Nov: h.state("conflicts") found/muted)** [12 Nov: **missing**: `h.state("conflicts")` (probes.rs 402: found, muted)] |
+| 12 | `bug` {title … issueUrl, info from sysinfo} (255–273) | 181–182, 220–224 (bus "bugreport" never put) | **same (fixed before 17 Nov: h.state("bugreport") with sysinfo as info)** [12 Nov: **missing**: Report a Bug form never shows its log/info/state; `h.state("bugreport")` (probes.rs 443)] |
+| 13 | `welcomeName` Today.accountName (274) | 228 (bus "today" never put) | **same (bus "account" when there; the page falls back to the account's full name from /etc/passwd, Account.name)** [12 Nov: **missing** (host-desktop)] |
+| 14 | `healthChecks`, `healthAttention` counts (275–276) | 229–230 (bus "health") | **same (fixed before 17 Nov: counted from health.checks (fail/warn))** [12 Nov: **missing** (About's health row shows nothing; `attention` isn't in probes' state either)] |
 | 15 | `drives` {hasRclone, installing, installError, busy, errors, names, gdrive, onedrive, updatesRunning} (277–287) | 231–235 (bus "clouddrives") | same |
-| 16 | `keymap` {ready, dialog = zenity\|kdialog} (288–291) | 236 (bus "keymap" has `ready` but no `hasZenity`/`hasKdialog`) | **different**: `dialog` always false → always the typed path field, never a file dialog; ie_pick (279–300) likewise never runs zenity/kdialog. Put `hasZenity`, `hasKdialog`, `home` in input_bridge.rs `publish` (241–243) |
+| 16 | `keymap` {ready, dialog = zenity\|kdialog} (288–291) | 236 (bus "keymap" has `ready` but no `hasZenity`/`hasKdialog`) | **same (fixed before 17 Nov: keymap bus has hasZenity/hasKdialog)** [12 Nov: **different**: `dialog` always false → always the typed path field, never a file dialog; ie_pick (279–300) likewise never runs zenity/kdialog. Put `hasZenity`, `hasKdialog`, `home` in input_bridge.rs `publish` (241–243)] |
 | 17 | `ie` per section set (292) | 237 | same |
 | 18 | Feed told on change (294) | 241–250, polled 400 ms (t_feed) | same (polled) |
 
@@ -52,10 +54,10 @@ Acts (QML 296–425, ieAct 118–169):
 | 27 | `health.check`, `health.copy`, `health.fix` [id] (357–365) | 418–420 → probes.rs 736–754 | same |
 | 28 | `conflicts.mute` [[id]], `conflicts.unmute` [id] (366–371) | 421–422 | same |
 | 29 | `bug.set`, `bug.include`, `bug.editShot`, `bug.copy`, `bug.openGithub`, `bug.send` (373–392) | 424–438 → bugreport.* | same |
-| 30 | `bug.openIssue` (https only) (393–396) | 439–444 (reads bus "bugreport" → never put) | **missing**: never opens; read `h.state("bugreport")["issueUrl"]` |
+| 30 | `bug.openIssue` (https only) (393–396) | 439–444 (reads bus "bugreport" → never put) | **same (fixed before 17 Nov: bug.openIssue reads h.state("bugreport").issueUrl, https only)** [12 Nov: **missing**: never opens; read `h.state("bugreport")["issueUrl"]`] |
 | 31 | `welcome` → Panels.welcomeRequested (398–400) | 446 → welcome.request (bridges.rs 546) | same |
 | 32 | `focusReload` (401–403) | 447 → focus.reload | same |
-| 33 | `openFile` [/abs path] → Launch.open("file://…") (404–407) | 448–453 → `launch.open ["file://…"]` | **missing**: bridges.rs 865–868 `launch.open` only opens `https://` links, so nothing opens. Ask `open` [path] (bridges.rs 954–959) instead |
+| 33 | `openFile` [/abs path] → Launch.open("file://…") (404–407) | 448–453 → `launch.open ["file://…"]` | **same (fixed before 17 Nov: openFile asks `open` [path])** [12 Nov: **missing**: bridges.rs 865–868 `launch.open` only opens `https://` links, so nothing opens. Ask `open` [path] (bridges.rs 954–959) instead] |
 | 34 | `drives.install/open/act/cancel` (409–421) | 455–463 → clouddrives.* | same |
 
 ## Test plan

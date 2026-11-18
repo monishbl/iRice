@@ -54,9 +54,13 @@ fn handle_now(state: &mut State, msg: Msg) {
             // would reach every part in this one turn, and the frame waits
             // for all of them: they go a few at a time between frames)
             if state.shell.defer_data && animating(state) {
-                let names: Vec<&'static str> = state.parts.iter().map(|p| p.name()).collect();
-                for n in names {
-                    if !state.shell.deferred.contains(&(n, what)) {
+                let names: Vec<(&'static str, bool)> = state.parts.iter().map(|p| (p.name(), p.urgent_data(what))).collect();
+                for (n, urgent) in names {
+                    if urgent {
+                        // (Part::urgent_data: now, and any held copy is stale)
+                        state.shell.deferred.retain(|d| *d != (n, what));
+                        state.part(n, |p, st| p.data(st, what));
+                    } else if !state.shell.deferred.contains(&(n, what)) {
                         state.shell.deferred.push_back((n, what));
                     }
                 }

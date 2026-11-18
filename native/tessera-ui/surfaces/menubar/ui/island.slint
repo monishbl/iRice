@@ -357,11 +357,11 @@ export component Spaces inherits Rectangle {
         height: 18px;
         visible: c.fall > 0.01;
         opacity: (c.elsewhere && !c.shown-there ? 0.55 : 1) * (c.fall >= 0.99 ? 1 : c.fall >= 0.69 ? 0.6 : 0.3);
-        animate x, width { duration: Theme.material ? 222ms : Theme.popover; easing: Theme.material ? spring(0.4) : cubic-bezier(0.33, 1, 0.68, 1); }
+        animate x, width { duration: Theme.material ? 222ms : Theme.popover; easing: Theme.material ? spring(0.4) : cubic-bezier(0.3333, 1, 0.6667, 1); }
         animate opacity { duration: Theme.popover; }
         // (past the window's ends, dynamic overflow: the whole chip smaller, Workspaces' scale)
         transform-scale-y: c.fall;
-        animate transform-scale-y { duration: Theme.popover; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+        animate transform-scale-y { duration: Theme.popover; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
         accessible-role: tab;
         accessible-label: "Space " + Math.mod(c.id, 100) + (c.occupied ? ", has windows" : ", empty") + (c.elsewhere ? ", on another display" : "");
         accessible-item-selectable: true;
@@ -435,6 +435,7 @@ export struct Ctl {
     fill: bool,
     on: bool,
     danger: bool,
+    name: string, // its accessible name ("Pause", "Stop sharing")
 }
 
 // A live activity: what its collapsed pill and open card show
@@ -467,17 +468,42 @@ export struct Live {
     // Glass with playerArt "island", the island itself (its lower part faded out)
     bg-art: image,
     has-bg-art: bool,
+    // the open card of the other kinds (IslandFocusCard): the caption over its
+    // big number ("Focus · paused") or the title over the detail (a transfer,
+    // a call), a call's app icon, the captions' last lines, the stopwatch's
+    // elapsed ms at this push (it counts hundredths on from there while it runs)
+    caption: string,
+    detail: string,
+    app-icon: image,
+    has-app-icon: bool,
+    lines: [string],
+    fine-ms: int,
+    fine-running: bool,
+    paused: bool,
+    mic: bool, // recording with a microphone (its level under the card)
+    // music: the small player (island.playerLayout "side": the art beside the
+    // title), Cast (shown when there are TVs or it's casting)
+    side: bool,
+    faded: bool, // Glass, playerArt "faded": the art behind the card, its edges faded out (made so in Rust)
+    cast-shown: bool,
+    casting: bool,
+    cast-name: string,
 }
 
 // A line of the HUD's inline list (IslandLevels): an output or input (a
 // check on the one in use; a click switches to it), or an app's own volume
 export struct LevelRow {
     id: string,
+    // choice (an output or input: picked), display or app (a level), nav
+    // ("App volumes ›"), back ("‹ App volumes"), settings
+    kind: string,
     title: string,
     icon: string,
     on: bool,
-    app: bool,
     value: float,
+    muted: bool,
+    has-pic: bool,
+    pic: image,
 }
 
 // A line of the Recent list (IslandRecent)
@@ -502,6 +528,7 @@ export struct ActRow {
     detail: string,
     progress: float, // 0..1, or -1 for none
     controls: [Ctl], // every one but "reset"
+    lines: [string], // live captions: their last three lines
 }
 
 // A battery ring (a device's, or its left, right and case): its arc drawn by Rust
@@ -523,6 +550,10 @@ export struct AlertRow {
     has-sub-color: bool,
     // the glyph's ring (charging, battery, timer, temperature): its arc
     ringed: bool,
+    // its motions: ripples (device, usb, display, custom, a notification, a
+    // VPN…), Wi-Fi's arcs filling in (joined a Wi-Fi network)
+    ripple: bool,
+    wifi: bool,
     ring-arc: string,
     rings: [Ring],
     action: string,
@@ -622,6 +653,7 @@ component CallButton inherits VerticalLayout {
     in property <color> fill-color;
     in property <color> icon-color;
     in property <color> ink2;
+    in property <float> grow: 1; // (the stagger: 0.8 → 1 as they come in)
     callback clicked();
     spacing: 4px;
     alignment: center;
@@ -633,8 +665,9 @@ component CallButton inherits VerticalLayout {
             border-radius: 22px;
             background: t.pressed ? fill-color.darker(0.2) : t.has-hover ? fill-color.brighter(0.1) : fill-color;
             animate background { duration: Theme.hover; }
-            transform-scale: !Theme.material && t.pressed ? 0.94 : 1;
-            animate transform-scale { duration: 100ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+            // (Glass: 94 % pressed; Material: ElasticControl, a little larger)
+            transform-scale: grow * (t.pressed ? (Theme.material ? 1.06 : 0.94) : 1);
+            animate transform-scale { duration: 100ms; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
             accessible-role: button;
             accessible-label: label + " call";
             accessible-action-default => { root.clicked(); }
@@ -664,6 +697,63 @@ component CallButton inherits VerticalLayout {
     }
 }
 
+// The glyph's easings (IslandGlyph's animations, as functions of time)
+global GlyphMath {
+    pure public function unit(x: float) -> float {
+        return max(0, min(1, x));
+    }
+    pure public function out-cubic(x: float) -> float {
+        return 1 - (1 - x) * (1 - x) * (1 - x);
+    }
+    pure public function out-back(x: float, s: float) -> float {
+        return 1 + (s + 1) * (x - 1) * (x - 1) * (x - 1) + s * (x - 1) * (x - 1);
+    }
+    pure public function out-bounce(x: float) -> float {
+        if x < 1 / 2.75 { return 7.5625 * x * x; }
+        if x < 2 / 2.75 { return 7.5625 * (x - 1.5 / 2.75) * (x - 1.5 / 2.75) + 0.75; }
+        if x < 2.5 / 2.75 { return 7.5625 * (x - 2.25 / 2.75) * (x - 2.25 / 2.75) + 0.9375; }
+        return 7.5625 * (x - 2.625 / 2.75) * (x - 2.625 / 2.75) + 0.984375;
+    }
+    // ±3 px: -3 over 50 ms, +3 over 90, back over 50; three times
+    pure public function shake(t: float) -> float {
+        if t < 0 || t >= 570 { return 0; }
+        if Math.mod(t, 190) < 50 { return -3 * Math.mod(t, 190) / 50; }
+        if Math.mod(t, 190) < 140 { return -3 + 6 * (Math.mod(t, 190) - 50) / 90; }
+        return 3 - 3 * (Math.mod(t, 190) - 140) / 50;
+    }
+    // up to `peak` over `up` ms, back over `down`, `n` times (linear)
+    pure public function blink(t: float, up: float, down: float, peak: float, n: int) -> float {
+        if t < 0 || t >= n * (up + down) { return 0; }
+        if Math.mod(t, up + down) < up { return peak * Math.mod(t, up + down) / up; }
+        return peak * (1 - (Math.mod(t, up + down) - up) / down);
+    }
+    // up over `up` ms OutCubic, back over `down` InOutCubic, `n` times
+    pure public function pulse(t: float, up: float, down: float, peak: float, n: int) -> float {
+        if t < 0 || t >= n * (up + down) { return 0; }
+        if Math.mod(t, up + down) < up { return peak * (1 - (1 - Math.mod(t, up + down) / up) * (1 - Math.mod(t, up + down) / up) * (1 - Math.mod(t, up + down) / up)); }
+        return peak * (0.5 + 0.5 * Math.cos((Math.mod(t, up + down) - up) / down * 180deg));
+    }
+    pure public function in-out-cubic(x: float) -> float {
+        return x < 0.5 ? 4 * x * x * x : 1 - (2 - 2 * x) * (2 - 2 * x) * (2 - 2 * x) / 2;
+    }
+    // heat: up 380 ms OutSine, down 520 ms InOutSine, twice
+    pure public function swell(t: float, peak: float) -> float {
+        if t < 0 || t >= 1800 { return 0; }
+        if Math.mod(t, 900) < 380 { return peak * Math.sin(Math.mod(t, 900) / 380 * 90deg); }
+        return peak * (0.5 + 0.5 * Math.cos((Math.mod(t, 900) - 380) / 520 * 180deg));
+    }
+    // a sound wave: to 1 over 180 ms, to 0.25 over 360, three times
+    pure public function wave(t: float) -> float {
+        if Math.mod(t, 540) < 180 { return (Math.floor(t / 540) == 0 ? 0 : 0.25) + (1 - (Math.floor(t / 540) == 0 ? 0 : 0.25)) * Math.mod(t, 540) / 180; }
+        return 1 - 0.75 * (Math.mod(t, 540) - 180) / 360;
+    }
+    // the ring's arc, clockwise from the top, in a 44 box (radius 20)
+    pure public function arc(f: float) -> string {
+        if f >= 0.999 { return "M 22 2 A 20 20 0 1 1 21.99 2"; }
+        return "M 22 2 A 20 20 0 " + (f > 0.5 ? 1 : 0) + " 1 " + (22 + 20 * Math.sin(f * 360deg)) + " " + (22 - 20 * Math.cos(f * 360deg));
+    }
+}
+
 // One alert in the open island (IslandEvent): the glyph, title and detail,
 // trailing battery rings and buttons; or the HUD's level row; or a card
 component AlertView inherits Rectangle {
@@ -674,6 +764,7 @@ component AlertView inherits Rectangle {
     in property <bool> levels-open;
     callback level-pick(string);
     callback level-set(string, float);
+    callback level-mute(string);
     in property <bool> first;
     in property <color> ink;
     in property <color> ink2;
@@ -725,7 +816,8 @@ component AlertView inherits Rectangle {
             label: levels-open ? "Hide outputs" : "Outputs";
             clicked => { root.act(a.uid, "levels " + (self.absolute-position.x / 1px)); }
         }
-        if a.device != "": Text {
+        dev-name := Text {
+            visible: a.device != "";
             x: 34px;
             width: min(self.preferred-width, parent.width * 0.4);
             height: parent.height;
@@ -737,7 +829,8 @@ component AlertView inherits Rectangle {
             vertical-alignment: center;
         }
         bar := Rectangle {
-            x: a.device != "" ? 34px + min(parent.width * 0.4, 140px) + 12px : 36px;
+            // (right after the device's name, which takes at most 40 %)
+            x: a.device != "" ? 34px + min(dev-name.preferred-width, parent.width * 0.4) + 12px : 36px;
             width: parent.width - self.x - 40px;
             y: (parent.height - self.height) / 2;
             height: Theme.material ? 16px : 8px;
@@ -748,7 +841,14 @@ component AlertView inherits Rectangle {
                 width: parent.width * max(0, min(1, a.hud-value));
                 border-radius: parent.border-radius;
                 background: Theme.material ? Theme.m3-primary : ink;
-                animate width { duration: 260ms; easing: spring(0.3); }
+                // (IslandEvent.qml's hudBar: SpringAnimation spring 5, damping
+                // 0.4, epsilon 0.5 px. A key's 5% step (under 25 px) stops at
+                // 256 ms; this cubic follows Qt's 16 ms steps to within 0.5% of
+                // the step. Material's Slider has no animation on its value.)
+                animate width {
+                    duration: Theme.material ? 0ms : 256ms;
+                    easing: cubic-bezier(0.192, 0.156, 0.334, 1.15);
+                }
             }
             level := TouchArea {
                 pointer-event(e) => {
@@ -763,55 +863,82 @@ component AlertView inherits Rectangle {
         }
     }
 
-    // the inline list: outputs or inputs, then the apps' own volumes
+    // the inline list (IslandLevels): outputs or inputs (a tick on the one in
+    // use), or the displays each with its level; "App volumes ›" and its page
+    // (each app's icon mutes it, its level unmutes); Sound / Display settings
     if a.hud && levels-open: VerticalLayout {
-        y: 42px;
+        y: 38px;
         height: levels.length * 34px;
         for l in levels: Rectangle {
             height: 34px;
+            property <bool> pickable: l.kind == "choice" || l.kind == "nav" || l.kind == "back" || l.kind == "settings";
             border-radius: 10px;
-            background: !l.app && lt.has-hover ? ink.with-alpha(0.08) : transparent;
+            background: Theme.material && l.kind == "choice" && l.on ? Theme.m3-tertiary-container : pickable && lt.pressed ? ink.with-alpha(Theme.material ? 0.1 : 0.14) : pickable && lt.has-hover ? ink.with-alpha(0.08) : transparent;
             animate background { duration: Theme.hover; }
-            SymIcon {
+            lt := TouchArea {
+                enabled: pickable;
+                mouse-cursor: pointer;
+                clicked => { root.level-pick(l.id); }
+            }
+            if l.has-pic: Image {
                 x: 6px;
-                width: 18px;
+                y: (parent.height - self.height) / 2;
+                width: 22px;
+                height: 22px;
+                source: l.pic;
+                image-fit: contain;
+                opacity: l.kind == "app" && l.muted ? 0.35 : 1;
+            }
+            if !l.has-pic: SymIcon {
+                x: 6px;
+                width: 22px;
                 text: l.icon;
                 fill: true;
                 font-size: 16px;
-                color: !l.app && l.on && Theme.material ? Theme.m3-primary : ink;
+                color: Theme.material && l.kind == "choice" && l.on ? Theme.m3-on-tertiary-container : ink;
+                opacity: l.kind == "app" && l.muted ? 0.35 : 1;
             }
-            Text {
-                x: 34px;
-                width: l.app ? parent.width * 0.4 : parent.width - 34px - 30px;
+            // (an app's icon: a click mutes it)
+            if l.kind == "app": TouchArea {
+                x: 0;
+                width: 32px;
+                mouse-cursor: pointer;
+                clicked => { root.level-mute(l.id); }
+            }
+            name := Text {
+                x: 36px;
+                width: l.kind == "app" ? min(self.preferred-width, parent.width * 0.35) : l.kind == "display" ? min(self.preferred-width, parent.width * 0.4) : parent.width - 36px - 30px;
                 height: parent.height;
                 text: l.title;
-                color: ink;
-                font-size: Theme.small;
-                font-weight: l.on && !l.app ? 600 : 400;
+                color: Theme.material && l.kind == "choice" && l.on ? Theme.m3-on-tertiary-container : ink;
+                font-size: 13px;
+                font-weight: l.kind == "choice" && l.on ? 600 : 400;
                 overflow: elide;
                 vertical-alignment: center;
             }
-            if !l.app && l.on: SymIcon {
+            if l.kind == "choice" && l.on: SymIcon {
                 x: parent.width - 26px;
                 width: 20px;
                 text: "\u{e182}"; // check
                 bold: true;
                 font-size: 14px;
-                color: Theme.material ? Theme.m3-primary : ink;
+                color: Theme.material ? Theme.m3-on-tertiary-container : ink;
             }
-            lt := TouchArea {
-                enabled: !l.app;
-                mouse-cursor: pointer;
-                clicked => { root.level-pick(l.id); }
+            if l.kind == "nav": SymIcon {
+                x: parent.width - 26px;
+                width: 20px;
+                text: "\u{e13a}"; // caret-right
+                font-size: 14px;
+                color: ink2;
             }
-            // an app's level: drag, click or scroll
-            if l.app: Rectangle {
-                x: 34px + parent.width * 0.4 + 10px;
+            // a level: drag, click or scroll (Glass: a 6 px track; Material: a slider's)
+            if l.kind == "app" || l.kind == "display": Rectangle {
+                x: name.x + name.width + 12px;
                 width: parent.width - self.x - 8px;
                 y: (parent.height - self.height) / 2;
                 height: Theme.material ? 12px : 6px;
                 border-radius: self.height / 2;
-                background: Theme.material ? Theme.m3-secondary-container : #ffffff29;
+                background: Theme.material ? Theme.m3-secondary-container : ink.with-alpha(0.16);
                 Rectangle {
                     x: 0;
                     width: parent.width * max(0, min(1, l.value));
@@ -821,8 +948,9 @@ component AlertView inherits Rectangle {
                 TouchArea {
                     y: -8px;
                     height: parent.height + 16px;
+                    mouse-cursor: pointer;
                     pointer-event(e) => {
-                        if e.kind == PointerEventKind.down { root.level-set(l.id, self.mouse-x / self.width); }
+                        if e.kind == PointerEventKind.down { root.level-set(l.id, max(0, min(1, self.mouse-x / self.width))); }
                     }
                     moved => { if self.pressed { root.level-set(l.id, max(0, min(1, self.mouse-x / self.width))); } }
                     scroll-event(e) => {
@@ -837,16 +965,16 @@ component AlertView inherits Rectangle {
     // ── A ringing call (IslandCall): the photo (or initials) with two
     // rings swelling out of it (1.6 s a beat), the name, the app, round
     // Decline (red) and Answer (green; Open for a call on the phone)
-    if a.kind == "ringing": Rectangle {
+    if a.kind == "ringing": ring-card := Rectangle {
         height: 68px;
         property <bool> go;
         init => { go = true; }
         property <float> p1: go ? 1 : 0;
         property <float> p2: go ? 1 : 0;
         property <float> p3: go ? 1 : 0;
-        animate p1 { duration: 315ms; delay: 70ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
-        animate p2 { duration: 315ms; delay: 105ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
-        animate p3 { duration: 315ms; delay: 210ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+        animate p1 { duration: 315ms; delay: 70ms; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
+        animate p2 { duration: 315ms; delay: 105ms; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
+        animate p3 { duration: 315ms; delay: 210ms; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
         photo := Rectangle {
             transform-scale: 0.7 + 0.3 * parent.p1;
             x: 4px;
@@ -855,27 +983,44 @@ component AlertView inherits Rectangle {
             height: 52px;
             property <color> pulse: Theme.material ? Theme.m3-primary : #30D158;
             // (reduce motion: one still ring)
-            for i in reduce-motion ? 1 : 2: Rectangle {
-                property <float> u: reduce-motion ? 0.45 : Math.mod(animation-tick() / 1.6s + i * 0.5, 1);
+            for i in reduce-motion ? 0 : 2: Rectangle {
+                property <float> u: Math.mod(animation-tick() / 1.6s + i * 0.5, 1);
                 width: 52px * (1 + 0.45 * u);
                 height: self.width;
                 x: (52px - self.width) / 2;
                 y: (52px - self.height) / 2;
                 border-radius: self.width / 2;
                 border-width: 2px;
-                border-color: pulse.with-alpha(0.5 * (1 - u));
+                border-color: pulse.with-alpha(0.55 * (1 - u));
+            }
+            // (reduce motion: one still ring)
+            if reduce-motion: Rectangle {
+                width: 60px;
+                height: 60px;
+                x: -4px;
+                y: -4px;
+                border-radius: 30px;
+                border-width: 2px;
+                border-color: pulse.with-alpha(0.6);
             }
             Rectangle {
                 border-radius: 26px;
                 clip: true;
-                background: Theme.material ? Theme.m3-tertiary-container : #8E8E93;
+                background: Theme.material ? Theme.m3-tertiary-container : #636366;
                 Text {
                     text: a.call-initials;
                     color: Theme.material ? Theme.m3-on-tertiary-container : #ffffff;
-                    font-size: 20px;
+                    font-size: 19px;
                     font-weight: 600;
                     horizontal-alignment: center;
                     vertical-alignment: center;
+                }
+                // no initials either: a person
+                if a.call-initials == "" && !a.has-call-photo: SymIcon {
+                    text: "\u{e4c2}"; // user
+                    fill: true;
+                    font-size: 24px;
+                    color: Theme.material ? Theme.m3-on-tertiary-container : #ffffff;
                 }
                 if a.has-call-photo: Image {
                     width: 100%;
@@ -901,6 +1046,7 @@ component AlertView inherits Rectangle {
             height: self.preferred-height;
             spacing: 16px;
             CallButton {
+                grow: 0.8 + 0.2 * ring-card.p3;
                 label: "Decline";
                 icon: "\u{e3bc}"; // phone-disconnect
                 fill-color: Theme.material ? Theme.m3-error : #FF453A;
@@ -909,6 +1055,7 @@ component AlertView inherits Rectangle {
                 clicked => { root.act(a.uid, "decline"); }
             }
             CallButton {
+                grow: 0.8 + 0.2 * ring-card.p3;
                 label: a.call-open-only ? "Open" : "Answer";
                 icon: a.call-open-only ? "\u{e5de}" : "\u{e3b8}"; // arrow-square-out | phone
                 fill-color: Theme.material ? Theme.m3-primary : #30D158;
@@ -930,11 +1077,25 @@ component AlertView inherits Rectangle {
                 font-weight: 600;
                 overflow: elide;
             }
-            Text {
-                text: (a.call-app != "" ? a.call-app : "Call") + (a.call-open-only ? " · on your phone" : " · incoming call");
-                color: ink2;
-                font-size: Theme.body;
-                overflow: elide;
+            HorizontalLayout {
+                spacing: 6px;
+                // the app's icon, small, before its name
+                if a.has-app-icon: VerticalLayout {
+                    alignment: center;
+                    Image {
+                        width: 14px;
+                        height: 14px;
+                        source: a.app-icon;
+                        image-fit: contain;
+                    }
+                }
+                Text {
+                    horizontal-stretch: 1;
+                    text: (a.call-app != "" ? a.call-app : "Call") + (a.call-open-only ? " · on your phone" : " · incoming call");
+                    color: ink2;
+                    font-size: Theme.body;
+                    overflow: elide;
+                }
             }
         }
     }
@@ -960,28 +1121,77 @@ component AlertView inherits Rectangle {
             if (e.delta-y >= 15px && wheel-sum >= 15px) || wheel-sum >= 60px { wheel-sum = 0; root.dismiss(a.uid); }
             accept
         }
+        // The glyph (IslandGlyph): it springs in, then each kind plays its own
+        // short motion, on its own clock from when it shows (after its stagger):
+        // ripples (device, usb, display, custom, a notification, VPN…), a ring
+        // filling to the level (charging, battery, temperature; a timer's runs
+        // down), a shake and glow (low battery), heat pulses, Wi-Fi arcs filling
+        // in, the bolt pulsing, sound waves beside a speaker, the art flipping
+        // in, the icon turning in (timer, focus) or dropping in (USB). It all
+        // stops ~3 s in (nothing loops).
         glyph := Rectangle {
             x: 0;
             width: row-h - 8px;
             height: self.width;
             y: (parent.height - self.height) / 2;
             property <length> disc-inset: Theme.material && a.ringed ? 6px : 0;
-            transform-scale: in-view ? 1 : 0.6;
+            property <duration> t0;
+            property <bool> alive: true;
+            init => { t0 = animation-tick(); }
+            Timer {
+                interval: a.delay + 3200ms;
+                running: glyph.alive;
+                triggered => { glyph.alive = false; }
+            }
+            // ms since it showed (-: still waiting its turn; huge once it's done)
+            property <float> t: alive ? (animation-tick() - t0 - a.delay) / 1ms : 100000;
+            property <float> pop: reduce-motion ? (t < 0 ? 0.35 : 1) : t < 0 ? 0.35 : 1 - 0.65 * Math.pow(2.718, -t / 130) * Math.cos(t / 380 * 360deg);
+            property <float> turn: a.kind == "usb" || reduce-motion ? 0 : (a.kind == "timer" || a.kind == "focus" ? -90 : -18) * (1 - GlyphMath.out-back(GlyphMath.unit(t / 520), 2));
+            property <float> flip: a.has-art && !reduce-motion ? GlyphMath.out-back(GlyphMath.unit(t / 520), 1.70158) : 1;
+            property <float> drop: a.kind == "usb" && !reduce-motion ? -14 * (1 - GlyphMath.out-bounce(GlyphMath.unit(t / 620))) : 0;
+            property <float> ring-t: GlyphMath.out-cubic(GlyphMath.unit((t - 180) / 900));
+            // low battery: ±3 px three times after 250 ms; its glow twice
+            property <float> shake-x: a.kind != "battery" || reduce-motion ? 0 : GlyphMath.shake(t - 250);
+            property <float> glow: a.kind == "battery" ? GlyphMath.blink(t, 260, 380, 0.35, 2) : a.kind == "temperature" ? GlyphMath.swell(t - 900, 0.4) : 0;
+            // the icon's swell: heat (×1.18), the bolt (×1.25 twice), Wi-Fi (×1.15 once filled)
+            property <float> grow: reduce-motion ? 1 : a.kind == "temperature" ? 1 + GlyphMath.swell(t - 900, 0.18) : a.kind == "charging" ? 1 + GlyphMath.pulse(t - 400, 160, 260, 0.25, 2) : a.wifi ? 1 + GlyphMath.pulse(t - 600, 140, 220, 0.15, 1) : 1;
+            property <int> wifi-step: !a.wifi || reduce-motion ? 3 : t < 260 ? 0 : t < 430 ? 1 : t < 600 ? 2 : 3;
+            transform-scale: pop;
             transform-origin: { x: self.width / 2, y: self.height / 2 };
-            animate transform-scale { duration: 420ms; delay: a.delay; easing: spring(0.35); }
-            Rectangle {
-                x: disc-inset;
+            // ripples behind the disc: two rings spread out (900 ms OutCubic, 140 + 260 ms apart)
+            for i in a.ripple && !reduce-motion ? 2 : 0: Rectangle {
+                property <float> p: GlyphMath.out-cubic(GlyphMath.unit((glyph.t - 140 - i * 260) / 900));
+                property <bool> on: glyph.t >= 140 + i * 260 && p < 1;
+                width: glyph.width * (1 + 0.9 * p);
+                height: self.width;
+                x: (glyph.width - self.width) / 2;
+                y: (glyph.height - self.height) / 2;
+                border-radius: self.width / 2;
+                border-width: 1.5px;
+                border-color: a.tint;
+                opacity: on ? (1 - p) * 0.7 : 0;
+            }
+            disc := Rectangle {
+                x: disc-inset + glyph.shake-x * 1px;
                 y: disc-inset;
                 width: parent.width - 2 * disc-inset;
                 height: self.width;
                 border-radius: a.has-art ? 12px : self.width / 2;
                 clip: true;
                 background: a.has-art ? (Theme.material ? transparent : #ffffff1a) : a.has-picture ? transparent : Theme.material ? a.tint : a.tint.with-alpha(0.24);
+                // (the art flips in about its upright axis)
+                transform-scale-x: max(0.02, glyph.flip);
+                transform-origin: { x: self.width / 2, y: self.height / 2 };
                 if a.has-art: Image {
                     width: 100%;
                     height: 100%;
                     source: a.art;
                     image-fit: cover;
+                }
+                // low battery and heat: the disc glows
+                Rectangle {
+                    background: Theme.material ? (a.tint == Theme.m3-error ? Theme.m3-on-error : Theme.m3-on-primary) : a.tint;
+                    opacity: glyph.glow;
                 }
             }
             if a.has-picture && !a.has-art: Image {
@@ -990,11 +1200,19 @@ component AlertView inherits Rectangle {
                 source: a.picture;
                 image-fit: contain;
             }
-            if !a.has-art && !a.has-picture: SymIcon {
-                text: a.icon;
-                fill: true;
-                font-size: round(parent.width * (a.ringed ? (Theme.material ? 0.34 : 0.42) : 0.48) / 1px) * 1px;
-                color: Theme.material ? (a.tint == Theme.m3-error ? Theme.m3-on-error : Theme.m3-on-primary) : a.tint;
+            if !a.has-art && !a.has-picture: Rectangle {
+                x: glyph.shake-x * 1px;
+                y: glyph.drop * 1px;
+                transform-rotation: glyph.turn * 1deg;
+                transform-scale: glyph.grow;
+                transform-origin: { x: self.width / 2, y: self.height / 2 };
+                SymIcon {
+                    // (Wi-Fi joined: none → low → medium → high)
+                    text: !a.wifi ? a.icon : glyph.wifi-step == 0 ? "\u{e4f0}" : glyph.wifi-step == 1 ? "\u{e4ec}" : glyph.wifi-step == 2 ? "\u{e4ee}" : "\u{e4ea}";
+                    fill: true;
+                    font-size: round(glyph.width * (a.ringed ? (Theme.material ? 0.34 : 0.42) : 0.48) / 1px) * 1px;
+                    color: Theme.material ? (a.tint == Theme.m3-error ? Theme.m3-on-error : Theme.m3-on-primary) : a.tint;
+                }
             }
             if a.ringed: Path {
                 width: 100%;
@@ -1006,14 +1224,41 @@ component AlertView inherits Rectangle {
                 stroke-width: 3px;
                 fill: transparent;
             }
+            // the ring fills to the level (a timer's runs down from full), 900 ms OutCubic after 180 ms
             if a.ringed: Path {
+                property <float> sweep: max(0, min(1, a.kind == "timer" ? 1 - (1 - a.hud-value) * glyph.ring-t : a.hud-value * glyph.ring-t));
                 width: 100%;
                 height: 100%;
                 viewbox-width: 44;
                 viewbox-height: 44;
-                commands: a.ring-arc;
-                stroke: a.tint;
+                visible: sweep > 0.002;
+                commands: GlyphMath.arc(sweep);
+                // (temperature, Glass: warms from orange to red as it fills)
+                stroke: a.kind == "temperature" && !Theme.material ? rgb(255, round(255 * (0.62 - 0.35 * glyph.ring-t)), 26) : a.tint;
                 stroke-width: 3px;
+                stroke-line-cap: round;
+                fill: transparent;
+            }
+        }
+        // a speaker's sound waves, beside it: each pulses three times, then stays
+        if a.kind == "audio": Rectangle {
+            x: glyph.width - 6px;
+            y: (parent.height - 22px) / 2;
+            width: 20px;
+            height: 22px;
+            for i in 3: Path {
+                property <float> t: glyph.t - 200 - i * 120;
+                x: i * 7px;
+                width: 6px;
+                height: (10 + i * 6) * 1px;
+                y: (22px - self.height) / 2;
+                opacity: reduce-motion ? 1 : t < 0 ? 0 : t < 1620 ? GlyphMath.wave(t) : min(1, 0.25 + 0.75 * (t - 1620) / 200);
+                viewbox-width: 6;
+                viewbox-height: 10 + i * 6;
+                // (an arc of a circle centred left of it, ±40°)
+                commands: "M " + (4 - (5 + i * 3) + (5 + i * 3) * Math.cos(-40deg)) + " " + ((5 + i * 3) + (5 + i * 3) * Math.sin(-40deg)) + " A " + (5 + i * 3) + " " + (5 + i * 3) + " 0 0 1 " + (4 - (5 + i * 3) + (5 + i * 3) * Math.cos(40deg)) + " " + ((5 + i * 3) + (5 + i * 3) * Math.sin(40deg));
+                stroke: a.tint;
+                stroke-width: 2px;
                 stroke-line-cap: round;
                 fill: transparent;
             }
@@ -1117,7 +1362,7 @@ component AlertView inherits Rectangle {
             height: 20px;
             border-radius: 10px;
             opacity: !a.leaving && a.kind != "ringing" && (row.has-hover || ct.has-hover) ? 1 : 0;
-            animate opacity { duration: Theme.hover; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+            animate opacity { duration: Theme.hover; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
             visible: self.opacity > 0.01;
             background: Theme.material ? Theme.m3-secondary-container.mix(Theme.m3-on-secondary-container, ct.pressed ? 0.9 : ct.has-hover ? 0.92 : 1) : ct.pressed ? #5A5A5E : ct.has-hover ? #48484A : #3A3A3C;
             border-width: Theme.material ? 0 : 1px;
@@ -1261,7 +1506,7 @@ component AlertView inherits Rectangle {
         height: 20px;
         border-radius: 10px;
         opacity: !a.leaving && (card-hover.has-hover || cx.has-hover) ? 1 : 0;
-        animate opacity { duration: Theme.hover; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+        animate opacity { duration: Theme.hover; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
         visible: self.opacity > 0.01;
         background: Theme.material ? Theme.m3-secondary-container.mix(Theme.m3-on-secondary-container, cx.pressed ? 0.9 : cx.has-hover ? 0.92 : 1) : cx.pressed ? #5A5A5E : cx.has-hover ? #48484A : #3A3A3C;
         border-width: Theme.material ? 0 : 1px;
@@ -1349,7 +1594,7 @@ component PlayMorph inherits Rectangle {
     animate border-radius { duration: 350ms; easing: spring(0.35); }
     background: t.pressed ? Theme.m3-primary.mix(Theme.m3-on-primary, 0.9) : t.has-hover ? Theme.m3-primary.mix(Theme.m3-on-primary, 0.92) : Theme.m3-primary;
     transform-scale: t.pressed ? 0.94 : 1;
-    animate transform-scale { duration: 100ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+    animate transform-scale { duration: 100ms; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
     accessible-role: button;
     accessible-label: playing ? "Pause" : "Play";
     accessible-action-default => { root.clicked(); }
@@ -1375,7 +1620,7 @@ component ActivityRow inherits Rectangle {
     in property <color> ink;
     in property <color> ink2;
     callback control(string, int);
-    height: r.progress >= 0 ? 42px : 36px;
+    height: r.kind == "captions" && r.lines.length > 0 ? max(36px, 20px + r.lines.length * 18px) : r.progress >= 0 ? 42px : 36px;
     // (fades in and rises 8 px over 280 ms OutCubic after `delay`, on its own clock)
     property <duration> t0;
     property <bool> entering;
@@ -1420,7 +1665,7 @@ component ActivityRow inherits Rectangle {
                 size: 16px;
                 ink: c.danger ? (Theme.material ? Theme.m3-error : #ff453a) : root.ink;
                 opacity: c.on ? 1 : 0.4;
-                label: c.icon;
+                label: c.name;
                 clicked => { if c.on { root.control(r.kind, i); } }
             }
         }
@@ -1430,19 +1675,32 @@ component ActivityRow inherits Rectangle {
             alignment: center;
             spacing: 1px;
             Text {
-                text: r.title;
+                text: r.kind == "captions" ? "Live captions" : r.title;
                 color: ink;
                 font-size: Theme.body;
                 font-weight: Theme.material ? 500 : 600;
                 overflow: elide;
             }
-            Text {
+            if r.kind != "captions" || r.lines.length == 0: Text {
                 text: r.detail;
                 color: ink2;
                 font-size: Theme.small;
                 overflow: elide;
             }
-            if r.progress >= 0: Rectangle {
+            // live captions: the last three lines (CaptionLines)
+            for l in r.lines: Text {
+                text: l;
+                color: ink2;
+                font-size: Theme.small;
+                overflow: elide;
+            }
+            // (Material: the wavy line, in primary or error)
+            if r.progress >= 0 && Theme.material: WavySeek {
+                value: r.progress;
+                paused: false;
+                wave: red ? Theme.m3-error : Theme.m3-primary;
+            }
+            if r.progress >= 0 && !Theme.material: Rectangle {
                 height: 3px;
                 border-radius: 1.5px;
                 background: Theme.material ? Theme.m3-secondary-container : #ffffff29;
@@ -1492,19 +1750,32 @@ component RecentList inherits VerticalLayout {
         height: 24px;
         Rectangle {
             x: -6px;
-            width: head.preferred-width + 12px;
+            width: head.preferred-width + 12px + (collapsible ? 14px : 0);
             height: 24px;
             border-radius: 12px;
             background: !collapsible ? transparent : ht.pressed ? ink.with-alpha(0.16) : ht.has-hover ? ink.with-alpha(0.1) : transparent;
             animate background { duration: Theme.hover; }
+            accessible-role: button;
+            accessible-label: collapsible ? "Hide recent alerts" : "Recent";
+            accessible-action-default => { if collapsible { root.toggle(); } }
             head := Text {
                 x: 6px;
                 text: "Recent";
                 color: ink2;
-                font-size: Theme.small;
+                font-size: Theme.caption;
                 font-weight: 600;
                 vertical-alignment: center;
                 height: 24px;
+                accessible-role: none;
+            }
+            // (a toggle when it shares the island: shown, so it hides)
+            if collapsible: SymIcon {
+                x: head.x + head.preferred-width + 4px;
+                width: 10px;
+                text: "\u{e13c}"; // caret-up
+                bold: true;
+                font-size: 10px;
+                color: ink2;
             }
             ht := TouchArea {
                 enabled: collapsible;
@@ -1525,7 +1796,7 @@ component RecentList inherits VerticalLayout {
             clear-t := Text {
                 text: "Clear";
                 color: ink2;
-                font-size: Theme.small;
+                font-size: Theme.caption;
                 font-weight: 500;
                 horizontal-alignment: center;
                 vertical-alignment: center;
@@ -1548,7 +1819,7 @@ component RecentList inherits VerticalLayout {
                 property <length> dx;
                 property <bool> leaving;
                 property <length> off: leaving ? (dx < 0 ? -1 : 1) * self.width : dx;
-                animate off { duration: leaving ? 150ms : 0ms; easing: cubic-bezier(0.32, 0, 0.67, 0); }
+                animate off { duration: leaving ? 150ms : 0ms; easing: cubic-bezier(0.3333, 0, 0.6667, 0); }
                 lt := TouchArea {
                     property <bool> dragged;
                     property <length> last-x;
@@ -1706,7 +1977,10 @@ component Marquee inherits Rectangle {
     property <length> span: probe.preferred-width - root.width;
     property <float> out: max(0.6, span / 1px * 0.033);
     property <float> back: max(0.4, span / 1px * 0.012);
-    property <float> t: moving ? Math.mod(animation-tick() / 1s, 1.8 + out + 1.4 + back) : 0;
+    // (a new title starts over from its rest)
+    property <duration> t0;
+    changed text => { t0 = animation-tick(); }
+    property <float> t: moving ? Math.mod((animation-tick() - t0) / 1s, 1.8 + out + 1.4 + back) : 0;
     property <float> k: t < 1.8 ? 0 : t < 1.8 + out ? 0.5 - 0.5 * cos((t - 1.8) / out * 180deg) : t < 3.2 + out ? 1 : 1 - (0.5 - 0.5 * cos((t - 3.2 - out) / back * 180deg));
     Text {
         x: moving ? -round(span * k / 1px) * 1px : 0;
@@ -1726,6 +2000,10 @@ component LiveInfo inherits HorizontalLayout {
     in property <Live> live;
     in property <color> ink;
     in property <int> tick;
+    // the room it has (IslandView's maxWidth: "beside" the spaces), and the
+    // time's width (measured outside this layout): the title gets what's left
+    in property <length> room: 100000px;
+    in property <length> time-w;
     alignment: start;
     spacing: 7px;
     if live.show-lead: VerticalLayout {
@@ -1735,7 +2013,7 @@ component LiveInfo inherits HorizontalLayout {
             height: self.width;
             border-radius: Theme.material || !live.has-art ? self.width / 2 : 5px;
             clip: true;
-            background: live.has-art ? ink.with-alpha(0.15) : Theme.material ? (live.tint == Theme.m3-error ? Theme.m3-error : Theme.m3-primary) : transparent;
+            background: live.has-art ? ink.with-alpha(0.15) : live.kind == "call" && live.has-app-icon ? transparent : Theme.material ? (live.tint == Theme.m3-error ? Theme.m3-error : Theme.m3-primary) : transparent;
             if live.has-art: Image {
                 width: 100%;
                 height: 100%;
@@ -1750,7 +2028,14 @@ component LiveInfo inherits HorizontalLayout {
                 background: Theme.material ? Theme.m3-on-error : Theme.danger;
                 opacity: 0.675 + 0.325 * Math.cos(tick * 83ms / 700ms * 180deg);
             }
-            if !live.has-art && live.kind != "recording": SymIcon {
+            // a call: its app's icon
+            if !live.has-art && live.kind == "call" && live.has-app-icon: Image {
+                width: 16px;
+                height: 16px;
+                source: live.app-icon;
+                image-fit: contain;
+            }
+            if !live.has-art && live.kind != "recording" && !(live.kind == "call" && live.has-app-icon): SymIcon {
                 text: live.icon;
                 fill: true;
                 font-size: Theme.material ? 12px : 14px;
@@ -1759,7 +2044,8 @@ component LiveInfo inherits HorizontalLayout {
         }
     }
     if live.show-title && live.title != "": Marquee {
-        max-w: live.kind == "music" ? 132px : 90px;
+        // (what's left after the other pieces, at most 132 for a song, 90 otherwise)
+        max-w: max(0px, min(live.kind == "music" ? 132px : 90px, root.room - (live.show-lead ? (Theme.material ? 20px : 18px) + 7px : 0) - (live.show-time && live.time != "" ? root.time-w + 7px : 0) - (live.show-bars && live.kind == "music" && live.playing ? 11.5px + 7px : 0)));
         text: live.title;
         ink: ink;
         size: Theme.small;
@@ -1786,8 +2072,12 @@ component LiveInfo inherits HorizontalLayout {
         }
     }
     // three bars that dance while it plays (12 frames a second)
-    if live.show-bars && live.playing: Rectangle {
-        width: 3 * 2.5px + 2 * 2px;
+    // (they fade and fold away over 200 ms when it pauses)
+    if live.show-bars && live.kind == "music": Rectangle {
+        width: live.playing ? 3 * 2.5px + 2 * 2px : 0;
+        opacity: live.playing ? 1 : 0;
+        animate width, opacity { duration: 200ms; }
+        clip: true;
         for b[i] in [{ lo: 5, hi: 11, p: 0.70 }, { lo: 4, hi: 10, p: 0.66 }, { lo: 4, hi: 13, p: 0.74 }]: Rectangle {
             x: i * 4.5px;
             width: 2.5px;
@@ -1872,13 +2162,53 @@ export component Island inherits Rectangle {
     callback recent-run(int);
     callback level-pick(string);
     callback level-set(string, float);
+    callback level-mute(string);
     callback recent-forget(int);
     callback recent-clear();
     callback seek(float);
     callback set-volume(float);
     callback mute();
     callback open-player();
+    callback open-cast();
     callback escape();
+    callback focus-at(int); // a page dot: show that activity
+    // Material's cookie (shapes.rs "cookie9", in a 0..100 box): the focus card's badge
+    in property <string> cookie;
+    // a recording microphone's level, 0..1 (the card's meter)
+    in property <float> mic-level;
+    // The focus moved (a wheel, a page dot, a new activity): the shown one
+    // swaps in, from the side it came from (IslandView's swap, its in half:
+    // 260 ms OutBack 1.6; OutCubic with reduce motion)
+    property <string> shown-kind: live.kind;
+    property <int> idx-was: live-index;
+    property <int> swap-dir: 1;
+    property <duration> swap-t0;
+    property <bool> swapping;
+    property <string> kind-was;
+    changed shown-kind => {
+        if live-index != idx-was { swap-dir = live-index > idx-was ? 1 : -1; }
+        idx-was = live-index;
+        // (the first one, or the last one ending: no swap)
+        if kind-was != "" && shown-kind != "" { swap-t0 = animation-tick(); swapping = true; }
+        kind-was = shown-kind;
+    }
+    Timer {
+        interval: 300ms;
+        running: swapping;
+        triggered => { swapping = false; }
+    }
+    property <float> swap-lin: !swapping ? 1 : max(0, min(1, (animation-tick() - swap-t0) / 260ms));
+    property <float> swap: reduce-motion ? 1 - (1 - swap-lin) * (1 - swap-lin) * (1 - swap-lin) : 1 + 2.6 * (swap-lin - 1) * (swap-lin - 1) * (swap-lin - 1) + 1.6 * (swap-lin - 1) * (swap-lin - 1);
+    // The stopwatch's hundredths (IslandFocusCard's fineClock): from its last
+    // push, on this clock, while it runs and shows
+    property <int> fine-ms: card.fine-ms;
+    property <duration> fine-t0;
+    changed fine-ms => { fine-t0 = animation-tick(); }
+    property <int> sw-ms: card.fine-running && expanded ? card.fine-ms + floor((animation-tick() - fine-t0) / 1ms) : card.fine-ms;
+    property <int> sw-cs: floor(sw-ms / 10);
+    property <int> sw-s: Math.mod(floor(sw-cs / 100), 60);
+    property <int> sw-c: Math.mod(sw-cs, 100);
+    property <string> sw-text: floor(sw-cs / 6000) + ":" + (sw-s < 10 ? "0" : "") + sw-s + "." + (sw-c < 10 ? "0" : "") + sw-c;
     // for the glass and the input region
     out property <length> shape-x: shape.x;
     out property <length> shape-y: shape.y;
@@ -1962,7 +2292,15 @@ export component Island inherits Rectangle {
         y: 3px;
         width: target-w;
         height: target-h;
-        animate width, height { duration: Theme.material ? 300ms : 320ms; easing: spring(0.2); }
+        // (IslandView.qml: SpringAnimation spring Theme.motion.spring + 1.2,
+        // damping + 0.04, Qt's 16 ms steps; the same spring in Slint's terms,
+        // from the poles of Qt's step: Subtle 5.0/0.36 → 318 ms, bounce 0.29;
+        // Expressive 4.2/0.26 → 359 ms, 0.46; Material and Snappy 7.28/0.54
+        // → 244 ms, 0.06)
+        animate width, height {
+            duration: Theme.material || Theme.snappy ? 244ms : Theme.expressive ? 359ms : 318ms;
+            easing: Theme.material || Theme.snappy ? spring(0.06) : Theme.expressive ? spring(0.46) : spring(0.29);
+        }
         property <float> open-fade: filled ? 1 : 0;
         animate open-fade { duration: Theme.hover; }
         property <float> fade: filled ? open-fade : max(0, min(1, (self.height - 26px) / max(1px, close-from - 26px)));
@@ -1994,7 +2332,7 @@ export component Island inherits Rectangle {
         // up top and melting into the glass below like the black (faded in Rust)
         if !Theme.material && island-art: artbox := Rectangle {
             opacity: expanded && !event-inside && !recent-over ? 0.82 : 0;
-            animate opacity { duration: Theme.popover; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+            animate opacity { duration: Theme.popover; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
             // (clipped to the glass's own squircle, row by row at the corners:
             // a round-cornered clip left the plugin's squircle showing past
             // it, a second, lighter rounding at the corners. n = 4, reaching
@@ -2137,24 +2475,36 @@ export component Island inherits Rectangle {
                 }
 
                 // Compact: the live activity's info and controls
+                // (the pill's time, measured: LiveInfo's title gets the room the other pieces leave)
+                time-probe := Text {
+                    visible: false;
+                    text: live.time-shape;
+                    font-size: Theme.small;
+                    font-weight: 600;
+                }
                 lead := LiveInfo {
-                    x: lead-x;
+                    room: layout == "beside" ? area - trail-w - 4px : 100000px;
+                    time-w: time-probe.preferred-width;
+                    x: lead-x + (1 - swap) * 10px * swap-dir;
                     y: 2px;
                     width: self.preferred-width;
                     height: 22px;
                     live: root.live;
                     ink: root.ink;
                     tick: root.tick;
-                    opacity: compact ? 1 : 0;
-                    animate opacity { duration: Theme.hover; }
+                    // (a swap: it shrinks away, then grows back from its side)
+                    property <float> shown: compact ? 1 : 0;
+                    animate shown { duration: Theme.hover; }
+                    opacity: shown * swap;
                 }
                 trail := HorizontalLayout {
-                    x: trail-x;
+                    x: trail-x + (1 - swap) * 10px * swap-dir;
                     y: 2px;
                     width: self.preferred-width;
                     height: 22px;
-                    opacity: compact ? 1 : 0;
-                    animate opacity { duration: Theme.hover; }
+                    property <float> shown: compact ? 1 : 0;
+                    animate shown { duration: Theme.hover; }
+                    opacity: shown * swap;
                     for c[i] in live.controls: IconButton {
                         width: 24px;
                         height: 22px;
@@ -2162,7 +2512,7 @@ export component Island inherits Rectangle {
                         fill: c.fill;
                         ink: c.danger ? (Theme.material ? Theme.m3-error : Theme.danger) : root.ink;
                         opacity: c.on ? 1 : 0.4;
-                        label: c.icon;
+                        label: c.name;
                         clicked => { if c.on && compact { root.control(live.kind, i, false); } }
                     }
                 }
@@ -2219,6 +2569,7 @@ export component Island inherits Rectangle {
                             levels-open: root.levels-open;
                             level-pick(id) => { root.level-pick(id); }
                             level-set(id, v) => { root.level-set(id, v); }
+                            level-mute(id) => { root.level-mute(id); }
                             a: a;
                             first: i == 0;
                             ink: root.ink;
@@ -2231,6 +2582,10 @@ export component Island inherits Rectangle {
                     // the focused activity, open (IslandFocusCard, simplified)
                     if !event-inside && card-on && !recent-over: cardl := VerticalLayout {
                         spacing: 8px;
+                        // (the focus moved: the new one fades and slides in from its side)
+                        opacity: swap;
+                        padding-left: swap-dir > 0 ? max(0px, (1 - swap) * 16px) : 0;
+                        padding-right: swap-dir < 0 ? max(0px, (1 - swap) * 16px) : 0;
                         // (Material, music: the art fills the card under a wash of the island's surface)
                         if Theme.material && card.kind == "music" && card.has-bg-art: Rectangle {
                             height: 0;
@@ -2252,7 +2607,66 @@ export component Island inherits Rectangle {
                                 }
                             }
                         }
-                        if card.kind == "music": Rectangle {
+                        // The small player: the art beside the title, artist · album and the player
+                        // (Glass, "faded": the art behind the controls, melting out at its edges)
+                        if !Theme.material && card.kind == "music" && card.faded && card.has-bg-art && !card.side: Rectangle {
+                            height: 0;
+                            Image {
+                                y: 0;
+                                width: parent.width;
+                                height: cardl.height - (live-count > 1 && !all-mode ? 14px : 0);
+                                source: card.bg-art;
+                                image-fit: fill;
+                            }
+                        }
+                        if card.kind == "music" && card.side: HorizontalLayout {
+                            spacing: 14px;
+                            Rectangle {
+                                width: 72px;
+                                height: 72px;
+                                // (nested in the island's corner: its radius less the padding; Material:
+                                // round while it plays, square paused — Slint can't cut a cookie)
+                                border-radius: Theme.material ? (card.playing ? 36px : 12px) : Theme.radius-tile - 12px;
+                                animate border-radius { duration: 350ms; easing: spring(0.35); }
+                                clip: true;
+                                background: Theme.material ? Theme.m3-surface-container-highest : #ffffff1a;
+                                if card.has-art: Image {
+                                    width: 100%;
+                                    height: 100%;
+                                    source: card.art;
+                                    image-fit: cover;
+                                }
+                                if !card.has-art: SymIcon {
+                                    text: card.icon;
+                                    font-size: 28px;
+                                    color: ink2;
+                                }
+                            }
+                            VerticalLayout {
+                                alignment: center;
+                                spacing: 2px;
+                                Text {
+                                    text: card.title != "" ? card.title : "Not Playing";
+                                    color: ink;
+                                    font-size: 16px;
+                                    font-weight: 600;
+                                    overflow: elide;
+                                }
+                                if card.artist != "": Text {
+                                    text: card.artist;
+                                    color: ink2;
+                                    font-size: Theme.small;
+                                    overflow: elide;
+                                }
+                                Text {
+                                    text: card.app-name;
+                                    color: ink.with-alpha(0.4);
+                                    font-size: Theme.caption;
+                                    overflow: elide;
+                                }
+                            }
+                        }
+                        if card.kind == "music" && !card.side: Rectangle {
                             height: 64px;
                             if !card.has-art: SymIcon {
                                 text: card.icon;
@@ -2261,7 +2675,7 @@ export component Island inherits Rectangle {
                                 color: ink2;
                             }
                         }
-                        if card.kind == "music": VerticalLayout {
+                        if card.kind == "music" && !card.side: VerticalLayout {
                             spacing: 0;
                             Marquee {
                                 text: card.title != "" ? card.title : "Not Playing";
@@ -2278,43 +2692,155 @@ export component Island inherits Rectangle {
                                 overflow: elide;
                             }
                         }
-                        if card.kind != "music": HorizontalLayout {
-                            spacing: 12px;
-                            Rectangle {
-                                width: card.has-art ? 64px : 40px;
-                                height: self.width;
-                                border-radius: card.has-art ? (Theme.material ? 16px : 12px) : self.width / 2;
-                                clip: true;
-                                background: card.has-art ? ink.with-alpha(0.1) : Theme.material ? Theme.m3-primary : card.tint.with-alpha(0.24);
-                                if card.has-art: Image {
+                        // Live captions: the last words, up to four lines, and Off
+                        if card.kind == "captions": Rectangle {
+                            height: cap-col.preferred-height;
+                            cap-col := VerticalLayout {
+                                width: parent.width - 36px - 8px;
+                                spacing: 4px;
+                                Text {
+                                    text: "Live captions";
+                                    color: ink2;
+                                    font-size: Theme.caption;
+                                    font-weight: 600;
+                                }
+                                // (the words before in the dim ink, the newest bright: CaptionLines)
+                                for l[i] in card.lines: Text {
+                                    text: l;
+                                    color: i == card.lines.length - 1 ? ink : ink2;
+                                    font-size: Theme.body;
+                                    wrap: word-wrap;
+                                }
+                                if card.lines.length == 0: Text {
+                                    text: card.detail;
+                                    color: ink2;
+                                    font-size: Theme.body;
+                                    wrap: word-wrap;
+                                }
+                            }
+                            for c[i] in card.controls: IconButton {
+                                x: parent.width - 36px;
+                                y: 0;
+                                width: 36px;
+                                height: 36px;
+                                icon: c.icon;
+                                fill: c.fill;
+                                size: 18px;
+                                ink: root.ink;
+                                label: c.name;
+                                clicked => { root.control(card.kind, i, true); }
+                            }
+                        }
+                        // Timer, stopwatch, recording (a caption over a big number);
+                        // transfer, call, sharing, update (the title over the detail)
+                        if card.kind != "music" && card.kind != "captions": Rectangle {
+                            height: 80px;
+                            property <bool> wordy: card.kind == "transfer" || card.kind == "call" || card.kind == "screenShare" || card.kind == "sysupdate";
+                            property <bool> red: card.tint.red > 204 && card.tint.green < 115 && card.tint.blue < 115;
+                            badge := Rectangle {
+                                x: 0;
+                                y: 0;
+                                width: 44px;
+                                height: 44px;
+                                border-radius: 22px;
+                                background: Theme.material ? transparent : card.tint.with-alpha(0.22);
+                                // Material: on a cookie, primary (error when it's urgent)
+                                if Theme.material: Path {
                                     width: 100%;
                                     height: 100%;
-                                    source: card.art;
-                                    image-fit: cover;
+                                    viewbox-width: 100;
+                                    viewbox-height: 100;
+                                    commands: root.cookie;
+                                    fill: red ? Theme.m3-error : Theme.m3-primary;
                                 }
-                                if !card.has-art: SymIcon {
+                                // a call answered in the island: its app's icon
+                                if card.kind == "call" && card.has-app-icon: Image {
+                                    width: 28px;
+                                    height: 28px;
+                                    source: card.app-icon;
+                                    image-fit: contain;
+                                }
+                                if !(card.kind == "call" && card.has-app-icon): SymIcon {
                                     text: card.icon;
                                     fill: true;
-                                    font-size: 20px;
-                                    color: Theme.material ? Theme.m3-on-primary : card.tint;
+                                    font-size: Theme.material ? 20px : 22px;
+                                    color: Theme.material ? (red ? Theme.m3-on-error : Theme.m3-on-primary) : card.tint;
+                                }
+                            }
+                            card-ctls := HorizontalLayout {
+                                x: parent.width - self.width;
+                                width: self.preferred-width;
+                                y: (44px - 36px) / 2;
+                                height: 36px;
+                                spacing: 4px;
+                                for c[i] in card.controls: IconButton {
+                                    width: 36px;
+                                    height: 36px;
+                                    icon: c.icon;
+                                    fill: c.fill;
+                                    size: 18px;
+                                    ink: c.danger ? (Theme.material ? Theme.m3-error : Theme.danger) : root.ink;
+                                    opacity: c.on ? 1 : 0.4;
+                                    label: c.name;
+                                    clicked => { if c.on { root.control(card.kind, i, true); } }
                                 }
                             }
                             VerticalLayout {
+                                x: badge.width + 14px;
+                                width: card-ctls.x - 10px - self.x;
+                                y: 0;
+                                height: 44px;
                                 alignment: center;
-                                spacing: 2px;
+                                spacing: 0;
                                 Text {
-                                    text: card.title;
-                                    color: ink;
-                                    font-size: 15px;
-                                    font-weight: 600;
+                                    text: wordy ? card.title : card.caption;
+                                    color: wordy ? ink : ink2;
+                                    font-size: wordy ? Theme.body : Theme.small;
+                                    font-weight: wordy ? 600 : 500;
                                     overflow: elide;
                                 }
-                                if card.artist != "" || card.time != "": Text {
-                                    text: card.kind == "music" ? card.artist : card.time;
-                                    color: ink2;
-                                    font-size: Theme.small;
+                                Text {
+                                    // (the stopwatch's hundredths: on its own clock between pushes)
+                                    text: wordy ? card.detail : card.kind == "stopwatch" ? root.sw-text : card.time;
+                                    color: card.kind == "recording" ? (card.paused ? ink2 : Theme.material ? Theme.m3-error : Theme.danger) : wordy ? ink2 : ink;
+                                    font-size: wordy ? Theme.small : 24px;
+                                    font-weight: wordy ? 400 : Theme.material ? 500 : 600;
                                     overflow: elide;
                                 }
+                            }
+                            // recording with a microphone: its level (grey while muted)
+                            if card.kind == "recording" && card.mic: Rectangle {
+                                y: parent.height - 8px - 4px;
+                                height: 4px;
+                                border-radius: 2px;
+                                background: Theme.material ? Theme.m3-secondary-container : #ffffff29;
+                                Rectangle {
+                                    x: 0;
+                                    width: parent.width * max(0, min(1, Math.sqrt(max(0, root.mic-level))));
+                                    border-radius: 2px;
+                                    background: Theme.material ? Theme.m3-primary : Theme.success;
+                                    animate width { duration: 80ms; }
+                                }
+                            }
+                            // the timer's, a transfer's or the update's progress (Material: wavy)
+                            if card.progress >= 0 && !Theme.material: Rectangle {
+                                y: parent.height - 8px - 4px;
+                                height: 4px;
+                                border-radius: 2px;
+                                background: #ffffff29;
+                                Rectangle {
+                                    x: 0;
+                                    width: parent.width * max(0, min(1, card.progress));
+                                    border-radius: 2px;
+                                    background: card.tint;
+                                    animate width { duration: 900ms; }
+                                }
+                            }
+                            if card.progress >= 0 && Theme.material: WavySeek {
+                                y: parent.height - 5px - self.height;
+                                value: card.progress;
+                                paused: root.reduce-motion;
+                                wave: red ? Theme.m3-error : Theme.m3-primary;
                             }
                         }
                         // where the song is: a click (or a drag) seeks
@@ -2383,7 +2909,7 @@ export component Island inherits Rectangle {
                                 y: (parent.height - self.height) / 2;
                                 property <bool> open: volt.has-hover || vols.pressed;
                                 width: open ? 104px : 36px;
-                                animate width { duration: Theme.hover; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+                                animate width { duration: Theme.hover; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
                                 height: 36px;
                                 border-radius: 18px;
                                 background: ink.with-alpha(open ? 0.12 : 0);
@@ -2456,16 +2982,29 @@ export component Island inherits Rectangle {
                                     size: 18px;
                                     ink: root.ink;
                                     opacity: c.on ? 1 : 0.4;
-                                    label: c.icon;
+                                    label: c.name;
                                     clicked => { if c.on { root.control(card.kind, i, true); } }
                                     }
                                 }
+                            }
+                            // Cast what's playing to a TV (the Control Center's Cast page); filled while casting
+                            if card.cast-shown: IconButton {
+                                x: oa.x - 4px - self.width;
+                                y: (parent.height - self.height) / 2;
+                                width: 36px;
+                                height: 36px;
+                                icon: "\u{e404}"; // screencast
+                                fill: card.casting;
+                                size: 17px;
+                                ink: root.ink;
+                                label: card.casting ? "Casting to " + (card.cast-name != "" ? card.cast-name : "a TV") : "Cast to a TV";
+                                clicked => { root.open-cast(); }
                             }
                             // open the player's window: pointed at, it widens to say which app
                             oa := Rectangle {
                                 property <bool> open: oat.has-hover && card.app-name != "";
                                 width: open ? min(140px, oa-name.preferred-width + 42px) : 36px;
-                                animate width { duration: Theme.hover; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+                                animate width { duration: Theme.hover; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
                                 x: parent.width - self.width;
                                 y: (parent.height - self.height) / 2;
                                 height: 36px;
@@ -2499,21 +3038,6 @@ export component Island inherits Rectangle {
                                 }
                             }
                         }
-                        if card.kind != "music": HorizontalLayout {
-                            alignment: center;
-                            spacing: 18px;
-                            for c[i] in card.controls: IconButton {
-                                width: 36px;
-                                height: 32px;
-                                icon: c.icon;
-                                fill: c.fill;
-                                size: 20px;
-                                ink: c.danger ? (Theme.material ? Theme.m3-error : Theme.danger) : root.ink;
-                                opacity: c.on ? 1 : 0.4;
-                                label: c.icon;
-                                clicked => { if c.on { root.control(card.kind, i, true); } }
-                            }
-                        }
                         // which one this is, when there are several
                         if live-count > 1 && !all-mode: HorizontalLayout {
                             alignment: center;
@@ -2524,6 +3048,15 @@ export component Island inherits Rectangle {
                                 border-radius: 3px;
                                 background: Theme.material ? (i == live-index ? Theme.m3-primary : Theme.m3-on-surface-variant.with-alpha(0.38)) : #ffffff.with-alpha(i == live-index ? 0.9 : 0.35);
                                 animate width { duration: Theme.hover; }
+                                // (a click shows that one)
+                                TouchArea {
+                                    x: -4px;
+                                    y: -4px;
+                                    width: parent.width + 8px;
+                                    height: parent.height + 8px;
+                                    mouse-cursor: pointer;
+                                    clicked => { root.focus-at(i); }
+                                }
                             }
                         }
                     }
@@ -2604,7 +3137,7 @@ export component Island inherits Rectangle {
         property <bool> on: alerts-below && alerts.length > 0;
         x: (root.width - self.width) / 2;
         y: shape.y + shape.height + 8px + (on ? 0 : -8px);
-        animate y { duration: 300ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+        animate y { duration: 300ms; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
         width: 392px;
         height: on ? bl.preferred-height + 28px + (alerts.length > 1 ? 10px : 0) : 0;
         opacity: on ? 1 : 0;

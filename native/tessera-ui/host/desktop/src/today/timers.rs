@@ -83,11 +83,16 @@ impl Timers {
             if !island {
                 let mins = if self.phase == "longBreak" { self.long_break_minutes } else { self.break_minutes };
                 notify_send("Focus", None, None, "Time for a break", &format!("{mins} minutes. Stand up and stretch."));
+            } else {
+                // (Island.qml's onPhaseEnded: the island says it)
+                h.ask("island.post", json!([{"kind": "timer", "gate": "timers", "icon": "coffee", "title": "Focus session done", "subtitle": "Take a break", "color": tessera_core::theme::accent_hex("orange", h.st.shell.look.dark)}, 4000]));
             }
         } else {
             self.phase = "focus";
             if !island {
                 notify_send("Focus", None, None, "Break's over", &format!("{} minutes of focus starting now.", self.focus_minutes));
+            } else {
+                h.ask("island.post", json!([{"kind": "timer", "gate": "timers", "icon": "timer", "title": "Break's over", "subtitle": "Time to focus", "color": tessera_core::theme::accent_hex("orange", h.st.shell.look.dark)}, 4000]));
             }
         }
         self.remaining = self.phase_length();
@@ -133,7 +138,7 @@ impl Timers {
                 "running": self.running, "phase": self.phase, "remaining": self.remaining, "phaseLength": self.phase_length(),
                 "completed": self.completed,
                 "started": self.running || (self.remaining > 0 && self.remaining < self.phase_length()),
-                "sw": {"running": self.sw_running, "accum": self.sw_accum, "elapsed": self.sw_elapsed(now), "started": self.sw_running || self.sw_accum > 0},
+                "sw": {"running": self.sw_running, "accum": self.sw_accum, "elapsed": self.sw_elapsed(now), "started": self.sw_running || self.sw_accum > 0, "laps": self.laps.len()},
             }),
         );
     }

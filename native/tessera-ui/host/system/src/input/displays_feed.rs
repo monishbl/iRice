@@ -34,6 +34,10 @@ pub struct DisplaysFeed {
     connect: Value,
     /// the confirm preview is up: the real state is left unsaid meanwhile
     preview: bool,
+    /// the bus's generation as last read: everything said here comes from
+    /// the bus, so a turn that changed nothing there has nothing to say
+    /// (it cloned the displays' whole state after every turn, 17 Nov)
+    seen: Option<u64>,
 }
 
 impl DisplaysFeed {
@@ -89,10 +93,16 @@ impl Service for DisplaysFeed {
             self.preview = false;
             // (the real state is said again)
             self.overlay = Value::Null;
+            self.seen = None;
         }
     }
 
     fn settled(&mut self, h: &mut Host) {
+        let g = crate::bus::generation();
+        if self.seen == Some(g) {
+            return;
+        }
+        self.seen = Some(g);
         let d = crate::bus::get("displays");
         let fx = crate::bus::get("displayfx");
         if d.is_null() && fx.is_null() {

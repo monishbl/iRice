@@ -2,7 +2,8 @@
 //! shows it (replaces services/Resources.qml), and the hover that opens the
 //! resources popover (replaces modules/resources/ResourceHover.qml).
 //!
-//! Resources: sampling runs while any consumer shows it, once a second when a
+//! Resources: sampling runs while any consumer shows it (on the host's shared
+//! second), once a second when a
 //! graph shows (`fast`), every 5 seconds otherwise; the last minute of each is
 //! kept. CPU, memory, swap, temperature and network are core's
 //! sysstat::Sampler (the Rust popover and widgets use the same); the memory
@@ -17,6 +18,7 @@
 //! (`{"to":"resources","open":true,"key":…,"x":…,"y":…,"screen":…}`).
 //! State on the bus as "resources": {cpu, memory, swap, memUsedGb, memTotalGb,
 //! temperature, netDown, netUp, gpu, gpuAvailable, gpuAsleep, gpuTemp, active,
+//! shown (the bar or the expanded island shows the figures),
 //! fast, stats:[{key,label,icon,tone,value,text,detail,history,max}],
 //! groups}.
 
@@ -55,7 +57,6 @@ pub fn parse_nvidia(text: &str) -> Option<(f64, f64, bool)> {
 }
 
 enum M {
-    Tick,
     GpuFound(String),
     Nvidia(i32, String),
     OpenFire,
@@ -76,8 +77,6 @@ struct Hover {
 #[derive(Default)]
 pub struct Resources {
     sampler: Sampler,
-    tick: slint::Timer,
-    ticks: u64,
     overlay: bool,
     menubar: bool,
     island: bool,
@@ -105,6 +104,12 @@ impl Resources {
     }
     fn fast(&self) -> bool {
         self.overlay || self.menubar || self.graph_users > 0
+    }
+    /// Something shows the figures in the shell's state (the bar's
+    /// indicator, the expanded island's line, a desktop widget): the
+    /// island's busy alerts alone read them here, not there
+    fn shown(&self) -> bool {
+        self.menubar || self.desktop_users > 0
     }
 
     fn push_gpu(&mut self) {
@@ -186,7 +191,7 @@ impl Resources {
         }
         let v = json!({
             "cpu": cpu, "memory": memory, "swap": swap, "memUsedGb": self.mem_used_gb, "memTotalGb": self.mem_total_gb, "temperature": temp, "netDown": down, "netUp": up,
-            "gpu": self.gpu, "gpuAvailable": gpu_available, "gpuAsleep": self.gpu_asleep, "gpuTemp": self.gpu_temp, "active": self.active(), "fast": self.fast(), "stats": stats,
+            "gpu": self.gpu, "gpuAvailable": gpu_available, "gpuAsleep": self.gpu_asleep, "gpuTemp": self.gpu_temp, "active": self.active(), "fast": self.fast(), "shown": self.shown(), "stats": stats,
             "groups": if gpu_available { json!(["processor", "graphics", "memory", "network"]) } else { json!(["processor", "memory", "network"]) },
         });
         if v != self.last {
@@ -211,10 +216,22 @@ impl Service for Resources {
     fn calls(&self) -> &'static [&'static str] {
         &["resources"]
     }
-    fn start(&mut self, h: &mut Host) {
-        let send = h.sender(NAME);
-        self.tick.start(slint::TimerMode::Repeated, Duration::from_secs(1), move || send(Box::new(M::Tick)));
+    fn start(&mut self, _h: &mut Host) {
         self.publish();
+    }
+    fn every_second(&mut self, h: &mut Host, n: u64) {
+        // (every second while a graph shows, else every 5; battery
+        // saver: every 2 and every 20)
+        let every = match (self.fast(), tessera_core::saver::on()) {
+            (true, false) => 1,
+            (true, true) => 2,
+            (false, false) => 5,
+            (false, true) => 20,
+        };
+        if self.active() && n % every == 0 {
+            self.sample(h);
+            self.publish();
+        }
     }
     fn call(&mut self, h: &mut Host, call: &str, args: &Value) {
         let a = args_list(args);
@@ -257,21 +274,6 @@ impl Service for Resources {
     fn message(&mut self, h: &mut Host, msg: Box<dyn Any + Send>) {
         let Ok(m) = msg.downcast::<M>() else { return };
         match *m {
-            M::Tick => {
-                self.ticks += 1;
-                // (every second while a graph shows, else every 5; battery
-                // saver: every 2 and every 20)
-                let every = match (self.fast(), tessera_core::saver::on()) {
-                    (true, false) => 1,
-                    (true, true) => 2,
-                    (false, false) => 5,
-                    (false, true) => 20,
-                };
-                if self.active() && self.ticks % every == 0 {
-                    self.sample(h);
-                    self.publish();
-                }
-            }
             M::GpuFound(t) => {
                 self.gpu_searching = false;
                 self.gpu_searched = true;
@@ -310,7 +312,6 @@ impl Service for Resources {
         self.publish();
     }
     fn quit(&mut self, _h: &mut Host) {
-        self.tick.stop();
         self.hover.open_t.stop();
         self.hover.close_t.stop();
     }

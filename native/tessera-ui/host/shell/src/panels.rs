@@ -503,7 +503,11 @@ impl Panels {
             for g in groups {
                 let mine = match g.as_str() {
                     "look" => crate::bridges::look_feed(h),
-                    "notify" => json!({"glassPlugin": h.st.shell.plugin, "pickerBusy": h.state("picker.busy").clone()}),
+                    // (the CPU's reading only for Island's "Running hot at": RustBridgeNotify.qml 28)
+                    "notify" => json!({
+                        "glassPlugin": h.st.shell.plugin, "pickerBusy": h.state("picker.busy").clone(),
+                        "temperature": if self.m.settings_page == "notifications/island" { h.state("resources")["temperature"].as_f64().unwrap_or(0.0) } else { 0.0 },
+                    }),
                     _ => json!({}),
                 };
                 let feed = crate::bridges::merged(mine, self.feeds.get(&g));

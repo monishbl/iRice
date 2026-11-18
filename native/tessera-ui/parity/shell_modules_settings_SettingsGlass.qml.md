@@ -1,5 +1,7 @@
 # shell/modules/settings/SettingsGlass.qml ↔ surfaces/settings/ui/settings.slint (!Theme.material)
 
+_Re-checked 17 Nov (B5, parity-settings) against main 18628a5 + the B5 ports: statuses below say what's there now; [12 Nov: …] is the old status._
+
 Settings' Glass look: a translucent sidebar (search on top, sections on
 coloured tiles), the pane with a toolbar (back, forward, Section › Subpage).
 
@@ -17,7 +19,7 @@ coloured tiles), the pane with a toolbar (back, forward, Section › Subpage).
 | 8 | Search results: tile + text + where, hover fill, Enter opens, Up/Down move (137–228) | results (`res-cur`) | same (batch 2) |
 | 9 | ScrollIndicator on the sidebar and the page (shown while scrolling or hovered, fading) | `ScrollBar` | **fixed in batch 1** (was always shown) |
 | 10 | Pane #1E1E21 / #F5F5F7; toolbar 52 px with back/forward, Section › Subpage (the section goes up), hairline once scrolled (140–330) | `pane`, `toolbar` | same |
-| 11 | Page: Loader made anew per page; content to 0; reveal (357–370) | kept `pages` (PageView) | different by design (kept: instant going back) |
+| 11 | Page: Loader made anew per page; content to 0; reveal (357–370) | kept `pages` (PageView) | **intentional: pages kept (instant going back), by design** [12 Nov: different by design (kept: instant going back)] |
 | 12 | Flash: accent 2 px ring 150 / 900 / 400 (372–382) | `Flash` | same |
 | 13 | Sidebar re-made on every switch | — | **fixed in batch 1** (Rust remade the whole sidebar each switch: now `Rows`, two rows change) |
 

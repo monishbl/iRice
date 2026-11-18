@@ -121,6 +121,13 @@ enum M {
     Mute,
     OpenPlayer,
     IslandEscape,
+    IslandFocusAt(i32),
+    /// the HUD list: an app's icon (mutes it)
+    LevelMute(String),
+    /// the music card's Cast: the Control Center's Cast page, on this screen
+    OpenCast,
+    /// the recording microphone's level (0..1), read while its card shows
+    MicLevel(f32),
     PosTick,
     /// the player's position (s) and volume (None: it has none)
     Position(String, Option<f64>, Option<f64>),
@@ -225,6 +232,10 @@ pub struct Menubar {
     /// the shown activity's controls and the island's alerts (with each
     /// alert's own lists, by uid), shared by every bar and changed in place
     ctl_rows: HashMap<String, Rows<ui::Ctl>>,
+    /// the open card's captions lines (one kept model per place)
+    lines_rows: HashMap<String, Rows<SharedString>>,
+    /// the recording microphone's level meter: its source and parec
+    meter: Option<(String, std::process::Child)>,
     act_rows_model: Rows<ui::ActRow>,
     alert_rows: Rows<ui::AlertRow>,
     alert_kids: HashMap<u64, (Rows<ui::Ring>, Rows<SharedString>, Rows<SharedString>)>,
@@ -232,6 +243,8 @@ pub struct Menubar {
     menu_timer: slint::Timer,
     /// the HUD's inline list (IslandLevels): open, and its lines
     levels_open: bool,
+    /// its page: "" the list, "apps" App volumes
+    levels_page: String,
     levels: Rows<ui::LevelRow>,
     /// the Recent list's lines (by hid)
     recent_rows: Rows<ui::RecentRow>,
@@ -243,7 +256,7 @@ pub struct Menubar {
     saved_volume: f64,
     pos_timer: slint::Timer,
     /// the art made for the card's background: (its address, material?, the picture)
-    bg_art: (String, bool, Option<slint::Image>),
+    bg_art: (String, u8, Option<slint::Image>),
     /// the distro's logo (menuIcon "distro"): its icon name and picture
     logo: (String, Option<slint::Image>),
     /// files dragged over a bar: its output, and whether the shelf item is under them
@@ -450,19 +463,21 @@ impl Menubar {
                 let controls = self.ctl_model(slot, Vec::new());
                 return ui::Live { controls, ..Default::default() };
             };
-            let ctl = |icon: &str, on: bool| ui::Ctl { icon: glyph(icon).into(), fill: true, on, danger: false };
+            let ctl = |icon: &str, on: bool, name: &str| ui::Ctl { icon: glyph(icon).into(), fill: true, on, danger: false, name: name.into() };
             let mut controls = Vec::new();
             if all || cfg.shows("music", "prev") {
-                controls.push(ctl("skip-back", p.can_prev));
+                controls.push(ctl("skip-back", p.can_prev, "Previous"));
             }
             if all || cfg.shows("music", "play") {
-                controls.push(ctl(if self.shown_playing(&p) { "pause" } else { "play" }, true));
+                let playing = self.shown_playing(&p);
+                controls.push(ctl(if playing { "pause" } else { "play" }, true, if playing { "Pause" } else { "Play" }));
             }
             if all || cfg.shows("music", "next") {
-                controls.push(ctl("skip-forward", p.can_next));
+                controls.push(ctl("skip-forward", p.can_next, "Next"));
             }
             let art = self.art.1.clone();
             let controls = self.ctl_model(slot, controls);
+            let cast = st.shell.get::<ShellState>().map(|s| s.get("cast").clone()).unwrap_or_default();
             return ui::Live {
                 kind: "music".into(),
                 icon: glyph("music-notes").into(),
@@ -491,14 +506,30 @@ impl Menubar {
                 app_name: desktop_name(&p.identity).unwrap_or_else(|| p.identity.clone()).into(),
                 has_bg_art: self.bg_art.2.is_some(),
                 bg_art: self.bg_art.2.clone().unwrap_or_default(),
+                // (island.playerLayout "side": the small player; Cast when there are TVs or it casts)
+                side: st.shell.cfg["island"]["playerLayout"].as_str() == Some("side"),
+                faded: self.bg_art.1 == 2 && st.shell.cfg["island"]["playerLayout"].as_str() != Some("side"),
+                cast_shown: cast["active"].as_bool().unwrap_or(false) || cast["devices"].as_array().is_some_and(|d| !d.is_empty()),
+                casting: cast["active"].as_bool().unwrap_or(false),
+                cast_name: cast["device"]["name"].as_str().unwrap_or("").into(),
+                ..Default::default()
             };
         }
+        let name = |names: &Vec<String>, k: usize| names.get(k).cloned().unwrap_or_default();
         let list: Vec<ui::Ctl> = if all {
-            a.all.iter().map(|(_, i, f, on, d)| ui::Ctl { icon: glyph(i).into(), fill: *f, on: *on, danger: *d }).collect()
+            a.all.iter().enumerate().map(|(k, (_, i, f, on, d))| ui::Ctl { icon: glyph(i).into(), fill: *f, on: *on, danger: *d, name: name(&a.all_names, k).into() }).collect()
         } else {
-            a.controls.iter().map(|(i, f, on, d)| ui::Ctl { icon: glyph(i).into(), fill: *f, on: *on, danger: *d }).collect()
+            a.controls.iter().enumerate().map(|(k, (i, f, on, d))| ui::Ctl { icon: glyph(i).into(), fill: *f, on: *on, danger: *d, name: name(&a.names, k).into() }).collect()
         };
         let controls = self.ctl_model(slot, list);
+        // (a call's app icon, by its icon name or path)
+        let app_icon = Some(a.app_icon.as_str()).filter(|n| !n.is_empty()).and_then(|n| {
+            let n = n.strip_prefix("file://").unwrap_or(n);
+            if n.starts_with('/') { Some(std::path::PathBuf::from(n)) } else { crate::icon_theme::find(n, None).or_else(|| crate::icon_theme::find(&n.to_lowercase(), None)) }
+        }).and_then(|p| load(&p));
+        let lines = self.lines_rows.entry(slot.to_string()).or_default();
+        lines.set(a.lines.iter().map(|l| SharedString::from(l.as_str())).collect());
+        let lines = lines.model();
         ui::Live {
             kind: a.kind.as_str().into(),
             icon: crate::icons::glyph_or(&a.icon, "circle").into(),
@@ -506,7 +537,7 @@ impl Menubar {
             title: a.title.as_str().into(),
             artist: SharedString::new(),
             // (the open card's second line: LiveInfo.detail, else the time)
-            time: if all && !a.detail.is_empty() { a.detail.as_str() } else { a.time.as_str() }.into(),
+            time: a.time.as_str().into(),
             time_shape: a.time.chars().map(|c| if c.is_ascii_digit() { '0' } else { c }).collect::<String>().into(),
             art: slint::Image::default(),
             has_art: false,
@@ -516,6 +547,17 @@ impl Menubar {
             show_time: a.show_time,
             show_bars: false,
             controls,
+            progress: a.progress,
+            caption: a.caption.as_str().into(),
+            detail: a.detail.as_str().into(),
+            has_app_icon: app_icon.is_some(),
+            app_icon: app_icon.unwrap_or_default(),
+            lines,
+            fine_ms: a.fine.map_or(0, |f| f.0 as i32),
+            fine_running: a.fine.is_some_and(|f| f.1),
+            // (recording: grey while paused; its microphone's level under the card)
+            paused: a.icon == "pause-circle",
+            mic: a.kind == "recording" && !st.shell.cfg["recorder"]["mic"].as_str().unwrap_or("").is_empty(),
             ..Default::default()
         }
     }
@@ -527,7 +569,7 @@ impl Menubar {
         acts.iter()
             .map(|a| {
                 let raw = island::color(&a.color).unwrap_or(roles.get_accent());
-                let list = a.all.iter().filter(|c| c.0 != "reset").map(|(_, i, f, on, d)| ui::Ctl { icon: glyph(i).into(), fill: *f, on: *on, danger: *d }).collect();
+                let list = a.all.iter().enumerate().filter(|(_, c)| c.0 != "reset").map(|(k, (_, i, f, on, d))| ui::Ctl { icon: glyph(i).into(), fill: *f, on: *on, danger: *d, name: a.all_names.get(k).cloned().unwrap_or_default().into() }).collect();
                 let controls = self.ctl_model(&format!("row:{}", a.kind), list);
                 ui::ActRow {
                     kind: a.kind.as_str().into(),
@@ -537,6 +579,13 @@ impl Menubar {
                     detail: if a.detail.is_empty() { a.time.as_str() } else { a.detail.as_str() }.into(),
                     progress: a.progress,
                     controls,
+                    lines: {
+                        let n = a.lines.len();
+                        let rows: Vec<SharedString> = a.lines[n.saturating_sub(3)..].iter().map(|l| SharedString::from(l.as_str())).collect();
+                        let m = self.lines_rows.entry(format!("row:{}", a.kind)).or_default();
+                        m.set(rows);
+                        m.model()
+                    },
                 }
             })
             .collect()
@@ -591,6 +640,9 @@ impl Menubar {
                     sub_color: sub_color.unwrap_or_default(),
                     has_sub_color: sub_color.is_some(),
                     ringed,
+                    // (IslandGlyph: Wi-Fi joined fills its arcs in; these ripple)
+                    wifi: kind == "network" && s("icon") == "wifi-high",
+                    ripple: ["device", "usb", "display", "custom", "notification"].contains(&kind.as_str()) || (kind == "network" && s("icon") != "wifi-high" && e["ripple"].as_bool().unwrap_or(false)),
                     ring_arc: island::arc(22.0, 22.0, 20.0, value.unwrap_or(0.0) as f32).into(),
                     rings: kids.0.model(),
                     action: s("action").into(),
@@ -659,8 +711,10 @@ impl Menubar {
         let event = self.island.event().cloned();
         let has_card = self.island.has_card();
         // the art for the music card's background / the island (made once per picture and look)
-        if self.bg_art.0 != self.art.0 || self.bg_art.1 != material {
-            self.bg_art = (self.art.0.clone(), material, self.art.1.as_ref().and_then(|a| background_art(a, material)));
+        // (0: Glass, the island's art; 1: Material, blurred; 2: Glass, playerArt "faded": its edges faded out)
+        let art_mode = if material { 1 } else if st.shell.cfg["island"]["playerArt"].as_str() == Some("faded") { 2 } else { 0 };
+        if self.bg_art.0 != self.art.0 || self.bg_art.1 != art_mode {
+            self.bg_art = (self.art.0.clone(), art_mode, self.art.1.as_ref().and_then(|a| background_art(a, art_mode)));
             for b in &mut self.bars {
                 b.live_key.clear();
             }
@@ -834,6 +888,8 @@ impl Menubar {
             ui.set_pinned(pinned);
             ui.set_layout(cfg.activity_layout.as_str().into());
             ui.set_playing(playing);
+            // (the dancing bars hold still on battery under 30 %: IslandLive's barClock)
+            ui.set_bars_hold(bat.present && !bat.charging && bat.state != 1 && bat.state != 4 && (if bat.percent > 1.0 { bat.percent / 100.0 } else { bat.percent }) < 0.3);
             ui.set_live_count(live_count);
             ui.set_live_index(live_index);
             ui.set_stats(stats.clone());
@@ -919,22 +975,64 @@ impl Menubar {
         self.bars = bars;
         // the HUD's inline list: the outputs (and the apps playing) or the inputs
         let hud = self.hud_kind();
-        if hud.is_none() || hud.as_deref() == Some("brightness") {
+        if hud.is_none() {
             self.levels_open = false;
+            self.levels_page.clear();
         }
         let lines: Vec<ui::LevelRow> = if self.levels_open {
-            let snd = st.shell.get::<tessera_core::services::audio::Sound>().cloned().unwrap_or_default();
-            let mic = hud.as_deref() == Some("mic");
+            let row = |id: String, kind: &str, title: &str, icon: &str| ui::LevelRow { id: id.into(), kind: kind.into(), title: title.into(), icon: glyph(icon).into(), ..Default::default() };
             let mut v: Vec<ui::LevelRow> = Vec::new();
-            let (devs, def, pre) = if mic { (&snd.sources, &snd.default_source, "source:") } else { (&snd.sinks, &snd.default_sink, "sink:") };
-            for d in devs {
-                let title = if !d.nick.is_empty() { d.nick.clone() } else { d.description.clone() };
-                let icon = if mic { "microphone" } else if d.bluetooth { "headphones" } else { "speaker-high" };
-                v.push(ui::LevelRow { id: format!("{pre}{}", d.name).into(), title: title.into(), icon: glyph(icon).into(), on: d.name == *def, app: false, value: d.volume as f32 });
-            }
-            if !mic {
-                for a in &snd.streams {
-                    v.push(ui::LevelRow { id: format!("app:{}", a.index).into(), title: a.name.as_str().into(), icon: glyph("app-window").into(), on: false, app: true, value: if a.muted { 0.0 } else { a.volume as f32 } });
+            if hud.as_deref() == Some("brightness") {
+                // each display with its own level (the built-in one: its picture)
+                let shell = Self::shell_state(st);
+                for d in shell.get("displays").as_array().cloned().unwrap_or_default() {
+                    let built_in = d["builtIn"].as_bool().unwrap_or(false);
+                    let pic = if built_in { self.picture(&tessera_core::env::root().join("shell/assets/devices/laptop.svg").to_string_lossy()) } else { None };
+                    v.push(ui::LevelRow {
+                        value: d["value"].as_f64().unwrap_or(0.5) as f32,
+                        has_pic: pic.is_some(),
+                        pic: pic.unwrap_or_default(),
+                        ..row(format!("display:{}", d["id"].as_str().unwrap_or("")), "display", d["name"].as_str().unwrap_or(""), "monitor")
+                    });
+                }
+                v.push(row("settings".into(), "settings", "Display settings", "gear"));
+            } else {
+                let snd = st.shell.get::<tessera_core::services::audio::Sound>().cloned().unwrap_or_default();
+                let mic = hud.as_deref() == Some("mic");
+                if self.levels_page == "apps" && !mic {
+                    // the apps playing, each with its level
+                    v.push(row("page:list".into(), "back", "App volumes", "caret-left"));
+                    for a in &snd.streams {
+                        let pic = self.app_icon(if a.icon.is_empty() { &a.binary } else { &a.icon });
+                        v.push(ui::LevelRow {
+                            value: if a.muted { 0.0 } else { a.volume.min(1.0) as f32 },
+                            muted: a.muted,
+                            has_pic: pic.is_some(),
+                            pic: pic.unwrap_or_default(),
+                            ..row(format!("app:{}", a.index), "app", &a.name, "app-window")
+                        });
+                    }
+                } else {
+                    let (devs, def, pre) = if mic { (&snd.sources, &snd.default_source, "source:") } else { (&snd.sinks, &snd.default_sink, "sink:") };
+                    for d in devs {
+                        let title = if !d.nick.is_empty() { d.nick.clone() } else { d.description.clone() };
+                        let icon = if mic { "microphone" } else if d.bluetooth { "headphones" } else { "speaker-high" };
+                        // (AudioStreams.picture: a Bluetooth device's drawing, the computer's for built-in ones, none for HDMI / USB)
+                        let t = format!("{title} {}", d.name).to_lowercase();
+                        let kind = if d.bluetooth || t.contains("bluez") {
+                            Some(if ["buds", "pods", "earbud", "earphone"].iter().any(|k| t.contains(k)) { "earbuds" } else if t.contains("speaker") { "speaker" } else { "headphones" })
+                        } else if ["hdmi", "displayport", "usb", "webcam", "camera"].iter().any(|k| t.contains(k)) {
+                            None
+                        } else {
+                            Some("laptop")
+                        };
+                        let pic = kind.and_then(|k| self.picture(&tessera_core::env::root().join(format!("shell/assets/devices/{k}.svg")).to_string_lossy()));
+                        v.push(ui::LevelRow { on: d.name == *def, value: d.volume as f32, has_pic: pic.is_some(), pic: pic.unwrap_or_default(), ..row(format!("{pre}{}", d.name), "choice", &title, icon) });
+                    }
+                    if !mic && !snd.streams.is_empty() {
+                        v.push(row("page:apps".into(), "nav", "App volumes", "sliders-horizontal"));
+                    }
+                    v.push(row("settings".into(), "settings", "Sound settings", "gear"));
                 }
             }
             v
@@ -981,6 +1079,15 @@ impl Menubar {
         for b in &self.bars {
             b.ui.set_recent_n(list.len() as i32);
         }
+        // the recording's card open with a microphone: its level (IslandFocusCard's micMeter)
+        let rec = shell.get("recorder");
+        let mic = st.shell.cfg["recorder"]["mic"].as_str().unwrap_or("").to_string();
+        let meter = any_expanded
+            && !mic.is_empty()
+            && !rec["micMuted"].as_bool().unwrap_or(false)
+            && !rec["paused"].as_bool().unwrap_or(false)
+            && (self.island.primary().is_some_and(|a| a.kind == "recording") || (st.shell.cfg["island"]["activityMode"].as_str() == Some("all") && self.island.activities.iter().any(|a| a.kind == "recording")));
+        self.follow_meter(st, if meter { Some(mic) } else { None });
         let music_open = any_expanded && self.island.activities.iter().any(|a| a.kind == "music");
         self.follow_position(st, music_open);
         if any_expanded != self.island_res {
@@ -1459,6 +1566,47 @@ impl Menubar {
         });
     }
 
+    /// The recording microphone's level while its card shows: parec at 8 kHz
+    /// mono, the peak of each 80 ms (PwNodePeakMonitor's); stopped (its
+    /// process, by its own handle) when the card goes
+    fn follow_meter(&mut self, st: &State, source: Option<String>) {
+        if self.meter.as_ref().map(|m| &m.0) == source.as_ref() {
+            return;
+        }
+        if let Some((_, mut child)) = self.meter.take() {
+            let _ = child.kill();
+            std::thread::spawn(move || {
+                let _ = child.wait();
+            });
+            for b in &self.bars {
+                b.ui.set_mic_level(0.0);
+            }
+        }
+        let Some(src) = source else { return };
+        let dev = if src == "default" { "@DEFAULT_SOURCE@".to_string() } else { src.clone() };
+        let child = std::process::Command::new("parec")
+            .args(["--raw", "--format=s16le", "--channels=1", "--rate=8000", "--latency-msec=40", "-d", &dev])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .spawn();
+        let Ok(mut child) = child else { return };
+        if let Some(mut out) = child.stdout.take() {
+            let tx = st.tx.clone();
+            std::thread::spawn(move || {
+                use std::io::Read;
+                let mut buf = [0u8; 1280];
+                while out.read_exact(&mut buf).is_ok() {
+                    let peak = buf.chunks_exact(2).map(|c| (i16::from_le_bytes([c[0], c[1]]) as i32).unsigned_abs()).max().unwrap_or(0) as f32 / 32768.0;
+                    if tx.send(crate::Msg::Part(NAME, Box::new(M::MicLevel(peak.min(1.0))))).is_err() {
+                        break;
+                    }
+                }
+            });
+        }
+        self.meter = Some((src, child));
+    }
+
     /// While an island is open with music: read it each second
     fn follow_position(&mut self, st: &State, want: bool) {
         if want && !self.pos_timer.running() {
@@ -1635,7 +1783,17 @@ impl Menubar {
             }
             M::LevelPick(id) => {
                 use tessera_core::services::audio::{self, Cmd};
-                if let Some(n) = id.strip_prefix("sink:") {
+                if let Some(page) = id.strip_prefix("page:") {
+                    // App volumes › and back
+                    self.levels_page = if page == "apps" { "apps".into() } else { String::new() };
+                    self.refresh(st);
+                } else if id == "settings" {
+                    let page = if self.hud_kind().as_deref() == Some("brightness") { "displays" } else { "sound" };
+                    tessera_core::shell::ask("panels.openSettings", serde_json::json!([page]));
+                    self.levels_open = false;
+                    self.island.hold(false, ms_now());
+                    self.refresh(st);
+                } else if let Some(n) = id.strip_prefix("sink:") {
                     audio::send(Cmd::DefaultSink(n.to_string()));
                 } else if let Some(n) = id.strip_prefix("source:") {
                     audio::send(Cmd::DefaultSource(n.to_string()));
@@ -1644,8 +1802,15 @@ impl Menubar {
             M::LevelSet(id, v) => {
                 use tessera_core::services::audio::{self, Cmd, Sound};
                 if let Some(i) = id.strip_prefix("app:").and_then(|i| i.parse::<u32>().ok()) {
-                    let ch = st.shell.get::<Sound>().and_then(|s| s.streams.iter().find(|x| x.index == i).map(|x| x.channels)).unwrap_or(2);
+                    let s = st.shell.get::<Sound>().and_then(|s| s.streams.iter().find(|x| x.index == i).map(|x| (x.channels, x.muted)));
+                    let (ch, muted) = s.unwrap_or((2, false));
+                    // (moving its level unmutes it)
+                    if muted {
+                        audio::send(Cmd::StreamMute { index: i, muted: false });
+                    }
                     audio::send(Cmd::StreamVolume { index: i, channels: ch, volume: v.clamp(0.0, 1.0) as f64 });
+                } else if let Some(d) = id.strip_prefix("display:") {
+                    tessera_core::shell::ask("brightness.setFor", serde_json::json!([d, v.clamp(0.0, 1.0), true]));
                 }
             }
             M::RecentRun(hid) => tessera_core::shell::ask("island.alertAct", serde_json::json!([hid])),
@@ -1666,6 +1831,27 @@ impl Menubar {
                         bridge::call(&["rustui", "act", "islandRemove", &q.to_string()]);
                     }
                     self.refresh(st);
+                }
+            }
+            M::OpenCast => {
+                let output = self.bars.iter().find(|b| b.hovered).or(self.bars.first()).map(|b| b.output.clone()).unwrap_or_default();
+                bridge::call(&["rustui", "act", "page", &format!("cast {output}")]);
+            }
+            M::LevelMute(id) => {
+                use tessera_core::services::audio::{self, Cmd, Sound};
+                if let Some(i) = id.strip_prefix("app:").and_then(|i| i.parse::<u32>().ok()) {
+                    let muted = st.shell.get::<Sound>().and_then(|s| s.streams.iter().find(|x| x.index == i).map(|x| x.muted)).unwrap_or(false);
+                    audio::send(Cmd::StreamMute { index: i, muted: !muted });
+                }
+            }
+            M::IslandFocusAt(i) => {
+                if self.island.focus_at(i.max(0) as usize) {
+                    self.refresh(st);
+                }
+            }
+            M::MicLevel(v) => {
+                for b in &self.bars {
+                    b.ui.set_mic_level(v);
                 }
             }
             M::PosTick => self.read_position(st),
@@ -1732,15 +1918,12 @@ impl Menubar {
             // under it), the displays (the Control Center's brightness)
             M::IslandAct(_, which) if which.starts_with("levels ") => {
                 let output = self.bars.iter().find(|b| b.hovered).or(self.bars.first()).map(|b| b.output.clone()).unwrap_or_default();
-                if self.hud_kind().as_deref() == Some("brightness") {
-                    // (the displays' levels: the Control Center's brightness)
-                    bridge::call(&["rustui", "act", "page", &format!(" {output}")]);
-                } else {
-                    // IslandLevels: the outputs or inputs (and the apps) inline, under the row
-                    self.levels_open = !self.levels_open;
-                    self.island.hold(self.levels_open, ms_now());
-                    self.refresh(st);
-                }
+                let _ = output;
+                // IslandLevels: the outputs or inputs (and the apps), or the displays, inline under the row
+                self.levels_open = !self.levels_open;
+                self.levels_page.clear();
+                self.island.hold(self.levels_open, ms_now());
+                self.refresh(st);
             }
             M::IslandAct(_, which) if which == "answer" || which == "decline" => bridge::call(&["calls", &which]),
             M::IslandAct(uid, which) => {
@@ -1837,7 +2020,8 @@ fn island_stats(bat: &Battery, shell: &ShellState) -> ui::IslandStats {
 /// The album art as a background: Material, a small copy (Slint scales it
 /// up: a blur) for the card under a wash; Glass, the picture (at most 640 px)
 /// to be the island, faded by island.slint over its live height
-fn background_art(img: &slint::Image, material: bool) -> Option<slint::Image> {
+fn background_art(img: &slint::Image, mode: u8) -> Option<slint::Image> {
+    let material = mode == 1;
     let src = img.to_rgba8()?;
     let (w, h) = (src.width() as usize, src.height() as usize);
     if w == 0 || h == 0 {
@@ -1864,6 +2048,32 @@ fn background_art(img: &slint::Image, material: bool) -> Option<slint::Image> {
                 }
                 let c = c.max(1);
                 o[oy * n + ox] = slint::Rgba8Pixel { r: (r / c) as u8, g: (g / c) as u8, b: (b / c) as u8, a: 255 };
+            }
+        }
+        return Some(slint::Image::from_rgba8(out));
+    }
+    // Glass, "faded": the card's part of it (cropped to the card, 368 × 200,
+    // as PreserveAspectCrop shows it), its edges fading to clear (edgefade.frag,
+    // fade 0.28 / 0.22 / 0.28 / 0.6: left, top, right, bottom)
+    if mode == 2 {
+        let aspect = 368.0 / 200.0;
+        let (cw, ch) = if (w as f64 / h as f64) > aspect { ((h as f64 * aspect) as usize, h) } else { (w, (w as f64 / aspect) as usize) };
+        let (cx, cy) = ((w - cw.min(w)) / 2, (h - ch.min(h)) / 2);
+        let step = (cw / 368).max(1);
+        let (ow, oh) = ((cw / step).max(1), (ch / step).max(1));
+        let mut out = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(ow as u32, oh as u32);
+        let o = out.make_mut_slice();
+        let ss = |e: f64, x: f64| {
+            let t = (x / e).clamp(0.0, 1.0);
+            t * t * (3.0 - 2.0 * t)
+        };
+        for y in 0..oh {
+            for x in 0..ow {
+                let (u, v) = ((x as f64 + 0.5) / ow as f64, (y as f64 + 0.5) / oh as f64);
+                let a = ss(0.28, u) * ss(0.22, v) * ss(0.28, 1.0 - u) * ss(0.6, 1.0 - v);
+                let mut q = px[((cy + y * step).min(h - 1)) * w + (cx + x * step).min(w - 1)];
+                q.a = (q.a as f64 * a).round() as u8;
+                o[y * ow + x] = q;
             }
         }
         return Some(slint::Image::from_rgba8(out));
@@ -2086,6 +2296,12 @@ impl Part for Menubar {
             ui.on_shelf_hot(move |on| to(Box::new(M::ShelfHot(on))));
         }
         {
+            let to = to.clone();
+            ui.on_focus_at(move |i| to(Box::new(M::IslandFocusAt(i))));
+        }
+        // (Material's cookie for the focus card's badge)
+        ui.set_cookie(crate::surfaces::shapes::outline("cookie9").into());
+        {
             let t = to.clone();
             ui.on_recent_run(move |h| t(Box::new(M::RecentRun(h))));
             let t = to.clone();
@@ -2100,6 +2316,8 @@ impl Part for Menubar {
             ui.on_music_mute(move || t(Box::new(M::Mute)));
             let t = to.clone();
             ui.on_open_player(move || t(Box::new(M::OpenPlayer)));
+            let t = to.clone();
+            ui.on_open_cast(move || t(Box::new(M::OpenCast)));
             let t = to.clone();
             ui.on_island_escape(move || t(Box::new(M::IslandEscape)));
         }
@@ -2119,6 +2337,8 @@ impl Part for Menubar {
             ui.on_level_pick(move |id| t(Box::new(M::LevelPick(id.to_string()))));
             let t = to.clone();
             ui.on_level_set(move |id, v| t(Box::new(M::LevelSet(id.to_string(), v))));
+            let t = to.clone();
+            ui.on_level_mute(move |id| t(Box::new(M::LevelMute(id.to_string()))));
         }
         ui.show().expect("show bar");
         // (files dragged over the bar can be dropped on the shelf item)
@@ -2173,6 +2393,13 @@ impl Part for Menubar {
 
     fn plugin_changed(&mut self, st: &mut State) {
         self.apply_theme(st);
+    }
+
+    fn urgent_data(&self, what: TypeId) -> bool {
+        // (an item's highlight is Panels' open panel: it fades as the panel
+        // starts closing, as MenuBarItem's `active` binding does, not two
+        // frames later, which ran it ~35 ms past the panel's close)
+        what == TypeId::of::<ShellState>()
     }
 
     fn data(&mut self, st: &mut State, what: TypeId) {
@@ -2518,6 +2745,10 @@ impl Part for Menubar {
 
     /// On the way out: no glass left behind
     fn quit(&mut self, _: &mut State) {
+        if let Some((_, mut c)) = self.meter.take() {
+            let _ = c.kill();
+            let _ = c.wait();
+        }
         for b in &self.bars {
             Glass::clear_now(&b.output, BAR_NS);
         }

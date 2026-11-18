@@ -1,5 +1,7 @@
 # shell/modules/settings/MoreOptions.qml ↔ settings.slint MoreButton (BlockView kind "more"); model.rs Page::more / end_more / folded_key_of; lib.rs "more:" keys
 
+_Re-checked 17 Nov (B5, parity-settings) against main 18628a5 + the B5 ports: statuses below say what's there now; [12 Nov: …] is the old status._
+
 A page's less-used settings folded away behind "More options".
 
 ## Behaviours
@@ -13,9 +15,9 @@ A page's less-used settings folded away behind "More options".
 | 5 | Space / Return / Enter toggle; Tab-focusable; accessible button, name, press (22–31) | MoreButton FocusScope `key-pressed`, accessible-* | same |
 | 6 | Material: tonal pill 40 high, label+32 wide, secondaryContainer + 8 % hover / 10 % press layer; Glass: 30 high text button at x −4, label+16, fill on hover only; ColorAnimation 150 ms (33–42) | MoreButton `pill` | same |
 | 7 | Text 14 px Material / body, 500; onSecondaryContainer / accentInk (47–52) | `lr` Text | same |
-| 8 | Caret-down 12 px bold turns 180° when open, 150 ms **Easing.OutCubic** (53–61) | settings.slint:455 `animate transform-rotation { duration: SM.hover; easing: ease-out; }` | **different** (Slint `ease-out` ≠ OutCubic: use `ease-out-cubic`) |
+| 8 | Caret-down 12 px bold turns 180° when open, 150 ms **Easing.OutCubic** (53–61) | settings.slint:455 `animate transform-rotation { duration: SM.hover; easing: ease-out; }` | **same (fixed before 17 Nov: cubic-bezier(0.33, 1, 0.68, 1) (OutCubic))** [12 Nov: **different** (Slint `ease-out` ≠ OutCubic: use `ease-out-cubic`)] |
 | 9 | Pointing-hand cursor (67) | `mouse-cursor: pointer` | same |
-| 10 | Focus ring round the pill, radius +4, keyboard focus only (71–74) | SFocusRing | **different** (shared SFocusRing geometry: see SettingsButton #12) |
+| 10 | Focus ring round the pill, radius +4, keyboard focus only (71–74) | SFocusRing | **same (fixed before 17 Nov: SFocusRing: Glass 2 px 4 out, Material 3 px 5 out)** [12 Nov: **different** (shared SFocusRing geometry: see SettingsButton #12)] |
 | 11 | Body: its groups 22 apart, shown only when expanded (77–82) | Page::more `folding`; `Page::shown` skips folded blocks; page gap 22 | same |
 
 ## Test plan

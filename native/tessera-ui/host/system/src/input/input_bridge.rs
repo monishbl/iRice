@@ -589,10 +589,15 @@ impl Service for Input {
         for w in 0..3 {
             self.load(h, w);
         }
+        // (its files looked at every 2 s, on the host's shared second)
         self.poll_started = true;
-        after(h.sender("Input"), 2000, M::Poll);
         let _ = M::Probed;
         let _ = M::RefreshBinds;
+    }
+    fn every_second(&mut self, h: &mut Host, n: u64) {
+        if self.poll_started && n % 2 == 0 {
+            self.message(h, Box::new(M::Poll));
+        }
     }
     fn call(&mut self, h: &mut Host, call: &str, args: &Value) {
         let list: Vec<Value> = args.as_array().cloned().unwrap_or_else(|| if args.is_null() { vec![] } else { vec![args.clone()] });
@@ -774,7 +779,6 @@ impl Service for Input {
                         self.load(h, w);
                     }
                 }
-                after(h.sender("Input"), 2000, M::Poll);
             }
             M::SaveNow(g) => {
                 if g == self.save_gen && self.km.user_error.is_empty() {

@@ -37,8 +37,6 @@ pub const NAME: &str = "Today";
 
 /// Messages for the service from its timers and threads (Host::sender)
 pub enum Msg {
-    /// the one-second tick
-    Second,
     /// the stopwatch's hundredths, while a view shows them
     Fine,
     TodayChime,
@@ -52,7 +50,6 @@ pub enum Msg {
 
 pub struct Hub {
     tick: u64,
-    master: slint::Timer,
     fine: slint::Timer,
     fine_on: bool,
     morning: morning::Morning,
@@ -70,7 +67,6 @@ pub struct Hub {
 pub fn services() -> Vec<Box<dyn Service>> {
     vec![Box::new(Hub {
         tick: 0,
-        master: slint::Timer::default(),
         fine: slint::Timer::default(),
         fine_on: false,
         morning: morning::Morning::default(),
@@ -261,8 +257,12 @@ impl Service for Hub {
         self.morning.start(h);
         self.timers.publish(h, now());
         timers::publish_alarms(h);
-        let send = h.sender(NAME);
-        self.master.start(slint::TimerMode::Repeated, std::time::Duration::from_secs(1), move || send(Box::new(Msg::Second)));
+    }
+
+    /// The one-second tick: the host's shared second (a timer of its own
+    /// before 17 Nov)
+    fn every_second(&mut self, h: &mut Host, _n: u64) {
+        self.second(h);
     }
 
     fn call(&mut self, h: &mut Host, call: &str, args: &Value) {
@@ -332,7 +332,6 @@ impl Service for Hub {
     fn message(&mut self, h: &mut Host, msg: Box<dyn Any + Send>) {
         let Ok(m) = msg.downcast::<Msg>() else { return };
         match *m {
-            Msg::Second => self.second(h),
             Msg::Fine => self.notif.push_widgets(h, &self.timers, now()),
             Msg::TodayChime => self.morning.chime(h),
             Msg::TodayDelayed => self.morning.delayed(h),

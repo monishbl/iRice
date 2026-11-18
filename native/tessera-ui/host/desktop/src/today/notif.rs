@@ -152,7 +152,10 @@ impl Notif {
         let new: Vec<Note> = items.as_array().map(|a| a.iter().filter_map(|x| serde_json::from_value::<Note>(x.clone()).ok()).collect()).unwrap_or_default();
         let old: HashSet<u32> = self.list.iter().map(|n| n.id).collect();
         let now_ids: HashSet<u32> = new.iter().map(|n| n.id).collect();
-        let fresh: Vec<Note> = new.iter().filter(|n| !old.contains(&n.id)).cloned().collect();
+        // new ones, and live entries that got more urgent (live.rs: their
+        // `alerted` moved): both pop up, with their sound; a quiet update doesn't
+        let alerted: HashMap<u32, i64> = self.list.iter().map(|n| (n.id, n.alerted)).collect();
+        let fresh: Vec<Note> = new.iter().filter(|n| alerted.get(&n.id).map_or(true, |&a| n.alerted > a)).cloned().collect();
         let gone: Vec<u32> = old.difference(&now_ids).copied().collect();
         self.list = new;
         // Settings → Notifications' "Clear All" row (RustBridgeNotify's notificationCount)
@@ -318,7 +321,7 @@ impl Notif {
         json!({
             "to": "notifications", "do": "widgets", "tab": self.tab,
             "focus": if focus_on { format!("{focus_name} is on") } else { String::new() },
-            "alerts": h.state("island.list").as_array().cloned().unwrap_or_default(),
+            "alerts": alert_rows(h.state("island.list").as_array().map(Vec::as_slice).unwrap_or_default()),
             "todos": todos::rows(now),
             "undo": self.undo.as_ref().and_then(|u| u["text"].as_str()).unwrap_or(""),
             "timer": {"remaining": timers::format(timers.remaining), "phase": timers.phase, "progress": timers.progress(), "running": timers.running, "completed": timers.completed},
@@ -375,6 +378,43 @@ impl Notif {
 /// `{"to":"notifications","do":"calendar",…}` for the days Notification
 /// Center shows (Notifications.sendCalendar)
 #[allow(clippy::too_many_arguments)]
+/// The island's history lines as Notification Center's Tessera cards
+/// (center.rs Alert): the caption, glyph, detail and button it shows, and
+/// a live entry's changes (core notify/live.rs) for its folded-out history
+pub fn alert_rows(lines: &[Value]) -> Vec<Value> {
+    lines
+        .iter()
+        .map(|l| {
+            let kind = l["kind"].as_str().unwrap_or("");
+            let caption = match kind {
+                "battery" | "charging" => "Battery",
+                "network" => "Network",
+                "device" | "bluetooth" => "Bluetooth",
+                "usb" => "USB",
+                "audio" => "Sound",
+                "display" | "displays" => "Displays",
+                "sysupdate" => "Software Update",
+                "temperature" | "resources" => "System",
+                "recording" => "Screen Recording",
+                "transfer" => "Transfers",
+                "timer" => "Clock",
+                "missedCall" => "Calls",
+                _ => "Tessera",
+            };
+            let times = l["times"].as_i64().unwrap_or(1);
+            let sub = l["subtitle"].as_str().unwrap_or("");
+            // (a live entry lists its changes instead of counting them)
+            let changes = l["changes"].as_array().map_or(0, Vec::len);
+            let detail = if times > 1 && changes <= 1 { if sub.is_empty() { format!("{times} times") } else { format!("{sub} · {times} times") } } else { sub.to_string() };
+            json!({
+                "hid": l["hid"], "kind": caption, "glyph": l["icon"].as_str().unwrap_or("bell"), "color": l["color"].as_str().unwrap_or("#8E8E93"),
+                "picture": l["picture"].as_str().unwrap_or(""), "title": l["title"].as_str().unwrap_or(""), "detail": detail, "at": l["at"],
+                "act": l["actLabel"].as_str().unwrap_or(""), "changes": l["changes"].as_array().cloned().unwrap_or_default(),
+            })
+        })
+        .collect()
+}
+
 pub fn calendar_payload(c: &Calendar, todo_list: &[todos::Item], raw: &[Value], default_alert: i64, first: i64, to: i64, day: i64, accent: &str) -> Value {
     let list = c.between(first, to);
     let daily = calq::daily_in(&list, first, to);
@@ -450,6 +490,20 @@ pub fn calendar_payload(c: &Calendar, todo_list: &[todos::Item], raw: &[Value], 
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn island_lines_as_cards() {
+        use serde_json::json;
+        let lines = vec![
+            json!({"hid": 3, "kind": "battery", "icon": "battery-warning", "title": "Low battery", "subtitle": "10% left · plug in soon", "color": "#FF453A", "at": 9, "times": 2, "act": false, "actLabel": "",
+                "changes": [{"at": 1, "text": "Low battery · 20% left"}, {"at": 9, "text": "Low battery · 10% left"}]}),
+            json!({"hid": 4, "kind": "usb", "icon": "usb", "title": "Keyboard", "subtitle": "Connected", "at": 5, "times": 3, "act": true, "actLabel": "Open"}),
+        ];
+        let r = super::alert_rows(&lines);
+        assert_eq!((r[0]["kind"].as_str(), r[0]["glyph"].as_str(), r[0]["detail"].as_str()), (Some("Battery"), Some("battery-warning"), Some("10% left · plug in soon")));
+        assert_eq!(r[0]["changes"].as_array().unwrap().len(), 2);
+        assert_eq!((r[1]["detail"].as_str(), r[1]["act"].as_str()), (Some("Connected · 3 times"), Some("Open")));
+    }
+
     use super::*;
 
     #[test]

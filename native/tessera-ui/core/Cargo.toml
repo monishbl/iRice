@@ -18,6 +18,7 @@ raw-window-handle = { version = "0.6", optional = true }
 slint.workspace = true
 i-slint-core.workspace = true
 femtovg.workspace = true # (egl.rs: the screen clip of the vendored copy)
+i-slint-renderer-femtovg.workspace = true # (egl.rs: the frame's damage, for culling)
 smithay-client-toolkit.workspace = true
 wayland-egl.workspace = true
 khronos-egl.workspace = true

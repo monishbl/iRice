@@ -327,7 +327,7 @@ export component ShotThumbnail inherits Window {
 
     animate progress {
         duration: shown ? 300ms : 200ms;
-        easing: shown ? cubic-bezier(0.33, 1, 0.68, 1) : cubic-bezier(0.32, 0, 0.67, 0);
+        easing: shown ? cubic-bezier(0.3333, 1, 0.6667, 1) : cubic-bezier(0.3333, 0, 0.6667, 0);
     }
     changed progress => {
         if !shown && progress <= 0.001 { gone(); }
@@ -339,7 +339,7 @@ export component ShotThumbnail inherits Window {
     property <length> slide: offset;
     animate slide {
         duration: swiping ? 0ms : 200ms;
-        easing: cubic-bezier(0.33, 1, 0.68, 1);
+        easing: cubic-bezier(0.3333, 1, 0.6667, 1);
     }
 
     card := Rectangle {
@@ -704,7 +704,7 @@ export component ShotEditor inherits Window {
 
     animate progress {
         duration: shown ? 300ms : 200ms;
-        easing: shown ? cubic-bezier(0.33, 1, 0.68, 1) : cubic-bezier(0.32, 0, 0.67, 0);
+        easing: shown ? cubic-bezier(0.3333, 1, 0.6667, 1) : cubic-bezier(0.3333, 0, 0.6667, 0);
     }
     changed progress => {
         if !shown && progress <= 0.001 { closed(); }
@@ -1324,7 +1324,7 @@ export component ShotEditor inherits Window {
                             size: 18px;
                             color: Theme.m3-on-primary;
                             transform-rotation: menu-open ? 360deg : 180deg;
-                            animate transform-rotation { duration: Theme.popover; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+                            animate transform-rotation { duration: Theme.popover; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
                         }
                         tr := TouchArea {
                             enabled: split.can;

@@ -371,8 +371,14 @@ fn main() {
         surfaces::announce(&state.shell.surfaces);
     }
 
-    // (the windows parts keep while closed, made ahead: Part::prewarm, one
-    // part per turn of the loop, from 2 s after the first frame)
+    // (the windows parts keep while closed, made ahead: Part::prewarm, from
+    // the first quiet turn after the start's intro (PREWARM_AFTER the first
+    // frame at the soonest), as many parts per turn as fit PREWARM_BUDGET.
+    // It was one part per turn from 2 s on: the made-ahead windows, the
+    // emoji picker's unseen frame among them, kept the compositor drawing
+    // until ~4 s after the bar, the desktop "settling" that late)
+    const PREWARM_AFTER: Duration = Duration::from_millis(500);
+    const PREWARM_BUDGET: Duration = Duration::from_millis(8);
     let mut prewarm: Option<usize> = Some(0);
     let mut first_frame_at: Option<Instant> = None;
     let mut wakes = tessera_core::wayland::Wakes::default();
@@ -388,7 +394,7 @@ fn main() {
         if first_frame_at.is_none() && state.first_frame_logged {
             first_frame_at = Some(Instant::now());
         }
-        let prewarm_due = prewarm.is_some() && first_frame_at.is_some_and(|t| t.elapsed() >= Duration::from_secs(2));
+        let prewarm_due = prewarm.is_some() && first_frame_at.is_some_and(|t| t.elapsed() >= PREWARM_AFTER);
         // How long the loop may sleep: until the first thing due. Frames are
         // paced by the compositor's frame callbacks, which wake the loop as
         // events; the deadlines below are only for what no event brings
@@ -419,8 +425,8 @@ fn main() {
             due(state.shell.glass.held_deadline(), "glass");
             // (a frame callback that never comes is taken as lost: wayland.rs's LOST_FRAME)
             due(state.lost_frame_deadline(), "frame-wait");
-            // (the windows made ahead: from 2 s after the first frame, one per quiet turn)
-            due(first_frame_at.filter(|_| prewarm.is_some()).map(|t| (t + Duration::from_secs(2)).max(now + Duration::from_millis(50))), "prewarm");
+            // (the windows made ahead: from PREWARM_AFTER the first frame, on quiet turns)
+            due(first_frame_at.filter(|_| prewarm.is_some()).map(|t| (t + PREWARM_AFTER).max(now + Duration::from_millis(50))), "prewarm");
             // (memory given back after a quiet spell)
             due(idle_trim.deadline(), "trim");
             match next {
@@ -434,6 +440,20 @@ fn main() {
         if let Err(e) = event_loop.dispatch(timeout, &mut state) {
             eprintln!("tessera-ui: event loop: {e}");
             break;
+        }
+        // (what this turn's events sent on — a panel closing tells Panels,
+        // Panels says the shell's state — handled before the frame is drawn,
+        // as the QML's bindings follow at once, not a frame or two later:
+        // the menu bar's highlight ran ~35 ms past a panel's close. At most
+        // two quick passes, only on a turn that draws.)
+        for _ in 0..2 {
+            if !state.wants_frame_soon() {
+                break;
+            }
+            if let Err(e) = event_loop.dispatch(Some(Duration::ZERO), &mut state) {
+                eprintln!("tessera-ui: event loop: {e}");
+                break;
+            }
         }
         state.tend_parts();
         tessera_core::perf::time(|| "slint timers".into(), slint::platform::update_timers_and_animations);
@@ -455,8 +475,15 @@ fn main() {
         tessera_core::runloop::drain_deferred(&mut state, Duration::from_millis(4));
         // (only on a quiet turn: nothing animating, no frame waiting)
         if prewarm_due && !state.wants_frame_soon() && !state.surfaces.iter().any(|s| s.window().has_active_animations()) {
-            let i = prewarm.unwrap();
-            prewarm = state.prewarm_part(i).then_some(i + 1);
+            // (most parts make nothing ahead, or a window in a few ms: several
+            // per turn; one that took long, or a frame now wanted, ends the turn)
+            let t = Instant::now();
+            while let Some(i) = prewarm {
+                prewarm = state.prewarm_part(i).then_some(i + 1);
+                if t.elapsed() >= PREWARM_BUDGET || state.wants_frame_soon() {
+                    break;
+                }
+            }
         }
         tessera_core::health::turn_end();
     }

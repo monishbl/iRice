@@ -346,8 +346,8 @@ export component StatusMenus inherits Window {
     property <length> mpad: m3 ? 4px : 5px;
 
     animate openness {
-        duration: shown ? 420ms : 154ms;
-        easing: shown ? spring(0.3) : cubic-bezier(0.4, 0, 1, 1);
+        duration: shown ? 420ms : Theme.popover * 0.7;
+        easing: shown ? spring(0.3) : Theme.material ? cubic-bezier(0.3, 0, 0.8, 0.15) : cubic-bezier(0.4, 0, 1, 1);
     }
     changed openness => {
         if !shown && openness <= 0.001 { closed(); }
@@ -736,7 +736,7 @@ export component StatusMenus inherits Window {
                                 height: 72px;
                                 // (Material: a square paused, a cookie while it plays: ShapedArt)
                                 property <float> cookie-o: m3 && np.has-art && np.playing ? 1 : 0;
-                                animate cookie-o { duration: 300ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+                                animate cookie-o { duration: 300ms; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
                                 if m3 && np.has-art: Image {
                                     width: 100%;
                                     height: 100%;

@@ -1,5 +1,7 @@
 # shell/modules/settings/pages/about-loginitems.qml ↔ surfaces/settings (src/pages/about/loginitems.rs `page`, ui/settings-about.slint item/hit/search)
 
+_Re-checked 17 Nov (B5, parity-settings) against main 18628a5 + the B5 ports: statuses below say what's there now; [12 Nov: …] is the old status._
+
 Login Items (page `about/loginitems`, title "Login Items"): XDG autostart as
 xdg-autostart.py sees it, run by Rust itself (off the UI thread). Popup: the
 per-item ActionMenu (Start now, Remove).
@@ -9,14 +11,14 @@ per-item ActionMenu (Start now, Remove).
 | # | Behaviour (QML line) | Rust place | Status |
 |---|---|---|---|
 | 1 | List on open (`list`); errors: unreadable JSON / Python missing (82–103, 124) | loginitems.rs 197–201 | same |
-| 2 | Script calls **one at a time, queued**; each answer refreshes the list (49–66, 104–123) | `call` 63–69: each call its own thread, at once; answers 101–152 | different (small): changes run concurrently (a quick toggle + Undo can race) |
+| 2 | Script calls **one at a time, queued**; each answer refreshes the list (49–66, 104–123) | `call` 63–69: each call its own thread, at once; answers 101–152 | **same (ported 17 Nov, B5: changes queued: each waits its turn (loginitems.rs queue, unit-tested))** [12 Nov: different (small): changes run concurrently (a quick toggle + Undo can race)] |
 | 3 | Changes shown at once (patch) before the script writes (77–80) | patch 71–75, shown 43–59, 206–212 | same |
 | 4 | setOn: toast "Turned on/off <name>" with Undo (quiet back); failure toast (127–135) | set_on 89–92, answers 113–121 | same |
 | 5 | addApp: clears search, closes picking; toasts already-there / Added (Undo removes) / failure (136–147) | add_app 94–98, answers 122–131 | same |
 | 6 | removeItem: gone at once; toast "Removed <name>" with Undo (restore; failure toast) (148–159) | menu 172–175, answers 132–144 | same |
 | 7 | startNow: toast Started / Couldn't start (160–162) | 171, 145 | same |
 | 8 | Item row 64/52: icon 32/28 at 20/14 (0.45 when skipped), name 16/body (secondary when skipped), status line 14/caption; switch (not skipped) "Start <name> when you log in"; dots IconButton at right 12/8 (171–227) | item_row 155–191; slint item 461–522 | same |
-| 9 | Dots button: **tooltip "Options for <name>"**, icon label colour while its menu is open, else tertiary (218–225) | slint 505–519 (28 px, hover fill, tertiary always) | different (small): no tooltip, no "open" colour |
+| 9 | Dots button: **tooltip "Options for <name>"**, icon label colour while its menu is open, else tertiary (218–225) | slint 505–519 (28 px, hover fill, tertiary always) | **same (ported 17 Nov, B5: STip "Options for <name>"; the dots in the label colour while its menu is open)** [12 Nov: different (small): no tooltip, no "open" colour] |
 | 10 | Menu: "Start now" (play, enabled canStart), "Remove" (trash, danger, removable only) (163–168) | 178–182 | same |
 | 11 | Status text: From you/System · Skipped: … / Turned off / Starts when you log in / Paused while login items are off (40–47) | status_text 29–39 | same |
 | 12 | Master switch "Start them when you log in" + detail; footer by state (230–241) | 219–223 | same |
@@ -25,7 +27,7 @@ per-item ActionMenu (Start now, Remove).
 | 15 | Empty: "No login items" + "Add app…" (plus, primary) when not picking (268–281) | 234–237 | same |
 | 16 | "Open at login" group (active) + footer (284–293) | 240–248 | same |
 | 17 | "Add an app to open at login" + Add app… (loaded, no error, not empty, not picking) (301–314) | 251–253 | same |
-| 18 | Picking: **the search field gets focus at once** (297–300) | — | **missing**: the field isn't focused when picking starts |
+| 18 | Picking: **the search field gets focus at once** (297–300) | — | **same (ported 17 Nov, B5: the search field (AField `autofocus`) takes focus as picking starts)** [12 Nov: **missing**: the field isn't focused when picking starts] |
 | 19 | "Search apps": field 240 "App name", Enter adds the first match, **Esc stops picking (text kept)**; Cancel clears and stops (323–344) | 270–284; slint search 662–680 (Esc = Cancel: clears) | same at a glance |
 | 20 | Hint row (empty query, secondary); "No apps match “q”" + detail (345–354) | 300–303 | same |
 | 21 | Up to 8 matches (not noDisplay, not already items, name or id contains q, sorted by name): row 56/48, icon, name, Glass hover/press fill, click or "Add" adds (355–391) | 255–297; slint hit 525–560 | same |

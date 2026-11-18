@@ -394,6 +394,8 @@ pub struct Opt {
     pub image: Option<Image>,
     pub num: f32,
     pub id: String,
+    /// Text with its marks (update notes: bold, lists, links)
+    pub md: Option<slint::StyledText>,
 }
 
 impl Opt {
@@ -445,6 +447,10 @@ impl Opt {
         self.id = id.into();
         self
     }
+    pub fn styled(mut self, t: slint::StyledText) -> Self {
+        self.md = Some(t);
+        self
+    }
     fn to_ui(&self) -> ui::SOpt {
         ui::SOpt {
             text: self.text.as_str().into(),
@@ -457,6 +463,7 @@ impl Opt {
             image: self.image.clone().unwrap_or_default(),
             num: self.num,
             id: self.id.as_str().into(),
+            md: self.md.clone().unwrap_or_default(),
         }
     }
 }

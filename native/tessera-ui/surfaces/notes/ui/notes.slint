@@ -53,7 +53,7 @@ export component QuickNote inherits Window {
     animate openness {
         // (Dialog.qml: spring + 0.4, damping + 0.08 → Material ω 20.1 ζ 0.90, Glass ω 16.2 ζ 0.77;
         // closes in panel × 0.6 on the look's exit curve)
-        duration: shown ? (Theme.material ? 312ms : 388ms) : 192ms;
+        duration: shown ? (Theme.material ? 312ms : 388ms) : Theme.motion-panel * 0.6;
         easing: shown ? (Theme.material ? spring(0.1) : spring(0.23)) : Theme.material ? cubic-bezier(0.3, 0, 0.8, 0.15) : cubic-bezier(0.4, 0, 1, 1);
     }
     changed openness => {

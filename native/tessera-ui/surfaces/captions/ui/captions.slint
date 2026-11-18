@@ -89,7 +89,7 @@ export component CaptionsBar inherits Window {
         border-width: Theme.material ? 0 : 1px;
         border-color: #ffffff14;
         opacity: dim ? 0.35 : 1;
-        animate opacity { duration: 500ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+        animate opacity { duration: 500ms; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
         accessible-role: groupbox;
         accessible-label: "Live captions";
 
@@ -206,7 +206,7 @@ export component CaptionsVideo inherits Window {
         border-radius: Theme.material ? 12px : 10px;
         background: rgba(0, 0, 0, 0.62);
         opacity: dim ? 0 : 1;
-        animate opacity { duration: 500ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+        animate opacity { duration: 500ms; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
         // (whole lines only: the newest three; the oldest go off the top)
         lines := Rectangle {
             x: 16px;

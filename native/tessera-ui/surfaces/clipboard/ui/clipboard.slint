@@ -84,7 +84,7 @@ export component ClipboardPanel inherits Window {
     // (subtle) 4.2 / 0.40: ω 16.2, ζ 0.77 → 388 ms spring(0.23). Closes in
     // Theme.motion.panel × 0.6 (192 ms) on the look's exit curve.
     animate openness {
-        duration: shown ? (Theme.material ? 312ms : 388ms) : 192ms;
+        duration: shown ? (Theme.material ? 312ms : 388ms) : Theme.motion-panel * 0.6;
         easing: shown ? (Theme.material ? spring(0.1) : spring(0.23)) : Theme.material ? cubic-bezier(0.3, 0, 0.8, 0.15) : cubic-bezier(0.4, 0, 1, 1);
     }
     changed openness => {
@@ -438,7 +438,7 @@ export component ClipboardPanel inherits Window {
                 property <bool> active: track.has-hover || thumb-ta.pressed || scrolling;
                 visible: list.content-height > list.height + 1px;
                 opacity: active ? 1 : 0;
-                animate opacity { duration: active ? 150ms : 400ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+                animate opacity { duration: active ? 150ms : 400ms; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
                 Rectangle {
                     x: (parent.width - self.width) / 2;
                     y: sb.ty;

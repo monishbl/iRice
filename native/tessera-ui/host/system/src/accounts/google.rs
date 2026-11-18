@@ -77,7 +77,6 @@ pub struct Google {
     ticks: u32,
     child: Child,
     resend: slint::Timer,
-    poll: slint::Timer,
 }
 
 impl Default for Google {
@@ -109,7 +108,6 @@ impl Default for Google {
             ticks: 0,
             child: Child::default(),
             resend: slint::Timer::default(),
-            poll: slint::Timer::default(),
         }
     }
 }
@@ -455,6 +453,11 @@ impl Service for Google {
     fn name(&self) -> &'static str {
         "Google"
     }
+    fn every_second(&mut self, h: &mut Host, n: u64) {
+        // (the host's shared second: was a timer of its own)
+        let _ = n;
+        self.message(h, Box::new(M::Poll));
+    }
     fn calls(&self) -> &'static [&'static str] {
         &["google"]
     }
@@ -462,7 +465,6 @@ impl Service for Google {
         let tx = Tx::new(h.sender("Google"));
         self.tx = Some(tx.clone());
         self.read_cfg(h.cfg());
-        self.poll.start(slint::TimerMode::Repeated, Duration::from_secs(1), move || tx.send(M::Poll));
         self.run(json!({"cmd": "status"}));
         self.publish();
     }

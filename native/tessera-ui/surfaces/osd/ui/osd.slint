@@ -807,7 +807,7 @@ export component OsdBar inherits Window {
 
     animate fade {
         duration: shown ? 150ms : 100ms;
-        easing: shown ? cubic-bezier(0.33, 1, 0.68, 1) : cubic-bezier(0.32, 0, 0.67, 0);
+        easing: shown ? cubic-bezier(0.3333, 1, 0.6667, 1) : cubic-bezier(0.3333, 0, 0.6667, 0);
     }
     changed fade => {
         if !shown && fade <= 0.001 { closed(); }
@@ -852,7 +852,7 @@ export component OsdBar inherits Window {
                 height: parent.height;
                 border-radius: 2.5px;
                 background: ink;
-                animate width { duration: 100ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+                animate width { duration: 100ms; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
             }
         }
     }

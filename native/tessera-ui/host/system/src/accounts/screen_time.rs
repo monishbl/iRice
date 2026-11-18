@@ -13,7 +13,6 @@
 use super::common::*;
 use serde_json::{json, Map, Value};
 use std::any::Any;
-use std::time::Duration;
 use tessera_core::host::{Host, Service};
 
 enum M {
@@ -33,7 +32,6 @@ pub struct ScreenTime {
     dirty: bool,
     last_write: i64,
     loaded: bool,
-    timer: slint::Timer,
 }
 
 fn secs(m: &Value) -> i64 {
@@ -121,6 +119,12 @@ impl Service for ScreenTime {
     fn name(&self) -> &'static str {
         "ScreenTime"
     }
+    fn every_second(&mut self, h: &mut Host, n: u64) {
+        // (every 2 s, on the host's shared second: was a timer of its own)
+        if n % 2 == 0 {
+            self.message(h, Box::new(M::Tick));
+        }
+    }
     fn start(&mut self, h: &mut Host) {
         h.st.shell.want("clients");
         let j = crate::util::read_json(&Self::path());
@@ -132,8 +136,6 @@ impl Service for ScreenTime {
         self.app = Self::front(h);
         self.counting = if idle() { String::new() } else { self.app.clone() };
         self.publish(self.since);
-        let tx = Tx::new(h.sender("ScreenTime"));
-        self.timer.start(slint::TimerMode::Repeated, Duration::from_secs(2), move || tx.send(M::Tick));
     }
     fn message(&mut self, h: &mut Host, msg: Box<dyn Any + Send>) {
         if msg.downcast::<M>().is_err() {

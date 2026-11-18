@@ -121,7 +121,7 @@ export component EditorButton inherits Rectangle {
     animate background { duration: Theme.hover; }
     // (Glass shrinks on press; Material swells and springs back)
     transform-scale: touch.pressed && live ? (Theme.material ? 1 + min(0.06, 10px / max(1px, max(self.width, self.height))) : 0.97) : 1;
-    animate transform-scale { duration: Theme.material ? 290ms : 100ms; easing: Theme.material ? spring(0.57) : cubic-bezier(0.33, 1, 0.68, 1); }
+    animate transform-scale { duration: Theme.material ? 290ms : 100ms; easing: Theme.material ? spring(0.57) : cubic-bezier(0.3333, 1, 0.6667, 1); }
     accessible-role: button;
     accessible-label: label != "" ? label : tooltip;
     accessible-enabled: live;
@@ -1057,7 +1057,7 @@ export component ScreenToolbar inherits Window {
                                 size: 18px;
                                 color: Theme.m3-on-primary;
                                 turn: menu-open ? 360deg : 180deg;
-                                animate turn { duration: Theme.popover; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+                                animate turn { duration: Theme.popover; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
                             }
                             tr := TouchArea {
                                 enabled: available;

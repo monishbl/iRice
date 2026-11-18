@@ -41,7 +41,7 @@ export component Background inherits Window {
 
     animate fade {
         duration: first-ms > 0 ? first-ms * 1ms : 700ms;
-        easing: first-ms > 0 ? cubic-bezier(0.33, 1, 0.68, 1) : cubic-bezier(0.45, 0, 0.55, 1); // (out-cubic, in-out-quad)
+        easing: first-ms > 0 ? cubic-bezier(0.3333, 1, 0.6667, 1) : cubic-bezier(0.45, 0, 0.55, 1); // (out-cubic, in-out-quad)
     }
     changed fade => {
         if fade >= max(a-from, b-from) + 0.999 { faded(); }

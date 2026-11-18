@@ -1,5 +1,7 @@
 # shell/modules/settings/RustBridgeSystem.qml ↔ host/system/src/sysinfo/bridge_system.rs (SystemBridge, inside the System service: system.rs 603, 650, 674), accounts/fingerprint.rs, accounts/face.rs, net/power.rs; host/shell probes.rs (backends, priority), appearance.rs (cooldown); host/sharing (quickshare, sharing.ports); host/desktop screen/captions.rs, screen/dictation.rs
 
+_Re-checked 17 Nov (B5, parity-settings) against main 18628a5 + the B5 ports: statuses below say what's there now; [12 Nov: …] is the old status._
+
 The "system" page group (Privacy & Security: fingerprint, face, firewall; Battery & Power;
 Cool-down; Accessibility: live captions). SystemBridge reads host-system's private bus. Only
 "fingerprint", "face", "system" and "updates" are put there under those names. "power" is
@@ -17,8 +19,8 @@ Page on show, energy, scans (QML 25–86):
 | 1 | security: Fingerprint.refresh, Face.refresh, sharing-check status (26–29) | bridge_system.rs 104–107 | same |
 | 2 | accessibility: Dictation.refresh (30–31) | 108–109 | same |
 | 3 | Power.energyUsers ±1 while on power (35–36) | 111–116 → power.energyUsers (power.rs 536) | same |
-| 4 | Re-check the firewall when SharingPorts stops being busy, on security (56–62) | 257–263 `system.sharingBusy` | **missing**: nothing ever calls `system.sharingBusy`; watch `h.state("sharing")["ports"]["busy"]` in the 400 ms tick |
-| 5 | Fingerprint.scanned → takes/misses/retry (2.2 s)/flash (510 ms) (66–86) | 266–281 `system.scanned` | **missing**: nothing calls `system.scanned`; fingerprint.rs 133 publishes `scanned {seq, result}` on the bus. Compare `seq` in `tick("sysFeed")` (133–141) and run the same code |
+| 4 | Re-check the firewall when SharingPorts stops being busy, on security (56–62) | 257–263 `system.sharingBusy` | **same (fixed before 17 Nov: bridge_system.rs watch(): sharing.ports.busy → sharingBusy in the 400 ms tick)** [12 Nov: **missing**: nothing ever calls `system.sharingBusy`; watch `h.state("sharing")["ports"]["busy"]` in the 400 ms tick] |
+| 5 | Fingerprint.scanned → takes/misses/retry (2.2 s)/flash (510 ms) (66–86) | 266–281 `system.scanned` | **same (fixed before 17 Nov: bridge_system.rs watch(): fingerprint scanned.seq → scanned)** [12 Nov: **missing**: nothing calls `system.scanned`; fingerprint.rs 133 publishes `scanned {seq, result}` on the bus. Compare `seq` in `tick("sysFeed")` (133–141) and run the same code] |
 
 Feed (QML 88–164):
 
@@ -28,12 +30,12 @@ Feed (QML 88–164):
 | 7 | `sheet` {takes, misses, retry, flash} (114) | 189 | same (never advances: row 5) |
 | 8 | `face` {hasCamera … camera name} (115–125) | 160, 190–194 (bus "face") | same |
 | 9 | `check` sharing-check.py status (126) | 121–131, 195 | same |
-| 10 | `quickShare` {trusted, trustBusy, trustError} (127) | 161, 196 (bus "quickshare" never put) | **missing**: `h.state("quickshare")` (sharing lib.rs 575) |
-| 11 | `ports` {error, failedWith, busy} (128) | 162, 197 (bus "sharingports" never put) | **missing**: `h.state("sharing")["ports"]` (sharing lib.rs 573) |
+| 10 | `quickShare` {trusted, trustBusy, trustError} (127) | 161, 196 (bus "quickshare" never put) | **same (fixed before 17 Nov: h.state("quickshare"))** [12 Nov: **missing**: `h.state("quickshare")` (sharing lib.rs 575)] |
+| 11 | `ports` {error, failedWith, busy} (128) | 162, 197 (bus "sharingports" never put) | **same (fixed before 17 Nov: h.state("sharing").ports)** [12 Nov: **missing**: `h.state("sharing")["ports"]` (sharing lib.rs 573)] |
 | 12 | `updatesRunning` (129) | 198 | same |
-| 13 | `power` {ppd, powerShort, powerReason, hasBattery, why, mode, modeName, hasPerformance, guardError, ownHypridle, userHypridle, energyMinutes, energyApps, keepAwake, keepAwakeStatus, priority{…}} (130–147) | 163–165, 199–207: bus "power" (published as "Power", power.rs 470), "backends" and "shellpriority" never put | **missing**: Battery & Power shows no battery, mode always Balanced, no energy report, no Low Power/Performance availability, priority row off. Read `bus::get("Power")`, `h.state("backends")`, `h.state("priority")`; `hasPerformance` is `Power.hasPerformance`. (Power's `userHypridle` is a path string, QML's a bool: check the page) |
-| 14 | `cooldown` {active, why} (148) | 166, 208 (bus "cooldown" never put) | **missing**: `h.state("cooldown")` (appearance.rs 109–110) |
-| 15 | `captions` {hasBinary, hasModel, ready, error, downloading, installing, installError, downloadProgress, downloadError, lastDownload, dictDownloading, languages} (149–162) | 167–168, 209–214 (buses "captions", "dictation" never put) | **missing**: Accessibility's live captions always "not installed"; `h.state("dictation")` has installing/downloading/downloadProgress/downloadError (no languages, installError, lastDownload); host-desktop CaptionsSvc publishes no hasBinary/hasModel/ready |
+| 13 | `power` {ppd, powerShort, powerReason, hasBattery, why, mode, modeName, hasPerformance, guardError, ownHypridle, userHypridle, energyMinutes, energyApps, keepAwake, keepAwakeStatus, priority{…}} (130–147) | 163–165, 199–207: bus "power" (published as "Power", power.rs 470), "backends" and "shellpriority" never put | **same (fixed before 17 Nov: bus "Power" + h.state backends/priority, keepAwake from bus system)** [12 Nov: **missing**: Battery & Power shows no battery, mode always Balanced, no energy report, no Low Power/Performance availability, priority row off. Read `bus::get("Power")`, `h.state("backends")`, `h.state("priority")`; `hasPerformance` is `Power.hasPerformance`. (Power's `userHypridle` is a path string, QML's a bool: check the page)] |
+| 14 | `cooldown` {active, why} (148) | 166, 208 (bus "cooldown" never put) | **same (fixed before 17 Nov: h.state("cooldown"))** [12 Nov: **missing**: `h.state("cooldown")` (appearance.rs 109–110)] |
+| 15 | `captions` {hasBinary, hasModel, ready, error, downloading, installing, installError, downloadProgress, downloadError, lastDownload, dictDownloading, languages} (149–162) | 167–168, 209–214 (buses "captions", "dictation" never put) | **same (fixed before 17 Nov: h.state captions + dictation)** [12 Nov: **missing**: Accessibility's live captions always "not installed"; `h.state("dictation")` has installing/downloading/downloadProgress/downloadError (no languages, installError, lastDownload); host-desktop CaptionsSvc publishes no hasBinary/hasModel/ready] |
 | 16 | Feed told on change (164) | 219–228, polled 400 ms (241) | same (polled) |
 
 Acts (QML 166–249):
@@ -54,7 +56,7 @@ Acts (QML 166–249):
 | 28 | `clearEnergy` (226–228) | 325 | same |
 | 29 | `quitApp` [app] (229–232) | 326–330 → apps.quit (wm/mod.rs 252) | same |
 | 30 | `coolDownToggle` (233–235) | 331 → cooldown.toggle (appearance.rs 324) | same |
-| 31 | `captionsInstall`, `captionsDownload` (237–242) | 333–334 → captions.install / captions.download | **missing**: CaptionsSvc.call (captions.rs 185–200) matches only `args[0]` words off/toggle/place/state; there is no install or download |
+| 31 | `captionsInstall`, `captionsDownload` (237–242) | 333–334 → captions.install / captions.download | **same (fixed before 17 Nov: captions.rs call: install → dictation.install, download → dictation.download tiny)** [12 Nov: **missing**: CaptionsSvc.call (captions.rs 185–200) matches only `args[0]` words off/toggle/place/state; there is no install or download] |
 | 32 | `captionsCancel` → Dictation.cancelDownload (243–245) | 335 | same |
 
 ## Test plan
