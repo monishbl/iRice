@@ -8,7 +8,7 @@ pub use tessera_core::surfaces::*;
 
 /// The surfaces that exist in Rust so far (each has a QML twin that checks
 /// RustUi.drawing with the same name: tests/test_rust_ui.py)
-pub const KNOWN: &[&str] = &["menubar", "dock", "emoji", "clipboard", "osd", "background", "wallpaper", "today", "desktop", "notifications", "spotlight", "controlcenter", "sidebar", "screentools", "quicklook", "lock", "session", "polkit", "overlay", "welcome", "resources", "cheatsheet", "osk", "hotcorners", "tiling", "decorations", "share", "appstore", "shelf", "network", "statusmenus", "captions", "notes", "settings", "overview", "missioncontrol", "switcher", "stagemanager", "launchpad", "tabs", "downloadsstack", "widgetoptions", "screencorners", "findpointer", "spaceswitch", "displayconnect", "displayoverlay", "shelfprobes"];
+pub const KNOWN: &[&str] = &["menubar", "dock", "emoji", "clipboard", "osd", "background", "wallpaper", "today", "desktop", "notifications", "spotlight", "controlcenter", "sidebar", "screentools", "quicklook", "lock", "session", "polkit", "overlay", "welcome", "resources", "cheatsheet", "osk", "hotcorners", "tiling", "decorations", "share", "appstore", "shelf", "network", "statusmenus", "captions", "notes", "settings", "overview", "missioncontrol", "switcher", "stagemanager", "launchpad", "tabs", "downloadsstack", "widgetoptions", "screencorners", "findpointer", "spaceswitch", "displayconnect", "displayoverlay", "shelfprobes", "clickcatcher"];
 
 /// A surface's part, by name (one line per surface)
 pub fn make(name: &str) -> Option<Box<dyn tessera_core::shell::Part>> {
@@ -43,6 +43,7 @@ pub fn make(name: &str) -> Option<Box<dyn tessera_core::shell::Part>> {
         "displayconnect" => Some(Box::new(tessera_screenfx::DisplayConnect::default())),
         "displayoverlay" => Some(Box::new(tessera_screenfx::DisplayOverlay::default())),
         "shelfprobes" => Some(Box::new(tessera_screenfx::ShelfProbes::default())),
+        "clickcatcher" => Some(Box::new(tessera_screenfx::ClickCatcher::default())),
         "lock" => Some(Box::new(tessera_lock::Lock::default())),
         "session" => Some(Box::new(tessera_session::Session::default())),
         "polkit" => Some(Box::new(tessera_polkit::Polkit::default())),

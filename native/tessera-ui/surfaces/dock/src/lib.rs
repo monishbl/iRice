@@ -954,6 +954,13 @@ impl Part for Dock {
     }
 
     fn message(&mut self, st: &mut State, msg: Box<dyn Any + Send>) {
+        // (a press on another screen: the open menu closes, as one outside it here)
+        if msg.is::<tessera_core::outside::Elsewhere>() {
+            if self.menu.as_ref().is_some_and(|m| m.open) {
+                self.close_menu(st);
+            }
+            return;
+        }
         let msg = match msg.downcast::<tessera_core::services::capture::Shot>() {
             Ok(shot) => {
                 if self.thumbs.got(*shot) {
@@ -1055,6 +1062,11 @@ impl Part for Dock {
     /// (the slab as it slides; the menu as it springs open), sent when they
     /// change; then the accessibility trees
     fn after_frame(&mut self, st: &mut State) {
+        // (an open menu closes on a press on another screen too: outside.rs)
+        match self.menu.as_ref().filter(|m| m.open) {
+            Some(m) => tessera_core::outside::open(&st.tx, NAME, &m.output),
+            None => tessera_core::outside::close(&st.tx, NAME),
+        }
         let scale = self.wins.iter().map(|w| w.ui.window().scale_factor()).fold(1.0f32, f32::max);
         if (scale - self.scale).abs() > 0.01 {
             self.scale = scale;

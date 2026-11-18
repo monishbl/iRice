@@ -314,8 +314,10 @@ impl Surface {
         if draw_stats() {
             let f = i_slint_renderer_femtovg::last_frame();
             eprintln!(
-                "draw-stats {} {:.2} ms: probe {:.2} current {:.2} age-wait {:.2} items {:.2} flush {:.2} present {:.2}; drawn {} culled {} layers {}+{}p {} age {}",
+                "draw-stats {}{}{} {:.2} ms: probe {:.2} current {:.2} age-wait {:.2} items {:.2} flush {:.2} present {:.2}; drawn {} culled {} layers {}+{}p new {} {} age {}",
                 self.namespace,
+                if self.output.is_empty() { "" } else { "@" },
+                self.output,
                 took.as_secs_f64() * 1000.0,
                 PROBE_MS.with(|c| c.replace(0.0)),
                 crate::egl::last_begin_ms()[0],
@@ -327,12 +329,13 @@ impl Surface {
                 f.culled,
                 f.layers_full,
                 f.layers_partial,
+                f.layers_new,
                 if f.partial { "partial" } else { "whole" },
                 crate::egl::last_age()
             );
         }
         self.stats.borrow_mut().rendered(took);
-        framelog("frame", &self.namespace);
+        framelog_on("frame", &self.namespace, &self.output);
         if wakes_on() {
             drew_after_press(&self.namespace, took.as_secs_f64() * 1000.0);
         }
@@ -390,7 +393,7 @@ impl Surface {
         } else if crate::env::is_set("DEBUG") {
             eprintln!("debug: hide on a lock surface: kept its buffer");
         }
-        framelog("hide", &self.namespace);
+        framelog_on("hide", &self.namespace, &self.output);
         self.configured.set(false);
         self.frame_pending.set(false);
         self.mapped.set(false);
@@ -1767,10 +1770,17 @@ fn drew_after_press(ns: &str, render_ms: f64) {
 /// frames a compositor frame log (tools/gate/framelog.py) counts, and when a
 /// panel's close animation really ended. Off: one cached bool test.
 pub fn framelog(what: &str, ns: &str) {
+    framelog_on(what, ns, "");
+}
+
+/// The same for a surface on an output: `<namespace>@<output>` (two bars,
+/// one per screen, told apart)
+pub fn framelog_on(what: &str, ns: &str, output: &str) {
     static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     if *ON.get_or_init(|| crate::env::is_set("FRAMELOG")) {
         let t = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0.0, |d| d.as_secs_f64());
-        eprintln!("framelog {what} {ns} {t:.6}");
+        let at = if output.is_empty() { "" } else { "@" };
+        eprintln!("framelog {what} {ns}{at}{output} {t:.6}");
     }
 }
 
