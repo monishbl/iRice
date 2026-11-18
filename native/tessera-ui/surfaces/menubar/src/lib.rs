@@ -175,6 +175,8 @@ struct BarEntry {
     /// once a frame by `size_tick` while they move
     size: Option<Rc<std::cell::RefCell<(spring::Spring, spring::Spring)>>>,
     size_tick: tessera_core::pacing::FrameTimer,
+    /// the island's art picture was made for: art, size, scale (island_art)
+    art_key: String,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1095,6 +1097,7 @@ impl Menubar {
         self.bars = bars;
         self.hud_level(st);
         self.island_size(st);
+        self.island_art();
         // the HUD's inline list: the outputs (and the apps playing) or the inputs
         let hud = self.hud_kind();
         if hud.is_none() {
@@ -1629,6 +1632,37 @@ impl Menubar {
 
     fn qml_uid(&self, uid: i32) -> i64 {
         self.island.alerts.iter().find(|a| a.uid == uid as u64).map(|a| a.qml_uid).unwrap_or(0)
+    }
+
+    /// Glass with playerArt "island": the music's art as the open island, one
+    /// picture per bar at the open island's size (made again only when the
+    /// art, that size or the screen's scale change)
+    fn island_art(&mut self) {
+        let Some(src) = self.bg_art.2.clone() else { return };
+        for b in &mut self.bars {
+            if !b.ui.get_island_art() {
+                continue;
+            }
+            let (w, h) = (b.ui.get_isl_want_w(), b.ui.get_isl_want_h());
+            // (only the open island's size: closing keeps the last picture)
+            if h < 60.0 {
+                continue;
+            }
+            let scale = b.ui.window().scale_factor();
+            let radius = b.ui.global::<ui::Theme>().get_radius_tile();
+            let key = format!("{}|{w:.0}x{h:.0}|{scale}|{radius}", self.bg_art.0);
+            if key == b.art_key {
+                continue;
+            }
+            b.art_key = key;
+            let t = std::time::Instant::now();
+            if let Some(img) = island_art_picture(&src, w, h, radius, scale) {
+                b.ui.set_island_art_img(img);
+            }
+            if tessera_core::env::is_set("DEBUG") {
+                eprintln!("debug: island art {w:.0}x{h:.0} @{scale} made in {:.1} ms", t.elapsed().as_secs_f64() * 1000.0);
+            }
+        }
     }
 
     /// Each island's size follows where its layout wants it on Qt's spring
@@ -2272,6 +2306,60 @@ fn island_stats(bat: &Battery, shell: &ShellState) -> ui::IslandStats {
     }
 }
 
+/// The art as the open island (Glass, playerArt "island"): `w` × `h` logical
+/// px at `scale`, the picture cropped as `cover`, opaque to 30 % of the height
+/// then fading to clear at the bottom, cut to the glass's squircle (n = 4,
+/// reaching 1.28 × the radius) at the four corners: what island.slint drew
+/// with ~100 clipped strips, as one picture
+fn island_art_picture(img: &slint::Image, w: f32, h: f32, radius: f32, scale: f32) -> Option<slint::Image> {
+    let src = img.to_rgba8()?;
+    let (sw, sh) = (src.width() as usize, src.height() as usize);
+    let (pw, ph) = ((w * scale).round().max(1.0) as usize, (h * scale).round().max(1.0) as usize);
+    if sw == 0 || sh == 0 || pw > 4096 || ph > 4096 {
+        return None;
+    }
+    let px = src.as_slice();
+    let (w, h) = (w as f64, h as f64);
+    // cover: the art scaled to fill, centred
+    let c = (w / sw as f64).max(h / sh as f64);
+    let (ox, oy) = ((w - sw as f64 * c) / 2.0, (h - sh as f64 * c) / 2.0);
+    let re = (radius as f64 * 1.28).min(w.min(h) / 2.0);
+    let inset = |d: f64| -> f64 {
+        if d >= re {
+            return 0.0;
+        }
+        re - re * (1.0 - ((re - d) / re.max(1.0)).powi(4)).max(0.0).powf(0.25)
+    };
+    let mut out = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(pw as u32, ph as u32);
+    let o = out.make_mut_slice();
+    for y in 0..ph {
+        let ly = (y as f64 + 0.5) / scale as f64;
+        let f = ly / h;
+        let fade = if f < 0.3 { 1.0 } else { (1.0 - (f - 0.3) / 0.7).max(0.0) };
+        let cut = inset(ly.min(h - ly));
+        let sy = ((ly - oy) / c - 0.5).clamp(0.0, (sh - 1) as f64);
+        let (y0, fy) = (sy.floor() as usize, sy.fract());
+        let y1 = (y0 + 1).min(sh - 1);
+        for x in 0..pw {
+            let lx = (x as f64 + 0.5) / scale as f64;
+            let i = y * pw + x;
+            if fade <= 0.0 || lx < cut || lx > w - cut {
+                o[i] = slint::Rgba8Pixel { r: 0, g: 0, b: 0, a: 0 };
+                continue;
+            }
+            let sx = ((lx - ox) / c - 0.5).clamp(0.0, (sw - 1) as f64);
+            let (x0, fx) = (sx.floor() as usize, sx.fract());
+            let x1 = (x0 + 1).min(sw - 1);
+            let mix = |a: u8, b: u8, t: f64| a as f64 + (b as f64 - a as f64) * t;
+            let (p00, p01, p10, p11) = (px[y0 * sw + x0], px[y0 * sw + x1], px[y1 * sw + x0], px[y1 * sw + x1]);
+            let ch = |g: fn(&slint::Rgba8Pixel) -> u8| mix(mix(g(&p00), g(&p01), fx) as u8, mix(g(&p10), g(&p11), fx) as u8, fy);
+            let a = ch(|p| p.a) * fade;
+            o[i] = slint::Rgba8Pixel { r: ch(|p| p.r).round() as u8, g: ch(|p| p.g).round() as u8, b: ch(|p| p.b).round() as u8, a: a.round().clamp(0.0, 255.0) as u8 };
+        }
+    }
+    Some(slint::Image::from_rgba8(out))
+}
+
 /// The album art as a background: Material, a small copy (Slint scales it
 /// up: a blur) for the card under a wash; Glass, the picture (at most 640 px)
 /// to be the island, faded by island.slint over its live height
@@ -2623,6 +2711,7 @@ impl Part for Menubar {
             keys: false,
             size: None,
             size_tick: Default::default(),
+            art_key: String::new(),
         });
         self.refresh(st);
     }
@@ -2896,6 +2985,7 @@ impl Part for Menubar {
         // set before them, the glass took the size a frame ahead of the
         // island it's under, and the island flickered as it closed)
         self.island_size(st);
+        self.island_art();
     }
 
     fn a11y(&mut self) -> Vec<&mut crate::a11y::A11y> {
@@ -2927,5 +3017,32 @@ impl Part for Menubar {
         if let Some(m) = &self.menu {
             Glass::clear_now(&m.output, MENU_NS);
         }
+    }
+}
+
+#[cfg(test)]
+mod art_tests {
+    use super::island_art_picture;
+
+    #[test]
+    fn the_island_art_is_one_picture_cut_and_faded() {
+        let mut buf = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(64, 64);
+        for p in buf.make_mut_slice() {
+            *p = slint::Rgba8Pixel { r: 200, g: 100, b: 50, a: 255 };
+        }
+        let art = slint::Image::from_rgba8(buf);
+        let pic = island_art_picture(&art, 392.0, 263.0, 36.0, 2.0).unwrap();
+        let px = pic.to_rgba8().unwrap();
+        let (w, h) = (px.width() as usize, px.height() as usize);
+        assert_eq!((w, h), (784, 526));
+        let at = |x: usize, y: usize| px.as_slice()[y * w + x];
+        // (the top middle: the art, opaque; a corner: cut by the squircle)
+        assert_eq!(at(w / 2, 4).a, 255);
+        assert_eq!(at(w / 2, 4).r, 200);
+        assert_eq!(at(0, 0).a, 0);
+        assert_eq!(at(w - 1, 0).a, 0);
+        // (fading out towards the bottom, clear at it)
+        assert!(at(w / 2, h * 6 / 10).a < 255 && at(w / 2, h * 6 / 10).a > 0);
+        assert_eq!(at(w / 2, h - 1).a, 0);
     }
 }

@@ -2118,6 +2118,7 @@ export component Island inherits Rectangle {
     in property <bool> all-mode;
     // Glass, island.playerArt "island": the music's art as the open island
     in property <bool> island-art;
+    in property <image> island-art-img; // (the art as the open island: menubar island_art)
     in property <bool> reduce-motion; // appearance.reduceMotion: the call's ring holds still
     in property <[LevelRow]> levels;
     in property <bool> levels-open;
@@ -2335,69 +2336,21 @@ export component Island inherits Rectangle {
         // Glass, music playing, open: the album art is the island itself, solid
         // up top and melting into the glass below like the black (faded in Rust)
         if !Theme.material && island-art: artbox := Rectangle {
-            opacity: expanded && !event-inside && !recent-over ? 0.82 : 0;
-            animate opacity { duration: Theme.popover; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
-            // (clipped to the glass's own squircle, row by row at the corners:
-            // a round-cornered clip left the plugin's squircle showing past
-            // it, a second, lighter rounding at the corners. n = 4, reaching
-            // 1.28 × the radius, as squircle.slint and the plugin draw it)
-            property <float> h: self.height / 1px;
-            property <float> re: min(radius / 1px * 1.28, min(self.width, self.height) / 2px);
-            property <int> rows: max(0, ceil(re));
-            function inset(d: float) -> length {
-                return (re - re * pow(max(0, 1 - pow(max(0, re - d) / max(1, re), 4)), 0.25)) * 1px;
-            }
-            function fade(y: float) -> float {
-                return (y / max(1, h)) < 0.3 ? 1 : max(0, 1 - ((y / max(1, h)) - 0.3) / 0.7);
-            }
-            // the corners: one-pixel rows, each as wide as the curve allows
-            for k in rows: Rectangle {
-                y: k * 1px;
-                x: artbox.inset(k + 0.5);
-                width: artbox.width - 2 * self.x;
-                height: 1px;
-                clip: true;
-                opacity: artbox.fade(k + 0.5);
-                Image {
-                    x: -parent.x;
-                    y: -parent.y;
-                    width: artbox.width;
-                    height: artbox.height;
-                    source: card.bg-art;
-                    image-fit: cover;
-                }
-            }
-            for k in rows: Rectangle {
-                y: artbox.height - (k + 1) * 1px;
-                x: artbox.inset(k + 0.5);
-                width: artbox.width - 2 * self.x;
-                height: 1px;
-                clip: true;
-                opacity: artbox.fade(artbox.h - k - 0.5);
-                Image {
-                    x: -parent.x;
-                    y: -parent.y;
-                    width: artbox.width;
-                    height: artbox.height;
-                    source: card.bg-art;
-                    image-fit: cover;
-                }
-            }
-            // between them: full width, fading out in ten bands as before
-            for k in 10: Rectangle {
-                property <length> top: artbox.rows * 1px;
-                property <length> span: max(0px, artbox.height - 2 * artbox.rows * 1px);
-                y: top + span * k / 10;
-                height: span / 10 + 1px;
-                clip: true;
-                opacity: artbox.fade((self.y + self.height / 2) / 1px);
-                Image {
-                    y: -parent.y;
-                    width: parent.width;
-                    height: artbox.height;
-                    source: card.bg-art;
-                    image-fit: cover;
-                }
+            // (one picture, made in Rust at the open island's size: the art
+            // cropped as `cover`, its alpha already faded below 30 % of the
+            // height and cut to the glass's squircle, n = 4 reaching 1.28 ×
+            // the radius, as squircle.slint and the plugin draw it. It was
+            // ~100 one-pixel strips each with a clip and an opacity: a layer
+            // each, all made again every frame the island's size changed,
+            // 50-200 ms frames on Intel. Stretched to the live size while it
+            // moves; exact at rest. Its fade is the Image's own opacity: no layer.)
+            Image {
+                width: parent.width;
+                height: parent.height;
+                source: root.island-art-img;
+                image-fit: fill;
+                opacity: expanded && !event-inside && !recent-over ? 0.82 : 0;
+                animate opacity { duration: Theme.popover; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
             }
         }
         // running hot, closed: the chip's glow (no ripples: Slint has no shaders)

@@ -345,6 +345,7 @@ export component Bar inherits Window {
     in property <image> logo-image; // the distro's logo (menuIcon "distro")
     in property <bool> has-logo-image;
     in property <bool> island-art;
+    in property <image> island-art-img;
     in property <bool> app-menu: true;
     in property <string> app-name: "Desktop";
     in property <bool> window-menu: true;
@@ -725,6 +726,7 @@ export component Bar inherits Window {
         card-on: root.card-on;
         all-mode: root.all-mode;
         island-art: root.island-art;
+        island-art-img: root.island-art-img;
         reduce-motion: root.reduce-motion;
         levels: root.levels;
         levels-open: root.levels-open;
