@@ -176,7 +176,9 @@ pub fn channel_line(picked: &str, info: &Value) -> String {
         return format!("This copy follows {}, a development branch. Choose a channel to follow it instead.", if branch.is_empty() { "its own branch".to_string() } else { branch });
     }
     let date = s(&info["date"]);
-    format!("On {}: version {}{}", s(&info["channelName"]), s(&info["current"]), if date.is_empty() { String::new() } else { format!(", from {date}") })
+    // ("On Stable: version X" read as Stable's own version, which the line
+    // above can name differently: this copy's version, said as such)
+    format!("Following {}. This copy is version {}{}", s(&info["channelName"]), s(&info["current"]), if date.is_empty() { String::new() } else { format!(", from {date}") })
 }
 
 /// One package line (update.qml's PkgLine): name, a badge, versions or a reason
