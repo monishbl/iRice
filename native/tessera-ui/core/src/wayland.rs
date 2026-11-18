@@ -299,7 +299,9 @@ impl Surface {
         if self.egl.has_damage() {
             let (w, h) = self.logical.get();
             let px = self.physical();
+            let tp = Instant::now();
             let region = crate::perf::time(|| format!("damage probe {}", self.namespace), || self.renderer.damage.region(&self.window, (w as f32, h as f32)));
+            PROBE_MS.with(|c| c.set(tp.elapsed().as_secs_f32() * 1000.0));
             *self.damage.borrow_mut() = region.map(|r| (crate::damage::to_buffer(&r, self.scale.get(), (px.width as i32, px.height as i32)), px.height as i32));
             // (and the frame draws only that, with the back buffer's age: egl.rs)
             self.gl_frame.set(true);
@@ -308,6 +310,27 @@ impl Surface {
             eprintln!("tessera-ui: render failed: {e}");
         }
         let took = t.elapsed();
+        // (TESSERA_DRAW_STATS=1: where each frame's time went, one line a frame)
+        if draw_stats() {
+            let f = i_slint_renderer_femtovg::last_frame();
+            eprintln!(
+                "draw-stats {} {:.2} ms: probe {:.2} current {:.2} age-wait {:.2} items {:.2} flush {:.2} present {:.2}; drawn {} culled {} layers {}+{}p {} age {}",
+                self.namespace,
+                took.as_secs_f64() * 1000.0,
+                PROBE_MS.with(|c| c.replace(0.0)),
+                crate::egl::last_begin_ms()[0],
+                crate::egl::last_begin_ms()[1],
+                f.items_ms,
+                f.flush_ms,
+                f.present_ms,
+                f.drawn,
+                f.culled,
+                f.layers_full,
+                f.layers_partial,
+                if f.partial { "partial" } else { "whole" },
+                crate::egl::last_age()
+            );
+        }
         self.stats.borrow_mut().rendered(took);
         framelog("frame", &self.namespace);
         if wakes_on() {
@@ -1823,6 +1846,18 @@ impl Wakes {
 thread_local! {
     /// TESSERA_WAKES: the loop's messages this second, by part
     pub static WAKE_MSGS: std::cell::RefCell<std::collections::BTreeMap<String, u32>> = Default::default();
+}
+
+thread_local! {
+    /// the last frame's damage probe, ms (draw stats)
+    static PROBE_MS: Cell<f32> = const { Cell::new(0.0) };
+}
+
+/// TESSERA_DRAW_STATS=1: every frame logs where its time went (the
+/// vendored Slint renderer's FrameStats)
+fn draw_stats() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| crate::env::is_set("DRAW_STATS"))
 }
 
 /// TESSERA_WAKES set, or the file $XDG_RUNTIME_DIR/tessera-wakes there

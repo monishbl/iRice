@@ -3,11 +3,12 @@
 //! time (khronos-egl "dynamic"), as Mesa ships it.
 //!
 //! A frame redraws only what changed (when the driver says how old the back
-//! buffer is, EGL_EXT_buffer_age): FemtoVG draws everything every frame, so
-//! the vendored femtovg (vendor/femtovg) scissors its screen drawing to the
-//! box that changed in this frame and the frames since the back buffer was
-//! last drawn (src/damage.rs finds what changed). A big window whose small
-//! part animates fills only that part. TESSERA_UI_FULL_REDRAW=1 turns it off.
+//! buffer is, EGL_EXT_buffer_age): the vendored femtovg (vendor/femtovg)
+//! scissors its screen drawing to the box that changed in this frame and
+//! the frames since the back buffer was last drawn (src/damage.rs finds
+//! what changed), and the vendored Slint renderer (vendor/i-slint-renderer-femtovg)
+//! skips the items outside that box. A big window whose small part animates
+//! fills only that part. TESSERA_UI_FULL_REDRAW=1 turns it off.
 
 use khronos_egl as egl;
 use std::cell::{Cell, RefCell};
@@ -171,7 +172,12 @@ impl GlSurface {
         let now = self.damage.borrow().as_ref().map(|(rects, h)| bbox(&egl_rects(rects, *h)));
         let mut hist = self.history.borrow_mut();
         let clip = if self.egl.buffer_age {
+            let t = std::time::Instant::now();
             let age = self.egl.api.query_surface(self.egl.display, self.surface, BUFFER_AGE).unwrap_or(0).max(0) as usize;
+            // (Mesa picks the back buffer here, and waits for one the
+            // compositor has let go of when it holds them all)
+            BEGIN_MS.with(|c| c.set([c.get()[0], t.elapsed().as_secs_f32() * 1000.0]));
+            LAST_AGE.with(|c| c.set(age as i32));
             clip_for(now, &hist, age)
         } else {
             None
@@ -179,7 +185,28 @@ impl GlSurface {
         hist.push_front(now);
         hist.truncate(4);
         femtovg::renderer::set_screen_clip(clip);
+        // (and Slint's renderer skips the items outside it: vendor/i-slint-renderer-femtovg)
+        let h = self.damage.borrow().as_ref().map_or(0, |d| d.1);
+        i_slint_renderer_femtovg::set_frame_damage(clip.zip(now).map(|(c, n)| i_slint_renderer_femtovg::FrameDamage { redraw: top_left(c, h), now: top_left(n, h) }));
     }
+}
+
+thread_local! {
+    static LAST_AGE: Cell<i32> = const { Cell::new(-1) };
+    /// the last frame's eglMakeCurrent and buffer-age query, ms
+    static BEGIN_MS: Cell<[f32; 2]> = const { Cell::new([0.0; 2]) };
+}
+
+/// How long the last frame on this thread waited in eglMakeCurrent and in
+/// the back buffer's age query (ms)
+pub fn last_begin_ms() -> [f32; 2] {
+    BEGIN_MS.with(|c| c.get())
+}
+
+/// The back buffer's age the last frame drawn on this thread found (-1:
+/// never asked, the driver has no EGL_EXT_buffer_age; 0: unknown, drawn whole)
+pub fn last_age() -> i32 {
+    LAST_AGE.with(|c| c.get())
 }
 
 /// What a frame must redraw: this frame's box and the `age - 1` before it
@@ -189,6 +216,12 @@ fn clip_for(now: Option<[i32; 4]>, hist: &VecDeque<Option<[i32; 4]>>, age: usize
         return None;
     }
     hist.iter().take(age - 1).try_fold(now?, |a, f| f.map(|b| union(a, b)))
+}
+
+/// A box in GL's window coordinates (y from the bottom) as one from the
+/// top-left, in a buffer `h` pixels high
+fn top_left(r: [i32; 4], h: i32) -> [i32; 4] {
+    [r[0], h - (r[1] + r[3]), r[2], r[3]]
 }
 
 fn bbox(r: &[i32]) -> [i32; 4] {
@@ -218,7 +251,11 @@ pub fn egl_rects(rects: &[[i32; 4]], buffer_h: i32) -> Vec<i32> {
 unsafe impl slint::platform::femtovg_renderer::OpenGLInterface for GlSurface {
     fn ensure_current(&self) -> Res<()> {
         let e = &self.egl;
+        let t = std::time::Instant::now();
         e.api.make_current(e.display, Some(self.surface), Some(self.surface), Some(e.context))?;
+        if self.frame.get() {
+            BEGIN_MS.with(|c| c.set([t.elapsed().as_secs_f32() * 1000.0, 0.0]));
+        }
         if !self.interval_set.replace(true) {
             // Never block in eglSwapBuffers: frames are paced by wl_surface.frame
             // (a driver that can't, some NVIDIA ones on a layer surface: it
@@ -292,6 +329,16 @@ mod tests {
         // a frame that was all new in between: all
         assert_eq!(clip_for(Some([5, 5, 5, 5]), &h, 4), None);
         assert_eq!(clip_for(None, &h, 1), None);
+    }
+
+    #[test]
+    fn damage_boxes_go_back_to_top_left_for_slint() {
+        // (GL's: from the bottom of a 1080 px buffer)
+        assert_eq!(top_left([10, 1000, 100, 50], 1080), [10, 30, 100, 50]);
+        assert_eq!(top_left([0, 0, 1920, 1080], 1080), [0, 0, 1920, 1080]);
+        // there and back: egl_rects' flip undone
+        let r = [12, 27, 156, 66];
+        assert_eq!(top_left(bbox(&egl_rects(&[r], 1620)), 1620), r);
     }
 
     #[test]

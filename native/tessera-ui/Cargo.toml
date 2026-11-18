@@ -25,6 +25,9 @@ i-slint-renderer-skia = { version = "=1.18.1", default-features = false, feature
 # (Slint's FemtoVG, vendored with a screen clip so a frame redraws only what
 # changed: core/src/egl.rs; the [patch] below makes Slint use the same copy)
 femtovg = { version = "=0.27.0", default-features = false }
+# (Slint's FemtoVG renderer, vendored: items outside a frame's damage are
+# skipped and cached layers redraw only their changed part; the [patch] below)
+i-slint-renderer-femtovg = { version = "=1.18.1", default-features = false, features = ["opengl"] }
 smithay-client-toolkit = { version = "0.20", default-features = false, features = ["calloop", "xkbcommon"] }
 wayland-egl = "0.32"
 khronos-egl = { version = "6", features = ["dynamic"] }
@@ -135,6 +138,9 @@ tessera-screenfx = { path = "surfaces/screenfx" }
 # (vendor/femtovg: femtovg 0.27.0 with one change, SCREEN_CLIP in
 # src/renderer/opengl.rs; MIT or Apache-2.0, its licences beside it)
 femtovg = { path = "vendor/femtovg" }
+# (vendor/i-slint-renderer-femtovg: Slint 1.18.1's, with item culling and
+# partial layers, its lib.rs "tessera-ui's changes"; its licences beside it)
+i-slint-renderer-femtovg = { path = "vendor/i-slint-renderer-femtovg" }
 
 [profile.release]
 opt-level = 3
