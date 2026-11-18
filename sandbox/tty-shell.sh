@@ -196,6 +196,13 @@ case "${1:-start}" in
             gone=0
             pids=($(shell_pids))
             if (( ${#pids[@]} == 0 )); then
+                # No shell while an update, a repair or a start holds the shell
+                # lock: stopped on purpose, not a crash. (18 Nov: the update
+                # screen's 22-minute build was counted as three crashes, and
+                # with a system update that week the recovery screen opened)
+                if ! flock -n "$LOCKDIR/tessera-shell.lock" true 2>/dev/null; then
+                    continue
+                fi
                 # crashed (the third time soon after an update: the recovery window too)
                 "$SHELL_DIR/assets/scripts/shell-restarted.sh" "$LOCKDIR" -p "$SHELL_DIR" 6>&- 8>&-
                 start
