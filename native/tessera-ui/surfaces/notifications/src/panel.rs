@@ -210,6 +210,19 @@ pub(crate) fn alert_glyph(name: &str) -> String {
     }
 }
 
+/// A card's act, for the timing log (its kind and id only)
+fn act_name(c: &C) -> Option<String> {
+    Some(match c {
+        C::Activated(i) => format!("activate {i}"),
+        C::Close(i) => format!("close {i}"),
+        C::ClearGroup(_) => "clear-group".into(),
+        C::Action(i, _) => format!("action {i}"),
+        C::ClearAll => "clear-all".into(),
+        C::Toggle(_) => "toggle-group".into(),
+        _ => return None,
+    })
+}
+
 fn escape(t: &str) -> String {
     t.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
 }
@@ -517,7 +530,13 @@ impl Notifications {
         let win = self.nc.win.as_ref().unwrap();
         let ui = &win.ui;
         // (by card: a header by its group, a card by its note or alert)
-        win.rows.set_keyed(rows, |r| format!("{}:{}:{}", r.kind, r.gkey, if r.kind == 2 { 0 } else { r.b.id }));
+        // A card that left (dismissed, an action done, Clear all), came or
+        // changed: the next frame is drawn and damaged whole. Its partial
+        // damage left the laptop's screen as it was (18 Nov: X, Clear all and
+        // the actions acted, the list emptied, the cards stayed drawn)
+        if win.rows.set_keyed(rows, |r| format!("{}:{}:{}", r.kind, r.gkey, if r.kind == 2 { 0 } else { r.b.id })) {
+            win.surface.redraw_all();
+        }
         ui.set_anything(anything);
         ui.set_bare(bare(&st.shell.cfg, material, st.shell.look.transparency));
         ui.set_glass_plugin(st.shell.plugin);
@@ -590,6 +609,13 @@ impl Notifications {
     }
 
     pub(super) fn nc_message(&mut self, st: &mut State, c: C) {
+        // (the timing log, TESSERA_WAKES or $XDG_RUNTIME_DIR/tessera-wakes:
+        // which act a card's click made, never what the card says)
+        if crate::wayland::wakes_on() {
+            if let Some(what) = act_name(&c) {
+                eprintln!("nc act {what} at {}", crate::util::now_ms());
+            }
+        }
         let alert = |i: i32| if i < 0 { self.nc.alerts.get((-i - 1) as usize).map(|a| a.hid) } else { None };
         match c {
             C::Dismissed => self.nc_close(st, true),
