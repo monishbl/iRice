@@ -509,6 +509,10 @@ def check(config_dir, fetch=True, channel=None):
     # Software Update shows): tools/native-install.py plan
     if fetch:
         report["ui"] = native_plan(new_id, report["channel"])
+        wait = preparing(report["ui"], new_id) if report["available"] else None
+        if wait:
+            report["available"] = False
+            report["preparing"] = wait
     if not report["available"]:
         return report
     report["notes"] = [l for l in git("log", "--format=%s", f"{base}..{new}").splitlines() if l][:30]
@@ -680,6 +684,29 @@ def load_json_text(text, fallback):
 NATIVE = os.path.join(REPO, "tools", "native-install.py")
 
 
+# A version only minutes old has no ready-made tessera-ui yet: server1 builds
+# and signs it after every push (about 45 minutes). Offered meanwhile, the
+# update compiled the shell here instead (19 Nov: 50 minutes on a laptop in
+# Power Saver, from an update started 25 minutes before the download was
+# out). So such a version waits; after this long it's offered anyway, built
+# here if it must be.
+PREPARE_WAIT = 3 * 3600
+PREPARE_TYPICAL = 45 * 60
+
+
+def preparing(ui, rev, now=None):
+    """Minutes until the ready-made build is likely out (at least 5), when
+    the version REV has none yet only because it's new; else None."""
+    if not isinstance(ui, dict) or ui.get("available") is not False:
+        return None
+    if "no ready-made build for it yet" not in str(ui.get("label", "")):
+        return None
+    age = (now or time.time()) - commit_time(rev)
+    if not commit_time(rev) or age < 0 or age >= PREPARE_WAIT:
+        return None
+    return max(5, int((PREPARE_TYPICAL - age) // 60) + 1)
+
+
 def native_plan(ref, channel=None):
     """{"label", "changes", …} for the version REF, or None. channel: which
     rolling release to look in first."""
@@ -800,9 +827,16 @@ def apply(config_dir, choices, extra=(), channel=None):
     report = check(config_dir, fetch=False, channel=channel)
     if report.get("error"):
         raise SystemExit(report["error"])
+    # (a system update started meanwhile: Tessera's part waits for its
+    # ready-made build rather than compiling here)
+    if report["available"] and not report.get("downgrade"):
+        upstream = git("rev-parse", report["upstream"]).strip()
+        if preparing(native_plan(upstream, report.get("channel")), upstream):
+            report["available"] = False
+            report["preparing"] = True
     if not report["available"]:
         if not extra:
-            return {"applied": False, "message": "Already up to date."}
+            return {"applied": False, "message": "Tessera's new version is still being prepared; it's offered once it's ready." if report.get("preparing") else "Already up to date."}
         built, failed = rebuild(list(extra), 10, 75)
         progress(85, "Finishing up")
         return {"applied": False, "rebuilt": True, "backup": "", "built": built, "failed": failed,

@@ -195,7 +195,7 @@ impl About {
         };
         let at = su.undo["at"].as_f64().unwrap_or(0.0);
         let sk: Vec<Value> = su.skipped_all(up).iter().map(|p| json!({"name": p["name"], "to": p["to"]})).collect();
-        let report = tu.report.as_ref().map(|r| json!({"current": s(&r["current"]), "latest": s(&r["latest"]), "ui": s(&r["ui"]["label"]), "changelog": r["changelog"].as_array().cloned().map(Value::from).unwrap_or(json!([])), "notes": r["notes"].as_array().cloned().map(Value::from).unwrap_or(json!([])),
+        let report = tu.report.as_ref().map(|r| json!({"current": s(&r["current"]), "latest": s(&r["latest"]), "ui": s(&r["ui"]["label"]), "preparing": r["preparing"].as_u64().unwrap_or(0), "changelog": r["changelog"].as_array().cloned().map(Value::from).unwrap_or(json!([])), "notes": r["notes"].as_array().cloned().map(Value::from).unwrap_or(json!([])),
             "downgrade": r["downgrade"] == true, "ahead": r["ahead"].as_u64().unwrap_or(0), "leaving": r["leaving"].as_array().cloned().map(Value::from).unwrap_or(json!([])), "channelName": s(&r["channelName"])}));
         // (the channel: what this copy is now, no download)
         let tu_info = tu.info.as_ref().map(|i| {

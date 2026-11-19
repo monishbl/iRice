@@ -202,3 +202,27 @@ class Wiring(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PreparingTests(unittest.TestCase):
+    """A version without its ready-made build yet waits (19 Nov: an update
+    started 25 minutes after a push compiled the shell for 50 minutes)."""
+
+    def setUp(self):
+        self.m = load()
+        self.missing = {"available": False, "label": "tessera-ui: built here (no ready-made build for it yet)"}
+
+    def test_new_version_waits_with_minutes_left(self):
+        with mock.patch.object(self.m, "commit_time", return_value=1000):
+            self.assertEqual(self.m.preparing(self.missing, "x", now=1000 + 10 * 60), 36)
+            self.assertEqual(self.m.preparing(self.missing, "x", now=1000 + 60 * 60), 5)
+
+    def test_old_version_is_offered_anyway(self):
+        with mock.patch.object(self.m, "commit_time", return_value=1000):
+            self.assertIsNone(self.m.preparing(self.missing, "x", now=1000 + 3 * 3600))
+
+    def test_only_when_the_build_is_missing(self):
+        with mock.patch.object(self.m, "commit_time", return_value=1000):
+            self.assertIsNone(self.m.preparing({"available": True, "label": "tessera-ui: ready-made (v3)"}, "x", now=1100))
+            self.assertIsNone(self.m.preparing({"available": False, "label": "tessera-ui: built here (your edits in native/)"}, "x", now=1100))
+            self.assertIsNone(self.m.preparing(None, "x", now=1100))

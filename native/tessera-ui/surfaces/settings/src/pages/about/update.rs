@@ -298,7 +298,12 @@ pub fn page(cx: &mut Ctx, p: &mut Page) {
             "Tessera {}{}{}{}",
             s(&report["current"]),
             if available { format!(" → {}{}", s(&report["latest"]), if b(&report["downgrade"]) { format!(" (older, {})", s(&report["channelName"])) } else { String::new() }) } else { String::new() },
-            if s(&report["ui"]).is_empty() { String::new() } else { format!(" · {}", s(&report["ui"])) },
+            // (a new version still being built and signed: offered when ready,
+            // instead of compiling the shell here meanwhile)
+            match report["preparing"].as_u64().unwrap_or(0) {
+                0 => if s(&report["ui"]).is_empty() { String::new() } else { format!(" · {}", s(&report["ui"])) },
+                m => format!(" · A new version is being prepared. It's offered in about {m} minutes, ready to install in seconds"),
+            },
             if hypr.is_empty() { String::new() } else { format!(" · Hyprland {hypr}") }
         )
     } else {
