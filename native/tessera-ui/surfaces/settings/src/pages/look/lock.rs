@@ -128,28 +128,7 @@ pub fn lock(cx: &mut Ctx, p: &mut Page) {
         .footer("While charging and left alone, the screen shows a large clock, your widgets or photos instead of going dark. Swipe or scroll to change; any key brings your desktop back.")
         .row(Row::new("Bedside Mode").switch(standby, sb));
 
-    // The Tessera login screen (greetd)
-    let login = &feed(cx)["login"];
-    let (installed, status) = (login["installed"].as_bool().unwrap_or(false), login["status"].as_str().unwrap_or("").to_string());
-    let lfooter = if !installed {
-        "This computer signs in with another login screen. Tessera's comes with ./install.sh --greeter; until then, Preview shows it.".to_string()
-    } else if !status.is_empty() {
-        status
-    } else {
-        "Your colours, light or dark and your clock go to the login screen by themselves.".to_string()
-    };
-    let style = cx.s("lock.loginStyle");
-    let sr = choice(cx, "Style", "loginStyle", &["look", "text", "plain"], &["Your look", "Text", "Plain"], 300.0).detail(match style.as_str() {
-        "look" => "Your look, the one you used last: Glass or Material, with your clock and colours",
-        "text" => "Like ly: the session, your login and the password in a box of text, keyboard first",
-        "plain" => "Black, your picture, your name and the field",
-        _ => "",
-    });
-    let preview = cx.on(|cx, _| cx.ask("look", "previewLogin", Value::Null));
-    p.group("Login screen")
-        .footer(lfooter)
-        .row(sr)
-        .row(Row::new("Preview").detail("Shows it on this screen. The password there is tessera; Esc closes it.").button("Preview Login Screen", preview));
+    login_screen(cx, p);
 
     // Starting up: the boot animation (Plymouth: BootSplash) and the login intro
     if !cx.local_b("look.bootRefreshed") {
@@ -304,6 +283,204 @@ pub fn lock(cx: &mut Ctx, p: &mut Page) {
     p.end_more();
 }
 
+/// Where the login screen stands (LoginScreen's `login` feed: the copy, the
+/// login manager on, the root helper's record of a switch, this boot)
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LoginState {
+    /// not read yet
+    Checking,
+    /// another login manager (or the console) signs you in
+    Other,
+    /// the helper is switching (the password, then a moment)
+    Working,
+    /// the helper is going back
+    Leaving,
+    /// switched; Tessera's shows from the next start
+    Restart,
+    /// Tessera's is the login screen
+    Active,
+    /// Tessera's didn't start, so the one before came back by itself
+    Reverted,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct LoginView {
+    pub state: LoginState,
+    /// the login manager on now, as people know it ("SDDM")
+    pub dm: String,
+    /// the one before Tessera's ("" when none is known)
+    pub before: String,
+    /// why it went back by itself
+    pub why: String,
+    /// the root helper can switch (an update brings it)
+    pub can_switch: bool,
+    /// went back by choice, from the next start
+    pub off_pending: bool,
+    pub error: String,
+}
+
+/// A login manager's name as people know it (login_screen.rs's dm_name)
+pub fn dm_name(unit: &str) -> String {
+    match unit {
+        "" => "the console".into(),
+        "sddm" => "SDDM".into(),
+        "gdm" => "GDM".into(),
+        "lightdm" => "LightDM".into(),
+        "lxdm" => "LXDM".into(),
+        "xdm" => "XDM".into(),
+        o => o.into(),
+    }
+}
+
+pub fn login_view(l: &Value) -> LoginView {
+    let s = |v: &Value| v.as_str().unwrap_or("").to_string();
+    let record = &l["record"];
+    let rstate = s(&record["state"]);
+    let same_boot = !s(&l["boot"]).is_empty() && s(&record["boot"]) == s(&l["boot"]);
+    let dm = s(&l["dm"]);
+    let previous = if record["previous"].is_string() { Some(s(&record["previous"])) } else { Some(s(&l["hint"])).filter(|h| !h.is_empty()) };
+    let tessera = l["tessera"].as_bool().unwrap_or(false);
+    let state = if s(&l["busy"]) == "switch" {
+        LoginState::Working
+    } else if s(&l["busy"]) == "back" {
+        LoginState::Leaving
+    } else if !l["checked"].as_bool().unwrap_or(false) {
+        if l["installed"].as_bool().unwrap_or(false) { LoginState::Active } else { LoginState::Checking }
+    } else if dm == "greetd" && tessera {
+        if rstate == "trial" && same_boot { LoginState::Restart } else { LoginState::Active }
+    } else if rstate == "reverted" {
+        LoginState::Reverted
+    } else {
+        LoginState::Other
+    };
+    LoginView {
+        state,
+        dm: dm_name(&dm),
+        before: previous.as_deref().map(dm_name).unwrap_or_default(),
+        why: s(&record["reason"]),
+        can_switch: l["canSwitch"].as_bool().unwrap_or(false),
+        off_pending: rstate == "off" && same_boot,
+        error: s(&l["error"]),
+    }
+}
+
+/// The "Login screen" group: Tessera's style and preview, and switching to
+/// it from another login manager (and back)
+fn login_screen(cx: &mut Ctx, p: &mut Page) {
+    if !cx.local_b("look.login.refreshed") {
+        cx.local_set("look.login.refreshed", true);
+        cx.ask("look", "loginRefresh", Value::Null);
+    }
+    let login = feed(cx)["login"].clone();
+    let v = login_view(&login);
+    let status = login["status"].as_str().unwrap_or("").to_string();
+    let switched = matches!(v.state, LoginState::Active | LoginState::Restart);
+
+    // Style: stored only where it shows; before the switch it waits for it
+    let values = ["look", "text", "plain"];
+    let wanted = cx.local_s("look.login.style");
+    let style = if !switched && !wanted.is_empty() { wanted.clone() } else { cx.s("lock.loginStyle") };
+    let pick = cx.on(move |cx, a| {
+        let Some(v) = values.get(a.i.max(0) as usize) else { return };
+        let fb = login_view(&feed(cx)["login"].clone());
+        if matches!(fb.state, LoginState::Active | LoginState::Restart | LoginState::Checking) {
+            cx.set("lock.loginStyle", *v);
+            cx.local_set("look.login.style", "");
+        } else {
+            cx.local_set("look.login.style", *v);
+        }
+    });
+    let style_detail = if !switched && !wanted.is_empty() && v.state != LoginState::Checking {
+        "Shows once you use Tessera's login screen"
+    } else {
+        match style.as_str() {
+            "look" => "Your look, the one you used last: Glass or Material, with your clock and colours",
+            "text" => "Like ly: the session, your login and the password in a box of text, keyboard first",
+            "plain" => "Black, your picture, your name and the field",
+            _ => "",
+        }
+    };
+    let sr = Row::new("Style").segmented(&["Your look", "Text", "Plain"], idx(&values, &style), pick).width(300.0).detail(style_detail);
+
+    let switch = cx.on(|cx, _| {
+        let wanted = cx.local_s("look.login.style");
+        let style = if wanted.is_empty() { cx.s("lock.loginStyle") } else { wanted };
+        cx.set("lock.loginStyle", style.clone());
+        cx.local_set("look.login.style", "");
+        cx.ask("look", "loginSwitch", json!([style]));
+    });
+    let back = cx.on(|cx, _| cx.ask("look", "loginBack", Value::Null));
+    let restart = cx.on(|cx, _| cx.ask("about", "reboot", Value::Null));
+    let preview = cx.on(|cx, _| cx.ask("look", "previewLogin", Value::Null));
+    let use_row = |label: String, detail: String| Row::new(label).detail(detail).button("Use Tessera's login screen", switch.clone()).primary().enabled(v.can_switch);
+    let back_row = || {
+        Row::new(format!("Before: {}", v.before))
+            .detail("The login screen this computer had. Going back takes effect at the next restart.")
+            .button(format!("Go back to {}", v.before), back.clone())
+    };
+
+    let mut rows: Vec<Row> = Vec::new();
+    let footer = match v.state {
+        LoginState::Checking => String::new(),
+        LoginState::Other => {
+            let detail = if !v.can_switch {
+                "Update Tessera first (Settings → Software Update), then switch here.".to_string()
+            } else if v.off_pending {
+                format!("{} is back from the next restart. Tessera's login screen shows your look, Text or Plain.", capital(&v.dm))
+            } else {
+                "Tessera's shows your look, Text or Plain. Switching asks for your password once and takes effect at the next restart.".to_string()
+            };
+            rows.push(use_row(signs_in_with(&v.dm), detail));
+            format!("If Tessera's login screen doesn't start, {} comes back by itself.", v.dm)
+        }
+        LoginState::Reverted => {
+            let why = if v.why.is_empty() { "it didn't start".to_string() } else { v.why.clone() };
+            rows.push(use_row("Tessera's login screen didn't start".into(), format!("{} is back because {why}.", capital(&v.dm))));
+            "Using it again tries it at the next restart, with the same way back.".into()
+        }
+        LoginState::Working => {
+            rows.push(Row::new("Setting up Tessera's login screen").detail("Enter your password when asked. This takes a moment.").spinner());
+            String::new()
+        }
+        LoginState::Leaving => {
+            rows.push(Row::new(format!("Going back to {}", if v.before.is_empty() { "the login screen before".to_string() } else { v.before.clone() })).spinner());
+            String::new()
+        }
+        LoginState::Restart => {
+            let before = if v.before.is_empty() { "the one before".to_string() } else { v.before.clone() };
+            rows.push(Row::new("Restart to use it").detail(format!("Tessera's login screen replaces {before} when your computer starts again.")).button("Restart now", restart).primary());
+            format!("If it doesn't start, {before} comes back by itself and you're told why after you log in.")
+        }
+        LoginState::Active => {
+            if status.is_empty() { "Your colours, light or dark and your clock go to the login screen by themselves.".to_string() } else { status }
+        }
+    };
+    if v.state != LoginState::Working && v.state != LoginState::Leaving {
+        rows.push(sr);
+        rows.push(Row::new("Preview").detail("Shows it on this screen. The password there is tessera; Esc closes it.").button("Preview login screen", preview));
+    }
+    if switched && !v.before.is_empty() {
+        rows.push(back_row());
+    }
+    let footer = if v.error.is_empty() { footer } else { v.error.clone() };
+    let g = p.group("Login screen");
+    g.footer(footer);
+    for r in rows {
+        g.row(r);
+    }
+}
+
+/// "This computer signs in with SDDM" (or "on the console")
+pub fn signs_in_with(dm: &str) -> String {
+    if dm == "the console" { "This computer signs in on the console".into() } else { format!("This computer signs in with {dm}") }
+}
+
+/// "the console" → "The console" (a name at the start of a sentence)
+fn capital(s: &str) -> String {
+    let mut c = s.chars();
+    c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default()
+}
+
 /// Bedside Mode's displays after switching one (an empty list: every
 /// display, so new ones join in)
 pub fn standby_screens(all: &[String], list: &[String], name: &str, on: bool) -> Vec<String> {
@@ -337,6 +514,44 @@ mod tests {
         assert_eq!(boot_footer(&json!({"chosen": "none"})), "No picture: the boot messages, as text. Changing it asks for your password.");
         assert_eq!(boot_footer(&json!({"chosen": "system", "original": "bgrt"})), "Your system's own (bgrt). Changing it asks for your password.");
         assert_eq!(boot_footer(&json!({"chosen": "orbit", "designs": [{"id": "orbit", "description": "Rings."}]})), "Rings. Changing it asks for your password.");
+    }
+
+    #[test]
+    fn login_screen_states() {
+        // SDDM on, nothing switched yet: say so, offer the switch
+        let other = json!({"checked": true, "dm": "sddm", "tessera": false, "record": null, "boot": "b1", "canSwitch": true});
+        let v = login_view(&other);
+        assert_eq!((v.state, v.dm.as_str(), v.can_switch), (LoginState::Other, "SDDM", true));
+        assert_eq!(signs_in_with(&v.dm), "This computer signs in with SDDM");
+        assert_eq!(signs_in_with(&login_view(&json!({"checked": true, "dm": ""})).dm), "This computer signs in on the console");
+        // (a helper from before login-switch: the button waits for an update)
+        assert!(!login_view(&json!({"checked": true, "dm": "sddm"})).can_switch);
+        // the helper running
+        assert_eq!(login_view(&json!({"checked": true, "dm": "sddm", "busy": "switch"})).state, LoginState::Working);
+        assert_eq!(login_view(&json!({"checked": true, "dm": "greetd", "tessera": true, "busy": "back"})).state, LoginState::Leaving);
+        // switched in this boot: restart to use it; the way back is SDDM
+        let trial = json!({"previous": "sddm", "state": "trial", "boot": "b1", "time": 1});
+        let v = login_view(&json!({"checked": true, "dm": "greetd", "tessera": true, "record": trial, "boot": "b1"}));
+        assert_eq!((v.state, v.before.as_str()), (LoginState::Restart, "SDDM"));
+        // after the restart (the check confirms it soon): active
+        assert_eq!(login_view(&json!({"checked": true, "dm": "greetd", "tessera": true, "record": trial, "boot": "b2"})).state, LoginState::Active);
+        // went back by itself, with why
+        let v = login_view(&json!({"checked": true, "dm": "sddm", "boot": "b2",
+                                   "record": {"previous": "sddm", "state": "reverted", "reason": "the login screen didn't appear", "boot": "b2"}}));
+        assert_eq!((v.state, v.why.as_str(), v.dm.as_str()), (LoginState::Reverted, "the login screen didn't appear", "SDDM"));
+        // went back by choice, before the restart
+        let v = login_view(&json!({"checked": true, "dm": "sddm", "boot": "b2", "record": {"previous": "sddm", "state": "off", "boot": "b2"}}));
+        assert_eq!((v.state, v.off_pending), (LoginState::Other, true));
+        // greetd with another greeter isn't Tessera's
+        assert_eq!(login_view(&json!({"checked": true, "dm": "greetd", "tessera": false})).state, LoginState::Other);
+        // an install from before the record: install.sh's note is the way back
+        let v = login_view(&json!({"checked": true, "dm": "greetd", "tessera": true, "hint": "ly"}));
+        assert_eq!((v.state, v.before.as_str()), (LoginState::Active, "ly"));
+        assert_eq!(login_view(&json!({"checked": true, "dm": "greetd", "tessera": true})).before, "");
+        // not read yet: what the copy says, never the switch
+        assert_eq!(login_view(&json!({"installed": true})).state, LoginState::Active);
+        assert_eq!(login_view(&json!({})).state, LoginState::Checking);
+        assert_eq!(login_view(&json!({"checked": true, "dm": "sddm", "error": "No."})).error, "No.");
     }
 
     #[test]

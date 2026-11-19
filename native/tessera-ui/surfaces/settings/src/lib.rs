@@ -69,7 +69,7 @@ const WIFI_TRANSIENT: &[&str] = &["wifi.form", "wifi.asking", "wifi.typed", "wif
 /// The account pages' typed state (forms, a typed password, a question
 /// asked): gone when you go to another page or Settings opens again, as
 /// the QML's pages made anew
-const PAGE_TRANSIENT: &[&str] = &["acct.", "ai.", "cal.", "wr.", "gest.", "focus.", "dict.refreshed", "look.bootRefreshed"];
+const PAGE_TRANSIENT: &[&str] = &["acct.", "ai.", "cal.", "wr.", "gest.", "focus.", "dict.refreshed", "look.bootRefreshed", "look.login."];
 /// Material's cookie steps this often (ms)
 const SPIN_MS: u64 = 80;
 /// The services' updates (every service's, every tick) wait this long and

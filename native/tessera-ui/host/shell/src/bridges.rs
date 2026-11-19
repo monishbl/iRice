@@ -148,6 +148,10 @@ pub fn settings_act(h: &mut Host, ctx: &mut Ctx, group: &str, what: &str, a: &[V
         }
         "shelf" => h.ask("shelf.toggle", json!([])),
         "previewLogin" => h.ask("system.previewLogin", json!([])),
+        // Tessera's login screen instead of another, and back (login_screen.rs)
+        "loginRefresh" => h.ask("loginscreen.refresh", json!([])),
+        "loginSwitch" => h.ask("loginscreen.switch", json!([s(0)])),
+        "loginBack" => h.ask("loginscreen.back", json!([])),
         "bootRefresh" => h.ask("system.bootRefresh", json!([])),
         "bootSet" => h.ask("system.bootSet", json!([s(0)])),
         "playIntro" => {

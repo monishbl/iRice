@@ -65,6 +65,17 @@ With the password:
       loaded now and at every start (modprobe.d and modules-load.d drop-ins
       named tessera-phonecam.conf); off removes them and unloads it when no app
       is using it.
+  login-switch on <shell folder> <look json> | login-switch off [<before>]
+      Tessera's login screen instead of the one this computer has (SDDM,
+      GDM, LightDM, ly or none), from the next start: greetd, the greeter
+      user, the login screen's copy in /usr/share/tessera with the look,
+      /etc/greetd/config.toml (kept as .pre-tessera), the keyring at login,
+      then the one before off and greetd on. The one before is kept in
+      /etc/tessera/login-switch.json; if Tessera's fails at the next start
+      (greetd fails, or the login screen doesn't show), the one before comes
+      back by itself (login-fallback, login-check: systemd runs them). off:
+      the one before again (<before>: the one install.sh noted, when there's
+      no record). See "login-switch" below.
 With the password, once, at the start:
   update [--snapshot snapper|timeshift] [--system] [--ignore a,b]
          [--install a,b] [--remove a,b] [--downgrade f,g] [--mirrors l,m] [--setup <shell folder>] [--broker]
@@ -1518,6 +1529,408 @@ def refresh_login(src, uid, prefix=None):
     return written
 
 
+# ── login-switch: Tessera's login screen instead of another ─────────────
+# Settings → Lock & Login Screen ("Use Tessera's login screen") and
+# ./install.sh (--greeter, --only=login) both switch through here: greetd
+# (installed when missing), the greeter user, the login screen's copy of
+# Tessera in /usr/share/tessera with its look, /etc/greetd/config.toml (the
+# one before kept as .pre-tessera), the keyring unlocked by the login
+# password, then the login manager before it turned off and greetd on, last,
+# so a failure before leaves the one you had.
+# The login manager before is kept in LOGIN_RECORD. A bad switch would leave
+# no graphical way in, so after the restart:
+#   - greetd failing (systemd gives up restarting it) starts
+#     tessera-login-fallback.service (OnFailure, a drop-in for greetd), and
+#   - tessera-login-check.timer checks the login screen showed: greeter-
+#     start.sh writes this boot's id to GREETER_SEEN once it has been up 10 s
+#     or someone logged in through it; a session from greetd counts too.
+#     Without either within 90 s of greetd starting (10 min of the boot at
+#     most), or with greetd failed, it switches back.
+# Switching back turns greetd off, the one before on and starts it now; the
+# record says why (state "reverted"), and the shell tells you after you log in.
+# `login-switch off` goes back by choice (state "off"). Exactly one login
+# manager is ever on: the old one is turned off before greetd goes on, and
+# on again when greetd can't be.
+LOGIN_RECORD = "/etc/tessera/login-switch.json"
+GREETER_SEEN = "/var/lib/tessera/greeter/seen"
+GREETD_CONFIG = "/etc/greetd/config.toml"
+GREETD_TOML = b'[terminal]\nvt = 1\n\n[default_session]\ncommand = "/usr/share/tessera/greeter-session.sh"\nuser = "greeter"\n'
+DM_LINK = "/etc/systemd/system/display-manager.service"
+UNIT_DIRS = ("/etc/systemd/system", "/usr/lib/systemd/system", "/lib/systemd/system")
+LOGIN_UNITS = {
+    "/etc/systemd/system/greetd.service.d/tessera-fallback.conf":
+        "# Tessera: when the login screen fails, the one you had before comes back\n"
+        "# (tessera-root login-fallback; Settings > Lock & Login Screen)\n"
+        "[Unit]\nOnFailure=tessera-login-fallback.service\n",
+    "/etc/systemd/system/tessera-login-fallback.service":
+        "[Unit]\nDescription=Tessera: the login screen before, when Tessera's fails\n\n"
+        "[Service]\nType=oneshot\nExecStart=/usr/lib/tessera/tessera-root login-fallback\n",
+    "/etc/systemd/system/tessera-login-check.service":
+        "[Unit]\nDescription=Tessera: check the new login screen showed\n\n"
+        "[Service]\nType=oneshot\nExecStart=/usr/lib/tessera/tessera-root login-check\n",
+    "/etc/systemd/system/tessera-login-check.timer":
+        "[Unit]\nDescription=Tessera: check the new login screen showed, after the restart\n\n"
+        "[Timer]\nOnBootSec=60s\nOnUnitActiveSec=20s\nAccuracySec=5s\n\n[Install]\nWantedBy=timers.target\n",
+}
+CHECK_TIMER = "tessera-login-check.timer"
+DM_NAME = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,40}$")
+PAM_KEYRING = ("/usr/lib/security/pam_gnome_keyring.so",)
+KEYRING_MARK = "# tessera: unlock the keyring with the login password"
+SEEN_AFTER = 90  # s greetd runs without the login screen showing: back
+GIVE_UP = 600  # s after the boot: back, whatever greetd is doing
+DEFAULT_WALLPAPER = "shell/assets/wallpapers/tahoe-dusk.jpg"
+MAX_UI = 256 * 1024 * 1024
+
+
+def pam_with_keyring(text):
+    """A login's PAM file with your keyring unlocked by the login password:
+    gnome-keyring's lines after its last auth and its last session line,
+    each under KEYRING_MARK (uninstall.sh takes them out). None when there's
+    nothing to add: the keyring's lines are there, or KWallet's (it unlocks
+    its own), or the file has no auth or session lines."""
+    if re.search(r"pam_gnome_keyring\.so|pam_kwallet[0-9]*\.so", text):
+        return None
+    lines = text.splitlines()
+    auth = [i for i, x in enumerate(lines) if re.match(r"^-?auth\s", x)]
+    sess = [i for i, x in enumerate(lines) if re.match(r"^-?session\s", x)]
+    if not auth or not sess:
+        return None
+    out = []
+    for i, x in enumerate(lines):
+        out.append(x)
+        if i == auth[-1]:
+            out += [KEYRING_MARK, "-auth      optional     pam_gnome_keyring.so"]
+        if i == sess[-1]:
+            out += [KEYRING_MARK, "-session   optional     pam_gnome_keyring.so auto_start"]
+    return "\n".join(out) + "\n"
+
+
+def _at(prefix, path):
+    return os.path.join(prefix, path.lstrip("/"))
+
+
+def current_dm(prefix="/"):
+    """The login manager the computer starts with (display-manager.service's
+    unit), "" for none (a console login)."""
+    try:
+        target = os.readlink(_at(prefix, DM_LINK))
+    except OSError:
+        return ""
+    name = os.path.basename(target)
+    return name[:-len(".service")] if name.endswith(".service") else name
+
+
+def tessera_greetd(prefix="/"):
+    """greetd starts Tessera's login screen (its config, Tessera's copy)"""
+    return "/usr/share/tessera/" in (read_text(_at(prefix, GREETD_CONFIG)) or "") and os.path.isdir(_at(prefix, LOGIN_SHARE + "/shell"))
+
+
+def check_dm(name, prefix="/"):
+    """A login manager's name, only one whose unit is installed"""
+    if not isinstance(name, str) or not DM_NAME.match(name):
+        raise Refused("that isn't a login manager's name")
+    if not any(os.path.isfile(_at(prefix, f"{d}/{name}.service")) for d in UNIT_DIRS):
+        raise Refused(f"{name} isn't installed")
+    return name
+
+
+def read_record(prefix="/"):
+    try:
+        r = json.loads(read_text(_at(prefix, LOGIN_RECORD)) or "{}")
+    except ValueError:
+        r = {}
+    return r if isinstance(r, dict) else {}
+
+
+def write_record(prefix, **fields):
+    rec = {k: v for k, v in fields.items() if v is not None}
+    rec["time"] = int(time.time())
+    rec["boot"] = boot_id(prefix)
+    write_root(_at(prefix, LOGIN_RECORD), (json.dumps(rec, sort_keys=True) + "\n").encode(), 0o644)
+    return rec
+
+
+def boot_id(prefix="/"):
+    return (read_text(_at(prefix, "/proc/sys/kernel/random/boot_id")) or "").strip()
+
+
+def uptime(prefix="/"):
+    try:
+        return float((read_text(_at(prefix, "/proc/uptime")) or "0").split()[0])
+    except (ValueError, IndexError):
+        return 0.0
+
+
+def _systemctl(run, *args):
+    """(exit code, what it said: output and errors) of systemctl"""
+    try:
+        p = run(["systemctl", *args], capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return None, ""
+    return p.returncode, (p.stdout or "") + (p.stderr or "")
+
+
+def set_dm(new, old, prefix="/", run=subprocess.run):
+    """display-manager.service from old to new ("" for none): old off first
+    (another can't take the name while it holds it), then new on; when new
+    can't be, old goes back on. Never both, never neither."""
+    if new == old:
+        return
+    if old:
+        code, out = _systemctl(run, "disable", f"{old}.service")
+        if code != 0 or current_dm(prefix) == old:
+            raise Refused(f"couldn't turn off {old}: {out.strip() or 'systemctl failed'}")
+    if new:
+        code, out = _systemctl(run, "enable", f"{new}.service")
+        if code != 0 or current_dm(prefix) != new:
+            if old:
+                _systemctl(run, "enable", f"{old}.service")
+            raise Refused(f"couldn't turn on {new}: {out.strip().splitlines()[-1] if out.strip() else 'systemctl failed'}")
+
+
+def ensure_greeter_user(run=subprocess.run, getpw=pwd.getpwnam):
+    """greetd's greeter user (its package makes it; else sysusers, else useradd)"""
+    for attempt in (None, ["systemd-sysusers"], ["useradd", "--system", "--no-create-home", "--home-dir", "/var/lib/greetd",
+                                                  "--shell", "/bin/bash", "--groups", "video", "greeter"]):
+        if attempt:
+            _cmd(run, *attempt)
+        try:
+            return getpw("greeter")
+        except KeyError:
+            continue
+    raise Refused("couldn't make greetd's greeter user")
+
+
+def caller_home(uid):
+    try:
+        return pwd.getpwuid(uid).pw_dir
+    except KeyError:
+        return ""
+
+
+def login_wallpaper_from(uid, home, repo):
+    """The wallpaper you use (your settings' dark one, else the one), read as
+    you; Tessera's own when it can't be read"""
+    try:
+        cfg = json.loads(read_as(uid, os.path.join(home, ".config/tessera/config.json"), MAX_SOURCE))
+        w = cfg.get("wallpaper", {}) if isinstance(cfg, dict) else {}
+        path = check_image_path(w.get("darkPath") or w.get("path") or "")
+        data = read_as(uid, path, MAX_IMAGE)
+        if image_kind(data):
+            return data
+    except (OSError, ValueError, Refused, AttributeError):
+        pass
+    return read_as(uid, os.path.join(repo, DEFAULT_WALLPAPER), MAX_IMAGE)
+
+
+def install_login_copy(repo, look, uid, prefix, run, chown=os.chown):
+    """/usr/share/tessera: the shell (and Material) from the checkout, the
+    greeter's compositor config and start script, the Rust login screen when
+    you have it, the look, the wallpaper. Returns what it wrote."""
+    share = _at(prefix, LOGIN_SHARE)
+    if os.path.islink(share):
+        raise Refused(f"{LOGIN_SHARE} is a link")
+    os.makedirs(share, mode=0o755, exist_ok=True)
+    os.chmod(share, 0o755)
+    done = []
+    for name in ("shell", "material"):
+        if os.path.isfile(os.path.join(repo, name, "shell.qml")):
+            write_tree(read_tree(os.path.join(repo, name), uid), os.path.join(share, name))
+            done.append(os.path.join(share, name))
+    lua = read_as(uid, os.path.join(repo, "hypr/greeter.lua"), MAX_SOURCE).rstrip(b"\n") + b"\n"
+    code, virt = _cmd(run, "systemd-detect-virt", "--vm")
+    virt = virt.strip()
+    if code == 0 and virt and virt != "none" and re.match(r"^[a-z0-9_-]+$", virt):
+        lua += VM_MARK + virt.encode() + b"): software cursor\nhl.config({ cursor = { no_hardware_cursors = true } })\n"
+    files = [("greeter.lua", lua, 0o644),
+             ("greeter-session.sh", read_as(uid, os.path.join(repo, "hypr/greeter-session.sh"), MAX_SOURCE), 0o755),
+             ("greeter.json", json.dumps(look, sort_keys=True, separators=(",", ":")).encode(), 0o644),
+             ("wallpaper.jpg", login_wallpaper_from(uid, caller_home(uid), repo), 0o644)]
+    # The login screen in Rust (tessera-ui --greeter), when you have it;
+    # greeter-start.sh starts the QML one without it
+    ui = os.path.join(caller_home(uid), ".local/share/tessera/bin/tessera-ui")
+    try:
+        files.append(("bin/tessera-ui", read_as(uid, ui, MAX_UI), 0o755))
+    except (OSError, Refused):
+        pass
+    for rel, data, mode in files:
+        write_root(os.path.join(share, rel), data, mode)
+        done.append(os.path.join(share, rel))
+    # Where the login screen says it showed (greeter-start.sh, as greeter)
+    seen = os.path.dirname(_at(prefix, GREETER_SEEN))
+    os.makedirs(seen, mode=0o755, exist_ok=True)
+    if os.geteuid() == 0:
+        pw = ensure_greeter_user(run)
+        chown(seen, pw.pw_uid, pw.pw_gid)
+    return done
+
+
+def login_switch_on(src, look_text, uid, prefix=None, run=subprocess.run, which=shutil.which):
+    """Tessera's login screen from the next start (see above). Returns the
+    record."""
+    prefix = PREFIX if prefix is None else prefix
+    src = check_folder(src)
+    look = check_login_look(look_text)
+    repo = login_tree(src)
+    if repo is None or repo != os.path.dirname(src.rstrip("/")) or not all(
+            os.path.isfile(os.path.join(repo, "hypr", f)) for f in ("greeter.lua", "greeter-session.sh")):
+        raise Refused("that folder has no login screen to install: update Tessera, then try again")
+    dm, rec = current_dm(prefix), read_record(prefix)
+    already = dm == "greetd" and tessera_greetd(prefix)
+    if already:
+        previous = rec.get("previous", "") if isinstance(rec.get("previous"), str) else ""
+    else:
+        previous = dm
+    # The helper the fallback units start (install.sh, before its own setup)
+    if not os.path.isfile(_at(prefix, LIB + "/tessera-root")):
+        setup(src, uid, prefix, run)
+    if which("greetd") is None and not os.path.isfile(_at(prefix, "/usr/bin/greetd")):
+        try:
+            p = run([PACMAN, "-S", "--needed", "--noconfirm", "greetd"], capture_output=True, text=True, timeout=900)
+            code, out = p.returncode, (p.stdout or "") + (p.stderr or "")
+        except (OSError, subprocess.SubprocessError):
+            code, out = None, ""
+        if code != 0:
+            last = out.strip().splitlines()[-1] if out.strip() else "pacman failed"
+            raise Refused(f"couldn't install greetd: {last}")
+    if os.geteuid() == 0:
+        ensure_greeter_user(run)
+    install_login_copy(repo, look, uid, prefix, run)
+    conf = _at(prefix, GREETD_CONFIG)
+    if os.path.isfile(conf) and not os.path.lexists(conf + ".pre-tessera"):
+        copy_file(conf, conf + ".pre-tessera")
+    write_root(conf, GREETD_TOML, 0o644)
+    # (the copy under the old name: greetd starts Tessera's now)
+    old = _at(prefix, OLD_LOGIN_SHARE)
+    if os.path.isdir(old) and not os.path.islink(old):
+        shutil.rmtree(old, ignore_errors=True)
+    pam = _at(prefix, "/etc/pam.d/greetd")
+    if any(os.path.exists(_at(prefix, m)) for m in PAM_KEYRING) and os.path.isfile(pam):
+        new = pam_with_keyring(read_text(pam) or "")
+        if new is not None:
+            if not os.path.lexists(pam + ".pre-tessera"):
+                copy_file(pam, pam + ".pre-tessera")
+            write_root(pam, new.encode(), 0o644)
+    for path, text in LOGIN_UNITS.items():
+        write_root(_at(prefix, path), text.encode(), 0o644)
+    _systemctl(run, "daemon-reload")
+    if already:
+        return write_record(prefix, previous=previous, state=rec.get("state") if rec.get("state") in ("trial", "active") else "active")
+    # Recorded before switching: a switch cut short still knows the way back
+    record = write_record(prefix, previous=previous, state="trial")
+    if dm == "greetd":
+        pass  # (greetd with another greeter: on already, only its config changed)
+    else:
+        try:
+            set_dm("greetd", previous, prefix, run)
+        except Refused:
+            write_record(prefix, previous=previous, state="off")
+            raise
+    _systemctl(run, "enable", CHECK_TIMER)
+    return record
+
+
+def login_back(prefix, run, state, reason=None, now=False):
+    """greetd off, the login manager before on (now too, at the start)"""
+    rec = read_record(prefix)
+    previous = rec.get("previous")
+    if not isinstance(previous, str) or (previous and not DM_NAME.match(previous)):
+        raise Refused("there's no record of the login screen before")
+    if current_dm(prefix) == "greetd":
+        if previous == "greetd":
+            # (greetd with another greeter before: its config back)
+            conf = _at(prefix, GREETD_CONFIG)
+            if os.path.isfile(conf + ".pre-tessera"):
+                copy_file(conf + ".pre-tessera", conf)
+        else:
+            set_dm(previous, "greetd", prefix, run)
+    _systemctl(run, "disable", CHECK_TIMER)
+    out = write_record(prefix, previous=previous, state=state, reason=reason)
+    if now:
+        # (the boot goes on with the one before; nothing was logged in through greetd)
+        if previous != "greetd":
+            _systemctl(run, "stop", "--no-block", "greetd.service")
+        _systemctl(run, "start", "--no-block", f"{previous}.service" if previous else "getty@tty1.service")
+    return out
+
+
+def login_switch_off(hint=None, prefix=None, run=subprocess.run):
+    """Back to the login manager before, from the next start. hint: the one
+    install.sh noted before there was a record (checked: an installed unit)."""
+    prefix = PREFIX if prefix is None else prefix
+    rec = read_record(prefix)
+    if not isinstance(rec.get("previous"), str):
+        if hint is None:
+            raise Refused("there's no record of the login screen before")
+        write_record(prefix, previous=check_dm(hint, prefix) if hint else "", state="active")
+    return login_back(prefix, run, "off")
+
+
+def greetd_session(run):
+    """Someone is logged in through greetd"""
+    code, out = _cmd(run, "loginctl", "list-sessions", "--no-legend")
+    if code != 0:
+        return False
+    for line in out.splitlines():
+        sid = line.split()[0] if line.split() else ""
+        if not re.match(r"^[A-Za-z0-9_-]+$", sid):
+            continue
+        c, props = _cmd(run, "loginctl", "show-session", sid, "-p", "Service", "-p", "Class")
+        if c == 0 and "Service=greetd" in props.split() and "Class=user" in props.split():
+            return True
+    return False
+
+
+def greetd_state(run):
+    """(ActiveState, seconds since it became active, or None)"""
+    code, out = _systemctl(run, "show", "greetd.service", "-p", "ActiveState", "-p", "ActiveEnterTimestampMonotonic")
+    props = dict(line.split("=", 1) for line in out.splitlines() if "=" in line)
+    try:
+        since = int(props.get("ActiveEnterTimestampMonotonic", "0")) / 1e6
+    except ValueError:
+        since = 0
+    return props.get("ActiveState", ""), since
+
+
+def login_fallback(prefix=None, run=subprocess.run):
+    """greetd failed (OnFailure): back to the one before, if Tessera switched"""
+    prefix = PREFIX if prefix is None else prefix
+    rec = read_record(prefix)
+    if rec.get("state") not in ("trial", "active") or current_dm(prefix) != "greetd" or not isinstance(rec.get("previous"), str):
+        return "nothing"
+    login_back(prefix, run, "reverted", "greetd stopped with an error as the computer started", now=True)
+    return "reverted"
+
+
+def login_check(prefix=None, run=subprocess.run):
+    """After the restart (tessera-login-check.timer): did the login screen
+    show? Returns what it decided: waiting, confirmed, reverted or done."""
+    prefix = PREFIX if prefix is None else prefix
+    rec = read_record(prefix)
+    if rec.get("state") != "trial" or current_dm(prefix) != "greetd" or not isinstance(rec.get("previous"), str):
+        _systemctl(run, "disable", "--now", CHECK_TIMER)
+        return "done"
+    me = boot_id(prefix)
+    if not me or rec.get("boot") == me:
+        return "waiting"  # (not restarted since the switch)
+    if (read_text(_at(prefix, GREETER_SEEN)) or "").strip() == me or greetd_session(run):
+        write_record(prefix, previous=rec["previous"], state="active")
+        _systemctl(run, "disable", "--now", CHECK_TIMER)
+        return "confirmed"
+    state, since = greetd_state(run)
+    up = uptime(prefix)
+    if state == "failed":
+        why = "greetd stopped with an error as the computer started"
+    elif state == "active" and since and up - since >= SEEN_AFTER:
+        why = "the login screen didn't appear"
+    elif up >= GIVE_UP:
+        why = "the login screen didn't start within 10 minutes"
+    else:
+        return "waiting"
+    login_back(prefix, run, "reverted", why, now=True)
+    return "reverted"
+
+
 # ── fix ─────────────────────────────────────────────────────────────────
 def fix_command(id):
     if id not in FIXES:
@@ -1876,6 +2289,18 @@ def main(argv):
         return 2
     cmd, args = argv[0], argv[1:]
     try:
+        # (install.sh, as you: a PAM file with the keyring's lines, on stdout;
+        # never as root, where it would print any file)
+        if cmd == "pam-keyring" and len(args) == 1 and os.geteuid() != 0:
+            try:
+                with open(args[0]) as f:
+                    new = pam_with_keyring(f.read())
+            except OSError:
+                return 1
+            if new is None:
+                return 1
+            sys.stdout.write(new)
+            return 0
         if os.geteuid() != 0:
             raise Refused("this runs as root (through pkexec)")
         uid = caller_uid()
@@ -1927,13 +2352,26 @@ def main(argv):
             for d in bootsplash(args[0]):
                 print(d)
             return 0
+        if cmd == "login-switch" and len(args) == 3 and args[0] == "on":
+            rec = login_switch_on(args[1], args[2], uid)
+            print(json.dumps(rec, sort_keys=True))
+            return 0
+        if cmd == "login-switch" and len(args) in (1, 2) and args[0] == "off":
+            print(json.dumps(login_switch_off(args[1] if len(args) == 2 else None), sort_keys=True))
+            return 0
+        # (systemd's, as the computer starts: never through pkexec or sudo)
+        if cmd in ("login-fallback", "login-check") and not args:
+            if "PKEXEC_UID" in os.environ or "SUDO_UID" in os.environ:
+                raise Refused(f"{cmd} is the system's own, as the computer starts")
+            print((login_fallback if cmd == "login-fallback" else login_check)())
+            return 0
         if cmd == "setup" and len(args) == 1:
             for d in setup(args[0], uid):
                 print("installed", d)
             return 0
         raise Refused("usage: tessera-root wallpaper <path> | login-look <json> | fix <id> | wifi-helper | fingerprint on|off <where> | phonecam on|off | face … | bootmenu on|off | "
                       "bootsplash <id>|system|none | quickshare-trust on|off | priority on|off | sharing-ports open [<set>…]|close | "
-                      "update … | setup <folder>")
+                      "update … | setup <folder> | login-switch on <shell folder> <look json> | login-switch off [<login manager>]")
     except Refused as e:
         print(f"tessera-root: {e}", file=sys.stderr)
         return REFUSED_EXIT

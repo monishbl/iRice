@@ -82,7 +82,8 @@ class SetupFunctions(Fakes):
         pattern = "; ".join(f"/^{n}() {{/,/^}}/p" for n in names)
         functions = subprocess.run(["sed", "-n", pattern + "; /^KEYRING_MARK=/p", str(ROOT / "install.sh")],
                                    capture_output=True, text=True, check=True).stdout
-        p = subprocess.run(["/bin/bash", "-c", functions + "\n" + code], env=dict(self.env, **env), capture_output=True, text=True, timeout=10)
+        # (ROOT: pam_with_keyring is the root helper's, run as you)
+        p = subprocess.run(["/bin/bash", "-c", functions + "\n" + code], env=dict(self.env, ROOT=str(ROOT), **env), capture_output=True, text=True, timeout=10)
         return p.returncode, p.stdout
 
     # Arch's /etc/pam.d/greetd (the greetd package)

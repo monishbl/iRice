@@ -56,6 +56,12 @@ fi
 # (or none: then log in on a console and start your desktop yourself)
 if [[ -d "$S/usr/share/tessera" || -d "$S$OLD_LOGIN_SHARE" ]]; then
     PREV="$(cat "$DATA/tessera/previous-login-manager" 2>/dev/null || cat "$DATA/$OLD_NAME/previous-login-manager" 2>/dev/null || true)"
+    # (the root helper's record, from a switch in Settings)
+    [[ -n "$PREV" ]] || PREV="$(python3 -I -c 'import json,sys; p=json.load(open(sys.argv[1])).get("previous",""); print(p if p != "greetd" else "")' "$S/etc/tessera/login-switch.json" 2>/dev/null || true)"
+    # (and what brings it back by itself when Tessera's fails)
+    run sudo systemctl disable tessera-login-check.timer 2>/dev/null
+    run sudo rm -f "$S/etc/systemd/system/greetd.service.d/tessera-fallback.conf" "$S/etc/systemd/system/tessera-login-fallback.service" \
+        "$S/etc/systemd/system/tessera-login-check.service" "$S/etc/systemd/system/tessera-login-check.timer" "$S/etc/tessera/login-switch.json"
     if systemctl is-enabled --quiet greetd 2>/dev/null && grep -q -e tessera -e "$OLD_NAME" "$S/etc/greetd/config.toml" 2>/dev/null; then
         run sudo systemctl disable greetd
         [[ -n "$PREV" ]] && run sudo systemctl enable "$PREV" && echo "Your login screen ($PREV) is back."

@@ -57,6 +57,16 @@ run() { # style, root: the QML login screen
     mapfile -d '' env < <(genv "$1")
     env "${env[@]}" "$QS" -p "$2/greeter.qml"
 }
+# It showed: this boot's id in SEEN once a login screen has been up 10 s or
+# someone logged in through it (tessera-root login-check reads it after a
+# switch from another login screen, which comes back without it). SEEN's
+# folder is the greeter user's own; nothing is written without it.
+SEEN="${TESSERA_GREETER_SEEN:-/var/lib/tessera/greeter/seen}"
+SEEN_PID=""
+seen() { [[ -d ${SEEN%/*} && -w ${SEEN%/*} ]] && cat /proc/sys/kernel/random/boot_id >"$SEEN" 2>/dev/null; return 0; }
+seen_later() { ( sleep "${TESSERA_GREETER_SEEN_AFTER:-10}" && seen ) </dev/null >/dev/null 2>&1 & SEEN_PID=$!; }
+seen_cancel() { [[ -n $SEEN_PID ]] && kill "$SEEN_PID" 2>/dev/null; SEEN_PID=""; return 0; }
+
 # The login screen in Rust (tessera-ui --greeter), when install.sh copied
 # tessera-ui here (TESSERA_GREETER_UI: another one, for tests)
 UI="${TESSERA_GREETER_UI:-$SHARE/bin/tessera-ui}"
@@ -65,20 +75,30 @@ run_rust() { # style
     mapfile -d '' env < <(genv "$1")
     env "${env[@]}" "$UI" --greeter --style "$1" --look "$LOOK"
 }
+done_with() { # exit code
+    seen_cancel
+    [[ $1 == 0 ]] && seen
+    exit "$1"
+}
 start=$SECONDS
 if [[ -x $UI ]]; then
+    seen_later
     run_rust "$STYLE"
     code=$?
     # (one that quits with an error at once gives way to the QML one)
-    [[ $code == 0 || $((SECONDS - start)) -ge 10 ]] && exit "$code"
+    [[ $code == 0 || $((SECONDS - start)) -ge 10 ]] && done_with "$code"
+    seen_cancel
     echo "greeter-start: the Rust login screen quit ($code); the QML one instead" >&2
     start=$SECONDS
 fi
+seen_later
 run "$STYLE" "$ROOT"
 code=$?
 if [[ $code != 0 && $STYLE != text && $((SECONDS - start)) -lt 10 ]]; then
+    seen_cancel
     echo "greeter-start: the $STYLE login screen quit ($code); the text one instead" >&2
+    seen_later
     run text "$SHARE/shell"
     code=$?
 fi
-exit "$code"
+done_with "$code"

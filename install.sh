@@ -272,23 +272,11 @@ login_profile() {
 # gnome-keyring lines after its last auth and session lines, each under a
 # marker (uninstall.sh takes them out), on stdout. Returns 1 when there's
 # nothing to add: no such file, the keyring's lines are there already, or
-# KWallet's are (it unlocks its own wallet)
-KEYRING_MARK='# tessera: unlock the keyring with the login password'
+# KWallet's are (it unlocks its own wallet). The root helper's (pam-keyring,
+# run as you), which adds them to greetd's when it switches the login screen
 pam_with_keyring() { # pam file
     [[ -f "$1" ]] || return 1
-    grep -qE 'pam_gnome_keyring\.so|pam_kwallet[0-9]*\.so' "$1" && return 1
-    grep -qE '^-?auth[[:space:]]' "$1" && grep -qE '^-?session[[:space:]]' "$1" || return 1
-    awk -v mark="$KEYRING_MARK" '
-        { line[NR] = $0 }
-        /^-?auth[[:space:]]/ { a = NR }
-        /^-?session[[:space:]]/ { s = NR }
-        END {
-            for (i = 1; i <= NR; i++) {
-                print line[i]
-                if (i == a) { print mark; print "-auth      optional     pam_gnome_keyring.so" }
-                if (i == s) { print mark; print "-session   optional     pam_gnome_keyring.so auto_start" }
-            }
-        }' "$1"
+    python3 -I "$ROOT/shell/assets/scripts/tessera-root.py" pam-keyring "$1"
 }
 # The makers of the GPUs here (intel, amd, nvidia; one per line), from the
 # kernel's display devices, NVIDIA's module, else lspci.
@@ -1179,25 +1167,10 @@ GREETER_DONE=0 OLD_CONFIG=""
 # replaced when you chose to)
 login() {
     if [[ $GREETER == yes ]]; then
+        # (pacman with its second chances here; the helper installs it otherwise)
         if ! pkg_installed greetd; then pac -S --needed --noconfirm greetd || return 1; fi
-        # The greeter user can't read your home, so it gets its own copy
-        local wall
-        wall=$(python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); w=c.get("wallpaper",{}); print(w.get("darkPath") or w.get("path") or "")' "$CONFIG/tessera/config.json" 2>/dev/null || true)
-        [[ -f "$wall" ]] || wall="$ROOT/shell/assets/wallpapers/tahoe-dusk.jpg"
-        run sudo mkdir -p /usr/share/tessera
-        run sudo rm -rf /usr/share/tessera/shell
-        run sudo cp -r "$ROOT/shell" /usr/share/tessera/shell
-        # (the Material look's files: its login screen is assembled from both)
-        run sudo rm -rf /usr/share/tessera/material
-        if [[ -f "$ROOT/material/shell.qml" ]]; then run sudo cp -r "$ROOT/material" /usr/share/tessera/material; fi
-        run sudo cp "$ROOT/hypr/greeter.lua" /usr/share/tessera/greeter.lua
-        run sudo install -m 755 "$ROOT/hypr/greeter-session.sh" /usr/share/tessera/greeter-session.sh
-        # The login screen in Rust (tessera-ui --greeter), when tessera-ui is
-        # installed; greeter-start.sh falls back to the QML one without it
-        local ui="${XDG_DATA_HOME:-$HOME/.local/share}/tessera/bin/tessera-ui"
-        if [[ -x "$ui" ]]; then run sudo install -D -m 755 "$ui" /usr/share/tessera/bin/tessera-ui; fi
         # Its look, from your settings (the shell keeps it up to date after:
-        # services/LoginScreen.qml, through tessera-root login-look)
+        # LoginScreen, through tessera-root login-look)
         local look
         look=$(python3 -I - "$CONFIG/tessera/config.json" <<'PY' 2>/dev/null || true
 import json, sys
@@ -1222,36 +1195,22 @@ print(json.dumps({
 }, sort_keys=True, separators=(",", ":")))
 PY
 )
-        if [[ -n $look ]]; then
-            if [[ $DRY == 1 ]]; then note "would write /usr/share/tessera/greeter.json"; else printf '%s' "$look" | sudo tee /usr/share/tessera/greeter.json >/dev/null; fi
-        fi
-        # In a virtual machine the login screen needs the software cursor too
-        if [[ $VIRT != none && $DRY == 0 ]]; then
-            printf '\n-- virtual machine (%s): software cursor\nhl.config({ cursor = { no_hardware_cursors = true } })\n' "$VIRT" | sudo tee -a /usr/share/tessera/greeter.lua >/dev/null
-        fi
-        run sudo cp "$wall" /usr/share/tessera/wallpaper.jpg
-        run sudo chmod -R a+rX /usr/share/tessera
-        if [[ -f /etc/greetd/config.toml && ! -e /etc/greetd/config.toml.pre-tessera ]]; then
-            run sudo cp /etc/greetd/config.toml /etc/greetd/config.toml.pre-tessera
-        fi
-        local conf='[terminal]
-vt = 1
-
-[default_session]
-command = "/usr/share/tessera/greeter-session.sh"
-user = "greeter"'
-        if [[ $DRY == 1 ]]; then note "would write /etc/greetd/config.toml"; else printf '%s\n' "$conf" | sudo tee /etc/greetd/config.toml >/dev/null; fi
-        # (the copy installed under the old name: greetd starts Tessera's now)
-        if [[ -d $OLD_LOGIN_SHARE ]] && grep -q /usr/share/tessera/ /etc/greetd/config.toml 2>/dev/null; then
-            run sudo rm -rf "$OLD_LOGIN_SHARE"
+        [[ -n $look ]] || look='{"clockFace":"dynamic","clockRound":true,"clockWeight":640,"clockWidth":112,"look":"glass","materialStyle":"tonalSpot","mode":"dark","seed":"#6750A4","style":"look"}'
+        # The switch itself is the root helper's, the same one Settings → Lock &
+        # Login Screen uses: greetd's greeter user, the login screen's copy in
+        # /usr/share/tessera (it can't read your home), /etc/greetd/config.toml
+        # (kept as .pre-tessera), the keyring at login, the login manager before
+        # off (kept in /etc/tessera/login-switch.json, and back by itself if
+        # Tessera's fails at the next start) and greetd on
+        if [[ $DRY == 1 ]]; then
+            note "would run: sudo tessera-root login-switch on $ROOT/shell <your look>"
+        else
+            sudo /usr/bin/python3 -I "$ROOT/shell/assets/scripts/tessera-root.py" login-switch on "$ROOT/shell" "$look" >/dev/null || return 1
         fi
         old_names_install "${TESSERA_SYSTEM_ROOT:-}" "$DRY"
-        if [[ -n "$OTHER_DM" ]]; then
-            run sudo systemctl disable "$OTHER_DM"
-            [[ $DRY == 1 ]] || printf '%s\n' "$OTHER_DM" >"$DATA/tessera/previous-login-manager" # for tessera uninstall
+        if [[ -n "$OTHER_DM" && $DRY == 0 ]]; then
+            printf '%s\n' "$OTHER_DM" >"$DATA/tessera/previous-login-manager" # (for tessera uninstall)
         fi
-        run sudo systemctl enable greetd || return 1 # (started at the next boot)
-        keyring_at_login /etc/pam.d/greetd
         quiet_boot
         GREETER_DONE=1
     elif [[ -z "$OTHER_DM" ]]; then
@@ -1417,6 +1376,9 @@ if [[ $ONLY == login ]]; then
     ask "Switch to the Tessera login screen?" y || { say "Nothing changed."; exit 0; }
     adopt_old_names
     mkdir -p "$DATA/tessera"
+    # (the root helper, which turns the login screen before back on if
+    # Tessera's fails at the next start)
+    root_helper
     login || die "The login screen couldn't be set up (see above)"
     say "${GRN}Done.${R} Restart to begin at the Tessera login screen."
     exit 0

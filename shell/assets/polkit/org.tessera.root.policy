@@ -139,6 +139,19 @@
     <annotate key="org.freedesktop.policykit.exec.argv1">bootsplash</annotate>
   </action>
 
+  <!-- (always the password: it changes how the computer signs you in) -->
+  <action id="org.tessera.root.login-switch">
+    <description>Change the login screen</description>
+    <message>Tessera wants to change the login screen this computer starts with.</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/lib/tessera/tessera-root</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">login-switch</annotate>
+  </action>
+
   <action id="org.tessera.root.wifi-helper">
     <description>Set up a direct Wi-Fi link for Quick Share</description>
     <message>Tessera wants to set up a faster Wi-Fi link for Quick Share.</message>
