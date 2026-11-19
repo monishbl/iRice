@@ -183,8 +183,17 @@ impl SystemBridge {
     fn feed(&self, h: &Host) -> Value {
         let empty = json!({});
         let fp = obj("fingerprint");
-        let finger_names = if fp["fingerNames"].is_object() { fp["fingerNames"].clone() } else { json!({}) };
-        let order = if fp["fingerOrder"].is_array() { fp["fingerOrder"].clone() } else { json!(finger_names.as_object().map(|m| m.keys().cloned().collect::<Vec<_>>()).unwrap_or_default()) };
+        // (fprintd's ten fingers, in its order, named here: only the QML
+        // shell's Fingerprint.fingerNames gave them, so with the Rust shell
+        // the add-a-finger Dropdown had nothing in it; 19 Nov)
+        const FINGERS: [&str; 10] = ["right-index-finger", "left-index-finger", "right-thumb", "left-thumb", "right-middle-finger",
+                                     "left-middle-finger", "right-ring-finger", "left-ring-finger", "right-little-finger", "left-little-finger"];
+        let finger_names = if fp["fingerNames"].as_object().is_some_and(|m| !m.is_empty()) {
+            fp["fingerNames"].clone()
+        } else {
+            Value::Object(FINGERS.iter().map(|f| (f.to_string(), json!(crate::accounts::fingerprint::finger_name(f)))).collect())
+        };
+        let order = if fp["fingerOrder"].as_array().is_some_and(|a| !a.is_empty()) { fp["fingerOrder"].clone() } else { json!(FINGERS) };
         let face = obj("face");
         let b = |v: &Value| v.as_bool().unwrap_or(false);
         // (Power publishes itself as "Power" on the bus; the backends, the
