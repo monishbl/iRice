@@ -47,7 +47,8 @@ STANDALONE_ONLY_SOURCES = ("surfaces/screenfx/", "surfaces/desktop/src/gallery.r
 # Rust surfaces) doesn't learn calls added since; in the fallback the QML
 # draws everything itself and none of these are asked. Listed one by one so
 # any other gap still fails.
-FROZEN_QML = {"health.setPolkit", "loginRefresh",  # (19 Nov: Rust only)
+FROZEN_QML = {"loginBack", "loginSwitch", 
+    "health.setPolkit", "loginRefresh",  # (19 Nov: Rust only)
     
     "ai.continueCircle",
     "apps.activateOrLaunch",
