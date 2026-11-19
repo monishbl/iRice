@@ -148,7 +148,13 @@ class Fprint:
 
     def call(self, path_, iface, method, sig=None, args=(), timeout=30000):
         params = self.GLib.Variant(sig, args) if sig else None
-        r = self.bus.call_sync(FP, path_, iface, method, params, None, self.Gio.DBusCallFlags.NONE, timeout, None)
+        # (fprintd may ask polkit, and polkit may want your password first:
+        # allowed to ask, Tessera's password prompt shows; not allowed, it
+        # answered "Not Authorized" at once and adding a finger never began.
+        # 19 Nov: system1. The time for that prompt: 2 minutes)
+        flags = self.Gio.DBusCallFlags.ALLOW_INTERACTIVE_AUTHORIZATION
+        timeout = max(timeout, 120000) if method in ("Claim", "EnrollStart", "DeleteEnrolledFingers2", "DeleteEnrolledFinger") else timeout
+        r = self.bus.call_sync(FP, path_, iface, method, params, None, flags, timeout, None)
         return r.unpack() if r is not None else ()
 
     def device(self):
