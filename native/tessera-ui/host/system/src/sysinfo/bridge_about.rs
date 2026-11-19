@@ -594,7 +594,7 @@ impl Service for About {
     fn call(&mut self, h: &mut Host, call: &str, args: &Value) {
         let tx = self.tx().clone();
         let (prefix, f) = call.split_once('.').unwrap_or((call, ""));
-        let list = |v: &Value| -> Vec<String> { v.as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect()).unwrap_or_default() };
+        let list = |v: &Value| -> Vec<String> { update_args(v) };
         match prefix {
             "about" => match f {
                 "live" => {
@@ -780,5 +780,32 @@ mod log_tail_tests {
         let long = "é".repeat(100_000);
         assert!(log_tail(&long, 2).chars().all(|c| c == 'é'));
         assert_eq!(log_tail("", 5), "");
+    }
+}
+
+/// updates.update's arguments, sent flat (["--install", "a,b"]) or as one
+/// list ([["--install", "a,b"]]: fingerprint, face unlock and cloud drives
+/// do). Only the flat form was read, so those three ran an empty job that
+/// said "Updated" and installed nothing (19 Nov: a fingerprint driver).
+pub fn update_args(v: &Value) -> Vec<String> {
+    let strs = |a: &Vec<Value>| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect::<Vec<_>>();
+    match v.as_array() {
+        Some(a) if a.len() == 1 && a[0].is_array() => a[0].as_array().map(strs).unwrap_or_default(),
+        Some(a) => strs(a),
+        None => Vec::new(),
+    }
+}
+
+#[cfg(test)]
+mod update_args_tests {
+    use super::update_args;
+    use serde_json::json;
+    #[test]
+    fn flat_and_nested_both_read() {
+        let want = vec!["--install".to_string(), "fprintd".into(), "--aur-install".into(), "libfprint-tod".into()];
+        assert_eq!(update_args(&json!(["--install", "fprintd", "--aur-install", "libfprint-tod"])), want);
+        assert_eq!(update_args(&json!([["--install", "fprintd", "--aur-install", "libfprint-tod"]])), want);
+        assert!(update_args(&json!([])).is_empty());
+        assert!(update_args(&json!(null)).is_empty());
     }
 }

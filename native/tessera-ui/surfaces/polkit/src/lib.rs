@@ -408,8 +408,17 @@ impl Part for Polkit {
                             self.queue.remove(i).reply.send(false);
                         }
                     }
-                    Request::Registered(Ok(())) => eprintln!("tessera-ui: polkit: agent registered"),
-                    Request::Registered(Err(e)) => eprintln!("tessera-ui: polkit: agent not registered ({e})"),
+                    // (and Settings → Health hears it: only the QML prompt told it,
+                    // so with the Rust shell Health always said the password
+                    // prompt wasn't registered; 19 Nov)
+                    Request::Registered(Ok(())) => {
+                        eprintln!("tessera-ui: polkit: agent registered");
+                        crate::shell::ask("health.setPolkit", serde_json::json!(["yes"]));
+                    }
+                    Request::Registered(Err(e)) => {
+                        eprintln!("tessera-ui: polkit: agent not registered ({e})");
+                        crate::shell::ask("health.setPolkit", serde_json::json!(["no"]));
+                    }
                 }
                 return;
             }
