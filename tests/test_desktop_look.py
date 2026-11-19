@@ -293,3 +293,28 @@ class Keyring(Home):
     def test_no_keyring_no_flags(self):
         self.run_look("install")
         self.assertIsNone(self.text(".config/code-flags.conf"))
+
+
+class DiscordLauncher(Home):
+    """Discord's launcher reads no flag file: an app-menu entry of its own
+    with the keyring switch (19 Nov)"""
+
+    def test_override_written_and_removed(self):
+        self.fake("gnome-keyring-daemon", "exit 0\n")
+        apps = self.sys / "usr/share/applications"
+        apps.mkdir(parents=True, exist_ok=True)
+        (apps / "discord.desktop").write_text("[Desktop Entry]\nName=Discord\nExec=/usr/bin/discord --url -- %u\n")
+        self.run_look("install")
+        mine = self.text(".local/share/applications/discord.desktop")
+        self.assertIn("Exec=/usr/bin/discord --password-store=gnome-libsecret --url -- %u", mine)
+        self.run_look("off")
+        self.assertIsNone(self.text(".local/share/applications/discord.desktop"))
+
+    def test_your_own_entry_is_left_alone(self):
+        self.fake("gnome-keyring-daemon", "exit 0\n")
+        apps = self.sys / "usr/share/applications"
+        apps.mkdir(parents=True, exist_ok=True)
+        (apps / "discord.desktop").write_text("[Desktop Entry]\nExec=/usr/bin/discord\n")
+        self.put(".local/share/applications/discord.desktop", "[Desktop Entry]\nExec=/usr/bin/discord --mine\n")
+        self.run_look("install")
+        self.assertIn("--mine", self.text(".local/share/applications/discord.desktop"))

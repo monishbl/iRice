@@ -112,6 +112,7 @@ class Paths:
         self.kdeglobals = os.path.join(self.cfg, "kdeglobals")
         self.fontconfig = os.path.join(self.cfg, "fontconfig", "conf.d", "75-tessera-grayscale.conf")
         self.fonts = os.path.join(env_dir("XDG_DATA_HOME", ".local/share"), "fonts", "tessera")
+        self.apps = os.path.join(env_dir("XDG_DATA_HOME", ".local/share"), "applications")
 
 
 # ── Small things ──
@@ -527,6 +528,7 @@ def apply_keyring(p, d, created):
             continue
         if add_block(d, path, KEYRING_BLOCK):
             created.add(name)
+    keyring_launchers(p, d)
     notes.append("apps: sign-ins kept in your keyring (VS Code, Chrome, Discord and other Electron apps)")
     return notes
 
@@ -534,6 +536,39 @@ def apply_keyring(p, d, created):
 def restore_keyring(p, d, created):
     for name in FLAG_FILES:
         remove_block(d, os.path.join(p.cfg, name), name in created)
+    for name in LAUNCHER_APPS:
+        path = os.path.join(p.apps, name)
+        if (read(path) or "").startswith(DESKTOP_MARK):
+            d.remove(path, "removed Tessera's " + home(path))
+
+
+# Apps whose launcher reads no flag file (Discord's shell script runs its own
+# copy): an entry of the same name in ~/.local/share/applications, which wins
+# over the system's, with the switch on its Exec lines (19 Nov: system1)
+LAUNCHER_APPS = ("discord.desktop", "discord-ptb.desktop", "discord-canary.desktop")
+DESKTOP_MARK = "# Tessera's desktop look: sign-ins kept in the keyring (Settings → Appearance)\n"
+
+
+def keyring_launchers(p, d):
+    for name in LAUNCHER_APPS:
+        mine = os.path.join(p.apps, name)
+        cur = read(mine)
+        if cur is not None and not cur.startswith(DESKTOP_MARK):
+            continue  # (your own entry: left alone)
+        system = next((t for t in (read(os.path.join(SYS + base, name)) for base in ("/usr/share/applications", "/usr/local/share/applications")) if t), None)
+        if system is None:
+            if cur is not None:
+                d.remove(mine, "removed Tessera's " + home(mine))
+            continue
+        lines = []
+        for line in system.splitlines():
+            if line.startswith("Exec=") and "--password-store" not in line:
+                cmd = line[5:].split(" ", 1)
+                line = "Exec=" + cmd[0] + " --password-store=gnome-libsecret" + (" " + cmd[1] if len(cmd) > 1 else "")
+            lines.append(line)
+        text = DESKTOP_MARK + "\n".join(lines) + "\n"
+        if text != cur:
+            d.write(mine, text, "wrote " + home(mine))
 
 
 # ── kitty ──
