@@ -57,6 +57,7 @@ tessera_core::theme_global!(ui);
 use tessera_core::*;
 
 pub mod center;
+pub mod stack;
 /// (in tessera-core: the notification server, services::notify, keeps them)
 pub use tessera_core::services::notify::{markup, model};
 mod panel;
@@ -308,7 +309,7 @@ fn icon_source(n: &Note, lookup: &mut impl FnMut(&str) -> Option<String>) -> Opt
 // ── The stack's maths (NotificationPopups.qml) ──────────────────────────────
 
 /// Where a banner sits: its top, scale and opacity, and in a folded stack
-/// the height it's drawn at (`plate`, 0 its own)
+/// the height it's drawn at (`plate`, 0 its own) and how far back it is
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Place {
     pub y: f32,
@@ -319,9 +320,19 @@ pub struct Place {
     /// front card: a taller one used to stick out above the front card and
     /// its text showed through it (two toasts drawn over each other)
     pub plate: f32,
+    /// 0 the front card (or any, fanned out), 1 and 2 the cards peeking
+    /// out under it (stack.rs: what shows of each is cut to below the card
+    /// in front, 19 Nov)
+    pub depth: usize,
 }
 
-/// Each banner's place (front first) and the stack's height
+impl Place {
+    pub const WHOLE: Place = Place { y: 0.0, scale: 1.0, fade: 1.0, plate: 0.0, depth: 0 };
+}
+
+/// Each banner's place (front first) and the stack's height: folded, as
+/// iOS (stack.rs): older cards peek out 8 then 6 px under the front one
+/// (two at most), 8 px narrower a side a step, fainter
 pub fn stack(heights: &[f32], expanded: bool, material: bool) -> (Vec<Place>, f32) {
     let gap = if material { 8.0 } else { 10.0 };
     let n = heights.len();
@@ -331,22 +342,20 @@ pub fn stack(heights: &[f32], expanded: bool, material: bool) -> (Vec<Place>, f3
     let offset = |i: usize| heights[..i].iter().map(|h| h + gap).sum::<f32>();
     let places = (0..n)
         .map(|i| {
-            let front = i == 0;
-            if expanded || front {
-                return Place { y: if expanded { offset(i) } else { 0.0 }, scale: 1.0, fade: 1.0, plate: 0.0 };
+            if expanded || i == 0 {
+                return Place { y: if expanded { offset(i) } else { 0.0 }, ..Place::WHOLE };
             }
-            // older cards: plates the front's height, peeking 8 px below it
-            // (two at most), smaller and fainter
-            let shown = i < 3;
+            let d = i.min(stack::MAX_DEPTH);
             Place {
-                y: 8.0 * i.min(2) as f32,
-                scale: 1.0 - 0.05 * i.min(2) as f32,
-                fade: if shown { 0.9 - 0.25 * (i as f32 - 1.0) } else { 0.0 },
+                y: stack::peek(d),
+                scale: stack::scale(CARD_W, d),
+                fade: if i <= stack::MAX_DEPTH { stack::fade(i) } else { 0.0 },
                 plate: heights[0],
+                depth: d,
             }
         })
         .collect();
-    let height = if expanded { offset(n) - gap } else { heights[0] + 8.0 * (n - 1).min(2) as f32 };
+    let height = if expanded { offset(n) - gap } else { stack::collapsed_height(heights[0], n) };
     (places, height)
 }
 
@@ -358,9 +367,18 @@ pub fn stack_with_leaving(heights: &[f32], leaving: &[bool], last: &[Option<Plac
     let (places, height) = stack(&staying, expanded, material);
     let mut it = places.into_iter();
     let out = (0..heights.len())
-        .map(|i| if leaving[i] { last[i].unwrap_or(Place { y: 0.0, scale: 1.0, fade: 1.0, plate: 0.0 }) } else { it.next().unwrap() })
+        .map(|i| if leaving[i] { last[i].unwrap_or(Place::WHOLE) } else { it.next().unwrap() })
         .collect();
     (out, height, staying.len())
+}
+
+/// What shows of each card peeking out of a folded stack, for Slint's
+/// Path (stack.rs; both windows)
+pub(crate) fn stack_shapes(g: &ui::StackShape<'_>) {
+    g.on_path(|a| {
+        let f = if a.banner { stack::banner_path } else { stack::nc_path };
+        f(a.w, a.h, a.r, a.depth.max(0) as usize, a.circular, a.edge).into()
+    });
 }
 
 /// The pills under a stack of more than one
@@ -621,6 +639,7 @@ impl Notifications {
             tscale: place.scale,
             tfade: place.fade,
             plate: place.plate,
+            depth: place.depth as i32,
             // (drawn whole: the front card, or any while fanned out; a
             // plate is a back card of the folded stack)
             front: index == 0 || place.plate == 0.0,
@@ -813,6 +832,7 @@ impl Notifications {
         });
         let ui = ui::Banners::new().expect("Banners");
         st.shell.apply_theme(&ui.global::<ui::Theme>());
+        stack_shapes(&ui.global::<ui::StackShape>());
         let model = Rc::new(VecModel::<ui::Banner>::default());
         ui.set_banners(ModelRc::from(model.clone()));
         let to = st.shell.sender(NAME);
@@ -1188,11 +1208,18 @@ impl Part for Notifications {
                 if op <= 0.002 {
                     continue;
                 }
-                let s = w.model.iter().find(|r| r.id == id).map_or(1.0, |r| r.tscale);
+                let row = w.model.iter().find(|r| r.id == id);
+                let s = row.as_ref().map_or(1.0, |r| r.tscale);
+                // (a card peeking out of the folded stack casts no shadow:
+                // it fell over the front card's glass, a grey band across
+                // its foot; its glass under the front card is drawn over by
+                // the front's, so only what peeks out shows)
+                let back = row.is_some_and(|r| !r.front && !self.expanded);
                 // (scaled about its bottom centre, as the card; `s` the target:
                 // the scale only springs between 1, 0.95 and 0.9)
                 let (sw, sh) = (cw * s, ch * s);
-                shapes.push(theme::glass_shape(look, x + (cw - sw) / 2.0, y + (ch - sh), sw, sh, 22.0 * s, op, 1.0));
+                let g = theme::glass_shape(look, x + (cw - sw) / 2.0, y + (ch - sh), sw, sh, 22.0 * s, op, 1.0);
+                shapes.push(if back { theme::shadow_margin(g, 0.0) } else { g });
             }
             let key = tessera_core::theme::glass_key(&shapes);
             if key != w.glass_sent {
@@ -1245,7 +1272,7 @@ mod tests {
     #[test]
     fn one_banner() {
         let (p, h) = stack(&[90.0], false, false);
-        assert_eq!(p, vec![Place { y: 0.0, scale: 1.0, fade: 1.0, plate: 0.0 }]);
+        assert_eq!(p, vec![Place::WHOLE]);
         assert_eq!(h, 90.0);
         assert!(pills(1, false).is_empty());
     }
@@ -1254,15 +1281,18 @@ mod tests {
     fn a_stack_peeks_and_fans_out() {
         let hs = [90.0, 120.0, 80.0, 100.0];
         let (p, h) = stack(&hs, false, false);
-        // older cards are plates the front's height, peeking 8 px under it
-        // (two at most), smaller and fainter
-        assert_eq!(p[1], Place { y: 8.0, scale: 0.95, fade: 0.9, plate: 90.0 });
-        assert_eq!(p[2], Place { y: 16.0, scale: 0.9, fade: 0.65, plate: 90.0 });
-        assert_eq!(p[3].fade, 0.0); // the fourth is hidden
-        assert_eq!(h, 106.0);
+        // older cards are plates the front's height, peeking 8 then 6 px
+        // under it (two at most), 8 px narrower a side a step, fainter
+        assert_eq!(p[1], Place { y: 8.0, scale: 1.0 - 16.0 / 360.0, fade: 0.8, plate: 90.0, depth: 1 });
+        assert_eq!(p[2], Place { y: 14.0, scale: 1.0 - 32.0 / 360.0, fade: 0.6, plate: 90.0, depth: 2 });
+        assert_eq!((p[3].fade, p[3].depth), (0.0, 2)); // the fourth is hidden
+        assert_eq!(h, 104.0);
+        for (i, c) in p.iter().enumerate().skip(1).take(2) {
+            assert!((CARD_W * c.scale - (CARD_W - 16.0 * i as f32)).abs() < 1e-3);
+        }
         let (p, h) = stack(&hs, true, false);
         assert_eq!(p.iter().map(|x| x.y).collect::<Vec<_>>(), vec![0.0, 100.0, 230.0, 320.0]);
-        assert!(p.iter().all(|x| x.scale == 1.0 && x.fade == 1.0 && x.plate == 0.0));
+        assert!(p.iter().all(|x| x.scale == 1.0 && x.fade == 1.0 && x.plate == 0.0 && x.depth == 0));
         assert_eq!(h, 420.0);
         // Material's gap is 8
         assert_eq!(stack(&hs, true, true).1, 414.0);
@@ -1273,7 +1303,7 @@ mod tests {
     /// The bug: "Battery empty" (two lines) behind "Connection activated"
     /// (one) stuck out above it, and its text showed through the glass. In
     /// a folded stack nothing of a back card reaches above the front card,
-    /// or below it by more than its 8 px edge
+    /// or below it by more than its peek
     #[test]
     fn back_cards_never_show_past_the_front_one() {
         for hs in [[70.0, 140.0, 200.0], [140.0, 70.0, 90.0], [90.0, 90.0, 90.0]] {
@@ -1283,7 +1313,7 @@ mod tests {
                 // scaled about its bottom centre: its top moves down
                 let top = c.y + drawn * (1.0 - c.scale);
                 assert!(top >= 0.0, "{hs:?} card {i} reaches above the front one");
-                assert!(c.y + drawn <= hs[0] + 16.0 + 0.01, "{hs:?} card {i} hangs past the stack");
+                assert!(c.y + drawn <= hs[0] + 14.0 + 0.01, "{hs:?} card {i} hangs past the stack");
                 assert!(c.y + drawn <= h + 0.01);
             }
         }
@@ -1305,7 +1335,7 @@ mod tests {
         let (p, h, staying) = stack_with_leaving(&hs, &[true, false], &[Some(before[0]), Some(before[1])], false, false);
         assert_eq!(staying, 1);
         assert_eq!(p[0], before[0]); // where it was
-        assert_eq!(p[1], Place { y: 0.0, scale: 1.0, fade: 1.0, plate: 0.0 }); // the front now, whole
+        assert_eq!(p[1], Place::WHOLE); // the front now, whole
         assert_eq!(h, 120.0);
         assert!(pills(staying, false).is_empty());
     }

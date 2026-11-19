@@ -24,6 +24,7 @@
 //! the QML draws Material Symbols.
 
 use super::center::{self, Alert, Day, Entry, Group, Kind};
+use super::stack;
 use super::{clock_at, markup, model, now_ms, Notifications, Shown, NAME};
 use crate::services::hypr::Glass;
 use crate::shell::{tell, Command};
@@ -34,7 +35,7 @@ use serde_json::{json, Value};
 use slint::{ComponentHandle, Model};
 use smithay_client_toolkit::shell::wlr_layer::{Anchor, KeyboardInteractivity, Layer};
 use smithay_client_toolkit::shell::WaylandSurface;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::Duration;
 use tessera_core::rows::Rows;
@@ -72,8 +73,10 @@ pub enum C {
     CalRestore,
     FocusMode(i32),
     Act(String),
-    Card(i32, [f32; 4]),
+    Card(i32, [f32; 6]),
     Minute,
+    /// a group's fold is over (its number): it closes
+    Folded(u64),
 }
 
 struct Win {
@@ -96,7 +99,8 @@ struct Win {
 
 pub struct Panel {
     win: Option<Win>,
-    groups_open: HashSet<String>,
+    /// which groups are open, and the one folding back (stack.rs)
+    stacks: stack::Groups,
     groups: Vec<Group>,
     rows: Vec<Entry>,
     alerts: Vec<Alert>,
@@ -110,7 +114,7 @@ pub struct Panel {
     widgets: Value,
     calendar: Value,
     /// each row's card as laid out (y in the list, height, width, edges)
-    cards: HashMap<i32, [f32; 4]>,
+    cards: HashMap<i32, [f32; 6]>,
     minute: slint::Timer,
     /// small lists inside rows, the same model while the same (stable.rs)
     alert_buttons: super::stable::Stable<ui::NoteButton>,
@@ -123,7 +127,7 @@ impl Default for Panel {
         let today = today();
         Self {
             win: None,
-            groups_open: HashSet::new(),
+            stacks: stack::Groups::default(),
             groups: Vec::new(),
             rows: Vec::new(),
             alerts: Vec::new(),
@@ -210,6 +214,30 @@ pub(crate) fn alert_glyph(name: &str) -> String {
     }
 }
 
+/// How a row fans out of its stack (or folds back): the height, scale and
+/// opacity it starts at, and its wait (stack.rs). A row not moving: as is
+#[derive(Debug, PartialEq)]
+struct Fan {
+    from: f32,
+    shrink: f32,
+    dim: f32,
+    delay: i32,
+}
+
+fn row_fan(e: &Entry, n: usize, material: bool) -> Fan {
+    // (the list's width: Center's content-w)
+    let w = if material { 360.0 } else { 340.0 };
+    match (e.kind, e.fan) {
+        (_, 0) => Fan { from: 0.0, shrink: 1.0, dim: 1.0, delay: 0 },
+        // the header fades in as it opens above the stack
+        (Kind::Header, _) => Fan { from: 0.0, shrink: 1.0, dim: 0.0, delay: 0 },
+        (_, k) => {
+            let (shrink, dim) = stack::fan_start(w, k);
+            Fan { from: stack::fan_from(k), shrink, dim, delay: stack::stagger_ms(k, n, e.fold) }
+        }
+    }
+}
+
 /// A card's act, for the timing log (its kind and id only)
 fn act_name(c: &C) -> Option<String> {
     Some(match c {
@@ -278,6 +306,7 @@ impl Notifications {
         });
         let ui = ui::Center::new().expect("Center");
         st.shell.apply_theme(&ui.global::<ui::Theme>());
+        super::stack_shapes(&ui.global::<ui::StackShape>());
         let to = st.shell.sender(NAME);
         macro_rules! on {
             ($set:ident, |$($a:ident),*| $m:expr) => {{
@@ -315,7 +344,7 @@ impl Notifications {
         on!(on_cal_restore, | | C::CalRestore);
         on!(on_focus_mode_set, |i| C::FocusMode(i));
         on!(on_act, |a| C::Act(a.to_string()));
-        on!(on_card, |i, y, h, w, e| C::Card(i, [y, h, w, e]));
+        on!(on_card, |i, y, h, w, e, s, o| C::Card(i, [y, h, w, e, s, o]));
         ui.set_outline(crate::surfaces::shapes::outline("cookie9").into());
         let (rows, days, day_items, todos, laps, targets) = (Rows::new(), Rows::new(), Rows::new(), Rows::new(), Rows::new(), Rows::new());
         ui.set_rows(rows.model());
@@ -345,7 +374,7 @@ impl Notifications {
             let t = today();
             self.nc.selected = t;
             self.nc.shown = (t.0, t.1);
-            self.nc.groups_open.clear();
+            self.nc.stacks.reset();
             // (not the cards' places: the rows stay made while it's closed,
             // so they don't say them again; cleared, the glass under each
             // card was gone after the first opening: 18 Nov)
@@ -455,7 +484,7 @@ impl Notifications {
         }
         let material = st.shell.look.material;
         self.nc.groups = center::groups(&self.store.list, &self.nc.alerts);
-        self.nc.rows = center::entries(&self.nc.groups, &self.nc.groups_open);
+        self.nc.rows = center::entries(&self.nc.groups, &self.nc.stacks.open, self.nc.stacks.folding.as_deref());
         let entries = self.nc.rows.clone();
         let mut rows = Vec::new();
         for (i, e) in entries.iter().enumerate() {
@@ -468,6 +497,7 @@ impl Notifications {
             let app = self.nc.groups[e.group].app.clone();
             let gkey = self.nc.groups[e.group].key();
             let b = self.nc_banner(st, e);
+            let f = row_fan(e, self.nc.groups[e.group].items.len(), material);
             rows.push(ui::NcRow {
                 kind: match e.kind {
                     Kind::Note => 0,
@@ -479,6 +509,13 @@ impl Notifications {
                 count: e.count as i32,
                 open: e.open,
                 edges: e.edges as i32,
+                peek: stack::peek(e.edges),
+                fan: e.fan as i32,
+                fold: e.fold,
+                from: f.from,
+                shrink: f.shrink,
+                dim: f.dim,
+                delay: f.delay,
                 first: e.first,
                 last: e.last,
                 gap,
@@ -644,14 +681,24 @@ impl Notifications {
                 None => {}
             },
             C::Toggle(key) => {
-                if !self.nc.groups_open.remove(&key) {
-                    self.nc.groups_open.insert(key);
+                // (Show less folds the cards back into the stack first, then
+                // it closes; Reduce motion or battery saver: at once)
+                let n = self.nc.groups.iter().find(|x| x.key() == key).map_or(0, |g| g.items.len());
+                let still = self.nc.win.as_ref().is_some_and(|w| w.ui.global::<ui::Theme>().get_still());
+                if let stack::Toggled::Folding(generation, ms) = self.nc.stacks.toggle(&key, n, still) {
+                    let to = st.shell.sender(NAME);
+                    slint::Timer::single_shot(Duration::from_millis(ms), move || to(Box::new(C::Folded(generation))));
                 }
                 self.nc_refresh(st);
             }
+            C::Folded(generation) => {
+                if self.nc.stacks.folded(generation) {
+                    self.nc_refresh(st);
+                }
+            }
             C::ClearGroup(g) => {
                 let Some(group) = self.nc.groups.iter().find(|x| x.key() == g).cloned() else { return };
-                self.nc.groups_open.remove(&group.key());
+                self.nc.stacks.clear(&group.key());
                 if group.island {
                     nc("island.clear", json!({}));
                 } else {
@@ -880,23 +927,33 @@ impl Notifications {
                 if ui.get_anything() {
                     let (top, scroll, lh) = (ui.get_list_top(), ui.get_list_scroll(), ui.get_list_height());
                     let rows = ui.get_rows();
-                    for i in 0..rows.row_count() {
+                    // (bottom row first: the plugin draws each shape over the
+                    // ones before, all from one copy of what's behind, so a
+                    // card coming out from under the one above it, or a card
+                    // peeking out of a stack, is covered where that one is)
+                    for i in (0..rows.row_count()).rev() {
                         let Some(r) = rows.row_data(i) else { continue };
                         if r.kind == 2 {
                             continue;
                         }
-                        let Some(&[y, h, cw, _]) = self.nc.cards.get(&(i as i32)) else { continue };
+                        let Some(&[y, h, cw, peek, sc, op]) = self.nc.cards.get(&(i as i32)) else { continue };
                         // (8 px of room above the list for the close badges)
                         let v = 8.0 + y - scroll;
-                        let fade = ((v + 8.0) / 8.0).min((lh + 8.0 - (v + h)) / 8.0).clamp(0.0, 1.0);
-                        if fade <= 0.0 {
+                        let fade = ((v + 8.0) / 8.0).min((lh + 8.0 - (v + h + peek)) / 8.0).clamp(0.0, 1.0);
+                        if fade <= 0.0 || op <= 0.002 {
                             continue;
                         }
-                        shapes.push(theme::glass_shape(look, x, top + v, cw, h, 18.0, o * fade, 1.0));
-                        for k in 0..r.edges.max(0) as usize {
-                            let inset = (k as f32 + 1.0) * 8.0;
-                            shapes.push(theme::glass_shape(look, x + inset, top + v + h - 4.0 + k as f32 * 8.0, cw - 2.0 * inset, 12.0, 6.0, o * fade * (0.75 - 0.2 * k as f32), 1.0));
+                        let front = stack::RBox::new(x, top + v, cw, h, 18.0);
+                        // the cards peeking out (no shadow: it fell over the
+                        // front card's glass), then the card
+                        for d in (1..=r.edges.max(0) as usize).rev() {
+                            let b = stack::behind(front, d);
+                            let g = theme::glass_shape(look, b.x, b.y, b.w, b.h, b.r, o * fade * stack::fade(d), 1.0);
+                            shapes.push(theme::shadow_margin(g, 0.0));
                         }
+                        // (fanning out: scaled about its foot, fading in)
+                        let (sw, sh) = (cw * sc, h * sc);
+                        shapes.push(theme::glass_shape(look, x + (cw - sw) / 2.0, top + v + h - sh, sw, sh, 18.0 * sc, o * fade * op, 1.0));
                     }
                 } else {
                     shapes.push(theme::glass_shape(look, x, by + pad + 28.0 + 10.0, bw - 2.0 * pad, 84.0, 18.0, o, 1.0));
@@ -979,6 +1036,26 @@ fn item(v: &Value) -> ui::NcItem {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rows_fan_out_from_where_the_stack_was() {
+        let e = |kind, fan, fold| Entry { kind, group: 0, item: 0, count: 1, open: true, edges: 0, fan, fold, first: false, last: false };
+        // the front card and other rows: as they are
+        assert_eq!(row_fan(&e(Kind::Note, 0, false), 4, false), Fan { from: 0.0, shrink: 1.0, dim: 1.0, delay: 0 });
+        // the header fades in from nothing
+        assert_eq!(row_fan(&e(Kind::Header, 1, false), 4, true), Fan { from: 0.0, shrink: 1.0, dim: 0.0, delay: 0 });
+        // each card starts as it peeked out: 8 px, then 6, then nothing;
+        // 8 px narrower a side a step; fainter; one after another
+        let c: Vec<Fan> = (1..4).map(|k| row_fan(&e(Kind::Note, k, false), 4, false)).collect();
+        assert_eq!(c.iter().map(|f| f.from).collect::<Vec<_>>(), vec![8.0, 6.0, 0.0]);
+        assert!((340.0 * c[0].shrink - 324.0).abs() < 1e-3 && (340.0 * c[1].shrink - 308.0).abs() < 1e-3);
+        assert_eq!(c.iter().map(|f| f.dim).collect::<Vec<_>>(), vec![0.8, 0.6, 0.6]);
+        assert_eq!(c.iter().map(|f| f.delay).collect::<Vec<_>>(), vec![0, 30, 60]);
+        // Material's list is 360 wide; folding, the last card goes first
+        assert!((360.0 * row_fan(&e(Kind::Alert, 1, false), 4, true).shrink - 344.0).abs() < 1e-3);
+        let f: Vec<i32> = (1..4).map(|k| row_fan(&e(Kind::Note, k, true), 4, false).delay).collect();
+        assert_eq!(f, vec![40, 20, 0]);
+    }
 
     #[test]
     fn its_own_panel_only_when_solid_or_asked() {

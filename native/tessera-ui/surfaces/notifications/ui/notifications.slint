@@ -46,6 +46,8 @@ export struct Banner {
     // a back card of the folded stack: drawn this tall (the front card's
     // height), its content hidden, only its edge showing (0: its own height)
     plate: length,
+    // 0 the front card (or any, fanned out); 1, 2 a card peeking out
+    depth: int,
     front: bool,
     entered: bool, // false only while it's being added (the entrance runs from there)
     leaving: bool, // the exit runs, then Rust removes it
@@ -57,6 +59,75 @@ export struct Banner {
     // A live entry (core notify/live.rs): every state it had, newest first,
     // "<what it said> · <time>" (more than one: it folds out)
     history: [string],
+}
+
+// ── A folded stack (stack.rs): what shows of a card peeking out ─────────────
+// Only what's below the card in front of it (never drawn under that
+// translucent card, where it showed through as a band), as wide as its own
+// outline with the same rounded foot: no flat bars (19 Nov, "make it like
+// iOS stack"). Rust works out the outline; this fills it as the card.
+export struct StackSliver {
+    w: float, // the front card's size and corner (px)
+    h: float,
+    r: float,
+    depth: int, // 1, 2
+    circular: bool, // round corners (Material); else the glass's squircle
+    banner: bool, // a banner's back card, in its own pixels before its scale
+    edge: bool, // only the hairline along its foot
+}
+
+export global StackShape {
+    pure callback path(StackSliver) -> string;
+}
+
+export component Sliver inherits Rectangle {
+    in property <length> front-w;
+    in property <length> front-h;
+    in property <length> radius;
+    in property <int> depth;
+    in property <bool> circular;
+    in property <bool> banner;
+    in property <brush> fill;
+    in property <brush> veil; // a second fill over it (Glass's chip veil over the frost)
+    in property <bool> veiled;
+    in property <brush> line: transparent;
+    in property <length> line-width: 0;
+    property <string> shape: StackShape.path({ w: front-w / 1px, h: front-h / 1px, r: radius / 1px, depth: depth, circular: circular, banner: banner, edge: false });
+    Path {
+        width: root.width;
+        height: root.height;
+        viewbox-x: 0;
+        viewbox-y: 0;
+        viewbox-width: self.width / 1px;
+        viewbox-height: self.height / 1px;
+        clip: false;
+        commands: root.shape;
+        fill: root.fill;
+    }
+    if root.veiled: Path {
+        width: root.width;
+        height: root.height;
+        viewbox-x: 0;
+        viewbox-y: 0;
+        viewbox-width: self.width / 1px;
+        viewbox-height: self.height / 1px;
+        clip: false;
+        commands: root.shape;
+        fill: root.veil;
+    }
+    if root.line-width > 0: Path {
+        width: root.width;
+        height: root.height;
+        viewbox-x: 0;
+        viewbox-y: 0;
+        viewbox-width: self.width / 1px;
+        viewbox-height: self.height / 1px;
+        clip: false;
+        commands: StackShape.path({ w: front-w / 1px, h: front-h / 1px, r: radius / 1px, depth: depth, circular: circular, banner: banner, edge: true });
+        fill: transparent;
+        stroke: root.line;
+        stroke-width: root.line-width;
+    }
 }
 
 // A live entry's history: "3 updates" folds out to every change with its time
@@ -201,6 +272,12 @@ export component MaterialPill inherits Rectangle {
 export component GlassCard {
     in property <Banner> b;
     in property <bool> hovered;
+    // A folded stack in Notification Center: how many more ("2 more", as
+    // iOS), a click anywhere fans it out, and close clears the group
+    in property <int> more;
+    in property <bool> tap-expands;
+    in property <string> close-label;
+    callback group-toggled();
     callback activated();
     callback close();
     callback action(string);
@@ -212,10 +289,14 @@ export component GlassCard {
     width: 360px;
     height: col.preferred-height + 24px;
 
-    // the click: the app's default action (behind everything else)
+    // the click: the app's default action (behind everything else); a
+    // folded stack fans out instead
     TouchArea {
         enabled: !b.replying;
-        clicked => { activated(); }
+        mouse-cursor: tap-expands ? pointer : default;
+        clicked => {
+            if tap-expands { group-toggled(); } else { activated(); }
+        }
     }
     if b.has-icon: Image {
         x: 12px;
@@ -300,6 +381,13 @@ export component GlassCard {
         }
         if b.history.length > 1: History {
             lines: b.history;
+        }
+        if more > 0: Text {
+            text: more + " more";
+            color: Theme.secondary;
+            font-size: Theme.caption;
+            font-weight: 500;
+            accessible-role: none;
         }
         // Reply, then the app's own buttons
         if (b.buttons.length > 0 || b.can-reply) && !b.replying: HorizontalLayout {
@@ -389,7 +477,7 @@ export component GlassCard {
     }
     // Close, top left like macOS (the banner only: it stays in the list)
     if hovered: CloseBadge {
-        label: "Dismiss " + (b.summary != "" ? b.summary : b.app);
+        label: close-label != "" ? close-label : "Dismiss " + (b.summary != "" ? b.summary : b.app);
         clicked => { close(); }
     }
 }
@@ -741,6 +829,11 @@ export component Banners inherits Window {
             animate drawn-h { duration: 300ms; easing: cubic-bezier(0.2, 0, 0, 1); }
             property <float> content: live ? 1 : 0;
             animate content { duration: 150ms; }
+            // a back card at rest in the folded stack: only what peeks out
+            // under the card in front is drawn (stack.rs), not its whole
+            // plate under that translucent card; moving, the plate
+            property <bool> settled: !live && b.depth > 0 && abs(place-y - b.ty / 1px) < 0.5 && abs(sc - b.tscale) < 0.002 && abs(drawn-h - b.plate / 1px) < 0.5;
+            property <brush> surface: Theme.material ? Theme.m3-surface-container-high.with-alpha(Theme.blur ? 1 - 0.4 * (1 - Theme.panel-alpha) / 0.55 : 1) : glass-plugin ? transparent : Frost.tint;
 
             x: m + (1 - enter) * card-w * (Theme.material ? 0.4 : 0.55);
             y: m + place-y * 1px + (Theme.material ? (1 - enter) * -16px : 0);
@@ -753,8 +846,8 @@ export component Banners inherits Window {
             // Material: its tonal card, elevation 3 when it's in front
             border-radius: Theme.material ? 24px : 22px;
             // (Material, see-through: Theme.qml's controlAlpha on its containers)
-            background: Theme.material ? Theme.m3-surface-container-high.with-alpha(Theme.blur ? 1 - 0.4 * (1 - Theme.panel-alpha) / 0.55 : 1) : glass-plugin ? transparent : Frost.tint;
-            border-width: !Theme.material && !glass-plugin ? 0.5px : 0;
+            background: settled ? transparent : surface;
+            border-width: !Theme.material && !glass-plugin && !settled ? 0.5px : 0;
             border-color: Theme.separator;
             drop-shadow-blur: Theme.material && live ? 16px : 0;
             drop-shadow-offset-y: 4px;
@@ -802,6 +895,19 @@ export component Banners inherits Window {
                     draft(t) => { root.draft(b.id, t); }
                     link(u) => { root.link(u); }
                 }
+            }
+            if settled && (Theme.material || !glass-plugin): Sliver {
+                width: parent.width;
+                height: parent.height;
+                front-w: card-w;
+                front-h: b.plate;
+                radius: parent.border-radius;
+                depth: b.depth;
+                circular: true; // (the card's own corners: a Rectangle's)
+                banner: true;
+                fill: surface;
+                line: Theme.separator;
+                line-width: Theme.material ? 0 : 0.5px;
             }
             // A back card: clicking the stack fans it out
             if !live: TouchArea {

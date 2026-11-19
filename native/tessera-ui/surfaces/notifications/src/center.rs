@@ -87,8 +87,13 @@ pub struct Entry {
     pub count: usize,
     /// its group is open
     pub open: bool,
-    /// Glass: a collapsed stack's edges peeking below (0..=2)
+    /// a folded stack's cards peeking out below it (0..=2, stack.rs)
     pub edges: usize,
+    /// an open group's rows fanning out of its stack: the header 1, each
+    /// card its place down (0: the front card, which stays put; any other row)
+    pub fan: usize,
+    /// its group is folding back into its stack (Show less)
+    pub fold: bool,
     /// Material: the ends of a block of joined cards (round there, tight
     /// between)
     pub first: bool,
@@ -96,30 +101,34 @@ pub struct Entry {
 }
 
 /// The rows (NotificationCenter.qml's Repeaters; the shade's `entries`): a
-/// collapsed group is its newest card (with its count; Glass, two edges
-/// peeking); an open one is a header and every card. Material: an open group
-/// is a block of its own; everything else joins into blocks between them.
-pub fn entries(groups: &[Group], open: &HashSet<String>) -> Vec<Entry> {
+/// collapsed group is its newest card (with its count, and up to two cards
+/// peeking out under it as iOS, stack.rs); an open one is a header and every
+/// card (`folding`: the one folding back, its rows still there). Material: an
+/// open group, or a folded stack, is a block of its own (round all round,
+/// as the cards behind it); single cards join into blocks between them.
+pub fn entries(groups: &[Group], open: &HashSet<String>, folding: Option<&str>) -> Vec<Entry> {
     let mut out: Vec<(Entry, usize)> = Vec::new();
-    let (mut block, mut last_open) = (0usize, false);
+    let (mut block, mut last_alone) = (0usize, false);
     for (gi, g) in groups.iter().enumerate() {
         let kind = if g.island { Kind::Alert } else { Kind::Note };
         let n = g.items.len();
         let is_open = n > 1 && open.contains(&g.key());
-        let row = |kind, item, count, edges| Entry { kind, group: gi, item, count, open: is_open, edges, first: false, last: false };
+        let fold = is_open && folding == Some(g.key().as_str());
+        let row = |kind, item, count, edges, fan| Entry { kind, group: gi, item, count, open: is_open, edges, fan, fold: fold && fan > 0, first: false, last: false };
+        let alone = n > 1;
         if is_open {
             block += 1;
-            out.push((row(Kind::Header, g.items[0], n, 0), block));
-            for &it in &g.items {
-                out.push((row(kind, it, 1, 0), block));
+            out.push((row(Kind::Header, g.items[0], n, 0, 1), block));
+            for (k, &it) in g.items.iter().enumerate() {
+                out.push((row(kind, it, 1, 0, k), block));
             }
         } else {
-            if last_open || out.is_empty() {
+            if alone || last_alone || out.is_empty() {
                 block += 1;
             }
-            out.push((row(kind, g.items[0], n, (n - 1).min(2)), block));
+            out.push((row(kind, g.items[0], n, super::stack::depth(n), 0), block));
         }
-        last_open = is_open;
+        last_alone = alone;
     }
     let blocks: Vec<usize> = out.iter().map(|e| e.1).collect();
     out.into_iter()
@@ -345,11 +354,13 @@ mod tests {
         let notes = vec![note(1, "Mail", 1), note(2, "Chat", 2), note(3, "Mail", 3), note(4, "Mail", 4), note(5, "Mail", 5), note(6, "Files", 6)];
         let g = groups(&notes, &[]);
         // Files (1), Mail (4: 5 4 3 1), Chat (1)
-        let rows = entries(&g, &HashSet::new());
+        let rows = entries(&g, &HashSet::new(), None);
         assert_eq!(rows.iter().map(|e| (e.item, e.count, e.edges)).collect::<Vec<_>>(), vec![(6, 1, 0), (5, 4, 2), (2, 1, 0)]);
-        assert!(rows[0].first && !rows[0].last && !rows[1].first && rows[2].last);
+        // (a folded stack is a block of its own: round all round, as the
+        // cards peeking out under it)
+        assert!(rows.iter().all(|e| e.first && e.last && e.fan == 0 && !e.fold));
         let open: HashSet<String> = ["Mail".to_string()].into();
-        let rows = entries(&g, &open);
+        let rows = entries(&g, &open, None);
         let kinds: Vec<Kind> = rows.iter().map(|e| e.kind).collect();
         assert_eq!(kinds, vec![Kind::Note, Kind::Header, Kind::Note, Kind::Note, Kind::Note, Kind::Note, Kind::Note]);
         // the open group is a block of its own: Files ends one, Chat starts one
@@ -357,9 +368,21 @@ mod tests {
         assert!(rows[1].first && !rows[1].last && rows[5].last);
         assert!(rows[6].first && rows[6].last);
         assert!(rows[2..6].iter().all(|e| e.open && e.count == 1));
+        // fanning out: the header, then each card its place down (the front
+        // card stays put)
+        assert_eq!(rows.iter().map(|e| e.fan).collect::<Vec<_>>(), vec![0, 1, 0, 1, 2, 3, 0]);
+        assert!(rows.iter().all(|e| !e.fold));
+        // Show less: the group's rows stay while they fold (not the front card)
+        let rows = entries(&g, &open, Some("Mail"));
+        assert_eq!(rows.iter().map(|e| e.fold).collect::<Vec<_>>(), vec![false, true, false, true, true, true, false]);
+        assert_eq!(entries(&g, &open, Some("Chat")).iter().filter(|e| e.fold).count(), 0);
         // (a group of one never opens)
         let open: HashSet<String> = ["Files".to_string()].into();
-        assert_eq!(entries(&g, &open).len(), 3);
+        assert_eq!(entries(&g, &open, None).len(), 3);
+        // single cards still join into a block
+        let notes = vec![note(1, "Mail", 1), note(2, "Chat", 2), note(3, "Files", 3)];
+        let rows = entries(&groups(&notes, &[]), &HashSet::new(), None);
+        assert!(rows[0].first && !rows[0].last && !rows[1].first && !rows[1].last && rows[2].last);
     }
 
     #[test]

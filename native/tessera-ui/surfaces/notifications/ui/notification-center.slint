@@ -11,7 +11,7 @@ import { Theme, Icon } from "@tessera/theme.slint";
 import { Squircle } from "@tessera/squircle.slint";
 import { IconButton, StateShape } from "@tessera/widgets.slint";
 import { CalendarTab, TodoTab, Segmented, NcDay, NcItem, NcTodo, NcTarget, NcDraft } from "@tessera/calendar.slint";
-import { Banner, GlassCard, MaterialCard, Expander, Frost } from "notifications.slint";
+import { Banner, GlassCard, MaterialCard, Expander, Frost, Sliver } from "notifications.slint";
 
 export struct NcRow {
     kind: int, // 0 a notification, 1 an island alert, 2 an open group's header
@@ -19,7 +19,16 @@ export struct NcRow {
     gkey: string, // its group's key (what toggles and clears it: two groups may share a name)
     count: int, // how many its card stands for (collapsed), else 1
     open: bool,
-    edges: int, // Glass: a collapsed stack's edges below (0..2)
+    edges: int, // a folded stack's cards peeking out below it (0..2)
+    peek: length, // how far they reach below it (stack.rs)
+    // Fanning out of the stack as its group opens (0 not: its front card;
+    // the header 1, each card its place down), or folding back into it
+    fan: int,
+    fold: bool,
+    from: length, // its height as it starts (what showed of it)
+    shrink: float, // its scale and opacity then
+    dim: float,
+    delay: int, // ms before it moves
     first: bool, // Material: a block's ends
     last: bool,
     gap: length, // room above it
@@ -342,7 +351,7 @@ export component Center inherits Window {
     }
     callback focus-mode-set(int);
     callback act(string);
-    callback card(int, length, length, length, length); // a row's card as laid out: index, y in the list, height (Glass's chips), width, edges' height
+    callback card(int, length, length, length, length, float, float); // a row's card as drawn: index, its top in the list, height (Glass's chips), width, its stack's peek, scale (about its foot) and opacity
 
     background: transparent;
     no-frame: true;
@@ -532,100 +541,154 @@ export component Center inherits Window {
                         width: content-w;
                         height: self.preferred-height;
                         for r[i] in rows: Rectangle {
-                            height: r.gap + (r.kind == 2 ? (Theme.material ? 52px : 24px) : Theme.material ? seg.height : gcard.height + 8px * r.edges);
+                            // its card's own height (a header: its bar)
                             property <length> card-h: r.kind == 2 ? (Theme.material ? 52px : 24px) : Theme.material ? mcard.height : gcard.height;
-                            changed card-h => { root.card(i, self.y + r.gap, card-h, self.width, 8px * r.edges); }
-                            changed y => { root.card(i, self.y + r.gap, card-h, self.width, 8px * r.edges); }
-                            init => { root.card(i, self.y + r.gap, card-h, self.width, 8px * r.edges); }
+                            // Fanning out of the stack (its group just opened):
+                            // from where it sat in the stack, one after another,
+                            // on the shell's spring; folding back (Show less) on
+                            // the exit curve. Reduce motion: it snaps (stack.rs)
+                            property <bool> born: r.fan <= 0;
+                            property <float> grow: born && !r.fold ? 1 : 0;
+                            animate grow {
+                                duration: Theme.still ? 0ms : r.fold ? 220ms : 460ms;
+                                delay: Theme.still ? 0ms : r.delay * 1ms;
+                                easing: r.fold ? cubic-bezier(0.4, 0, 1, 1) : Theme.material ? spring(0.5) : spring(0.32);
+                            }
+                            property <float> g: r.fan > 0 ? grow : 1;
+                            property <float> sc: 1 - (1 - r.shrink) * (1 - min(1, g));
+                            property <float> op: 1 - (1 - r.dim) * (1 - min(1, g));
+                            height: max(0px, r.gap * g + r.from + (card-h - r.from) * g) + r.peek;
+                            // (while it grows, nothing of it shows above its row:
+                            // it comes out from under the card above)
+                            clip: g < 0.999;
+                            // the card's top: at the row's foot, over its stack's peek
+                            property <length> top: self.height - r.peek - card-h;
+                            property <string> geo: (self.y + top) / 1px + " " + card-h / 1px + " " + self.width / 1px + " " + r.peek / 1px + " " + sc + " " + op;
+                            changed geo => { root.card(i, self.y + top, card-h, self.width, r.peek, sc, op); }
+                            init => {
+                                born = true;
+                                root.card(i, self.y + top, card-h, self.width, r.peek, sc, op);
+                            }
 
                             // ── Glass ──
-                            if !Theme.material && r.kind == 2: HorizontalLayout {
-                                y: r.gap;
+                            if !Theme.material && r.kind == 2: Rectangle {
+                                y: top;
                                 height: 24px;
-                                padding-left: 4px;
-                                spacing: 6px;
-                                Text {
-                                    text: r.group;
-                                    color: Theme.label;
-                                    font-size: Theme.body;
-                                    font-weight: 600;
-                                    vertical-alignment: center;
-                                    horizontal-stretch: 1;
-                                    overflow: elide;
-                                }
-                                Rectangle {
-                                    y: 1px;
-                                    width: less-l.preferred-width + 18px;
-                                    height: 22px;
-                                    border-radius: 11px;
-                                    background: less-t.has-hover ? Theme.fill-hover : Theme.fill;
-                                    accessible-role: button;
-                                    accessible-label: "Show less";
-                                    accessible-action-default => { toggle-group(r.gkey); }
-                                    less-l := Text {
-                                        text: "Show less";
+                                opacity: op;
+                                HorizontalLayout {
+                                    padding-left: 4px;
+                                    spacing: 6px;
+                                    Text {
+                                        text: r.group;
                                         color: Theme.label;
-                                        font-size: Theme.caption;
-                                        font-weight: 500;
-                                        horizontal-alignment: center;
+                                        font-size: Theme.body;
+                                        font-weight: 600;
                                         vertical-alignment: center;
+                                        horizontal-stretch: 1;
+                                        overflow: elide;
                                     }
-                                    less-t := TouchArea {
-                                        mouse-cursor: pointer;
-                                        clicked => { toggle-group(r.gkey); }
+                                    Rectangle {
+                                        y: 1px;
+                                        width: less-l.preferred-width + 18px;
+                                        height: 22px;
+                                        border-radius: 11px;
+                                        background: less-t.has-hover ? Theme.fill-hover : Theme.fill;
+                                        accessible-role: button;
+                                        accessible-label: "Show less";
+                                        accessible-action-default => { toggle-group(r.gkey); }
+                                        less-l := Text {
+                                            text: "Show less";
+                                            color: Theme.label;
+                                            font-size: Theme.caption;
+                                            font-weight: 500;
+                                            horizontal-alignment: center;
+                                            vertical-alignment: center;
+                                        }
+                                        less-t := TouchArea {
+                                            mouse-cursor: pointer;
+                                            clicked => { toggle-group(r.gkey); }
+                                        }
                                     }
-                                }
-                                IconButton {
-                                    y: 1px;
-                                    width: 22px;
-                                    height: 22px;
-                                    icon: "\u{e4f6}";
-                                    icon-size: 11px;
-                                    label: r.kind == 1 || r.b.alert ? "Clear Tessera alerts" : "Clear " + r.group;
-                                    clicked => { clear-group(r.gkey); }
+                                    IconButton {
+                                        y: 1px;
+                                        width: 22px;
+                                        height: 22px;
+                                        icon: "\u{e4f6}";
+                                        icon-size: 11px;
+                                        label: r.kind == 1 || r.b.alert ? "Clear Tessera alerts" : "Clear " + r.group;
+                                        clicked => { clear-group(r.gkey); }
+                                    }
                                 }
                             }
+                            // a card, and (a folded stack) the cards peeking out under it
                             Rectangle {
                                 visible: !Theme.material && r.kind != 2;
-                                y: r.gap;
-                                height: parent.height - r.gap;
-                                // the stack's edges below the front card
-                                for k in r.edges: Platter {
-                                    chip: bare;
-                                    plugin: glass-plugin;
-                                    x: (k + 1) * 8px;
-                                    y: gcard.height - 4px + k * 8px;
-                                    width: parent.width - 2 * (k + 1) * 8px;
-                                    height: 12px;
-                                    border-radius: 6px;
-                                    opacity: 0.75 - 0.2 * k;
+                                y: top;
+                                height: card-h + r.peek;
+                                for d in r.edges: Sliver {
+                                    width: parent.width;
+                                    height: parent.height;
+                                    front-w: parent.width;
+                                    front-h: card-h;
+                                    radius: 18px;
+                                    depth: d + 1;
+                                    circular: false;
+                                    // (as the card's platter: its glass's veil and
+                                    // hairline, the frost without the plugin, or the
+                                    // panel's platter)
+                                    fill: bare && !glass-plugin ? Frost.tint : bare ? (Theme.dark ? #ffffff12 : #ffffff47) : Theme.platter;
+                                    veil: Theme.dark ? #ffffff12 : #ffffff47;
+                                    veiled: bare && !glass-plugin;
+                                    line: Theme.dark ? #ffffff0f : #ffffff4d;
+                                    line-width: bare ? 1px : 0;
+                                    opacity: d == 0 ? 0.8 : 0.6;
                                 }
-                                Platter {
-                                    chip: bare;
-                                    plugin: glass-plugin;
-                                    y: 0;
-                                    height: gcard.height;
-                                    border-radius: 18px;
+                                // (what peeks out fans it out too)
+                                if r.peek > 0: TouchArea {
+                                    y: card-h;
+                                    height: r.peek;
+                                    mouse-cursor: pointer;
+                                    clicked => { toggle-group(r.gkey); }
                                 }
-                                gtouch := TouchArea {
+                                Rectangle {
                                     y: 0;
-                                    height: gcard.height;
-                                    gcard := GlassCard {
-                                        width: content-w;
-                                        b: r.b;
-                                        hovered: gtouch.has-hover;
-                                        activated => { root.row-activated(r.b.id); }
-                                        close => { if r.b.alert { root.alert-close(r.b.id); } else { root.row-close(r.b.id); } }
-                                        action(k) => { root.action(r.b.id, k); }
-                                        reply-open => { root.reply-open(r.b.id); }
-                                        reply-cancel => { root.reply-cancel(r.b.id); }
-                                        reply-send(t) => { root.reply-send(r.b.id, t); }
-                                        draft(t) => { root.draft(r.b.id, t); }
-                                        link(u) => { root.link(u); }
+                                    height: card-h;
+                                    transform-origin: { x: self.width / 2, y: self.height };
+                                    transform-scale: sc;
+                                    opacity: op;
+                                    Platter {
+                                        chip: bare;
+                                        plugin: glass-plugin;
+                                        y: 0;
+                                        height: card-h;
+                                        border-radius: 18px;
                                     }
-                                    // a collapsed stack expands instead
-                                    if r.count > 1 && !r.open: TouchArea {
-                                        clicked => { toggle-group(r.gkey); }
+                                    gtouch := TouchArea {
+                                        y: 0;
+                                        height: card-h;
+                                        // (its text shows only once it's out of the stack)
+                                        opacity: r.fan > 0 ? max(0, min(1, (g - 0.3) / 0.7)) : 1;
+                                        gcard := GlassCard {
+                                            width: content-w;
+                                            b: r.b;
+                                            hovered: gtouch.has-hover;
+                                            // a folded stack: "2 more"; a click fans it
+                                            // out, close clears the group
+                                            more: r.count > 1 && !r.open ? r.count - 1 : 0;
+                                            tap-expands: r.count > 1 && !r.open;
+                                            close-label: r.count > 1 && !r.open ? "Clear " + r.count + " notifications from " + r.group : "";
+                                            group-toggled => { toggle-group(r.gkey); }
+                                            activated => { root.row-activated(r.b.id); }
+                                            close => {
+                                                if r.count > 1 && !r.open { root.clear-group(r.gkey); } else if r.b.alert { root.alert-close(r.b.id); } else { root.row-close(r.b.id); }
+                                            }
+                                            action(k) => { root.action(r.b.id, k); }
+                                            reply-open => { root.reply-open(r.b.id); }
+                                            reply-cancel => { root.reply-cancel(r.b.id); }
+                                            reply-send(t) => { root.reply-send(r.b.id, t); }
+                                            draft(t) => { root.draft(r.b.id, t); }
+                                            link(u) => { root.link(u); }
+                                        }
                                     }
                                 }
                             }
@@ -646,17 +709,40 @@ export component Center inherits Window {
                                 property <int> rid: r.b.id;
                                 changed rid => { self.off = 0; }
                                 property <bool> loose: swipe.swiping || dx != 0;
-                                y: r.gap;
+                                y: top;
                                 x: dx;
+                                // (fanning out: from its place in the stack)
+                                transform-origin: { x: self.width / 2, y: self.height };
+                                transform-scale: sc;
                                 width: content-w;
                                 height: r.kind == 2 ? 52px : mcard.height;
                                 background: Theme.m3-surface-container-high.with-alpha(Theme.blur ? 1 - 0.4 * (1 - Theme.panel-alpha) / 0.55 : 1);
-                                opacity: 1 - 0.6 * min(1, abs(dx) / max(1px, self.width));
+                                opacity: op * (1 - 0.6 * min(1, abs(dx) / max(1px, self.width)));
                                 border-top-left-radius: loose || r.first ? 24px : 6px;
                                 border-top-right-radius: self.border-top-left-radius;
                                 border-bottom-left-radius: loose || r.last ? 24px : 6px;
                                 border-bottom-right-radius: self.border-bottom-left-radius;
                                 animate border-top-left-radius, border-bottom-left-radius { duration: 150ms; easing: cubic-bezier(0.3333, 1, 0.6667, 1); }
+                                // a folded stack: the cards peeking out under it
+                                // (its own block: round all round, as they are)
+                                for d in r.edges: Sliver {
+                                    y: 0;
+                                    width: parent.width;
+                                    height: parent.height + r.peek;
+                                    front-w: parent.width;
+                                    front-h: parent.height;
+                                    radius: 24px;
+                                    depth: d + 1;
+                                    circular: true;
+                                    fill: parent.background;
+                                    opacity: d == 0 ? 0.8 : 0.6;
+                                }
+                                if r.peek > 0: TouchArea {
+                                    y: parent.height;
+                                    height: r.peek;
+                                    mouse-cursor: pointer;
+                                    clicked => { toggle-group(r.gkey); }
+                                }
                                 fly := Timer {
                                     interval: 150ms;
                                     running: false;
@@ -688,6 +774,7 @@ export component Center inherits Window {
                                     }
                                     cancelled => { seg.off = 0; }
                                     mtouch := TouchArea {
+                                        opacity: r.fan > 0 ? max(0, min(1, (g - 0.3) / 0.7)) : 1;
                                         mcard := MaterialCard {
                                             visible: r.kind != 2;
                                             width: content-w;
