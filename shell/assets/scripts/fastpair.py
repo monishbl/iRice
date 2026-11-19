@@ -33,6 +33,8 @@ dropped.
 needs an API key: the Bluetooth name is used instead.)
 """
 import json
+import signal
+import os
 import re
 import sys
 import time
@@ -594,6 +596,20 @@ class Watcher:
         self.GLib.timeout_add_seconds(30, self.duty)
         self.GLib.timeout_add_seconds(1, self.report)
         loop = self.GLib.MainLoop()
+        # Gone with the shell that started it: a stop asked (SIGTERM, SIGINT)
+        # ends the loop, and a parent gone (the shell restarted, crashed or
+        # was replaced) ends it too. Each shell restart used to leave one
+        # behind, still scanning (19 Nov: four on system1)
+        parent = os.getppid()
+        for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+            self.GLib.unix_signal_add(self.GLib.PRIORITY_HIGH, sig, lambda *_: (loop.quit(), False)[1])
+
+        def orphaned():
+            if os.getppid() != parent:
+                loop.quit()
+                return False
+            return True
+        self.GLib.timeout_add_seconds(2, orphaned)
         try:
             loop.run()
         finally:
