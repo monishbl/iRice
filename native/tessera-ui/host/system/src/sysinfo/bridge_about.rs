@@ -115,6 +115,19 @@ pub fn strip_steps(log: &str) -> String {
     log.split('\n').filter(|l| !l.starts_with("@@step ")).collect::<Vec<_>>().join("\n")
 }
 
+/// The lines Software Update's details show: the last `n`, without the step
+/// lines. (19 Nov: the whole output went to Settings on every new line and
+/// was laid out again each time, so the page lagged more the longer an
+/// update ran. The view shows about a dozen lines; Copy copies the full log
+/// from here, up.copyLog.)
+pub fn log_tail(log: &str, n: usize) -> String {
+    // (only the end is looked at: the log can be megabytes)
+    let from = log.len().saturating_sub(n * 400);
+    let from = (from..=log.len()).find(|&i| log.is_char_boundary(i)).unwrap_or(log.len());
+    let lines: Vec<&str> = log[from..].split('\n').skip(usize::from(from > 0)).filter(|l| !l.starts_with("@@step ")).collect();
+    lines[lines.len().saturating_sub(n)..].join("\n")
+}
+
 fn expand(p: &str) -> String {
     match p.strip_prefix("~/") {
         Some(r) => format!("{}/{}", util::home().to_string_lossy(), r),
@@ -234,7 +247,7 @@ impl About {
             "up": {
                 "job": job, "list": pkgs(&up.list), "aurList": pkgs(&up.aur_list), "fake": up.fake, "interrupted": up.interrupted,
                 "cancellable": up.cancellable(), "running": up.running(), "progress": up.progress(), "showDetails": up.show_details,
-                "log": if self.log_shown { strip_steps(&up.log) } else { String::new() },
+                "log": if self.log_shown { log_tail(&up.log, 200) } else { String::new() },
             },
             "bs": {"booted": bs["booted"], "assistant": bs["assistant"], "canMenu": bs["canMenu"], "grubBtrfs": bs["grubBtrfs"], "menuOn": bs["menuOn"], "error": bs["error"], "busy": bs["busy"]},
             "needsInstalling": st(h, "needs")["installing"].as_bool().unwrap_or(false),
@@ -746,5 +759,26 @@ mod tests {
     #[test]
     fn steps_are_not_output() {
         assert_eq!(strip_steps("@@step system\nhello\nworld"), "hello\nworld");
+    }
+}
+
+#[cfg(test)]
+mod log_tail_tests {
+    use super::log_tail;
+    #[test]
+    fn keeps_the_last_lines_without_steps() {
+        let log: String = (0..5000).map(|i| if i % 10 == 0 { format!("@@step {i}\n") } else { format!("line {i}\n") }).collect();
+        let t = log_tail(log.trim_end(), 200);
+        let lines: Vec<&str> = t.split('\n').collect();
+        assert_eq!(lines.len(), 200);
+        assert_eq!(*lines.last().unwrap(), "line 4999");
+        assert!(lines.iter().all(|l| l.starts_with("line ")));
+    }
+    #[test]
+    fn short_logs_whole_and_utf8_safe() {
+        assert_eq!(log_tail("a\n@@step x\nb", 200), "a\nb");
+        let long = "é".repeat(100_000);
+        assert!(log_tail(&long, 2).chars().all(|c| c == 'é'));
+        assert_eq!(log_tail("", 5), "");
     }
 }
