@@ -1,0 +1,9 @@
+#%PAM-1.0
+# PAM reads "other" from this folder too, for anything the services here
+# don't list (each says only auth and account). Without it every lock check
+# logged "_pam_init_handlers: no default config other" to the journal.
+# Nothing here is used to let anyone in.
+auth       required     pam_deny.so
+account    required     pam_deny.so
+password   required     pam_deny.so
+session    required     pam_deny.so

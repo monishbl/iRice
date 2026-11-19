@@ -64,6 +64,9 @@ fn command(cmd: &[String], stdin: Stdio, die_with_us: bool) -> Option<Command> {
     c.args(args).stdin(stdin).stdout(Stdio::piped()).stderr(Stdio::piped());
     unsafe {
         c.pre_exec(move || {
+            // (signals unblocked: the shell's signalfd mask kept the
+            // PDEATHSIG below pending, so these outlived every shell)
+            tessera_core::util::child_signals();
             if die_with_us {
                 libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
             }

@@ -227,8 +227,11 @@ fn style_cfg(cfg: &serde_json::Value) -> std::borrow::Cow<'_, serde_json::Value>
 }
 
 /// DockItem.launcherThemed: a real app-grid icon, not the generic one or a symbolic glyph
+/// (nor AdwaitaLegacy's grey GNOME foot, `start-here`: Adwaita inherits
+/// it, so on a plain install the Apps button was a dim foot on a dark tile
+/// instead of the dot grid; 20 Nov, system1)
 fn launcher_themed(path: &str) -> bool {
-    !path.contains("application-x-executable") && !path.contains("default-icon") && !path.contains("-symbolic")
+    !path.contains("application-x-executable") && !path.contains("default-icon") && !path.contains("-symbolic") && !path.contains("/AdwaitaLegacy/")
 }
 
 fn count_trash() -> usize {
@@ -1190,6 +1193,7 @@ mod tests {
         assert!(launcher_themed("/i/Colloid/apps/scalable/view-app-grid.svg"));
         assert!(!launcher_themed("/i/Adwaita/symbolic/actions/view-app-grid-symbolic.svg"));
         assert!(!launcher_themed("/i/hicolor/48x48/apps/application-x-executable.png"));
+        assert!(!launcher_themed("/usr/share/icons/AdwaitaLegacy/32x32/places/start-here.png"));
     }
 
     fn test_item(kind: Kind, id: &str) -> Item {

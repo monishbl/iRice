@@ -362,7 +362,11 @@ impl Service for Mouse {
                 return;
             }
             loop {
-                let child = Command::new("udevadm").args(["monitor", "--udev", "--subsystem-match=input"]).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn();
+                let mut cmd = Command::new("udevadm");
+                cmd.args(["monitor", "--udev", "--subsystem-match=input"]).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null());
+                // (ends with this thread, so with the shell: one was left per restart)
+                tessera_core::util::dies_with_us(&mut cmd);
+                let child = cmd.spawn();
                 if let Ok(mut c) = child {
                     if let Some(out) = c.stdout.take() {
                         for line in BufReader::new(out).lines().map_while(Result::ok) {

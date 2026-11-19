@@ -108,6 +108,56 @@ else
     tenv=()
     tcmd=()
 fi
+# The login session's own variables, from the compositor (not from the old
+# shell: one restarted over ssh carried that ssh login's XDG_SESSION_ID and
+# SSH_* into every later shell, so its polkit agent served the ssh session
+# and the desktop's own asks found no agent; 20 Nov)
+# (hyprctl names its pid: Hyprland's own /proc environ predates its signature)
+compositor_pid() {
+    [[ -n "$SIG" ]] || return 0
+    hyprctl instances -j 2>/dev/null | tr -d ' \n\t' | grep -o "\"instance\":\"$SIG\",[^}]*" | grep -o '"pid":[0-9]*' | head -1 | cut -d: -f2
+}
+cpid="$(compositor_pid)"
+# Run from another login (ssh, a tty): hand the repair to the compositor, so
+# the new shell starts inside the desktop's login with the compositor's own
+# environment (what its config set: ELECTRON_OZONE_PLATFORM_HINT,
+# QT_QPA_PLATFORM, cursor…; /proc keeps only what it started with). A shell
+# started from ssh had none of it: the dock's Electron apps looked for X11
+# and quit, and polkit asked for a password for a Wi-Fi scan (20 Nov).
+if [[ -n "$cpid" && -z "${TESSERA_REPAIR_HANDOFF:-}" && "$(cat /proc/self/sessionid 2>/dev/null)" != "$(cat "/proc/$cpid/sessionid" 2>/dev/null)" ]]; then
+    me="$(readlink -f "${BASH_SOURCE[0]}")"
+    if hyprctl dispatch "hl.dsp.exec_cmd(\"env TESSERA_REPAIR_HANDOFF=1 TESSERA_REPAIR_QUIET=${TESSERA_REPAIR_QUIET:-0} '$me'\")" 2>/dev/null | grep -q '^ok'; then
+        echo "handed to the compositor's session"
+        exit 0
+    fi
+fi
+if [[ ${#tenv[@]} -gt 0 ]]; then
+    fresh=()
+    for e in "${tenv[@]}"; do
+        case "$e" in
+            SSH_CLIENT=* | SSH_CONNECTION=* | SSH_TTY=*) ;;
+            XDG_SESSION_ID=* | XDG_SESSION_TYPE=* | XDG_SEAT=* | XDG_VTNR=*) [[ -z "$cpid" ]] && fresh+=("$e") ;;
+            *) fresh+=("$e") ;;
+        esac
+    done
+    if [[ -n "$cpid" ]]; then
+        while IFS= read -r e; do fresh+=("$e"); done < <(env_of "$cpid" | grep -E '^XDG_(SESSION_ID|SESSION_TYPE|SEAT|VTNR)=')
+    fi
+    tenv=("${fresh[@]}")
+fi
+# (and the usual way below starts with this script's own environment)
+unset SSH_CLIENT SSH_CONNECTION SSH_TTY
+if [[ -n "$cpid" ]]; then
+    while IFS= read -r e; do export "${e?}"; done < <(env_of "$cpid" | grep -E '^XDG_(SESSION_ID|SESSION_TYPE|SEAT|VTNR)=')
+fi
+# Run from another login (ssh), the shell would live in that login's
+# session, which isn't the active one: polkit then asked for a password
+# for what the desktop may just do (a Wi-Fi scan). Started in its own
+# scope of the user's manager it counts as the desktop's, as apps do.
+in_session=()
+if [[ -n "$cpid" && "$(cat /proc/self/sessionid 2>/dev/null)" != "$(cat "/proc/$cpid/sessionid" 2>/dev/null)" ]] && command -v systemd-run >/dev/null; then
+    in_session=(systemd-run --user --scope --quiet --collect --)
+fi
 tty_ctl=""
 if [[ -n "$template" ]] && env_of "$template" | grep -qx "TESSERA_TTY=1"; then
     troot="$(var_of "$template" TESSERA_ROOT)"
@@ -146,11 +196,11 @@ elif [[ ${#tcmd[@]} -gt 0 ]]; then
     # (so a theme changed in Settings applies)
     fresh=()
     for e in "${tenv[@]}"; do [[ $e == QS_ICON_THEME=* ]] || fresh+=("$e"); done
-    env -i "${fresh[@]}" setsid -f "$SHELL_DIR/assets/scripts/launch-shell.sh" "${tcmd[@]:1}" >/dev/null 2>&1 7>&- 6>&-
+    "${in_session[@]}" env -i "${fresh[@]}" setsid -f "$SHELL_DIR/assets/scripts/launch-shell.sh" "${tcmd[@]:1}" >/dev/null 2>&1 7>&- 6>&-
 elif [[ -n "${TESSERA_ROOT:-}" && -f "$TESSERA_ROOT/shell/shell.qml" ]]; then
-    setsid -f "$SHELL_DIR/assets/scripts/launch-shell.sh" -p "$TESSERA_ROOT/shell" >/dev/null 2>&1 7>&- 6>&-
+    "${in_session[@]}" setsid -f "$SHELL_DIR/assets/scripts/launch-shell.sh" -p "$TESSERA_ROOT/shell" >/dev/null 2>&1 7>&- 6>&-
 else
-    setsid -f "$SHELL_DIR/assets/scripts/launch-shell.sh" -c tessera >/dev/null 2>&1 7>&- 6>&-
+    "${in_session[@]}" setsid -f "$SHELL_DIR/assets/scripts/launch-shell.sh" -c tessera >/dev/null 2>&1 7>&- 6>&-
 fi
 sleep 2 # let it register, then let keep-shell.sh look again
 exec 7>&- 6>&-

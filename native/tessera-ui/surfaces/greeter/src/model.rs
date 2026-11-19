@@ -327,7 +327,10 @@ impl Model {
             self.out.push(Effect::PreviewDone);
             return;
         }
-        self.send(Request::StartSession { cmd: command, env: Vec::new() });
+        // (wayland: the sessions are /usr/share/wayland-sessions ones. With no
+        // XDG_SESSION_TYPE greetd's default "tty" was the desktop's, so
+        // Electron apps, GNOME and the portals took it for a console; 20 Nov)
+        self.send(Request::StartSession { cmd: command, env: vec!["XDG_SESSION_TYPE=wayland".into()] });
     }
 
     /// The preview's answer, 600 ms after Enter
@@ -579,7 +582,7 @@ mod tests {
         m.submit("tessera");
         assert_eq!(sent(&m.take()), vec![Request::PostAuthMessageResponse { response: Some("tessera".into()) }]);
         m.heard(Response::Success);
-        assert_eq!(sent(&m.take()), vec![Request::StartSession { cmd: vec!["tessera-session".into()], env: vec![] }]);
+        assert_eq!(sent(&m.take()), vec![Request::StartSession { cmd: vec!["tessera-session".into()], env: vec!["XDG_SESSION_TYPE=wayland".into()] }]);
         m.heard(Response::Success);
         assert_eq!(m.take(), vec![Effect::Quit]);
     }

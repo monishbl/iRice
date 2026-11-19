@@ -170,6 +170,11 @@ pub fn account_name() -> String {
     }
 }
 
+/// An answer is the running password check's (ids start at 1; 0: none runs)
+fn is_pass(id: u64, pass_id: u64) -> bool {
+    pass_id != 0 && id == pass_id
+}
+
 enum M {
     /// (the screen typed on, the field's text)
     Edited(String, String),
@@ -364,6 +369,12 @@ pub struct Lock {
     pam_locked: bool,
     error_count: i32,
     conv_id: u64,
+    /// the password check's own id. 20 Nov (system1): it was compared with
+    /// conv_id, which the reader's and the camera's retries move on every
+    /// few seconds; a check that took longer than the next retry had its
+    /// answer (and its 20 s stop) dropped, so the lock said "checking"
+    /// for good after the right password
+    pass_id: u64,
     pass_conv: Option<Conv>,
     finger: Reader,
     face: FaceCam,
@@ -440,6 +451,7 @@ impl Default for Lock {
             pam_locked: false,
             error_count: 0,
             conv_id: 0,
+            pass_id: 0,
             pass_conv: None,
             finger: Reader::default(),
             face: FaceCam::default(),
@@ -1516,10 +1528,11 @@ impl Lock {
         self.face.tries = 0;
         self.busy = true;
         self.conv_id += 1;
-        self.pass_conv = Some(auth::start(&self.backend, Kind::Password, self.conv_id, self.password.clone(), Self::send(st)));
+        self.pass_id = self.conv_id;
+        self.pass_conv = Some(auth::start(&self.backend, Kind::Password, self.pass_id, self.password.clone(), Self::send(st)));
         // A check never hangs: 20 s without an answer stops it (18 Nov: after
         // a sleep it said "checking" until a restart)
-        let (to, id) = (Self::send(st), self.conv_id);
+        let (to, id) = (Self::send(st), self.pass_id);
         self.t_pass.start(slint::TimerMode::SingleShot, Duration::from_secs(20), move || to(Box::new(M::PassTimeout(id))));
         self.rules(st);
     }
@@ -1558,12 +1571,12 @@ impl Lock {
     fn auth(&mut self, st: &mut State, e: Auth) {
         let now = crate::util::now_ms();
         match e {
-            Auth::Info(Kind::Password, id, m) | Auth::Error(Kind::Password, id, m) if id == self.conv_id => {
+            Auth::Info(Kind::Password, id, m) | Auth::Error(Kind::Password, id, m) if is_pass(id, self.pass_id) => {
                 if m.to_lowercase().contains("locked") {
                     self.pam_locked = true;
                 }
             }
-            Auth::Done(Kind::Password, id, out) if id == self.conv_id => {
+            Auth::Done(Kind::Password, id, out) if is_pass(id, self.pass_id) => {
                 self.t_pass.stop();
                 // (what happened, never what was typed)
                 eprintln!("tessera-ui: lock: password check: {}", match &out { Outcome::Success => "success", Outcome::Failure(_) => "failure", Outcome::Error(_) => "error" });
@@ -2106,13 +2119,13 @@ impl Part for Lock {
             }
             M::MatchShown => self.unlocked(),
             M::PassTimeout(id) => {
-                if id == self.conv_id && self.busy {
+                if is_pass(id, self.pass_id) && self.busy {
                     eprintln!("tessera-ui: lock: password check: no answer in 20 s, stopped");
                     if let Some(c) = self.pass_conv.take() {
                         c.abort();
                     }
                     self.busy = false;
-                    self.conv_id += 1; // (a late answer from it is ignored)
+                    self.pass_id = 0; // (a late answer from it is ignored)
                     self.error = "Couldn't check your password. Try again.".into();
                     self.error_count += 1;
                     self.field();
@@ -2472,6 +2485,16 @@ impl Lock {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_password_answer_counts_whatever_the_reader_and_camera_started_since() {
+        use super::is_pass;
+        // the check is conversation 5; the reader's retry took 6, the camera's 7
+        assert!(is_pass(5, 5));
+        assert!(!is_pass(6, 5) && !is_pass(7, 5));
+        // stopped after 20 s: a late answer is nobody's
+        assert!(!is_pass(5, 0) && !is_pass(0, 0));
+    }
+
     #[test]
     fn hands_only_turn_forward() {
         use super::forward;

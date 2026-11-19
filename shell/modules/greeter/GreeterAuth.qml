@@ -131,7 +131,10 @@ QtObject {
             console.log("greeter (mock): would launch", s?.exec);
             return;
         }
-        Greetd.launch(command, [], true);
+        // (wayland: the sessions are /usr/share/wayland-sessions ones; with no
+        // XDG_SESSION_TYPE greetd says "tty" and Electron apps, GNOME and
+        // the portals took the desktop for a console one)
+        Greetd.launch(command, ["XDG_SESSION_TYPE=wayland"], true);
     }
 
     property Connections greetd: Connections {

@@ -164,22 +164,35 @@ struct Net {
     busy: bool,
 }
 
+/// The networks: NetworkFeed's list (bus "WifiList", what Settings ->
+/// Wi-Fi shows; `network.list` renews it). 20 Nov: this read a bus
+/// "network" nothing ever wrote, so the page always said "Looking for
+/// networks…" and listed none, not even the one in use.
 fn nets() -> Vec<Net> {
-    let n = g("network");
-    n["networks"]
+    nets_of(&g("WifiList"))
+}
+
+fn nets_of(list: &Value) -> Vec<Net> {
+    let connecting = ss(list, "connecting").to_string();
+    let failed = ss(list, "failed").to_string();
+    list["networks"]
         .as_array()
         .map(|a| {
             a.iter()
-                .map(|x| Net {
-                    name: ss(x, "name").into(),
-                    connected: bs(x, "connected"),
-                    known: bs(x, "known"),
-                    secured: bs(x, "secured"),
-                    enterprise: bs(x, "enterprise"),
-                    signal: x["signal"].as_f64().or(x["signalStrength"].as_f64()).unwrap_or(0.0),
-                    connecting: bs(x, "connecting") || bs(x, "joining"),
-                    failed: ss(x, "failed").into(),
-                    busy: bs(x, "busy") || bs(x, "joining") || bs(x, "connecting"),
+                .map(|x| {
+                    let name = ss(x, "name").to_string();
+                    let busy = !name.is_empty() && name == connecting;
+                    Net {
+                        connected: bs(x, "connected"),
+                        known: bs(x, "known"),
+                        secured: !bs(x, "open"),
+                        enterprise: bs(x, "enterprise"),
+                        signal: x["signal"].as_f64().unwrap_or(0.0),
+                        connecting: busy,
+                        failed: if !name.is_empty() && name == failed { "Couldn't connect".into() } else { String::new() },
+                        busy,
+                        name,
+                    }
                 })
                 .collect()
         })
@@ -280,12 +293,15 @@ pub struct ControlCenter {
     share_retry: bool,
     /// the Resources page asked for samples (resources.use "graph")
     res_used: bool,
+    /// the Wi-Fi page's list last asked for (ms)
+    wifi_listed: i64,
 }
 
 impl Default for ControlCenter {
     fn default() -> Self {
         Self {
             tx: None,
+            wifi_listed: 0,
             page: String::new(),
             editing: false,
             asking: String::new(),
@@ -1277,6 +1293,11 @@ impl ControlCenter {
         if self.page == "sound" {
             h.ask("audioprofiles.refresh", json!([]));
         }
+        // (the Wi-Fi list: a scan, as WifiPage does on showing; tick renews it)
+        if self.page == "wifi" {
+            h.ask("network.rescan", json!([]));
+            self.wifi_listed = now_ms();
+        }
         let want = self.page == "sharing";
         if want != self.sharing_look {
             self.sharing_look = want;
@@ -1580,6 +1601,12 @@ impl ControlCenter {
                 self.res_used = false;
                 h.ask("resources.use", json!([{"kind": "graph", "on": false}]));
             }
+            // closed: back to the grid next time (Panels.close clears
+            // ccPage), now that the bar opens a page here too
+            if !self.page.is_empty() {
+                self.page.clear();
+                h.set_state("ccPage", json!(""));
+            }
             // closed: leave editing
             if self.editing {
                 self.editing = false;
@@ -1614,6 +1641,10 @@ impl ControlCenter {
                     }
                 });
             }
+        }
+        if self.page == "wifi" && now_ms() - self.wifi_listed >= 4000 {
+            self.wifi_listed = now_ms();
+            h.ask("network.list", json!([]));
         }
         if self.page == "bluetooth" {
             let be = g("backends");
@@ -1779,6 +1810,19 @@ impl Service for ControlCenter {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn wifi_rows_from_the_feeds_list() {
+        let l = serde_json::json!({"networks": [
+            {"name": "Home", "signal": 80.0, "connected": true, "known": true, "open": false, "enterprise": false},
+            {"name": "Cafe", "signal": 40.0, "connected": false, "known": false, "open": true, "enterprise": false}],
+            "connecting": "Cafe", "failed": ""});
+        let n = super::nets_of(&l);
+        assert_eq!(n.len(), 2);
+        assert!(n[0].connected && n[0].known && n[0].secured && !n[0].busy);
+        assert!(!n[1].secured && n[1].connecting && n[1].busy && n[1].failed.is_empty());
+        assert!(super::nets_of(&serde_json::Value::Null).is_empty());
+    }
+
     #[test]
     fn every_tile_page_ends_with_its_settings() {
         for page in ["wifi", "bluetooth", "focus", "caffeine", "sharing", "mirroring", "cast", "resources"] {

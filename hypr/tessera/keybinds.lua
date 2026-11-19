@@ -237,8 +237,9 @@ local function bind(e, user)
             local releaseKey = keys
             -- (standalone there is no release event to tell apart: the release has its own name)
             local released, releaseError = pcall(hl.bind, releaseKey, UI and shortcut("superTapRelease") or action, {
+                -- (no description: it showed in the shortcuts list as
+                -- "Release tap modifier", which isn't one of its own)
                 release = true, ignore_mods = true, non_consuming = true,
-                description = "Shell: Release tap modifier"
             })
             if not released then log("couldn't bind tap release: " .. tostring(releaseError)) end
         end

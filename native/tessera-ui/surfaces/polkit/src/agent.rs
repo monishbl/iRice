@@ -172,6 +172,32 @@ pub fn user_of(uid: u32) -> String {
     }
 }
 
+/// logind's display session for this user (User.Display on user/self)
+fn display_session(conn: &zbus::blocking::Connection) -> Option<String> {
+    let reply = conn
+        .call_method(Some("org.freedesktop.login1"), "/org/freedesktop/login1/user/self", Some("org.freedesktop.DBus.Properties"), "Get", &("org.freedesktop.login1.User", "Display"))
+        .ok()?;
+    let v: OwnedValue = reply.body().deserialize().ok()?;
+    let mut v = Value::from(v);
+    // (a variant holding the (so) pair, unwrapped however deep it came)
+    while let Value::Value(inner) = v {
+        v = *inner;
+    }
+    match v {
+        Value::Structure(s) => match s.fields().first() {
+            Some(Value::Str(id)) => Some(id.to_string()),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// The session the agent registers for: the display session, else the
+/// environment's, else none (then the process itself)
+pub fn choose_session(display: Option<String>, env: Option<String>) -> Option<String> {
+    display.filter(|s| !s.is_empty()).or(env.filter(|s| !s.is_empty()))
+}
+
 /// Serve the agent on `system` (else the session bus) and register it;
 /// tries again a few times while another agent still holds this session
 pub fn spawn(system: bool, to: impl Fn(Box<dyn Any + Send>) + Send + 'static) {
@@ -189,7 +215,13 @@ pub fn spawn(system: bool, to: impl Fn(Box<dyn Any + Send>) + Send + 'static) {
         if let Err(e) = conn.object_server().at(OBJECT, Agent { to: to.clone() }) {
             return say(Err(e.to_string()));
         }
-        let subject: (String, HashMap<String, Value>) = match std::env::var("XDG_SESSION_ID").ok().filter(|s| !s.is_empty()) {
+        // The session: logind's graphical one for this user first (where the
+        // desktop's asks come from), then XDG_SESSION_ID. 20 Nov: a shell
+        // restarted over ssh kept that ssh login's XDG_SESSION_ID, so the
+        // agent served it and the desktop's own asks found no agent.
+        let session = if system { display_session(&conn) } else { None };
+        let session = choose_session(session, std::env::var("XDG_SESSION_ID").ok());
+        let subject: (String, HashMap<String, Value>) = match session {
             Some(id) => ("unix-session".into(), HashMap::from([("session-id".to_string(), Value::from(id))])),
             None => {
                 let pid = std::process::id();
@@ -351,6 +383,14 @@ fn spawn_helper(path: &str, user: &str, cookie: &str, child: &mut Option<std::pr
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_display_session_before_the_environments() {
+        assert_eq!(choose_session(Some("3".into()), Some("52".into())), Some("3".into()));
+        assert_eq!(choose_session(None, Some("52".into())), Some("52".into()));
+        assert_eq!(choose_session(Some(String::new()), Some(String::new())), None);
+        assert_eq!(choose_session(None, None), None);
+    }
 
     #[test]
     fn helper_lines() {

@@ -305,7 +305,10 @@ impl Panels {
                     h.ask("desktop", json!([if self.m.widget_editing { "edit" } else { "endEdit" }]));
                 }
             }
-            "page" => self.m.cc_page = str_arg(a, 0).to_string(),
+            "page" => {
+                self.m.cc_page = str_arg(a, 0).to_string();
+                h.ask("cc.page", json!([str_arg(a, 0)]));
+            }
             "tab" => self.m.sidebar_tab = a.get(0).and_then(|x| x.as_i64().or_else(|| x.as_str().and_then(|s| s.parse().ok()))).unwrap_or(0),
             "nctab" => self.m.nc_tab = a.get(0).and_then(|x| x.as_i64().or_else(|| x.as_str().and_then(|s| s.parse().ok()))).unwrap_or(0),
             // Edit Widgets on the first screen
@@ -579,6 +582,10 @@ impl Panels {
                 let s = screen(a.get(1).copied().unwrap_or(""));
                 self.act(h, "show", &json!(["controlCenter", s]));
                 self.m.cc_page = a[0].to_string();
+                // (the page itself is Control Center's (host-system cc.rs):
+                // only setting it here opened the grid, so the bar's
+                // Caffeine cup showed no Caffeine options; 20 Nov)
+                h.ask("cc.page", json!([a[0]]));
             }
             "about" | "session" => {
                 let s = screen(a[0]);

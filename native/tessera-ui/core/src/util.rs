@@ -386,6 +386,35 @@ fn find_entry(class: &str) -> Option<std::path::PathBuf> {
     by_wmclass
 }
 
+/// A watcher child (a `… monitor`, a script that runs as long as the shell)
+/// that ends with the thread that started it, and hears signals: the shell
+/// blocks SIGTERM, SIGINT and SIGUSR1/2 for its signalfd and std's spawn
+/// keeps that mask, so a child's PDEATHSIG (and any `kill`) stayed pending
+/// for good. 20 Nov (system1): every shell restart left avahi-browse,
+/// phone.py, udevadm and dbus-monitor running, five sets of them by night.
+pub fn dies_with_us(command: &mut std::process::Command) {
+    use std::os::unix::process::CommandExt;
+    unsafe {
+        command.pre_exec(|| {
+            child_signals();
+            libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
+            Ok(())
+        });
+    }
+}
+
+/// In a child before exec: every signal unblocked, SIGPIPE at its default
+/// (std ignores it in this process, and an ignored signal stays ignored
+/// across exec). Async-signal-safe.
+pub fn child_signals() {
+    unsafe {
+        let mut none: libc::sigset_t = std::mem::zeroed();
+        libc::sigemptyset(&mut none);
+        libc::pthread_sigmask(libc::SIG_SETMASK, &none, std::ptr::null_mut());
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
+}
+
 /// An executable of that name on $PATH
 pub fn on_path(bin: &str) -> bool {
     std::env::var_os("PATH").is_some_and(|p| std::env::split_paths(&p).any(|d| d.join(bin).is_file()))
@@ -485,6 +514,26 @@ mod tests {
         assert_eq!(xdg_from(Some("".into()), h.clone(), ".local/state"), PathBuf::from("/home/zoë m/.local/state"));
         assert_eq!(xdg_from(Some("rel/dir".into()), h.clone(), ".cache"), PathBuf::from("/home/zoë m/.cache"));
         assert_eq!(xdg_from(None, h, ".config"), PathBuf::from("/home/zoë m/.config"));
+    }
+
+    #[test]
+    fn a_watcher_child_starts_with_signals_unblocked() {
+        // (this thread blocks SIGTERM as the shell's loop does; the child mustn't)
+        std::thread::spawn(|| unsafe {
+            let mut set: libc::sigset_t = std::mem::zeroed();
+            libc::sigemptyset(&mut set);
+            libc::sigaddset(&mut set, libc::SIGTERM);
+            libc::pthread_sigmask(libc::SIG_BLOCK, &set, std::ptr::null_mut());
+            // (grep itself, not a shell: bash clears its own mask)
+            let mut cmd = std::process::Command::new("grep");
+            cmd.args(["SigBlk", "/proc/self/status"]);
+            super::dies_with_us(&mut cmd);
+            let out = String::from_utf8_lossy(&cmd.output().unwrap().stdout).into_owned();
+            let mask = u64::from_str_radix(out.split_whitespace().nth(1).unwrap_or("x"), 16).unwrap();
+            assert_eq!(mask & (1 << (libc::SIGTERM - 1)), 0, "{out}");
+        })
+        .join()
+        .unwrap();
     }
 
     #[test]

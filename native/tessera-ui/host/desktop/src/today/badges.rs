@@ -84,12 +84,13 @@ impl Badges {
 ///      array [ dict entry( string "count"  variant int64 3 ) ... ]
 fn monitor(send: impl Fn(Box<dyn std::any::Any + Send>)) {
     use std::io::{BufRead, BufReader};
-    let Ok(mut child) = std::process::Command::new("dbus-monitor")
-        .args(["--session", "type='signal',interface='com.canonical.Unity.LauncherEntry',member='Update'"])
+    let mut cmd = std::process::Command::new("dbus-monitor");
+    cmd.args(["--session", "type='signal',interface='com.canonical.Unity.LauncherEntry',member='Update'"])
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-    else {
+        .stderr(std::process::Stdio::null());
+    // (ends with this thread, so with the shell: one was left per restart)
+    tessera_core::util::dies_with_us(&mut cmd);
+    let Ok(mut child) = cmd.spawn() else {
         return;
     };
     let Some(out) = child.stdout.take() else { return };
