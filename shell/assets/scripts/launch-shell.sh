@@ -13,6 +13,14 @@ set -uo pipefail
 source "$(dirname -- "${BASH_SOURCE[0]}")/old-names.sh"
 old_names_env
 old_names_migrate "${TESSERA_ROOT:-}"
+# Tessera's desktop look (app fonts, Qt style, a clean terminal), once per
+# machine: installs from before it get it with an update (desktop-look.py
+# migrate: never again after, nor when it was turned off in Settings →
+# Appearance). Python only when it hasn't run yet; in the background, as it
+# may download the apps' font.
+if ! grep -qs '"migrated": true' "${XDG_STATE_HOME:-$HOME/.local/state}/tessera/desktop-look.json"; then
+    setsid -f python3 -I "$(dirname -- "${BASH_SOURCE[0]}")/desktop-look.py" migrate </dev/null >/dev/null 2>&1 || true
+fi
 # Updater/watchdog restarts can inherit an older environment than Hyprland's
 # reloaded config. Apps launched by this shell still need the startup palette.
 # KDE's theme, or qt6ct when you've set it up and KDE's isn't installed or

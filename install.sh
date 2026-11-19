@@ -16,11 +16,14 @@
 #   ./install.sh --verify      only check an existing install (same as: tessera doctor)
 #   ./install.sh --only=login  only switch to the Tessera login screen (greetd), from the
 #                              settings in $XDG_CONFIG_HOME/tessera; nothing else changes
+#   ./install.sh --plain       plain lines, everything printed (also when the output isn't a
+#                              terminal, or TERM=dumb); else the steps with ticks and a bar,
+#                              the commands' output in the log (d shows it while it runs)
 # Choices (the interactive installer passes these; with --yes, unset ones are
 # the recommended ones, and nothing asked by name is done):
 #   --look=glass|material  --mode=auto|light|dark  --login=keep|look|text|plain
 #   --icons=colloid,tela-circle,numix-circle,flat-remix,papirus|none
-#   --extras=apps,pointer,emoji|none  --hardware=ID,…|none (see --plan)
+#   --extras=apps,pointer,style,emoji|none  --hardware=ID,…|none (see --plan)
 #   --replace-pulseaudio  --network=networkmanager|keep
 #   --ui-source=auto|build|buildTuned  (advanced) tessera-ui and tessera-events:
 #                          auto (the default) ready-made and signed, built here when
@@ -32,7 +35,8 @@
 # Everything is logged to ~/.cache/tessera/install.log.
 set -Euo pipefail
 # Some AUR builds fail without a terminal type, which serial consoles and
-# non-interactive runs leave unset
+# non-interactive runs leave unset (the screen goes by the one you had)
+ORIG_TERM="${TERM:-}"
 export TERM="${TERM:-xterm-256color}"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -42,7 +46,7 @@ CACHE="${XDG_CACHE_HOME:-$HOME/.cache}"
 BIN="$HOME/.local/bin"
 LOG="$CACHE/tessera/install.log"
 
-YES=0 DEV=0 DEPS=1 DRY=0 GREETER=ask EXTRAS=1 VERIFY_ONLY=0 ONLY=""
+YES=0 DEV=0 DEPS=1 DRY=0 PLAIN=0 GREETER=ask EXTRAS=1 VERIFY_ONLY=0 ONLY=""
 # (lists: "-" until chosen, then names separated by spaces; "" for none)
 UI=ask PLAN_ONLY=0 SNAPSHOT=1 LOOK="" MODE="" LOGIN_STYLE="" ICONS=- EXTRAS_LIST=- HW=- PULSE=ask NETWORK=ask
 UI_SOURCE="" # (--ui-source; empty: as Settings has it, ready-made by default)
@@ -53,6 +57,7 @@ for a in "$@"; do
         --dev|--link) DEV=1 ;;
         --no-deps) DEPS=0 ;;
         --dry-run) DRY=1 ;;
+        --plain) PLAIN=1 UI=cli ;;
         --greeter) GREETER=yes ;;
         --no-greeter) GREETER=no ;;
         --no-extras) EXTRAS=0 ;;
@@ -73,7 +78,7 @@ for a in "$@"; do
         --network=networkmanager) NETWORK=yes ;;
         --network=keep) NETWORK=no ;;
         --ui-source=auto|--ui-source=build|--ui-source=buildTuned) UI_SOURCE=${a#*=} ;;
-        -h|--help) sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,33p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "Unknown option: $a (see --help)"; exit 1 ;;
     esac
 done
@@ -108,23 +113,96 @@ if [[ $UI != cli && $VERIFY_ONLY == 0 && $PLAN_ONLY == 0 && -t 0 && -t 1 ]] && [
 fi
 
 # ── Output ──────────────────────────────────────────────────────────────
+# A terminal gets the steps with ticks and one bar while it installs
+# (tools/installer/progress.py, the screen, from "Start?" to the checks):
+# the commands' own output goes to the log only, d shows it. --plain, TERM=dumb,
+# no python3 or output that isn't a terminal (the full-screen installer
+# reads this script's lines): everything printed, line by line, as before.
+SCREEN=0 SCREEN_WANTED=0 SCREEN_DIR="" STDOUT_TTY=0
+# (asked here: inside $(…) the output is a pipe)
+[[ -t 1 ]] && STDOUT_TTY=1
+if [[ $VERIFY_ONLY == 0 && $PLAN_ONLY == 0 ]] && command -v python3 >/dev/null &&
+    [[ "$(TERM=$ORIG_TERM python3 -I "$ROOT/tools/installer/progress.py" mode --stdout-tty "$STDOUT_TTY" $([[ $PLAIN == 1 ]] && echo --plain) 2>/dev/null)" == ui ]]; then
+    SCREEN_WANTED=1
+fi
+# (the terminal itself, for the screen and for questions while it runs)
+exec 3>&1 4>&2
 if [[ $VERIFY_ONLY == 0 && $DRY == 0 && $PLAN_ONLY == 0 ]]; then
     mkdir -p "$(dirname "$LOG")"
     # Builds show one updating progress line on the terminal itself, while
-    # only their result goes through tee into the log (tools/build-progress.py)
-    [[ -t 1 && -w /dev/tty ]] && export TESSERA_PROGRESS_TTY=/dev/tty
+    # only their result goes through tee into the log (tools/build-progress.py);
+    # with the screen their BUILD lines move its bar instead
+    [[ $SCREEN_WANTED == 0 && -t 1 && -w /dev/tty && $PLAIN == 0 && $ORIG_TERM != dumb ]] && export TESSERA_PROGRESS_TTY=/dev/tty
     exec > >(tee -a "$LOG") 2>&1
     echo "=== $(date '+%F %T') Tessera install from $ROOT ($*)"
+elif [[ $DRY == 1 && $SCREEN_WANTED == 1 ]]; then
+    # (a dry run's commands go to a log of its own, which d shows)
+    LOG=$(mktemp "${TMPDIR:-/tmp}/tessera-dry-run.XXXXXX.log") || SCREEN_WANTED=0
 fi
-if [[ -t 1 ]]; then
+if [[ -t 1 && $ORIG_TERM != dumb ]]; then
     B=$'\033[1m' DIM=$'\033[2m' RED=$'\033[1;31m' GRN=$'\033[1;32m' YEL=$'\033[1;33m' BLU=$'\033[1;34m' R=$'\033[0m'
 else
     B="" DIM="" RED="" GRN="" YEL="" BLU="" R=""
 fi
-say() { printf '%s\n' "$*"; }
-note() { printf '  %s%s%s\n' "$DIM" "$*" "$R"; }
-warn() { printf '  %s!%s %s\n' "$YEL" "$R" "$*"; }
-die() { printf '\n%s✗ %s%s\n' "$RED" "$*" "$R"; exit 1; }
+# What the screen is told (a line it reads out of the stream, fields by tab)
+screen_send() {
+    [[ $SCREEN == 1 ]] || return 0
+    local IFS=$'\t' a=("${@//$'\t'/ }")
+    printf '\036UI\t%s\n' "${a[*]}" >&6
+}
+screen_ack() { local _a; read -r -t 15 -u 5 _a || true; }
+# The steps (title and how much of the bar each is) and the screen started
+screen_start() {
+    [[ $SCREEN_WANTED == 1 && $SCREEN == 0 ]] || return 0
+    SCREEN_DIR=$(mktemp -d "${TMPDIR:-/tmp}/tessera-install.XXXXXX") || return 0
+    mkfifo "$SCREEN_DIR/ack" || return 0
+    exec 5<>"$SCREEN_DIR/ack"
+    exec > >(exec python3 -I "$ROOT/tools/installer/progress.py" serve --log "$LOG" --ack "$SCREEN_DIR/ack" >&3 2>&4) 2>&1
+    exec 6>&1
+    SCREEN=1
+    # (builds: BUILD lines for the bar, never a line of their own on the
+    # terminal; git never asks on it while the screen has it)
+    unset TESSERA_PROGRESS_TTY
+    export TESSERA_PROGRESS=lines GIT_TERMINAL_PROMPT=0
+    screen_send plan "$@"
+}
+# The terminal handed over (a question, sudo's password), and back
+screen_pause() { [[ $SCREEN == 1 ]] || return 0; screen_send pause "$1"; screen_ack; }
+screen_resume() { screen_send resume; }
+# The last frame, then the terminal as it was (output into the log as before)
+screen_stop() {
+    [[ $SCREEN == 1 ]] || return 0
+    screen_send quit
+    screen_ack
+    SCREEN=0
+    exec 1>&3 2>&4 6>&- 5>&-
+    rm -rf "$SCREEN_DIR"
+    [[ $DRY == 0 ]] && exec > >(tee -a "$LOG") 2>&1
+    return 0
+}
+trap screen_stop EXIT
+say() { if [[ $SCREEN == 1 ]]; then screen_send msg say "$*"; else printf '%s\n' "$*"; fi; }
+note() { if [[ $SCREEN == 1 ]]; then screen_send msg note "$*"; else printf '  %s%s%s\n' "$DIM" "$*" "$R"; fi; }
+warn() { if [[ $SCREEN == 1 ]]; then screen_send msg warn "$*"; else printf '  %s!%s %s\n' "$YEL" "$R" "$*"; fi; }
+die() {
+    if [[ $SCREEN == 1 ]]; then
+        screen_send error "$*"
+        screen_stop
+        exit 1
+    fi
+    printf '\n%s✗ %s%s\n' "$RED" "$*" "$R"
+    exit 1
+}
+# sudo while the screen has the terminal: its password asked with the screen
+# paused (the root helper and pacman then go on without asking)
+sudo() {
+    if [[ $SCREEN == 1 ]] && ! command sudo -n true 2>/dev/null; then
+        screen_pause "Your password, for the system changes (sudo)"
+        command sudo -v </dev/tty >/dev/tty 2>&1
+        screen_resume
+    fi
+    command sudo "$@"
+}
 run() {
     if [[ $DRY == 1 ]]; then printf '  %swould run:%s %s\n' "$DIM" "$R" "$*"; else "$@"; fi
 }
@@ -138,32 +216,64 @@ ask() { # question, default (y|n) -> 0 for yes
     local def="${2:-y}" reply
     [[ $YES == 1 || $DRY == 1 || $PLAN_ONLY == 1 ]] && [[ $def == y ]] && return 0
     [[ $YES == 1 || $DRY == 1 || $PLAN_ONLY == 1 ]] && return 1
-    read -r -p "  $1 [$([[ $def == y ]] && echo Y/n || echo y/N)] " reply </dev/tty || reply=""
+    if [[ $SCREEN == 1 ]]; then
+        screen_pause "$1"
+        read -r -p "  $1 [$([[ $def == y ]] && echo Y/n || echo y/N)] " reply </dev/tty 2>/dev/tty || reply=""
+        screen_resume
+    else
+        read -r -p "  $1 [$([[ $def == y ]] && echo Y/n || echo y/N)] " reply </dev/tty || reply=""
+    fi
     [[ -z "$reply" ]] && reply=$def
     [[ "$reply" == [yY]* ]]
 }
 
-STEP=0 TOTAL=14
+STEP=0 TOTAL=15
 # step "Title" function [optional]: runs it; on failure, offer Retry / Skip / Abort
 step() {
-    local title="$1" fn="$2" optional="${3:-}"
+    local title="$1" fn="$2" optional="${3:-}" ok
     STEP=$((STEP + 1))
-    printf '\n%s[%d/%d]%s %s%s%s\n' "$BLU" "$STEP" "$TOTAL" "$R" "$B" "$title" "$R"
+    if [[ $SCREEN == 1 ]]; then
+        screen_send step "$STEP"
+        # (into the log; the terminal is the screen's, and questions pause it: ask)
+        printf '\n[%d/%d] %s\n' "$STEP" "$TOTAL" "$title"
+    else
+        printf '\n%s[%d/%d]%s %s%s%s\n' "$BLU" "$STEP" "$TOTAL" "$R" "$B" "$title" "$R"
+    fi
     while true; do
-        if "$fn"; then
+        if [[ $SCREEN == 1 ]]; then "$fn" </dev/null; else "$fn"; fi
+        ok=$?
+        if [[ $ok == 0 ]]; then
+            screen_send done "$STEP"
             return 0
         fi
-        printf '  %s✗ %s didn'"'"'t finish.%s Details are in %s\n' "$RED" "$title" "$R" "$LOG"
-        if [[ $YES == 1 ]]; then
-            [[ -n "$optional" ]] && { warn "Skipped (optional)."; return 0; }
-            die "Stopped. Fix the problem above and run the installer again; finished steps are quick the second time."
+        if [[ $SCREEN == 1 ]]; then
+            printf '  ✗ %s didn'"'"'t finish.\n' "$title"
+            if [[ $YES == 1 ]]; then
+                [[ -n "$optional" ]] && { screen_send skip "$STEP"; warn "$title was skipped (optional): it didn't finish."; return 0; }
+                screen_send fail "$STEP" "Fix the problem above, then run the installer again; finished steps are quick the second time."
+                die "Stopped at: $title."
+            fi
+            screen_send fail "$STEP" "Fix the problem above, then retry (r), skip it (s$([[ -z "$optional" ]] && echo ": Tessera may not work")) or stop (a)."
+        else
+            printf '  %s✗ %s didn'"'"'t finish.%s Details are in %s\n' "$RED" "$title" "$R" "$LOG"
+            if [[ $YES == 1 ]]; then
+                [[ -n "$optional" ]] && { warn "Skipped (optional)."; return 0; }
+                die "Stopped. Fix the problem above and run the installer again; finished steps are quick the second time."
+            fi
         fi
-        local reply
-        read -r -p "  [R]etry, [s]kip$([[ -z "$optional" ]] && echo " (Tessera may not work)"), or [a]bort? " reply </dev/tty || reply=a
+        local reply q="[R]etry, [s]kip$([[ -z "$optional" ]] && echo " (Tessera may not work)"), or [a]bort?"
+        if [[ $SCREEN == 1 ]]; then
+            screen_pause "$title didn't finish"
+            read -r -p "  $q " reply </dev/tty 2>/dev/tty || reply=a
+            [[ $reply == [aA]* ]] || screen_resume
+        else
+            read -r -p "  $q " reply </dev/tty || reply=a
+        fi
         case "$reply" in
-            [sS]*) warn "Skipped."; return 0 ;;
+            [sS]*) screen_send skip "$STEP"; warn "Skipped."; return 0 ;;
             [aA]*) die "Stopped. Run the installer again when ready; finished steps are quick the second time." ;;
         esac
+        [[ $SCREEN == 1 ]] && { screen_send step "$STEP"; printf '\n[%d/%d] %s (again)\n' "$STEP" "$TOTAL" "$title"; }
     done
 }
 
@@ -328,7 +438,7 @@ aur_helper() { command -v yay || command -v paru || true; }
 # plan. With --yes: the recommended answers, but never one that removes or
 # turns off something of yours (PulseAudio, another network service, another
 # login screen) or that is asked by name (an NVIDIA driver, biometrics).
-WANT_APPS=0 WANT_POINTER=0 WANT_EMOJI=0 WANT_WALLS=0 HW_PLAN="" HW_LATER=0 OTHER_NET="" OTHER_DM=""
+WANT_APPS=0 WANT_POINTER=0 WANT_STYLE=0 WANT_EMOJI=0 WANT_WALLS=0 HW_PLAN="" HW_LATER=0 OTHER_NET="" OTHER_DM=""
 unattended() { [[ $YES == 1 || $DRY == 1 || $PLAN_ONLY == 1 ]]; }
 want_extra() { # name question default
     [[ $EXTRAS == 0 ]] && return 1
@@ -389,6 +499,8 @@ decide() {
         if [[ $DEPS == 1 ]]; then
             apps_missing && want_extra apps "Install basic apps (kitty terminal, Files, Firefox, mpv, image viewer)?" y && WANT_APPS=1
             [[ -n "$(missing_of "${AUR[@]}")" ]] && want_extra pointer "Install the Bibata pointer (from the AUR)?" y && WANT_POINTER=1
+            [[ -n "$(missing_of "${STYLE_AUR[@]}")" ]] &&
+                want_extra style "Install Tessera's app style: Darkly for Qt apps and Breeze Plus icons (from the AUR)?" y && WANT_STYLE=1
             [[ -n "$(missing_of "${EMOJI_AUR[@]}")" ]] &&
                 want_extra emoji "Install the Apple and Fluent emoji styles (from the AUR; Noto emoji is the default)?" n && WANT_EMOJI=1
         fi
@@ -515,6 +627,7 @@ show_plan() {
         fi
         [[ -z "$(aur_helper)" ]] && aur+=(yay)
         [[ $WANT_POINTER == 1 ]] && mapfile -t -O "${#aur[@]}" aur < <(missing_of "${AUR[@]}")
+        [[ $WANT_STYLE == 1 ]] && mapfile -t -O "${#aur[@]}" aur < <(missing_of "${STYLE_AUR[@]}")
         [[ $WANT_EMOJI == 1 ]] && mapfile -t -O "${#aur[@]}" aur < <(missing_of "${EMOJI_AUR[@]}")
         (( ${#aur[@]} )) && plan_row AUR "${aur[*]}"
         if [[ -n "${ICONS// /}" ]]; then
@@ -562,6 +675,7 @@ show_plan() {
         plan_row Login "Hyprland starts when you log in on tty1 ($(login_profile))"
     fi
     plan_row "" "your keyring unlocks with your login password (a marked line in its PAM file, kept as .pre-tessera)"
+    plan_row Look "Tessera's desktop look: Tessera Sans Flex for apps (~/.local/share/fonts/tessera; SIL Open Font License), grayscale font smoothing,$([[ $WANT_STYLE == 1 ]] && echo " Darkly and Breeze Plus for Qt apps,") no greeting in the terminal, the starship prompt in Tessera's colours, kitty to match (what it replaces kept as *.pre-tessera; Settings → Appearance turns it off)"
     p="NetworkManager"
     if [[ -n "$OTHER_NET" ]]; then
         [[ $NETWORK == yes ]] && p="NetworkManager instead of $OTHER_NET (after a reboot)" || p="(keeps $OTHER_NET: Tessera's Wi-Fi menus won't work)"
@@ -580,7 +694,8 @@ preflight() {
     if [[ $DRY == 0 ]]; then
         sudo -v || { say "  Your user can't use sudo yet (add it to the wheel group)."; return 1; }
         # Keep sudo from timing out during long builds
-        (while kill -0 $$ 2>/dev/null; do sudo -n true 2>/dev/null; sleep 50; done) &
+        # (command sudo: never the screen's password pause, nothing on its stream)
+        (while kill -0 $$ 2>/dev/null; do command sudo -n true 2>/dev/null; sleep 50; done) >/dev/null 2>&1 &
     fi
     if [[ $DEPS == 1 ]] && ! curl -fsS --max-time 10 -o /dev/null https://archlinux.org; then
         say "  No internet connection. Connect first (e.g. nmtui or iwctl), then run this again."
@@ -759,10 +874,11 @@ aur_install() { # want "what" packages…
     [[ -n "$helper" || $DRY == 1 ]] || { say "  yay isn't installed (the AUR helper step installs it)."; return 1; }
     run "${helper:-yay}" -S --needed --noconfirm --answerdiff None --answerclean None "${missing[@]}"
 }
-# The Bibata pointer (default: yes)
+# The Bibata pointer and the app style (Darkly, Breeze Plus; default: yes)
 aur_extras() {
     [[ $EXTRAS == 0 || $DEPS == 0 ]] && { note "Skipped."; return 0; }
-    aur_install "$WANT_POINTER" "The Bibata pointer" "${AUR[@]}"
+    aur_install "$WANT_POINTER" "The Bibata pointer" "${AUR[@]}" || return 1
+    aur_install "$WANT_STYLE" "Darkly and Breeze Plus" "${STYLE_AUR[@]}"
 }
 # Optional emoji styles (default: no)
 emoji_extras() {
@@ -881,6 +997,31 @@ with open(path + ".tmp", "w") as f:
     json.dump(c, f, indent=4)
 os.replace(path + ".tmp", path)
 PY
+}
+
+# Tessera's desktop look (shell/assets/scripts/desktop-look.py): the apps'
+# font (Tessera Sans Flex, Tessera's copy of Google Sans Flex, installed for apps),
+# JetBrains Mono Nerd Font as the fixed one, Darkly and Breeze Plus for Qt
+# apps (when the app style was installed), grayscale font smoothing; no
+# greeting in fish (CachyOS's fastfetch one too), the starship prompt in
+# Tessera's colours, kitty to match. What it replaces is kept as
+# *.pre-tessera; a prompt framework (oh-my-zsh, powerlevel10k, tide…) is
+# left alone. Settings → Appearance → Tessera's desktop look turns it off
+# again (and then an install leaves it off).
+desktop_look() {
+    local out
+    if [[ $DRY == 1 ]]; then
+        out=$(python3 -I "$ROOT/shell/assets/scripts/desktop-look.py" install --dry-run --text 2>&1)
+    else
+        out=$(python3 -I "$ROOT/shell/assets/scripts/desktop-look.py" install --text 2>&1)
+    fi
+    local rc=$?
+    local line
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        if [[ $line == "! "* ]]; then warn "${line#! }"; else note "$line"; fi
+    done <<<"$out"
+    return $rc
 }
 
 build() {
@@ -1410,12 +1551,18 @@ show_plan
 say ""
 ask "Start?" y || { say "Nothing changed."; exit 0; }
 
+# The steps, and how much of the bar each one is (the screen's plan:
+# packages and the builds take most of the time)
+screen_start "Checking your system" 2 "Safety snapshot" 2 "Installing packages" 30 "AUR helper (yay)" 3 \
+    "Pointer and app style (optional)" 4 "Emoji styles (optional)" 2 "Icon themes (optional)" 2 "For this computer (optional)" 4 \
+    "Building Tessera" 34 "Installing Tessera" 5 "Wallpapers (optional)" 1 "Your settings" 1 "Desktop look" 1 \
+    "Starting services" 4 "Login" 6
 adopt_old_names
 step "Checking your system" preflight
 step "Safety snapshot" snapshot optional
 step "Installing packages" install_packages
 step "AUR helper (yay)" install_yay optional
-step "Pointer (optional)" aur_extras optional
+step "Pointer and app style (optional)" aur_extras optional
 step "Emoji styles (optional)" emoji_extras optional
 step "Icon themes (optional)" icon_themes optional
 step "For this computer (optional)" hardware optional
@@ -1423,11 +1570,14 @@ step "Building Tessera" build optional
 step "Installing Tessera" install_files
 step "Wallpapers (optional)" extras optional
 step "Your settings" settings optional
+step "Desktop look" desktop_look optional
 step "Starting services" services optional
 step "Login" login optional
+screen_stop
 printf '\n%s[✓]%s %sChecking the result%s\n' "$BLU" "$R" "$B" "$R"
 if [[ $DRY == 1 ]]; then
     note "Skipped in a dry run."
+    [[ $SCREEN_WANTED == 1 ]] && note "What each step would run: $LOG"
     exit 0
 fi
 verify

@@ -29,6 +29,8 @@ PACKAGES=(
     libqalculate ripgrep plocate poppler ffmpegthumbnailer file psmisc python jq curl translate-shell pacman-contrib matugen
     # Fonts
     inter-font ttf-jetbrains-mono noto-fonts noto-fonts-emoji
+    # Tessera's desktop look (shell/assets/scripts/desktop-look.py): the prompt, and the fixed font with its icons
+    starship ttf-jetbrains-mono-nerd
 )
 # Video decoding and recording on the GPU (VA-API) for the GPUs found: Intel's and
 # NVIDIA's drivers (AMD's is in mesa). install.sh adds them; left out where a
@@ -45,6 +47,9 @@ QUICKSHELL_BUILD=(git cmake ninja qt6-base qt6-declarative qt6-svg qt6-wayland q
     wayland wayland-protocols cli11 cpptrace jemalloc libdrm libglvnd libpipewire libxcb mesa pam polkit glib2)
 # The pointer, in both looks (GTK apps use Adwaita, which comes with gtk3)
 AUR=(bibata-cursor-theme-bin)
+# Tessera's app style (desktop-look.py sets them when they're there): Darkly for
+# Qt apps and the Breeze Plus icons. install.sh --extras=style or its question
+STYLE_AUR=(darkly-bin breeze-plus)
 # Icon themes, optional: Tessera styles the apps' own icons without one (Glass
 # clear, Material themed). name:package; Papirus is in the repositories, the
 # others in the AUR. install.sh --icons=colloid,papirus… or its question

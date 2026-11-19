@@ -46,6 +46,14 @@ if [[ $YES == 0 && $DRY == 0 ]]; then
     [[ "$reply" == [yY]* ]] || { echo "Nothing changed."; exit 0; }
 fi
 
+# Tessera's desktop look: your app fonts, Qt style, prompt and terminal as they were
+# (desktop-look.py off; its state goes too, so an install sets it up again)
+LOOK_PY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/shell/assets/scripts/desktop-look.py"
+if [[ $DRY == 1 ]]; then
+    echo "  would put your apps' fonts and terminal back as they were (desktop-look.py off)"
+elif [[ -f "$LOOK_PY" ]] && command -v python3 >/dev/null; then
+    python3 -I "$LOOK_PY" off >/dev/null 2>&1 && rm -f "${XDG_STATE_HOME:-$HOME/.local/state}/tessera/desktop-look.json" || true
+fi
 run rm -rf "$CONFIG/quickshell/tessera" "$CONFIG/quickshell/$OLD_NAME"
 if [[ -n "$BACKUP" ]]; then
     run rm -rf "$CONFIG/hypr.tessera-removed"

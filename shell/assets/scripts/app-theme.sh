@@ -22,6 +22,10 @@ if [[ "$mode" != off ]] && want qt && command -v matugen >/dev/null; then
 else
     python3 -I "$DESKTOP" "$desktop_mode"
 fi
+# Tessera's desktop look: the prompt's colours and Qt's icons follow light/dark
+# and the accent (only what it set and you haven't changed; nothing while the
+# look is off: Settings → Appearance)
+python3 -I "$(dirname "${BASH_SOURCE[0]}")/desktop-look.py" refresh --mode "$desktop_mode" --accent "$accent" >/dev/null 2>&1 || true
 
 # The generated files (and where their template is)
 declare -A out=(

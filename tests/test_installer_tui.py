@@ -48,7 +48,7 @@ class Scripted(unittest.TestCase):
         self.assertIn("Review the plan", frames[-2])
         self.assertTrue(cmd[0].endswith("install.sh"))
         self.assertEqual(cmd[1:3], ["--cli", "--yes"])
-        for flag in ("--look=glass", "--mode=auto", "--login=look", "--icons=none", "--extras=pointer"):
+        for flag in ("--look=glass", "--mode=auto", "--login=look", "--icons=none", "--extras=pointer,style"):
             self.assertIn(flag, cmd)
         hw = next(a for a in cmd if a.startswith("--hardware="))
         # The fingerprint reader is offered (ticked: you see it and can untick
@@ -64,7 +64,7 @@ class Scripted(unittest.TestCase):
         self.assertIn("--mode=dark", cmd)
         self.assertIn("--login=plain", cmd)
         self.assertIn("--icons=colloid", cmd)
-        self.assertIn("--extras=none", cmd)  # (the pointer unticked)
+        self.assertIn("--extras=style", cmd)  # (the pointer unticked)
         icons = next(f for f in frames if "Icon themes (optional)" in f)
         self.assertIn("[•] Papirus", icons)
 

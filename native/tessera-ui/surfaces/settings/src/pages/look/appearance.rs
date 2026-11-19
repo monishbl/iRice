@@ -250,6 +250,8 @@ pub fn appearance(cx: &mut Ctx, p: &mut Page) {
     p.group("")
         .row(Row::link("Glass", "appearance/glass").visible(!cx.material).icon("drop-half").detail("Material, frost, lens and which apps match it").value(value).id(l1))
         .row(Row::link("Match apps", "appearance/glass").visible(cx.material).icon("paint-brush").detail("Colour GTK and Qt apps, terminals and browsers to match").id(l2));
+    // Tessera's desktop look: app fonts, Qt style, terminal (desktop-look.py)
+    super::desktoplook::group(cx, p);
 
     let reduce = cx.b("appearance.reduceTransparency");
     let rt = cx.toggle("appearance.reduceTransparency");

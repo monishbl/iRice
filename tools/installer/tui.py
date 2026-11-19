@@ -162,6 +162,8 @@ class Installer:
             extras.append({"id": "apps", "label": "Basic apps", "detail": "kitty, Files, Firefox, mpv, an image viewer", "ticked": True})
         if "bibata-cursor-theme-bin" not in have:
             extras.append({"id": "pointer", "label": "Bibata pointer", "detail": "the pointer in both looks (from the AUR)", "ticked": True})
+        if not {"darkly-bin", "breeze-plus"} <= have:
+            extras.append({"id": "style", "label": "App style", "detail": "Darkly for Qt apps and Breeze Plus icons (from the AUR)", "ticked": True})
         if not {"ttf-apple-emoji", "ttf-fluent-emoji"} <= have:
             extras.append({"id": "emoji", "label": "Apple and Fluent emoji", "detail": "Noto emoji is the default (from the AUR)", "ticked": False})
         self.extras = Checks(extras)

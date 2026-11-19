@@ -6,6 +6,7 @@
 
 pub mod appearance;
 pub mod desktop;
+pub mod desktoplook;
 pub mod glassplugin;
 pub mod lock;
 pub mod menubar;

@@ -74,7 +74,8 @@ impl AppTheme {
             src.clone(),
             available(look).to_string(),
             look.dark.to_string(),
-            if src != "off" { look.accent.clone() } else { String::new() },
+            // (the accent even with Match apps off: the desktop look's prompt follows it, app-theme.sh → desktop-look.py refresh)
+            look.accent.clone(),
             if src == "wallpaper" { cfg["wallpaper"]["path"].as_str().unwrap_or("").to_string() } else { String::new() },
             targets(cfg),
             self.roles_json(h),
