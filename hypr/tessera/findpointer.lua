@@ -95,6 +95,19 @@ local function slowTick()
     end
 end
 
-fast = hl.timer(fastTick, { timeout = FAST, type = "repeat" })
-fast:set_enabled(false)
-hl.timer(slowTick, { timeout = SLOW, type = "repeat" })
+-- The timers only once Hyprland is running: made while it first reads its
+-- config (no event loop yet), Hyprland 0.57 crashed in
+-- CEventLoopManager::scheduleRecalc (19 Nov: system1, twice at login). A
+-- reload of the config (Hyprland already running: a monitor is there) makes
+-- them at once, as before.
+local function start()
+    fast = hl.timer(fastTick, { timeout = FAST, type = "repeat" })
+    fast:set_enabled(false)
+    hl.timer(slowTick, { timeout = SLOW, type = "repeat" })
+end
+local ok, mon = pcall(hl.get_active_monitor)
+if ok and mon then
+    start()
+else
+    hl.on("hyprland.start", start)
+end
