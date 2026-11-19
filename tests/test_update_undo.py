@@ -187,3 +187,19 @@ class HelperCurrent(unittest.TestCase):
             Path(d, "etc/tessera").mkdir()
             Path(d, "etc/tessera/priority-off").write_text("off")
             self.assertTrue(su.helper_current())
+
+
+class AurReplaces(unittest.TestCase):
+    """An AUR package that replaces a repository one: the old one is taken
+    out first, only while it's installed and the new one isn't (19 Nov:
+    libfprint-tod and libfprint)"""
+
+    def test_replaced_by(self):
+        from unittest import mock
+        su = load(SCRIPTS / "sysupdate.py", "sysupdate_replaces")
+        have = {"libfprint"}
+        with mock.patch.object(su, "installed", lambda p: p in have):
+            self.assertEqual(su.replaced_by(["libfprint-tod", "libfprint-2-tod1-broadcom"]), ["libfprint"])
+            self.assertEqual(su.replaced_by(["howdy-next"]), [])
+            have.add("libfprint-tod")
+            self.assertEqual(su.replaced_by(["libfprint-tod"]), [])

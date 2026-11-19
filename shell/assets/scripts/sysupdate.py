@@ -902,6 +902,18 @@ def end_root(chan):
 NAME = re.compile(r"^[a-z0-9@_+][a-z0-9@._+-]*$")
 
 
+# AUR packages that replace one from the repositories: the AUR helper won't
+# swap them with --noconfirm ("can not install conflicting packages"), so the
+# old one goes first (-Rdd: what needs it is served by the new one, which
+# provides it), and comes back if the AUR install doesn't finish (19 Nov:
+# Dell's fingerprint driver on system1)
+REPLACES = {"libfprint-tod": ["libfprint"]}
+
+
+def replaced_by(aur_install):
+    return [old for new in aur_install for old in REPLACES.get(new, []) if installed(old) and not installed(new)]
+
+
 def aur_command(helper, plan):
     if helper == "pamac":
         # (Manjaro: pamac builds AUR packages itself and asks for the password its own way)
@@ -991,7 +1003,16 @@ def real_run(plan):
                 if code != 0:
                     return finish("error", "Couldn't set up the AUR",
                                   "Building yay (an AUR helper) didn't work. Updates from your distribution are installed. " + tail(3))
+                swap = replaced_by(plan.get("aur_install") or []) if code == 0 else []
+                if swap:
+                    code = stream([SHIM, "pacman", "-Rdd", "--noconfirm", "--"] + swap, aur=True, env=broker.env(env))
+                    if code != 0:
+                        return finish("error", "Couldn't make room for the new driver",
+                                      ", ".join(swap) + " couldn't be replaced. " + tail(3))
                 code = stream(aur_command(helper, plan), aur=True, env=broker.env(env))
+                if code != 0 and swap:
+                    # (back as it was: the old one from the repositories)
+                    stream([SHIM, "pacman", "-S", "--noconfirm", "--"] + swap, aur=True, env=broker.env(env))
             finally:
                 broker.close()
             if code != 0:
