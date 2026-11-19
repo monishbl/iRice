@@ -113,15 +113,20 @@ def load_status():
 STATE = load_status()
 
 
+import threading
+_LOCK = threading.Lock()  # (the two variants build at once)
+
+
 def status(**kw):
-    STATE.update(kw)
-    STATE["updated"] = now()
-    os.makedirs(CACHE, exist_ok=True)
-    tmp = STATUS + ".tmp"
-    with open(tmp, "w") as f:
-        json.dump(STATE, f, indent=2)
-        f.write("\n")
-    os.replace(tmp, STATUS)
+    with _LOCK:
+        STATE.update(kw)
+        STATE["updated"] = now()
+        os.makedirs(CACHE, exist_ok=True)
+        tmp = STATUS + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(STATE, f, indent=2)
+            f.write("\n")
+        os.replace(tmp, STATUS)
 
 
 def target_result(name, **kw):
@@ -275,8 +280,10 @@ def cargo(args, variant, rustflags, label, logf, extra=None):
             log("  | " + t)
         raise Stop(f"the {variant} build of {label} failed (exit {code}); cargo's output: {logf.name}")
     if done:
-        counts[key] = done
-        write_json(os.path.join(ROOT, "counts.json"), counts)
+        with _LOCK:
+            counts = load_counts()
+            counts[key] = done
+            write_json(os.path.join(ROOT, "counts.json"), counts)
     status(progress={"done": done, "about": about}, step=f"{variant}: {label} linked")
 
 
@@ -298,11 +305,8 @@ def build(t, tree):
     os.makedirs(LOGS, exist_ok=True)
     epoch = git("log", "-1", "--format=%ct", t["commit"])
     got = {}
-    for variant, rustflags in VARIANTS:
-        v = variant_ok(outdir, variant)
-        if v:
-            got[variant] = v
-            continue
+
+    def one(variant, rustflags):
         status(state="building", step=f"{variant}: starting", progress=None)
         t0 = time.time()
         with open(os.path.join(LOGS, f"{tree[:12]}-{variant}.log"), "a") as logf:
@@ -311,8 +315,26 @@ def build(t, tree):
             cargo(["build", "--release", "--locked", "--manifest-path", "native/tessera-events/Cargo.toml"],
                   variant, rustflags, "tessera-events", logf)
         status(step=f"{variant}: packing", progress=None)
-        got[variant] = pack(outdir, tree, variant, epoch)
-        log(f"{t['name']}: built {variant} in {int(time.time() - t0)} s ({got[variant]['size']} bytes)")
+        v = pack(outdir, tree, variant, epoch)
+        log(f"{t['name']}: built {variant} in {int(time.time() - t0)} s ({v['size']} bytes)")
+        return v
+
+    # Both variants at once (each its own target folder): one after the
+    # other took about 33 minutes, most of it each one's link, and a push
+    # waited that long for its ready-made build (19 Nov)
+    todo = []
+    for variant, rustflags in VARIANTS:
+        v = variant_ok(outdir, variant)
+        if v:
+            got[variant] = v
+        else:
+            todo.append((variant, rustflags))
+    if todo:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(len(todo)) as ex:
+            futs = {variant: ex.submit(one, variant, rustflags) for variant, rustflags in todo}
+            for variant, f in futs.items():
+                got[variant] = f.result()  # (a failed one raises Stop, as before)
     os.utime(outdir)
     return got
 
