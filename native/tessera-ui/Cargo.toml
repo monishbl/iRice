@@ -160,3 +160,14 @@ lto = "thin"
 codegen-units = 16
 incremental = true
 strip = false
+
+# Built here by the updater and the installer (tools/native-install.py,
+# tools/build-native.sh): thin LTO and 16 codegen units, so a rebuild after
+# an update takes minutes instead of the release profile's long single-unit
+# link; its dependencies stay in the build cache between updates
+# ($XDG_CACHE_HOME/tessera/cargo). Ready-made releases keep the full one.
+[profile.local]
+inherits = "release"
+lto = "thin"
+codegen-units = 16
+incremental = false

@@ -60,7 +60,7 @@ Everything lives in `$XDG_DATA_HOME/tessera/bin` (usually
 | Mode | What it does |
 |---|---|
 | `auto` (default) | The signed ready-made build for this version and processor. Built here when there isn't one: a checkout with your own edits in `native/`, a version not built yet, no network, or no release key yet. |
-| `build` | Always built here (`cargo build --release`), for any x86-64. |
+| `build` | Always built here (the `local` profile, with the build cache), for this processor's level: x86-64-v3 or generic, as its ready-made build. |
 | `buildTuned` | Built here for this processor only (`RUSTFLAGS=-C target-cpu=native`, in its own target folder). |
 
 The installer asks nothing about this by default. Advanced is collapsed:
@@ -92,6 +92,160 @@ on failure. If the update rolls back, the code goes back and
 `native-install.py install --only-prev` swaps the previous build back from
 `.prev`, with no download or build. Any time the checkout returns to the
 version of the `.prev` build, an install swaps it back instead of downloading.
+
+## Background updates
+
+Since 19 Nov (the Rust shell; the QML shell keeps its older one-button way)
+Software Update has two parts, each with its own Update, and neither stops
+the shell while it works:
+
+- **Tessera**: `tools/tessera-update.py stage`, started on its own (setsid),
+  gets the new version ready beside the installed one while you keep working.
+  It takes the repo lock, checks again, then:
+  1. tessera-ui and tessera-events for the new commit go into
+     `$XDG_DATA_HOME/tessera/bin/.staged/` (`native-install.py stage`): only
+     the programs whose own sources change (see *Skipped when unchanged*), by a
+     signed patch when there is one, else the whole archive, else built here
+     (from the staging checkout, with the build cache);
+  2. any part whose sources change (the glass plugin, the shaders, the native
+     helpers) is built from the **staging checkout**, a sparse git worktree of
+     the new commit at `$XDG_CACHE_HOME/tessera/stage-src` (kept between
+     updates, so only what changed rebuilds), into
+     `$XDG_STATE_HOME/tessera/update-staged/<part>/`;
+  3. `update-staged/staged.json` records the commit, your conflict choices
+     and what's ready. **The checkout itself is never touched**: the running
+     shell keeps reading its assets from it.
+
+  Progress is `$XDG_STATE_HOME/tessera/update-job/status.json` (state running
+  | ready | done | error | cancelled; phase prepare | download | build | parts;
+  percent, bytes, how: patch | full | build). Settings and the island show it
+  ("Downloading a patch · 8.0 MB", "Building Tessera" with the build's own
+  percent); Cancel stops the job's whole process group and leaves nothing
+  staged.
+
+  Ready: a notification "Tessera is ready to restart" with **Restart shell
+  now**; Settings shows the same. Otherwise the restart happens the moment the
+  screen next locks (the compositor confirms the lock: `lockSecure`; no
+  update screen then, and the new shell takes the lock back:
+  `allow_session_lock_restore`, the locked mark) or at the next login
+  (`launch-shell.sh`, before any shell starts). The restart is
+  `update-run.sh … finish [locked]`: it checks what's staged is still for this
+  checkout (else the shell isn't touched), holds the shell lock (the
+  watchdogs don't count it), stops the shell, runs `tessera-update.py finish`
+  (the same `apply` as ever, pinned to exactly the staged commit, with
+  `native-install.py install --staged` and the staged parts copied in: renames
+  and copies, a few seconds), and starts the new shell behind the update
+  screen (2 s at least, not 5). Conflicts that appeared since staging (a
+  setting changed) settle the way that changes nothing of yours; a file you
+  changed since stops it with nothing changed. Windows stay open.
+
+- **System packages**: `sysupdate.py` as before (snapshot, pacman, the AUR),
+  in the background with its progress; no full-screen screen. A kernel, its
+  firmware or microcode, a graphics driver (mesa, NVIDIA, Vulkan, X drivers),
+  systemd, glibc or D-Bus ends with "Restart the computer to finish"
+  (`sysupdate.needs_restart`), never interrupting. A new Hyprland: its glass
+  plugin is rebuilt in the background afterwards (`tools/build-plugin.sh`,
+  into `$XDG_DATA_HOME/tessera`, beside the loaded one) and Hyprland loads it
+  at the next login.
+
+One part at a time: each Update waits while the other runs, and says so.
+
+### Never a half state
+
+`apply` writes a journal (`$XDG_STATE_HOME/tessera/update-journal.json`)
+before it changes anything and after each step (settings backed up, your
+edits stashed, the new version taken, settings changed, programs in). An
+update cut off anywhere (power off, reboot, logout, a crash, a kill) is put
+back at the next start: `launch-shell.sh` runs `tessera-update.py finish
+--if-ready`, which first runs `recover()`: the old version, your edits, the
+files set aside, your settings and the old programs (`install --only-prev`),
+exactly as before, with a note for Software Update. A staged update stays
+staged (it isn't the one that broke). The background job cut off (its status
+says running, its process is gone) is **resumed** in the background when the
+shell starts, from what it was asked (`update-job/request.json`): downloads
+carry on where they stopped (see below), builds come from the cache. On 19
+Nov a reboot during the old flow's local build left the checkout at the new
+version and tessera-ui at the old one, unnoticed; both cases are tests now
+(`tests/test_background_update.py`, one per point it can be cut off at).
+
+### A new shell that doesn't start
+
+After a restart into an update, `fresh-update.json` marks the new build; the
+Rust shell removes it once it has been up a minute. If it doesn't stay up
+(launch-shell.sh's count of starts reaches two) while the mark is there,
+`native-install.py rollback` brings back the build before it (`.prev`, no
+download), marks the new native/ tree bad (`bad-builds.json`: that version
+isn't offered again, a newer one is), and the shell says "The new version
+didn't start. Back on …". Only if that build fails too does the QML fallback
+take over, as before.
+
+### Downloads
+
+Archives and patches are downloaded through `bin/.downloads/` with `curl
+--continue-at -` and retries on any error: one cut off carries on next time.
+Each is checked against its signed size and sha256 (and a patch's own
+signature) before it's used; a bad one is thrown away whole. GitHub, then its
+GitLab mirror, as ever.
+
+### Patches
+
+Each set server1 builds also carries zstd `--patch-from` patches (`-19
+--long=28`) from the last three published builds of the same release to this
+one, per variant and program: `tessera-ui-<tree>-<variant>.<program>.from-<12
+hex of the old tree>.zst`. A program that didn't change gets none. The signed
+manifest lists each under its variant: `"patches": {<old tree>: {<program>:
+{file, size, sha256, from_sha256}}}`. The laptop checks each against the
+manifest and signs it like the archives; rolling releases prune a build's
+patches with it (same name prefix). `native-install.py` uses a patch when the
+installed program's sha256 is its `from_sha256`, verifies the patch's
+signature (its signed comment names the file and the tree) and checksum,
+applies it, and checks the rebuilt program's sha256 against the manifest;
+anything off and it downloads the whole archive instead. Measured on 19 Nov
+(two consecutive beta builds, x86-64-v3): a tessera-ui patch is 8.0 MB
+against a 29.9 MB archive (41 s to make on server1, under a second to apply);
+an unchanged tessera-events needs nothing.
+
+### Skipped when unchanged
+
+Each program and part has its own source key, compared with what the
+installed one was built from:
+
+| Part | Key |
+| --- | --- |
+| tessera-ui | git tree of `native/tessera-ui` + the files outside it it compiles in (`UI_EXTRA`: Config.qml, phosphor.js, …; a test keeps the list honest) |
+| tessera-events | git tree of `native/tessera-events` |
+| glass plugin | git tree of `hypr/plugin/tessera-glass` + Hyprland's headers version |
+| shaders | the blobs of every `*.frag`/`*.vert` under shell/ and material/ |
+| native helpers | git tree of `shell/native` + Qt's version |
+
+Programs record theirs in `<name>.json` ("part"); parts in
+`$XDG_STATE_HOME/tessera/parts.json`. A program kept as it is is recorded for
+the new tree, its `.prev` made the same program, so going back leaves it be.
+A part that can't be built here (no Hyprland headers, no qsb, no cmake) is
+left alone instead of failing every update. Releases are still found by the
+whole `native/` tree.
+
+### The build cache
+
+Built here, cargo works in `$XDG_CACHE_HOME/tessera/cargo/<x86-64-v3 |
+generic | tuned>` (outside the checkout: it survives the checkout moving and
+the staging checkout), with the `local` profile (thin LTO, 16 codegen units),
+the same flags every time (RUSTFLAGS only the variant's target-cpu; other
+flag and target variables dropped) and for the machine's own variant (a v3
+machine builds v3, like its ready-made build). The cache is wiped when the
+Rust toolchain changes and pruned to about 4.5 GB after each build: units the
+last build didn't use first (build-progress.py records every unit cargo
+named), then the other variants' folders. Settings → Software Update → Build
+cache shows its size with Delete build cache.
+
+Why 19 Nov's local update compiled every crate (about 1000): the laptop had
+never built locally before (its programs came ready-made or from server1), so
+`native/tessera-ui/target` was created that morning; and rust had gone from
+1.99.1 to 1.100.0 the evening before, which makes any older cache stale; and
+the release profile (fat LTO, one codegen unit) made the link alone take most
+of an hour in Power Saver. Each is handled above: the cache outside the
+checkout, a toolchain change wiping it at once instead of half-reusing it,
+and the `local` profile.
 
 ## Which build is this?
 
@@ -243,7 +397,7 @@ the user's machines make the releases instead, each doing one half:
 | Machine | Does | Never does |
 |---|---|---|
 | **server1** (`tools/release-builder/tessera-release`, as `~/bin/tessera-release`; a systemd user timer on the tens: :00, :10, …) | builds both variants, packs them and writes the manifest, exactly like the workflow; leaves the set ready | sign (there is no key on server1) or publish |
-| **the laptop** (`tools/release-builder/publish-release`, as `~/tessera-verify/publish-release.sh`; a systemd user timer on the fives: :05, :15, …) | fetches each ready set, checks it, signs it, checks the signatures, publishes it with its own `gh`, marks it published on server1 | build anything (light work only: ssh, scp, checksums, minisign, gh) |
+| **the laptop** (`tools/release-builder/publish-release`, as `~/tessera-verify/publish-release.sh`; a systemd user timer: 30 s after login, then every 2 minutes) | fetches each ready set, checks it, signs it, checks the signatures, publishes it with its own `gh`, marks it published on server1 | build anything (light work only: ssh, scp, checksums, minisign, gh) |
 
 What they make is exactly what `.github/workflows/tessera-ui.yml` made (same
 names, archives, manifest and signatures), so `tools/native-install.py` can't
@@ -343,6 +497,38 @@ systemctl --user disable --now tessera-publish.timer   # stop publishing
 bash tools/release-builder/install-publisher.sh  # install or update it (from this checkout)
 ```
 
+### Faster, tested, watched (19 Nov)
+
+- **Started by a push.** `tools/push-release beta` (or `main [REV]`) pushes
+  and then starts server1's build at once (`systemctl --user start --no-block
+  tessera-release.service` over ssh); `tools/push-release --install-hook`
+  does the same from a git pre-push hook after any push to main or beta. The
+  10-minute timer stays as the fallback.
+- **Tested before it's offered.** After building, each variant runs in a
+  hidden sandbox arena on server1 (`tools/release-builder/pretest.sh`, as
+  `~/bin/tessera-pretest`; site/tools/arena.sh): it must start, answer IPC
+  within 30 s, draw ("shell ready": the wallpaper and the bar) and lock and
+  unlock. The host's Wi-Fi and Bluetooth power must be the same afterwards. A
+  failure leaves no ready set; the reason is in the log and the status
+  (`failed: the generic build failed its test before publishing: …`). About
+  2 minutes.
+- **Patches** come with every set (see *Patches* above).
+- **Signed soon after.** Signing stays on the laptop only. Its timer looks 30
+  s after login and every 2 minutes (a monotonic timer, so within 2 minutes
+  of waking): one ssh, `tessera-release --health` (the sets waiting and the
+  builder's status). Nothing else runs unless a set waits; server1 out of
+  reach is quiet.
+- **Retried.** GitHub fetches on server1, and scp, `gh` uploads and the
+  download back on the laptop, are tried again after 5, 20 and 60 s when they
+  fail for the network.
+- **Watched.** The laptop's status has a `health` (the builder's state and
+  last error, the sets waiting and since when). A notification on the laptop
+  says, once each: a build or its test failed, a publish failed, a set has
+  waited more than an hour. Settings → About → More options shows it as one
+  line ("Everything is published · last published …", "The last build
+  failed", "1 set waiting to be signed", "The build machine is out of
+  reach"), only where the publisher is installed.
+
 ### Where to look
 
 | What | Where |
@@ -368,7 +554,7 @@ Nothing here needs sudo.
    as an account that can publish to `monishbl/tessera` (the active account; it
    checks before every publish and says so when it can't). ssh to
    `user@server1` with a key (BatchMode: it never asks for a password).
-3. **On server1:** cargo, zstd, git, and `~/bin/tbuild`. No key, no password,
+3. **On server1:** cargo, zstd, git, `~/bin/tbuild`, and for the test before publishing what the sandbox arena needs (Hyprland, the repo's sandbox/). No key, no password,
    no GitHub login.
 4. **Optional, on the laptop:** the GitLab mirror's token in
    `~/.config/tessera/gitlab-token` (mode 600), and its project path in

@@ -188,9 +188,15 @@ impl Mirror {
         h.set_state("displays", bus::field("Brightness", "displays"));
         // (and one running: the island's activity)
         let running = bus::field("updates", "running");
+        let tessera = bus::field("tesseraupdate", "running");
         if running.as_bool().unwrap_or(false) {
             let job = bus::field("updates", "job");
-            h.set_state("sysupdate", json!({"running": running, "job": {"phase": job["phase"], "text": job["text"], "package": job["package"]}, "progress": bus::field("updates", "progress"), "cancellable": bus::field("updates", "cancellable"), "step": bus::field("updates", "step")}));
+            h.set_state("sysupdate", json!({"running": running, "job": {"phase": job["phase"], "text": job["text"], "package": job["package"]}, "progress": bus::field("updates", "progress"), "cancellable": bus::field("updates", "cancellable"), "step": bus::field("updates", "step"), "cancel": "updates.cancel"}));
+        } else if tessera.as_bool().unwrap_or(false) {
+            // (Tessera's background update: the same activity, its own words)
+            let job = bus::field("tesseraupdate", "job");
+            let (title, _) = sysinfo::tessera_update::job_words(&job);
+            h.set_state("sysupdate", json!({"running": true, "job": {"phase": job["phase"], "text": title, "package": ""}, "progress": bus::field("tesseraupdate", "fraction"), "cancellable": true, "step": "Tessera", "cancel": "tesseraupdate.cancel"}));
         } else {
             h.set_state("sysupdate", json!({"running": false}));
         }

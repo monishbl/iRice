@@ -127,9 +127,12 @@ pub fn read_status(text: &str, prev: &Status, home: &str) -> Option<Status> {
 }
 
 /// How long "up to date" stays before the fade: the screen is up at least
-/// 5 s in all, however quick the update (and the message at least 600 ms)
-pub fn finish_pause(open_for: Duration) -> Duration {
-    Duration::from_millis(5000).saturating_sub(open_for).max(Duration::from_millis(600))
+/// 5 s in all, however quick the update (and the message at least 600 ms).
+/// A restart into an update made ready in the background (its first status
+/// is "restart": update-run.sh finish) is seconds long, and so is the
+/// screen: at least 2 s in all
+pub fn finish_pause(open_for: Duration, restart_only: bool) -> Duration {
+    Duration::from_millis(if restart_only { 2000 } else { 5000 }).saturating_sub(open_for).max(Duration::from_millis(600))
 }
 
 enum M {
@@ -160,6 +163,8 @@ pub struct UpdateScreen {
     image: Option<slint::Image>,
     wins: Vec<Win>,
     opened_at: Instant,
+    seen_status: bool,
+    restart_only: bool,
     finishing: bool,
     poll: slint::Timer,
     finish: slint::Timer,
@@ -206,6 +211,8 @@ impl UpdateScreen {
             image,
             wins: Vec::new(),
             opened_at: Instant::now(),
+            seen_status: false,
+            restart_only: false,
             finishing: false,
             poll: slint::Timer::default(),
             finish: slint::Timer::default(),
@@ -246,6 +253,11 @@ impl UpdateScreen {
         let Ok(text) = std::fs::read_to_string(self.dir.join("../status")) else { return };
         let Some(s) = read_status(&text, &self.status, &self.home) else { return };
         let was_error = self.error();
+        // (the first status it reads: a restart only, or a whole update)
+        if !self.seen_status {
+            self.seen_status = true;
+            self.restart_only = s.phase == "restart";
+        }
         self.status = s;
         self.push();
         if self.error() != was_error {
@@ -257,7 +269,7 @@ impl UpdateScreen {
         if self.status.phase == "done" && !self.finishing {
             self.finishing = true;
             let to = Self::send(st);
-            self.finish.start(slint::TimerMode::SingleShot, finish_pause(self.opened_at.elapsed()), move || to(M::Fade));
+            self.finish.start(slint::TimerMode::SingleShot, finish_pause(self.opened_at.elapsed(), self.restart_only), move || to(M::Fade));
         }
     }
 
@@ -578,8 +590,11 @@ mod tests {
 
     #[test]
     fn up_at_least_five_seconds() {
-        assert_eq!(finish_pause(Duration::from_millis(1000)), Duration::from_millis(4000));
-        assert_eq!(finish_pause(Duration::from_millis(4800)), Duration::from_millis(600));
-        assert_eq!(finish_pause(Duration::from_secs(90)), Duration::from_millis(600));
+        assert_eq!(finish_pause(Duration::from_millis(1000), false), Duration::from_millis(4000));
+        assert_eq!(finish_pause(Duration::from_millis(4800), false), Duration::from_millis(600));
+        assert_eq!(finish_pause(Duration::from_secs(90), false), Duration::from_millis(600));
+        // (the restart into a staged update: seconds, not five)
+        assert_eq!(finish_pause(Duration::from_millis(1000), true), Duration::from_millis(1000));
+        assert_eq!(finish_pause(Duration::from_millis(2500), true), Duration::from_millis(600));
     }
 }

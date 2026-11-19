@@ -157,6 +157,50 @@ class Release(unittest.TestCase):
         again = self.rb.pack(os.path.join(self.rb.BUILT, t), t, "generic", self.epoch)
         self.assertEqual(again["sha256"], m["variants"]["generic"]["sha256"])
 
+    def test_patches_from_the_build_before_are_made_checked_signed_and_used(self):
+        rb, t = self.rb, self.tree
+        # The build before, published: its archives still kept in built/
+        old = "0" * 39 + "1"
+        for variant, _ in rb.VARIANTS:
+            rel = Path(rb.TARGETS) / variant / "release"
+            fake_program(rel / "tessera-ui", "tessera-ui 0.4.1 " + "x" * 2000)
+        old_variants = {v: rb.pack(os.path.join(rb.BUILT, old), old, v, self.epoch) for v, _ in rb.VARIANTS}
+        for v, vj in old_variants.items():  # (pack names files by tree; keep them under the old tree)
+            self.assertTrue(vj["file"].startswith(f"tessera-ui-{old}"))
+        pub = Path(rb.OUT, "tessera-ui-beta", old)
+        pub.mkdir(parents=True)
+        (pub / "PUBLISHED").write_text(json.dumps({"tag": "tessera-ui-beta", "tree": old, "published": "2026-11-18T10:00:00+0000"}))
+        keep_old = {v: Path(self.d, "old-" + v) for v, _ in rb.VARIANTS}
+        for v, d in keep_old.items():
+            d.mkdir()
+            rb.unpack_programs(os.path.join(rb.BUILT, old, old_variants[v]["file"]), str(d))
+        # This build: tessera-ui changed, tessera-events didn't
+        for variant, _ in rb.VARIANTS:
+            fake_program(Path(rb.TARGETS) / variant / "release" / "tessera-ui", "tessera-ui 0.4.2 " + "x" * 2000)
+        listed = self.build_set()
+        s = listed[0]
+        self.assertEqual(s["patches"], sorted(f"tessera-ui-{t}-{v}.tessera-ui.from-{old[:12]}.zst" for v, _ in rb.VARIANTS))
+        m = json.loads((self.set_dir() / f"tessera-ui-{t}.manifest.json").read_text())
+        pe = m["variants"]["generic"]["patches"][old]
+        self.assertEqual(sorted(pe), ["tessera-ui"], "an unchanged program gets no patch")
+        self.password("correct horse\n")
+        dest, _ = self.pr.fetch_and_check(s)
+        self.pr.sign(dest, s)
+        self.assertEqual(sorted(n for n in os.listdir(dest) if not n.startswith(".")), self.pr.expected_files(t, s["patches"]))
+        # A patch the manifest doesn't list, or listed with other bytes, is refused
+        bad = dict(s, patches=s["patches"] + [f"tessera-ui-{t}-generic.tessera-events.from-{old[:12]}.zst"])
+        with self.assertRaises(self.pr.Refused):
+            self.pr.fetch_and_check(bad)
+        with self.assertRaises(self.pr.Refused):
+            self.pr.fetch_and_check(dict(s, patches=["../../etc/passwd"]))
+        # native-install.py takes the patch from the old programs
+        shutil.copytree(dest, self.d / "releases/tessera-ui-beta")
+        have = {"tree": old, "variant": "generic", "programs": {n: str(keep_old["generic"] / n) for n in ("tessera-ui", "tessera-events")}}
+        got = ni.fetch(t, self.commit, "generic", str(self.d / "work-p"), base="file://" + str(self.d / "releases") + "/{tag}",
+                       tags=["tessera-ui-beta"], pubkey=self.pub.read_text(), repo=self.rb.SRC, have=have)
+        self.assertEqual(got["info"]["how"], "patch")
+        self.assertEqual(ni.program_version(got["files"]["tessera-ui"]), "tessera-ui 0.4.2 " + "x" * 2000)
+
     def test_mark_published(self):
         self.build_set()
         self.assertEqual(self.rb.mark_published("tessera-ui-beta", self.tree), 0)
@@ -227,6 +271,73 @@ class Release(unittest.TestCase):
                 self.assertNotIn("correct horse", Path(f).read_text())
 
 
+class Health(unittest.TestCase):
+    """The publisher's look every 2 minutes: alerts once each, quiet when
+    server1 is out of reach, the health Settings shows"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        d = Path(self.tmp.name)
+        self.pr = pr = load("tessera_publish_health", PUBLISHER)
+        pr.CACHE, pr.LOG, pr.STATUS = str(d), str(d / "p.log"), str(d / "p.json")
+        pr.STATE.clear()
+        self.sent = []
+        self.p = mock.patch.object(pr.subprocess, "run", lambda cmd, **k: self.sent.append(cmd) or subprocess.CompletedProcess(cmd, 0, "", ""))
+        self.p.start()
+
+    def tearDown(self):
+        self.p.stop()
+        self.tmp.cleanup()
+
+    def test_a_failed_build_is_said_once(self):
+        b = {"state": "failed", "error": "the generic build failed its test before publishing: it did not answer IPC within 30 s"}
+        self.assertEqual(self.pr.alert_health([], b), ["builder"])
+        self.assertEqual(self.pr.alert_health([], b), [], "the same failure isn't said again")
+        self.assertEqual(self.sent[0][0], "notify-send")
+        self.assertEqual(self.pr.STATE["health"]["builder"]["state"], "failed")
+
+    def test_a_set_waiting_over_an_hour_is_said(self):
+        import time as _t
+        s = {"tag": "tessera-ui-beta", "tree": "a" * 40, "ready": "2026-11-19T07:00:00+0530"}
+        t0 = _t.mktime(_t.strptime("2026-11-19T07:00:00", "%Y-%m-%dT%H:%M:%S"))
+        self.assertEqual(self.pr.alert_health([s], {}, now_t=t0 + 600), [])
+        self.assertEqual(self.pr.alert_health([s], {}, now_t=t0 + 3700), ["wait:tessera-ui-beta/" + "a" * 40])
+        self.assertEqual(self.pr.STATE["health"]["waiting"][0]["set"], "tessera-ui-beta/" + "a" * 12)
+
+    def test_network_failures_are_tried_again(self):
+        n = []
+
+        def flaky():
+            n.append(1)
+            if len(n) < 3:
+                raise self.pr.Refused("gh release upload failed: connection reset by peer (Connection)")
+            return "done"
+        with mock.patch.object(self.pr.time, "sleep", lambda s: None):
+            self.assertEqual(self.pr.retry("upload", flaky), "done")
+        self.assertEqual(len(n), 3)
+        with self.assertRaises(self.pr.Refused), mock.patch.object(self.pr.time, "sleep", lambda s: None):
+            self.pr.retry("check", lambda: (_ for _ in ()).throw(self.pr.Refused("the manifest names another build")))
+
+    def test_the_timer_looks_often_and_after_login(self):
+        t = (ROOT / "tools/release-builder/tessera-publish.timer").read_text()
+        self.assertIn("OnUnitActiveSec=2min", t)
+        self.assertIn("OnStartupSec=", t)
+
+
+class Trigger(unittest.TestCase):
+    def test_push_release_pokes_the_builder_and_keeps_the_timer(self):
+        sh = (ROOT / "tools/push-release").read_text()
+        self.assertIn("systemctl --user start --no-block tessera-release.service", sh)
+        self.assertIn("OnCalendar=*:0/10", (ROOT / "tools/release-builder/tessera-release.timer").read_text())
+
+    def test_the_builder_tests_before_it_offers(self):
+        rb = (ROOT / "tools/release-builder/tessera-release").read_text()
+        self.assertLess(rb.index("pretest(tree, variants)"), rb.index("make_set(t, tree, variants)"))
+        pt = (ROOT / "tools/release-builder/pretest.sh").read_text()
+        for check in ("within 30 s", "lock lock", "lock unlock", "shell ready", "radios"):
+            self.assertIn(check, pt)
+
+
 class BuildEnv(unittest.TestCase):
     """What a release build tells tessera-ui about itself (its build.rs:
     `tessera-ui --version`, Settings → About)"""
@@ -280,9 +391,15 @@ class BuildEnv(unittest.TestCase):
 
 
 class Units(unittest.TestCase):
-    def test_timers_every_ten_minutes(self):
+    def test_timers(self):
+        # server1 builds every ten minutes (a push starts it at once too:
+        # tools/push-release); the laptop, which signs, looks 30 s after login
+        # and every 2 minutes, counting only while awake (19 Nov)
         self.assertIn("OnCalendar=*:0/10", (ROOT / "tools/release-builder/tessera-release.timer").read_text())
-        self.assertIn("OnCalendar=*:5/10", (ROOT / "tools/release-builder/tessera-publish.timer").read_text())
+        pub = (ROOT / "tools/release-builder/tessera-publish.timer").read_text()
+        self.assertIn("OnStartupSec=30s", pub)
+        self.assertIn("OnUnitActiveSec=2min", pub)
+        self.assertNotIn("OnCalendar", pub)
         self.assertIn("ExecStart=%h/bin/tessera-release", (ROOT / "tools/release-builder/tessera-release.service").read_text())
         self.assertIn("ExecStart=%h/tessera-verify/publish-release.sh",
                       (ROOT / "tools/release-builder/tessera-publish.service").read_text())

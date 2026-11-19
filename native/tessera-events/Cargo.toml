@@ -20,3 +20,11 @@ lto = true
 codegen-units = 1
 panic = "abort"
 strip = true
+
+# Built here by the updater (tools/build-native.sh): as release, with thin
+# LTO, so a rebuild from the build cache is quick (tessera-ui's "local" too)
+[profile.local]
+inherits = "release"
+lto = "thin"
+codegen-units = 16
+incremental = false

@@ -42,6 +42,23 @@ For each set server1 lists (`tessera-release --list-ready`, over ssh):
   6. marked published on server1 (`tessera-release --mark-published`), so
      it's never offered again.
 
+Patches: a set may carry zstd patches from earlier builds (listed in its
+READY "patches" and in the manifest, tessera-ui-<tree>-<variant>.<program>.
+from-<12>.zst); each is checked against the manifest and signed like the
+archives, and published with them.
+
+When it runs: 30 s after login and every 2 minutes (tessera-publish.timer);
+each look is one ssh (`tessera-release --health`: the sets waiting and the
+builder's status). Nothing else runs unless a set waits. server1 out of
+reach (away from home) is quiet. Network steps (scp, gh, the download back)
+are retried with backoff.
+
+Health and alerts: the status file's "health" says how the pipeline is
+(the builder's state and last error, the sets waiting and since when, the
+last set published); Settings → About shows it on this machine (where the
+publisher is installed). A notification says when a build, its test or a
+publish fails, or a set has waited more than an hour; each once.
+
 Log: ~/.cache/tessera-publish.log. Status: ~/.cache/tessera-publish.json:
 state (idle, fetching, checking, signing, publishing, failed), current,
 checked, error, waiting, and per release the last set published (URLs, sizes,
@@ -80,6 +97,8 @@ KEEP = 3  # builds per rolling release, as CI
 HEX40 = re.compile(r"^[0-9a-f]{40}$")
 TAG_RE = re.compile(r"^v[0-9A-Za-z._-]+$")
 MANIFEST_RE = re.compile(r"^tessera-ui-([0-9a-f]{40})\.manifest\.json$")
+PATCH_RE = re.compile(r"^tessera-ui-([0-9a-f]{40})-(x86-64-v3|generic)\.(tessera-ui|tessera-events)\.from-([0-9a-f]{12})\.zst$")
+WAIT_ALERT = 3600  # a set waiting longer than this is said once
 
 
 class Refused(Exception):
@@ -153,15 +172,27 @@ def git(*args):
     return r.stdout if r.returncode == 0 else None
 
 
-def unsigned_files(tree):
-    """What server1 sends: both archives and the manifest."""
+def unsigned_files(tree, patches=()):
+    """What server1 sends: both archives and the manifest, and the patches."""
     return sorted([f"tessera-ui-{tree}-x86-64-v3.tar.zst", f"tessera-ui-{tree}-generic.tar.zst",
-                   f"tessera-ui-{tree}.manifest.json"])
+                   f"tessera-ui-{tree}.manifest.json"] + list(patches))
 
 
-def expected_files(tree):
+def expected_files(tree, patches=()):
     """What a release has: those and a signature of each."""
-    return sorted(unsigned_files(tree) + [n + ".minisig" for n in unsigned_files(tree)])
+    return sorted(unsigned_files(tree, patches) + [n + ".minisig" for n in unsigned_files(tree, patches)])
+
+
+def set_patches(s):
+    """The set's patch files (its READY says), each named for this build;
+    anything else is refused"""
+    out = []
+    for n in s.get("patches") or []:
+        m = PATCH_RE.match(str(n))
+        if not m or m.group(1) != s.get("tree"):
+            raise Refused(f"the set lists a patch this doesn't publish ({n!r})")
+        out.append(n)
+    return sorted(set(out))
 
 
 # ── Signing (here only) ──────────────────────────────────────────────────
@@ -198,6 +229,7 @@ def sign(dest, s):
     """Signs the set's three files in DEST and checks each signature
     against the commit's tools/tessera-ui.pub."""
     tree, commit = s["tree"], s["commit"]
+    patches = set_patches(s)
     status(state="signing")
     pub_text, pub_from = pubkey_for(commit)
     pub_path = os.path.join(dest, ".tessera-ui.pub")
@@ -205,7 +237,7 @@ def sign(dest, s):
         f.write(pub_text)
     pw = read_password()
     try:
-        for n in unsigned_files(tree):
+        for n in unsigned_files(tree, patches):
             path = os.path.join(dest, n)
             # (the trusted comment is signed too: installs check tree= in it)
             r = subprocess.run(["minisign", "-S", "-s", KEY, "-m", path, "-t", f"{n} tree={tree} commit={commit}"],
@@ -226,11 +258,64 @@ def sign(dest, s):
 # ── Fetch and check ──────────────────────────────────────────────────────
 
 def list_ready():
-    out = run(SSH + [HOST, "bin/tessera-release --list-ready"], "asking server1 for ready sets", timeout=120)
-    sets = json.loads(out)
+    return health_of_builder()[0]
+
+
+def health_of_builder():
+    """One ssh: (the sets waiting, the builder's status). An older builder
+    without --health: its --list-ready (and no status)."""
+    try:
+        out = run(SSH + [HOST, "bin/tessera-release --health"], "asking server1", timeout=120)
+        h = json.loads(out)
+        sets, st = h.get("ready"), h.get("status") or {}
+    except Refused as e:
+        if "out of reach" in str(e) or "Could not resolve" in str(e) or "timed out" in str(e) or "No route" in str(e):
+            raise
+        out = run(SSH + [HOST, "bin/tessera-release --list-ready"], "asking server1 for ready sets", timeout=120)
+        sets, st = json.loads(out), {}
     if not isinstance(sets, list):
         raise Refused("server1's list isn't a list")
-    return sets
+    return sets, st if isinstance(st, dict) else {}
+
+
+def notify(key, title, body):
+    """A notification on this laptop, once per KEY and text"""
+    seen = STATE.setdefault("alerted", {})
+    if seen.get(key) == body:
+        return False
+    seen[key] = body
+    status()
+    try:
+        subprocess.run(["notify-send", "-a", "Tessera release", "-i", "dialog-warning", title, body], capture_output=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return True
+
+
+def alert_health(sets, builder, now_t=None):
+    """What's wrong with the pipeline, said once each: a build or its test
+    failed on server1, a set has waited more than an hour. Records the
+    health for Settings → About. Returns the alerts made."""
+    now_t = time.time() if now_t is None else now_t
+    made = []
+    if builder.get("state") == "failed" and builder.get("error"):
+        if notify("builder", "A Tessera release didn't build", str(builder["error"])[:300]):
+            made.append("builder")
+    for s in sets:
+        try:
+            ready_t = time.mktime(time.strptime(s.get("ready", "")[:19], "%Y-%m-%dT%H:%M:%S"))
+        except (ValueError, TypeError):
+            continue
+        if now_t - ready_t > WAIT_ALERT:
+            key = f"wait:{s.get('tag')}/{s.get('tree')}"
+            if notify(key, "A Tessera release is waiting to be signed", f"{s.get('tag')} ({str(s.get('tree'))[:12]}) has waited over an hour. "
+                      f"Check ~/.cache/tessera-publish.log."):
+                made.append(key)
+    STATE["health"] = {"builder": {k: builder.get(k) for k in ("state", "error", "step", "finished", "checked", "target")},
+                       "waiting": [{"set": f"{s.get('tag')}/{str(s.get('tree'))[:12]}", "since": s.get("ready")} for s in sets],
+                       "checked": now()}
+    status()
+    return made
 
 
 def pubkey_for(commit):
@@ -267,15 +352,16 @@ def fetch_and_check(s):
     if TAG_RE.match(tag) and name != tag:
         raise Refused(f"the set for {tag} says it's {name!r}")
     files = s.get("files") or {}
-    want = unsigned_files(tree)
+    patches = set_patches(s)
+    want = unsigned_files(tree, patches)
     if sorted(files) != want:
-        raise Refused(f"the set has {sorted(files)}, not both archives and the manifest")
+        raise Refused(f"the set has {sorted(files)}, not both archives, the manifest and its patches")
     dest = os.path.join(STAGE, tag, tree)
     shutil.rmtree(dest, ignore_errors=True)
     os.makedirs(dest)
     status(state="fetching", current=f"{tag}/{tree}")
     remote = f"tessera-release/out/{tag}/{tree}"
-    run(SCP + [f"{HOST}:{remote}/{n}" for n in want] + [dest + "/"], "copying the set from server1", timeout=1800)
+    retry("copying the set from server1", lambda: run(SCP + [f"{HOST}:{remote}/{n}" for n in want] + [dest + "/"], "copying the set from server1", timeout=1800))
     status(state="checking")
     for n in want:
         p = os.path.join(dest, n)
@@ -290,6 +376,21 @@ def fetch_and_check(s):
         p = os.path.join(dest, f"tessera-ui-{tree}-{v}.tar.zst")
         if e.get("file") != os.path.basename(p) or e.get("size") != os.path.getsize(p) or e.get("sha256") != sha256_of(p):
             raise Refused(f"the {v} archive doesn't match the signed manifest")
+    # (every patch the manifest lists is in the set, and matches; none other)
+    listed = []
+    for v in ("x86-64-v3", "generic"):
+        for old, progs in ((m.get("variants") or {}).get(v, {}).get("patches") or {}).items():
+            for prog, pe in progs.items():
+                n = pe.get("file", "")
+                pm = PATCH_RE.match(n)
+                if not pm or pm.group(1) != tree or pm.group(2) != v or pm.group(3) != prog or not old.startswith(pm.group(4)):
+                    raise Refused(f"the manifest lists a patch with the wrong name ({n!r})")
+                pp = os.path.join(dest, n)
+                if not os.path.exists(pp) or pe.get("size") != os.path.getsize(pp) or pe.get("sha256") != sha256_of(pp):
+                    raise Refused(f"the patch {n} doesn't match the signed manifest")
+                listed.append(n)
+    if sorted(listed) != patches:
+        raise Refused("the set's patches aren't the ones its manifest lists")
     known = git("rev-parse", "--verify", "--quiet", f"{commit}:native")
     if known is not None and known.strip() != tree:
         raise Refused(f"commit {commit[:12]}'s native/ isn't tree {tree[:12]}")
@@ -299,9 +400,26 @@ def fetch_and_check(s):
 
 # ── Publish ──────────────────────────────────────────────────────────────
 
+NETWORK = ("timed out", "took too long", "Could not resolve", "connection", "Connection", "502", "503", "504", "TLS", "EOF",
+           "unexpected disconnect", "No route", "Network is unreachable")
+
+
+def retry(what, fn, waits=(5, 20, 60)):
+    """FN, again after 5 s, 20 s and 60 s when it fails for the network"""
+    for i in range(len(waits) + 1):
+        try:
+            return fn()
+        except Refused as e:
+            if i == len(waits) or not any(w in str(e) for w in NETWORK):
+                raise
+            log(f"{what}: {e}; trying again in {waits[i]} s")
+            time.sleep(waits[i])
+
+
 def gh(*args, what=None):
     env = dict(os.environ, GH_REPO=GH_REPO, GH_PROMPT_DISABLED="1", NO_COLOR="1", GH_NO_UPDATE_NOTIFIER="1")
-    return run(["gh", *args], what or f"gh {' '.join(args[:2])}", timeout=1800, env=env)
+    w = what or f"gh {' '.join(args[:2])}"
+    return retry(w, lambda: run(["gh", *args], w, timeout=1800, env=env))
 
 
 def can_publish():
@@ -314,7 +432,7 @@ def can_publish():
 def publish_github(s, dest, m):
     tag, tree, commit = s["tag"], s["tree"], s["commit"]
     status(state="publishing")
-    names = expected_files(tree)
+    names = expected_files(tree, set_patches(s))
     exists = subprocess.run(["gh", "release", "view", tag], capture_output=True,
                             env=dict(os.environ, GH_REPO=GH_REPO, GH_PROMPT_DISABLED="1")).returncode == 0
     rolling = tag in ROLLING
@@ -353,7 +471,7 @@ def publish_github(s, dest, m):
     base = f"https://github.com/{GH_REPO}/releases/download/{tag}"
     mname = f"tessera-ui-{tree}.manifest.json"
     got = os.path.join(dest, ".downloaded")
-    run(["curl", "-fsSL", "--retry", "3", "--proto", "=https", "-o", got, f"{base}/{mname}"], "downloading the manifest back")
+    retry("downloading the manifest back", lambda: run(["curl", "-fsSL", "--retry", "3", "--proto", "=https", "-o", got, f"{base}/{mname}"], "downloading the manifest back"))
     if sha256_of(got) != sha256_of(os.path.join(dest, mname)):
         raise Refused(f"GitHub serves another {mname} than was uploaded")
     os.remove(got)
@@ -381,7 +499,7 @@ def publish_gitlab(s, dest):
         with open(GITLAB_PROJECT_FILE) as f:
             project = f.read().strip() or project
     api = "https://gitlab.com/api/v4/projects/" + urllib.parse.quote(project, safe="")
-    names = expected_files(tree)
+    names = expected_files(tree, set_patches(s))
     try:
         for n in [n for n in names if ".manifest.json" not in n] + [n for n in names if ".manifest.json" in n]:
             with open(os.path.join(dest, n), "rb") as f:
@@ -430,8 +548,16 @@ def main(argv=None):
     status(state="fetching", current=None, error=None, pid=os.getpid())
     sets = []
     try:
-        sets = list_ready()
-        status(waiting=[f"{s.get('tag')}/{s.get('tree')}" for s in sets])
+        try:
+            sets, builder = health_of_builder()
+        except Refused as e:
+            # (server1 out of reach: away from home, asleep; quiet, nothing to do)
+            if any(w in str(e) for w in NETWORK + ("out of reach", "Permission denied")):
+                status(state="idle", current=None, pid=None, checked=now(), reach=str(e)[:200])
+                return 0
+            raise
+        status(waiting=[f"{s.get('tag')}/{s.get('tree')}" for s in sets], reach=None)
+        alert_health(sets, builder)
         if sets:
             preflight(publish=not a.dry_run)
     except (Refused, ValueError) as e:
@@ -472,6 +598,7 @@ def main(argv=None):
             if msg not in (last_error or ""):
                 log("failed: " + msg)
             failed.append(msg)
+            notify("publish:" + key, "A Tessera release wasn't published", str(e)[:300])
     end = dict(checked=now(), current=None, pid=None)
     if failed:
         status(state="failed", error="; ".join(failed), **end)

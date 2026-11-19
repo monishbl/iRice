@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# Pushes a channel's branch and starts server1's release build at once,
+# instead of waiting for its 10-minute timer (which stays, as the fallback):
+#
+#   tools/push-release beta            push HEAD to origin/beta, then build
+#   tools/push-release main [REV]      push REV (default HEAD) to origin/main (Stable)
+#   tools/push-release --poke          only start the build (after a push made otherwise)
+#
+# The build is started with `systemctl --user start --no-block
+# tessera-release.service` over ssh (TESSERA_BUILDER, default user@server1):
+# it returns at once; a build already running isn't started twice (the
+# builder holds a lock and finds the new commit on its next run). server1
+# out of reach is only a warning: the timer builds it within 10 minutes.
+# As a git hook instead: tools/push-release --install-hook adds a
+# post-push-like pre-push hook that pokes after a push to main or beta.
+set -uo pipefail
+HOST="${TESSERA_BUILDER:-user@server1}"
+here="$(cd "$(dirname "$0")/.." && pwd)"
+
+poke() {
+    if ssh -o BatchMode=yes -o ConnectTimeout=10 "$HOST" 'systemctl --user start --no-block tessera-release.service' 2>/dev/null; then
+        echo "server1 is building it now (the ready-made build is usually out in about 20 minutes)"
+    else
+        echo "warning: server1 didn't answer; its timer builds it within 10 minutes" >&2
+    fi
+}
+
+case "${1:-}" in
+    --poke) poke ;;
+    --install-hook)
+        hook="$(git -C "$here" rev-parse --git-path hooks)/pre-push"
+        if [[ -e "$hook" ]] && ! grep -q "push-release" "$hook"; then
+            echo "There's a pre-push hook already ($hook): add this line to it yourself:"
+            echo "  ( sleep 20; \"$here/tools/push-release\" --poke ) >/dev/null 2>&1 &"
+            exit 1
+        fi
+        cat >"$hook" <<EOF
+#!/usr/bin/env bash
+# (tools/push-release --install-hook) After a push to main or beta, start
+# server1's release build at once; the push itself isn't held up
+while read -r _ _ remote_ref _; do
+    case "\$remote_ref" in refs/heads/main|refs/heads/beta) ( sleep 20; "$here/tools/push-release" --poke ) >/dev/null 2>&1 & break ;; esac
+done
+exit 0
+EOF
+        chmod +x "$hook"
+        echo "Installed $hook"
+        ;;
+    main | beta)
+        rev="${2:-HEAD}"
+        git -C "$here" push origin "$rev:refs/heads/$1" || exit 1
+        poke
+        ;;
+    *)
+        sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'
+        exit 2
+        ;;
+esac

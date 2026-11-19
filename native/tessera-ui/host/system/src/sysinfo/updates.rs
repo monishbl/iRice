@@ -343,8 +343,10 @@ impl Updates {
             return;
         }
         let ok = j["state"] == "done";
-        // Tessera's part follows (its update screen): no alert in between
-        if ok && (helpers::truthy(&j["then"]["tessera"]) || j["then"]["rebuild"].as_array().is_some_and(|r| !r.is_empty())) {
+        // Tessera's part follows (only its packages were installed here): its
+        // own progress says the rest. A system update says how it went, even
+        // when the glass plugin is rebuilt after it in the background
+        if ok && helpers::truthy(&j["then"]["tessera"]) {
             return;
         }
         let n = j["upgraded"].as_array().map(|a| a.len()).unwrap_or(0);
@@ -364,7 +366,7 @@ impl Updates {
         };
         let sub = if ok {
             if restart {
-                "Restart to finish: the kernel or system libraries changed".to_string()
+                "Restart the computer to finish: the kernel, drivers or system libraries changed".to_string()
             } else if back {
                 if n == 1 { "1 package went back".to_string() } else { format!("{n} packages went back") }
             } else {

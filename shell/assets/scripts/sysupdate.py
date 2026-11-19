@@ -77,6 +77,12 @@ import sys
 import threading
 import time
 
+# (the shell's own RUST_BACKTRACE, inherited: paru, written in Rust, then
+# put a stack trace in its error, and Software Update showed "8: <unknown> …
+# __libc_start_main" instead of what went wrong)
+os.environ.pop("RUST_BACKTRACE", None)
+os.environ.pop("RUST_LIB_BACKTRACE", None)
+
 RUN = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
 DIR = os.path.join(RUN, "tessera-sysupdate")
 STATUS = os.path.join(DIR, "status.json")
@@ -92,8 +98,19 @@ SOURCE = os.path.join(HERE, "tessera-root.py")  # the root helper, as installed 
 SYSTEM = os.environ.get("TESSERA_SYSTEM_ROOT", "/")  # (tests)
 INSTALLED = os.path.join(SYSTEM, "usr/lib/tessera/tessera-root")
 DBLOCK = "/var/lib/pacman/db.lck"
-# Updated packages that want a restart to take effect
-RESTART = re.compile(r"^(linux(-[a-z0-9]+)?|linux-firmware.*|systemd|systemd-libs|glibc|mesa|lib32-mesa|nvidia.*|amd-ucode|intel-ucode|dbus|dbus-broker.*)$")
+# Updated packages that want a restart of the computer to take effect: the
+# kernel (any flavour: linux-zen, linux-cachyos-lts), its firmware and
+# microcode, graphics drivers (mesa, NVIDIA, Vulkan drivers, X drivers),
+# systemd, glibc and D-Bus. A kernel's headers or docs don't.
+RESTART = re.compile(r"^(linux(-[a-z0-9]+)*|linux-firmware.*|systemd|systemd-libs|systemd-sysvcompat|glibc|lib32-glibc|"
+                     r"mesa|lib32-mesa|vulkan-(radeon|intel|nouveau|swrast|virtio)|lib32-vulkan-(radeon|intel)|"
+                     r"nvidia.*|lib32-nvidia.*|xf86-video-.*|amd-ucode|intel-ucode|dbus|dbus-broker.*)$")
+NOT_RESTART = re.compile(r"^linux(-[a-z0-9]+)*-(headers|docs)$|^linux-api-headers$|^linux-tools.*$")
+
+
+def needs_restart(pkg):
+    """Does updating PKG need the computer restarted to take effect?"""
+    return bool(RESTART.match(pkg)) and not NOT_RESTART.match(pkg)
 
 state = {
     "state": "running",   # running | done | error | cancelled
@@ -207,7 +224,7 @@ def parse(line, aur=False):
         up = state["upgraded"] + ([pkg] if verb != "removing" and pkg not in state["upgraded"] else [])
         word = "Removing" if verb == "removing" else "Installing"
         set_(phase="install", done=d, total=t, package=pkg, upgraded=up,
-             restart=state["restart"] or bool(RESTART.match(pkg)),
+             restart=state["restart"] or needs_restart(pkg),
              text=f"{word} {d} of {t}", percent=at(45, 85, d / t))
         return
     if s.startswith(":: Running post-transaction hooks"):
@@ -286,6 +303,11 @@ def stream_root(cmd, env=None, stdin=subprocess.DEVNULL):
     return code
 
 
+# A program's stack trace in the log ("stack backtrace:", "  8: <unknown>",
+# "      at src/main.rs:12"): never what went wrong, so never in the error shown
+BACKTRACE = re.compile(r"^\s*(stack backtrace:|\d+: |at \S+:\d+|note: run with `RUST_BACKTRACE)")
+
+
 def finish(st, text, error=""):
     set_(state=st, phase="done", text=text, error=error, finished=time.time(),
          percent=100 if st == "done" else state["percent"])
@@ -294,7 +316,7 @@ def finish(st, text, error=""):
 def tail(n=6):
     try:
         with open(LOG, errors="replace") as f:
-            lines = [l.rstrip() for l in f if l.strip() and not l.startswith("$ ")]
+            lines = [l.rstrip() for l in f if l.strip() and not l.startswith("$ ") and not BACKTRACE.match(l)]
         return "\n".join(lines[-n:])
     except OSError:
         return ""

@@ -128,6 +128,17 @@ pub fn log_tail(log: &str, n: usize) -> String {
     lines[lines.len().saturating_sub(n)..].join("\n")
 }
 
+/// The release publisher's status (tools/release-builder/publish-release),
+/// on the machine where it's installed (~/tessera-verify/publish-release.sh);
+/// null anywhere else
+fn pipeline() -> Value {
+    let home = util::home();
+    if !home.join("tessera-verify/publish-release.sh").exists() {
+        return Value::Null;
+    }
+    std::fs::read_to_string(home.join(".cache/tessera-publish.json")).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or(Value::Null)
+}
+
 fn expand(p: &str) -> String {
     match p.strip_prefix("~/") {
         Some(r) => format!("{}/{}", util::home().to_string_lossy(), r),
@@ -165,6 +176,8 @@ impl About {
             let tx = self.tx().clone();
             if new == "update" {
                 self.su.check_undo(&tx, &self.up);
+                self.tu.read_cache(&tx);
+                self.tu.read_staged(&tx);
                 h.ask("bootsnapshots.refresh", json!([]));
             } else if new == "about/health" {
                 h.ask("health.check", json!([]));
@@ -228,7 +241,7 @@ impl About {
                 "running": SoftwareUpdate::running(up, tu), "checking": su.checking(tu, up), "checked": su.checked, "anything": su.anything(tu, up),
                 "restartPending": su.restart_pending, "hyprNow": su.hypr_now(), "hyprTooNew": su.hypr_too_new(up), "hyprShort": su.hypr_short(up), "hyprMax": hyprmax,
                 "hold": su.hold, "heldHypr": su.held_hypr(up), "held": su.held(up), "snapshot": su.snapshot, "includeAur": su.include_aur, "removeDropped": su.remove_dropped,
-                "undecided": su.undecided(tu, up), "canUpdate": su.can_update(tu, up),
+                "undecided": su.undecided(tu, up), "canUpdate": su.can_update(tu, up), "canUpdateSystem": su.can_update_system(tu, up),
                 "plan": {"system": plan["system"] == true, "aur": plan["aur"] == true, "sysCount": plan["sysCount"], "aurCount": plan["aurCount"], "install": n("install"), "remove": n("remove"),
                          "setup": plan["setup"] == true, "tessera": plan["tessera"] == true, "rebuild": n("rebuild")},
                 "steps": steps, "undoCount": su.undo_count(),
@@ -240,6 +253,11 @@ impl About {
             },
             "tu": {
                 "allowed": tu.allowed(), "available": tu.available(), "error": tu.error, "applying": tu.applying, "report": report, "info": tu_info, "result": result,
+                // (the background update: its job, what's ready, the restart)
+                "job": tu.job.clone().unwrap_or(Value::Null), "jobRunning": tu.job_running(), "jobFraction": tu.job_fraction(),
+                "ready": tu.ready(), "staged": tu.staged.clone().unwrap_or(Value::Null), "restarting": tu.restarting,
+                "canUpdate": su.can_update_tessera(tu, up), "waits": SoftwareUpdate::waits_for(tu, up),
+                "cache": tu.cache.map(|c| json!(c)).unwrap_or(Value::Null), "cacheBusy": tu.cache_busy, "cacheError": tu.cache_error,
                 "conflicts": conflicts, "choices": Value::Object(tu.choices.clone()),
                 "missing": tu.packages["missing"].as_array().cloned().unwrap_or_default(), "dropped": tu.packages["dropped"].as_array().cloned().unwrap_or_default(),
                 "reasons": if tu.packages["reasons"].is_object() { tu.packages["reasons"].clone() } else { json!({}) },
@@ -273,6 +291,8 @@ impl About {
             "keymap": {"ready": b(&km["ready"]), "dialog": b(&km["hasZenity"]) || b(&km["hasKdialog"])},
             "ie": Value::Object(self.ie.clone()),
             "build": if self.page() == "update" { self.build_feed() } else { Value::Null },
+            // (About's release pipeline line: only where the publisher runs)
+            "pipeline": if self.page() == "about" { pipeline() } else { Value::Null },
             "jobElapsed": if up.running() { up.job.as_ref().and_then(|j| j["started"].as_f64()).map(|t| helpers::now_s() - t).unwrap_or(0.0) } else { 0.0 },
         })
     }
@@ -460,6 +480,12 @@ impl About {
                 }
             }
             "su.update" => self.su.update(h, &tx, &mut self.tu, &mut self.up),
+            // (the two parts, each its own Update)
+            "tu.update" => self.su.update_tessera(h, &tx, &mut self.tu, &mut self.up),
+            "sys.update" => self.su.update_system(&tx, &mut self.tu, &mut self.up),
+            "tu.cancel" => self.tu.cancel(&tx),
+            "tu.restart" => self.tu.restart(h, &tx, false),
+            "cache.delete" => self.tu.delete_cache(&tx),
             "su.cancel" => self.up.cancel(),
             "su.goBack" => self.su.go_back(&tx, &self.tu, &mut self.up),
             "su.hold" => self.su.hold = if a0.as_f64() == Some(0.0) { 1 } else { 0 },
@@ -591,6 +617,16 @@ impl Service for About {
         self.tu.publish();
     }
 
+    /// Each turn: the lock's state, for the restart into a ready update the
+    /// moment the screen locks (TesseraUpdate.lock_seen)
+    fn settled(&mut self, h: &mut Host) {
+        let Some(tx) = self.tx.clone() else { return };
+        let secure = h.state("lockSecure").as_bool().unwrap_or(false);
+        if secure != self.tu.was_secure {
+            self.tu.lock_seen(h, &tx, secure);
+        }
+    }
+
     fn call(&mut self, h: &mut Host, call: &str, args: &Value) {
         let tx = self.tx().clone();
         let (prefix, f) = call.split_once('.').unwrap_or((call, ""));
@@ -643,6 +679,9 @@ impl Service for About {
                     self.tu.choose(a.first().and_then(Value::as_str).unwrap_or(""), a.get(1).and_then(Value::as_str).unwrap_or(""));
                 }
                 "launch" => self.tu.launch(h, &tx, &list(&args.as_array().and_then(|a| a.first()).cloned().unwrap_or(json!([])))),
+                // (the island's controls while the background update runs, and once it's ready)
+                "cancel" => self.tu.cancel(&tx),
+                "restart" => self.tu.restart(h, &tx, false),
                 "dismissResult" => self.tu.dismiss_result(),
                 _ => {}
             },
@@ -668,7 +707,7 @@ impl Service for About {
             Ok(t) => {
                 match t.0 {
                     "upPoll" | "upLog" | "upLock" => self.up.tick(&tx, t.0),
-                    "tuStart" | "tuAnnounce" | "tuPeek" => self.tu.tick(h, &tx, t.0),
+                    "tuStart" | "tuAnnounce" | "tuPeek" | "tuJob" => self.tu.tick(h, &tx, t.0),
                     _ => {}
                 }
                 return self.after(h);
@@ -692,7 +731,7 @@ impl Service for About {
         };
         let msg = match msg.downcast::<tessera_update::Ev>() {
             Ok(ev) => {
-                self.tu.event(&tx, *ev);
+                self.tu.event(h, &tx, *ev);
                 // The update notice's Update: Software Update, with a fresh check
                 if std::mem::take(&mut self.tu.open_asked) {
                     h.ask("panels.openSettings", json!(["update"]));

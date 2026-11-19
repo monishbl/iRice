@@ -1,5 +1,8 @@
-//! Software Update (pages/update.qml): one Check for updates, one plan, one
-//! Update for Tessera and the system together. The updater is the shell's
+//! Software Update (pages/update.qml): one Check for updates, then two parts,
+//! each with its own Update, both in the background while you keep working:
+//! Tessera (made ready, then "Restart shell now", or at the next lock or
+//! login) and System packages (pacman, the AUR; "Restart the computer to
+//! finish" after a kernel or driver). The updater is the shell's
 //! (SoftwareUpdate, TesseraUpdate, Updates, BootSnapshots: pacman and the
 //! root helper run there, never here): its state comes in the feed
 //! (`su`, `tu`, `up`, `bs`), and every button asks it (`cx.ask("about", …)`).
@@ -410,6 +413,10 @@ pub fn page(cx: &mut Ctx, p: &mut Page) {
         }
     }
 
+    // ── Tessera: its own Update, the background job, the restart ──
+    tessera_part(cx, p, tu, checked && !checking, available);
+    build_cache(cx, p, tu);
+
     // ── The plan: Hyprland newer than this Tessera supports ──
     if show_plan && b(&su["hyprTooNew"]) {
         let hold = n(&su["hold"]);
@@ -486,7 +493,10 @@ pub fn page(cx: &mut Ctx, p: &mut Page) {
         let snap = s(&su["snapshot"]);
         let aur_t = cx.on(move |cx, _| cx.ask("about", "su.includeAur", json!([!include_aur])));
         let drop_t = cx.on(move |cx, _| cx.ask("about", "su.removeDropped", json!([!remove_dropped])));
-        p.group("Packages affected")
+        let go_sys = cx.on(|cx, _| cx.ask("about", "sys.update", Value::Null));
+        let waits = s(&tu["waits"]);
+        let sys_ready = b(&su["canUpdateSystem"]);
+        p.group("System packages")
             .footer(if !snap.is_empty() {
                 format!("A snapshot is taken first ({snap}). Afterwards you can go back to the versions you have now, below.")
             } else {
@@ -497,28 +507,26 @@ pub fn page(cx: &mut Ctx, p: &mut Page) {
                 .visible(!aur_list.is_empty())
                 .detail("AUR packages are built from scripts anyone can submit, and they're built without showing you what changed. Include them only if you trust these packages.")
                 .switch(include_aur, aur_t))
-            .row(Row::new("Remove packages Tessera no longer uses").visible(!dropped.is_empty()).detail("Turn off if you use them yourself.").switch(remove_dropped, drop_t));
+            .row(Row::new("Remove packages Tessera no longer uses").visible(!dropped.is_empty()).detail("Turn off if you use them yourself.").switch(remove_dropped, drop_t))
+            .row(Row::new("Update system packages")
+                .visible(b(&plan["system"]) || b(&plan["aur"]))
+                .detail(if !waits.is_empty() && !sys_ready { waits } else if b(&su["hyprTooNew"]) && su["hold"].as_i64() == Some(-1) {
+                    "Choose what to do about Hyprland above first.".to_string()
+                } else {
+                    "Runs in the background. A kernel or driver update ends with a restart of the computer, when you choose.".to_string()
+                })
+                .buttons(vec![btn("Update packages").icon("arrow-circle-up").off(!sys_ready)], go_sys));
     }
 
-    // ── Update ──
-    if show_plan {
-        let undecided = n(&su["undecided"]);
-        let go = cx.on(|cx, _| cx.ask("about", "su.update", Value::Null));
-        p.group("")
-            .footer("Your system is updated first, then Tessera, which restarts the shell; your apps keep running. Your password is asked once, at the start.")
-            .row(Row::new(if undecided > 0 { format!("{} left to decide", plural(undecided, "thing")) } else { "Ready to update".into() })
-                .detail(if undecided > 0 { "Choose for each item above; nothing changes until you update.".to_string() } else { plan_detail_for(plan, report) })
-                .buttons(vec![btn("Update").icon("arrow-circle-up").primary().off(!b(&su["canUpdate"]))], go));
-    }
-
-    // ── Progress (while it runs, and how it ended) ──
-    if running || over {
+    // ── The system packages' progress (while it runs, and how it ended) ──
+    if b(&up["running"]) || over {
         let interrupted = b(&up["interrupted"]);
         let state = s(&job["state"]);
+        let running = b(&up["running"]);
         let label = if interrupted {
             "The last update was interrupted".to_string()
         } else if running {
-            if b(&tu["applying"]) { "Updating Tessera".into() } else if !s(&job["text"]).is_empty() { s(&job["text"]) } else { "Updating".into() }
+            if !s(&job["text"]).is_empty() { s(&job["text"]) } else { "Updating".into() }
         } else if state == "done" {
             if s(&job["kind"]) == "undo" { "Back to the earlier versions".into() } else if n(&job["upgraded"]) > 0 { format!("{} updated", plural(n(&job["upgraded"]), "package")) } else { "Updated".into() }
         } else {
@@ -531,7 +539,7 @@ pub fn page(cx: &mut Ctx, p: &mut Page) {
         } else if state == "error" {
             s(&job["error"])
         } else if b(&job["restart"]) {
-            "Restart to finish: the kernel or system libraries changed.".into()
+            "Restart the computer to finish: the kernel, drivers or system libraries changed.".into()
         } else {
             String::new()
         };
@@ -542,7 +550,7 @@ pub fn page(cx: &mut Ctx, p: &mut Page) {
             acts.push("su.cancel");
         }
         if over && state == "done" && b(&job["restart"]) {
-            buttons.push(btn("Restart").icon("arrow-clockwise"));
+            buttons.push(btn("Restart computer").icon("arrow-clockwise"));
             acts.push("reboot");
         }
         if over {
@@ -571,7 +579,7 @@ pub fn page(cx: &mut Ctx, p: &mut Page) {
         });
         let log = s(&up["log"]);
         let has_job = !job.is_null();
-        let g = p.group("Update");
+        let g = p.group("System packages update");
         g.footer(if b(&up["fake"]) {
             "In the dev sandbox the update is simulated; nothing is installed."
         } else if running {
@@ -721,9 +729,172 @@ pub fn page(cx: &mut Ctx, p: &mut Page) {
     }
 }
 
+/// What Tessera's part says and offers, for each state of its background
+/// update: (title, detail, buttons [(label, act)], primary index, tone)
+pub fn tessera_state(tu: &Value, checked: bool, available: bool) -> (String, String, Vec<(&'static str, &'static str)>, Option<usize>, u8) {
+    let job = &tu["job"];
+    let state = s(&job["state"]);
+    let (jt, jd) = job_words(job);
+    if b(&tu["restarting"]) {
+        return ("Restarting Tessera".into(), "A few seconds. Your windows stay open.".into(), vec![], None, 0);
+    }
+    if b(&tu["ready"]) {
+        let latest = s(&tu["staged"]["latest"]);
+        let detail = format!("Tessera {latest} is ready. Restart the shell now, or it restarts the next time you lock the screen or log in. Your windows stay open.");
+        return ("Ready to restart".into(), detail, vec![("Cancel update", "tu.cancel"), ("Restart shell now", "tu.restart")], Some(1), 0);
+    }
+    if state == "running" {
+        return (jt, jd, vec![("Cancel update", "tu.cancel")], None, 0);
+    }
+    if state == "error" {
+        return (jt, jd, vec![("Try again", "tu.update")], Some(0), 2);
+    }
+    if state == "cancelled" && available {
+        return (jt, jd, vec![("Update Tessera", "tu.update")], Some(0), 0);
+    }
+    if state == "done" {
+        return (jt, jd, vec![], None, 0);
+    }
+    if !checked {
+        return (String::new(), String::new(), vec![], None, 0);
+    }
+    if available {
+        let waits = s(&tu["waits"]);
+        let undecided = n(&tu["undecided"]);
+        let detail = if undecided > 0 {
+            format!("{} left to decide above. Nothing changes until you update.", plural(undecided, "thing"))
+        } else if !waits.is_empty() {
+            waits
+        } else {
+            "Gets the new version ready while you keep working. The shell restarts only when you choose.".into()
+        };
+        return ("A new version of Tessera is ready to download".into(), detail, vec![("Update Tessera", "tu.update")], Some(0), 0);
+    }
+    ("Tessera is up to date".into(), String::new(), vec![], None, 0)
+}
+
+/// Tessera's part: its state, a bar while the job runs, its buttons
+fn tessera_part(cx: &mut Ctx, p: &mut Page, tu: &Value, checked: bool, available: bool) {
+    let mut tu2 = tu.clone();
+    tu2["undecided"] = json!(tu["conflicts"].as_array().map(|a| a.iter().filter(|c| {
+        let chosen = s(&tu["choices"][s(&c["id"])]);
+        !strings(&c["choices"]).contains(&chosen)
+    }).count()).unwrap_or(0));
+    let (title, detail, acts, primary, tone) = tessera_state(&tu2, checked, available);
+    if title.is_empty() {
+        return;
+    }
+    let can = b(&tu["canUpdate"]);
+    let buttons: Vec<_> = acts.iter().enumerate().map(|(i, (label, act))| {
+        let mut bt = btn(*label);
+        if Some(i) == primary {
+            bt = bt.primary();
+        }
+        if *act == "tu.update" && !can {
+            bt = bt.off(true);
+        }
+        bt
+    }).collect();
+    let names: Vec<&'static str> = acts.iter().map(|(_, a)| *a).collect();
+    let act = cx.on(move |cx, a| {
+        if let Some(w) = names.get(a.i as usize) {
+            cx.ask("about", w, Value::Null);
+        }
+    });
+    let running = b(&tu["jobRunning"]);
+    let g = p.group("Tessera");
+    g.footer(if running {
+        "Keeps going if you close Settings; the island shows how far it is. Cancel leaves Tessera as it is."
+    } else if b(&tu["ready"]) {
+        "Restarting takes a few seconds. If the new version doesn't start, Tessera goes back to the one you have now."
+    } else {
+        ""
+    });
+    let row = Row::new(title).detail(detail).tone(i32::from(tone));
+    g.row(if buttons.is_empty() { row } else { row.buttons(buttons, act) });
+    if running {
+        let f = tu["jobFraction"].as_f64().unwrap_or(-1.0);
+        g.row(Row::custom("about", "progress").num(if f >= 0.0 { f.max(0.02) as f32 } else { -1.0 }).text_value(if f >= 0.0 { format!("{}%", (f * 100.0).round()) } else { String::new() }));
+    }
+}
+
+/// The build cache: its size, and Delete (only where builds happen here)
+pub fn cache_words(bytes: Option<u64>) -> Option<String> {
+    match bytes {
+        Some(b) if b > 0 => Some(format!("{:.1} GB", b as f64 / 1e9)),
+        _ => None,
+    }
+}
+
+fn build_cache(cx: &mut Ctx, p: &mut Page, tu: &Value) {
+    let Some(size) = cache_words(tu["cache"].as_u64()) else { return };
+    let busy = b(&tu["cacheBusy"]) || b(&tu["jobRunning"]);
+    let err = s(&tu["cacheError"]);
+    let del = cx.on(|cx, _| cx.ask("about", "cache.delete", Value::Null));
+    p.group("Build cache")
+        .footer("Kept so updates built on this computer take minutes. Deleting it frees the space; the next build takes longer.")
+        .row(Row::new(format!("Build cache · {size}"))
+            .detail(if !err.is_empty() { err } else { "Tessera's compiled parts, kept between updates (at most about 4.5 GB).".into() })
+            .tone(if s(&tu["cacheError"]).is_empty() { 0 } else { 2 })
+            .button(if b(&tu["cacheBusy"]) { "Deleting…" } else { "Delete build cache" }, del)
+            .busy(b(&tu["cacheBusy"]))
+            .enabled(!busy));
+}
+
+/// (the job's words: shared with the island, tessera_update.rs)
+pub fn job_words(job: &Value) -> (String, String) {
+    let st = |k: &str| job[k].as_str().unwrap_or("").to_string();
+    let mb = job["bytes"].as_f64().unwrap_or(0.0) / 1e6;
+    match job["state"].as_str().unwrap_or("") {
+        "running" => (
+            match job["phase"].as_str().unwrap_or("") {
+                "download" if job["how"] == "patch" => format!("Downloading a patch · {mb:.1} MB"),
+                "download" => format!("Downloading · {mb:.1} MB"),
+                "build" => "Building Tessera".to_string(),
+                "parts" => st("text"),
+                _ => "Preparing the update".to_string(),
+            },
+            "You can keep working. The shell restarts only when you choose.".into(),
+        ),
+        "error" => ("The update didn't finish".into(), format!("{} Nothing was changed. Try again, or check your connection first.", if st("error").is_empty() { "Something stopped it.".to_string() } else { st("error") })),
+        "cancelled" => ("Update cancelled".into(), "Nothing was changed.".into()),
+        "done" => ("Done".into(), "The glass plugin was rebuilt. It loads the next time you log in.".into()),
+        _ => (String::new(), String::new()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tesseras_part_has_words_and_actions_for_every_state() {
+        let st = |tu: Value, checked: bool, available: bool| {
+            let (t, _, a, pr, _) = tessera_state(&tu, checked, available);
+            (t, a.iter().map(|(l, _)| *l).collect::<Vec<_>>(), pr)
+        };
+        assert_eq!(st(json!({}), true, true), ("A new version of Tessera is ready to download".to_string(), vec!["Update Tessera"], Some(0)));
+        assert_eq!(st(json!({"job": {"state": "running", "phase": "download", "how": "patch", "bytes": 8000000}}), true, true),
+                   ("Downloading a patch · 8.0 MB".to_string(), vec!["Cancel update"], None));
+        assert_eq!(st(json!({"job": {"state": "running", "phase": "build"}}), true, true).0, "Building Tessera");
+        assert_eq!(st(json!({"ready": true, "staged": {"latest": "abcd1234"}}), true, false), ("Ready to restart".to_string(), vec!["Cancel update", "Restart shell now"], Some(1)));
+        assert_eq!(st(json!({"restarting": true}), true, false).0, "Restarting Tessera");
+        assert_eq!(st(json!({"job": {"state": "error", "error": "Couldn't reach GitHub."}}), true, true), ("The update didn't finish".to_string(), vec!["Try again"], Some(0)));
+        assert_eq!(st(json!({"job": {"state": "cancelled"}}), true, true), ("Update cancelled".to_string(), vec!["Update Tessera"], Some(0)));
+        assert_eq!(st(json!({}), true, false).0, "Tessera is up to date");
+        assert_eq!(st(json!({}), false, false).0, "");
+        // (the error says how to fix it)
+        assert!(tessera_state(&json!({"job": {"state": "error", "error": "Couldn't reach GitHub."}}), true, true).1.contains("Try again"));
+        // (decisions left: said, Update waits)
+        assert!(tessera_state(&json!({"undecided": 2}), true, true).1.starts_with("2 things left to decide"));
+    }
+
+    #[test]
+    fn the_cache_shows_only_when_there_is_one() {
+        assert_eq!(cache_words(Some(3_200_000_000)).as_deref(), Some("3.2 GB"));
+        assert_eq!(cache_words(Some(0)), None);
+        assert_eq!(cache_words(None), None);
+    }
 
     #[test]
     fn conflict_buttons_say_what_they_do() {

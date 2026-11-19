@@ -124,6 +124,30 @@ setsid -f "$(dirname -- "${BASH_SOURCE[0]}")/start-idle.sh" "$QS" </dev/null >/d
 # shows it (modules/fallback) with Try again, until tessera-ui next stays up.
 STARTS="${XDG_STATE_HOME:-$HOME/.local/state}/tessera/standalone-starts"
 FALLBACK="${XDG_STATE_HOME:-$HOME/.local/state}/tessera/fallback"
+# A Tessera update made ready in the background and not installed yet (no
+# "Restart shell now", no lock since): installed now, at login, before any
+# shell starts (tools/tessera-update.py finish: renames and copies, seconds;
+# the new shell's Software Update says how it went)
+# An update cut off halfway (the computer went off, it was stopped: its
+# journal is still there) is put back first, exactly as it was before it,
+# so the checkout and tessera-ui are never of two versions
+CHECKOUT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../../.." && pwd -P)"
+UPSTATE="${XDG_STATE_HOME:-$HOME/.local/state}/tessera"
+if [[ ( -s "$UPSTATE/update-staged/staged.json" || -s "$UPSTATE/update-journal.json" ) && -f "$CHECKOUT/tools/tessera-update.py" ]]; then
+    python3 -I "$CHECKOUT/tools/tessera-update.py" finish --if-ready --config "${XDG_CONFIG_HOME:-$HOME/.config}/tessera" \
+        >"${XDG_RUNTIME_DIR:-/tmp}/tessera-update-result.json" 2>>"$(dirname "$STARTS")/update-at-login.log" || true
+fi
+# A shell just updated that doesn't stay up: straight back to the Rust
+# build it had before (tessera-ui.prev), once, saying so; that version is
+# marked bad and not offered again until a newer one. Only if that one
+# fails too does the QML fallback below take over.
+FRESH="${XDG_STATE_HOME:-$HOME/.local/state}/tessera/fresh-update.json"
+rollback_ui() {
+    [[ -s "$FRESH" && -f "$CHECKOUT/tools/native-install.py" ]] || return 1
+    (( $(date +%s) - $(stat -c %Y "$FRESH" 2>/dev/null || echo 0) < 3600 )) || { rm -f "$FRESH"; return 1; }
+    rm -f "$FRESH" # (once)
+    python3 -I "$CHECKOUT/tools/native-install.py" rollback --json >/dev/null 2>&1
+}
 standalone_ui() {
     [[ "${TESSERA_STANDALONE:-}" == 0 ]] && return 1
     if [[ "${TESSERA_STANDALONE:-}" != 1 ]]; then
@@ -147,6 +171,10 @@ sys.exit(1 if off else 0)' "$c" 2>/dev/null && return 1
         # counted in. 18 Nov it survived a reboot without a note, and every
         # login after started the QML shell)
         if [[ -s "$STARTS" && "$(sed -n 2p "$STARTS")" != "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]]; then
+            rm -f "$STARTS"
+        fi
+        if (( $(head -1 "$STARTS" 2>/dev/null || echo 0) >= 2 )) && rollback_ui; then
+            echo "launch-shell: the updated tessera-ui didn't stay up twice: back to the previous build" >&2
             rm -f "$STARTS"
         fi
         if (( $(head -1 "$STARTS" 2>/dev/null || echo 0) >= 2 )); then

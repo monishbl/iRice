@@ -1,11 +1,15 @@
-# Every 10 minutes, five minutes after server1's builder looks (its timer runs
-# on the tens). A run still going isn't started twice.
+# Signing stays on the laptop, so the laptop looks often: 30 s after login,
+# then every 2 minutes (a monotonic timer: it doesn't count while the laptop
+# sleeps, so it fires within 2 minutes of waking). Each look is one cheap ssh
+# ("is a set waiting?"); nothing heavy runs unless one is. A run still going
+# isn't started twice.
 [Unit]
-Description=Tessera release publisher, every 10 minutes
+Description=Tessera release publisher: looks for a set to sign every 2 minutes
 
 [Timer]
-OnCalendar=*:5/10
-Persistent=true
+OnStartupSec=30s
+OnUnitActiveSec=2min
+AccuracySec=15s
 
 [Install]
 WantedBy=timers.target

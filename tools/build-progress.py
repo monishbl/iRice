@@ -284,6 +284,7 @@ class Progress:
         self.downloaded = 0
         self.ended = None
         self.code = None
+        self.used = []           # the files and folders of every unit used (fresh or built)
 
     # cargo's stderr: status lines, warnings and errors
     def feed_line(self, line, now=None):
@@ -328,6 +329,14 @@ class Progress:
     def feed_json(self, msg, now=None):
         now = time.time() if now is None else now
         r = msg.get("reason")
+        # (every unit this build used, fresh or built: the build cache keeps
+        # these when it's pruned, tools/native-install.py's cache_prune)
+        if r == "compiler-artifact":
+            self.used.extend(str(f) for f in (msg.get("filenames") or []))
+            if msg.get("executable"):
+                self.used.append(str(msg["executable"]))
+        elif r == "build-script-executed" and msg.get("out_dir"):
+            self.used.append(str(msg["out_dir"]))
         if r == "compiler-artifact":
             self.done += 1
             if msg.get("fresh"):
@@ -706,6 +715,8 @@ def run(kind, label, cmd, final=None, out=None, progress_file=None, log_file=Non
             stats[label] = h
             if os.path.isdir(os.path.dirname(stats_path)):
                 write_json(stats_path, stats)
+        if kind == "cargo" and p.used and stats_path and os.path.isdir(os.path.dirname(stats_path)):
+            write_json(os.path.join(os.path.dirname(stats_path), "tessera-build-used-{}.json".format(label)), sorted(set(p.used)))
         out.result("✓ Built {} in {}{}{}".format(title, fmt_time(p.elapsed()), " ({} crates)".format(p.done) if kind == "cargo" else "",
                                                  ", {} warning{}".format(p.warnings, "" if p.warnings == 1 else "s") if p.warnings else ""))
     else:

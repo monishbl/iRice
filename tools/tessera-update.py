@@ -8,6 +8,25 @@ conflict you decide, and nothing is applied until all of them are decided.
     tessera-update.py info   --config <dir>            -> channel, version, date (no download)
     tessera-update.py peek   --config <dir> [--mark]   -> is there a newer version? (the notice)
     tessera-update.py fetch  --config <dir>            -> download the followed branch (tessera update)
+    tessera-update.py stage  --config <dir> --choices-json <json> [--rebuild plugin]
+                                                       -> the new version made ready in the background
+    tessera-update.py finish --config <dir> [--if-ready] -> install what stage made ready (the restart)
+    tessera-update.py staged | discard | cancel        -> what's staged; forget it; stop the stage job
+
+Background updates (Software Update's Update, docs/releases.md): `stage`
+runs with the shell up and changes nothing it uses. It takes the repo
+lock, checks again, gets tessera-ui and tessera-events for the new version
+(only those whose sources change; a signed patch when there is one) into
+their folder's .staged/, builds any part whose sources change (the glass
+plugin, shaders, native helpers) from a staging checkout of the new version
+($XDG_CACHE_HOME/tessera/stage-src, a git worktree), and writes
+$XDG_STATE_HOME/tessera/update-staged/staged.json: the commit, your choices,
+what's ready. Its progress is $XDG_RUNTIME_DIR/tessera-stage/status.json.
+`finish` (the shell stopped: update-run.sh finish, or launch-shell.sh at
+the next login) takes exactly that commit, as `apply` does, swapping in what
+was staged: renames and copies, a few seconds. A conflict that appeared
+since (a setting changed) settles keeping yours; a file changed since stops
+it, and nothing changes.
 
 Downloads come from the checkout's remote, else the other sources in
 tools/sources.txt (GitHub, its GitLab mirror), fetched by URL: the remote
@@ -42,6 +61,7 @@ Conflicts (each with the choices given):
 The choices file maps each conflict's "id" to a choice.
 """
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -379,11 +399,13 @@ def commit_time(rev):
         return 0
 
 
-def position(config_dir, fetch=True, channel=None):
+def position(config_dir, fetch=True, channel=None, pin=None):
     """Where this copy is against its channel: {"channel", "channelName",
     "branch", "upstream", "local", "current", "date", "latest",
     "latestDate", "behind", "ahead", "own", "kind", "available",
-    "downgrade"}, with "error" when it can't tell or can't go there.
+    "downgrade", "target"}, with "error" when it can't tell or can't go there.
+    pin: that exact commit instead of the branch's latest (the restart after
+    a staged update installs exactly what was staged).
     kind: none | update (newer: taken as it is) | switch (the channel's
     version lacks some of this copy's commits, another channel's: going
     there is going back to an older version, "downgrade")."""
@@ -402,11 +424,13 @@ def position(config_dir, fetch=True, channel=None):
             why = f["why"]
             return dict(out, error="Couldn't reach the update server: " + (why[-1] if why else "no answer").split(": ", 1)[-1])
         out["source"] = f["source"]
-    if subprocess.run(["git", "-C", REPO, "rev-parse", "--verify", "--quiet", target + "^{commit}"], capture_output=True).returncode != 0:
+    ref = pin or target
+    if subprocess.run(["git", "-C", REPO, "rev-parse", "--verify", "--quiet", ref + "^{commit}"], capture_output=True).returncode != 0:
         return dict(out, error=f"This copy hasn't downloaded the {NAMES[ch]} channel yet. Check for updates while online.")
-    new_id = git("rev-parse", target).strip()
-    behind = int(git("rev-list", "--count", f"HEAD..{target}").strip() or 0)
-    ahead = int(git("rev-list", "--count", f"{target}..HEAD").strip() or 0)
+    new_id = git("rev-parse", ref + "^{commit}").strip()
+    out["target"] = new_id
+    behind = int(git("rev-list", "--count", f"HEAD..{new_id}").strip() or 0)
+    ahead = int(git("rev-list", "--count", f"{new_id}..HEAD").strip() or 0)
     # Commits here that no branch of the remote has: your own work
     own = int(git("rev-list", "--count", "HEAD", "--not", f"--remotes={remote}").strip() or 0) if ahead else 0
     kind = "none" if behind == 0 and ahead == 0 else "update" if ahead == 0 else "switch"
@@ -493,18 +517,18 @@ def is_checkout():
 NOT_A_CHECKOUT = "This copy of Tessera isn't a git checkout, so it can't update itself. Get it with the install command from tessera.monishbl.in."
 
 
-def check(config_dir, fetch=True, channel=None):
+def check(config_dir, fetch=True, channel=None, pin=None):
     """The full report: position() on this copy's channel, plus what's new
     (or, going back, what goes away), the conflicts to decide, and how
     tessera-ui comes with it."""
     if not is_checkout():
         return {"error": NOT_A_CHECKOUT}
-    report = position(config_dir, fetch, channel)
+    report = position(config_dir, fetch, channel, pin)
     report.update(notes=[], conflicts=[], keeps=[], leaving=[])
     if "latest" not in report:
         return report
-    base, new = "HEAD", report["upstream"]
-    new_id = git("rev-parse", new).strip()
+    base, new = "HEAD", report["target"]
+    new_id = new
     # How tessera-ui comes with it ("tessera-ui: ready-made (v3)"; the line
     # Software Update shows): tools/native-install.py plan
     if fetch:
@@ -513,6 +537,12 @@ def check(config_dir, fetch=True, channel=None):
         if wait:
             report["available"] = False
             report["preparing"] = wait
+    # A version whose shell didn't start here (launch-shell.sh went back to
+    # the build before it) isn't offered again; a newer one is
+    if report["available"] and not pin and is_bad(new_id):
+        report["available"] = False
+        report["bad"] = True
+        report["error"] = "This version of Tessera didn't start on this computer, so it went back to the one before. A newer one is offered when it's out."
     if not report["available"]:
         return report
     report["notes"] = [l for l in git("log", "--format=%s", f"{base}..{new}").splitlines() if l][:30]
@@ -609,8 +639,9 @@ def check(config_dir, fetch=True, channel=None):
                                     "yours": {"kind": hit[0], "id": hit[1]},
                                     "choices": ["mine", "new"], "labels": {"mine": "Keep mine (" + str(hit[2]) + ")", "new": "Use the new one"}})
 
-    # What gets rebuilt after it's applied
-    report["rebuild"] = sorted({r for f in incoming for r, p in (("plugin", "hypr/plugin/"), ("native", "shell/native/"), ("shaders", ".frag")) if p in f})
+    # What gets rebuilt after it's applied: each part whose own sources
+    # change (part_key), or whose build isn't there
+    report["rebuild"] = parts_needed(new)
     return report
 
 
@@ -694,6 +725,14 @@ PREPARE_WAIT = 3 * 3600
 PREPARE_TYPICAL = 45 * 60
 
 
+def is_bad(rev):
+    """Is REV's build one that didn't start here (native-install.py's
+    bad-builds.json, by its native/ tree)?"""
+    tree = git("rev-parse", "--verify", "--quiet", rev + ":native", check=False).strip()
+    d = load_json(os.path.join(state_dir(), "bad-builds.json"), {})
+    return bool(tree) and isinstance(d, dict) and tree in (d.get("trees") or [])
+
+
 def preparing(ui, rev, now=None):
     """Minutes until the ready-made build is likely out (at least 5), when
     the version REV has none yet only because it's new; else None."""
@@ -744,8 +783,10 @@ def rebuild(todo, base=45, span=40):
     fatal: the shell falls back (frosted glass without the plugin)."""
     built, failed = [], []
     # (the plugin through build-progress.py: its phase and log for the update screen)
-    steps = {"plugin": [sys.executable, "-I", os.path.join(REPO, "tools", "build-progress.py"), "make", "--label", "tessera-glass",
-                        "--title", "the glass plugin", "--", "make", "-C", os.path.join(REPO, "hypr/plugin/tessera-glass")],
+    # (the plugin through build-plugin.sh: built and put where Hyprland loads
+    # it at login, beside the loaded one, never over it; it went only into
+    # the checkout before, so an installed session kept the stale one)
+    steps = {"plugin": ["bash", os.path.join(REPO, "tools", "build-plugin.sh")],
              "native": [os.path.join(REPO, "shell/native/build.sh")],
              "shaders": [os.path.join(REPO, "tools/build-shaders.sh")]}
     names = {"plugin": "Building the glass plugin", "native": "Building native helpers", "shaders": "Building shaders"}
@@ -758,20 +799,41 @@ def rebuild(todo, base=45, span=40):
     return built, failed
 
 
-def repo_lock():
+def repo_lock(wait=False):
     """One update at a time on this repository, from any session: the same
     lock update-run.sh takes (it says so with TESSERA_UPDATE_HELD=1, and then
     holds it for us). Kept open (held) until this process ends."""
-    if os.environ.get("TESSERA_UPDATE_HELD") == "1":
-        return None
+    global _HELD
+    if os.environ.get("TESSERA_UPDATE_HELD") == "1" or (_HELD is not None and _HELD() is not None):
+        return None  # (held already: by update-run.sh, or by our caller: finish → apply)
     import fcntl
+    import weakref
     f = open(os.path.join(REPO, ".git", "tessera-update.lock"), "w")
     try:
-        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fcntl.flock(f, fcntl.LOCK_EX | (0 if wait else fcntl.LOCK_NB))
     except BlockingIOError:
         f.close()
         raise SystemExit("Another update is running on this copy of Tessera. Wait for it to finish, then try again.")
-    return f
+    held = _Held(f)
+    _HELD = weakref.ref(held)
+    return held
+
+
+_HELD = None  # (a weak reference to the lock this process holds)
+
+
+class _Held:
+    """The repo lock, held while its owner keeps this (released when it's
+    dropped: the end of the function that took it)"""
+
+    def __init__(self, f):
+        self.f = f
+
+    def __del__(self):
+        try:
+            self.f.close()
+        except Exception:
+            pass
 
 
 def take(report):
@@ -780,7 +842,8 @@ def take(report):
     is a fast-forward; anything else (another channel, going back to an
     older version) checks the branch out at that version: the commits it
     leaves stay on the other channel's branch. Returns how to undo it."""
-    target = report["upstream"]
+    target = report.get("target") or report["upstream"]
+    upstream = report["upstream"]
     branch = report.get("branch") or ""
     here = local_branch()
     undo = {"here": here, "branch": branch, "had": None, "upstream": None}
@@ -794,8 +857,8 @@ def take(report):
     # Following it: the branch's remote and name (set directly: a copy
     # cloned with one branch doesn't count the other as a remote branch),
     # and the remote's fetch list gets it, so a plain git pull works too
-    remote = target.split("/", 1)[0]
-    spec = f"+refs/heads/{branch}:refs/remotes/{target}"
+    remote = upstream.split("/", 1)[0]
+    spec = f"+refs/heads/{branch}:refs/remotes/{upstream}"
     specs = git("config", "--get-all", f"remote.{remote}.fetch", check=False).split()
     if spec not in specs and f"+refs/heads/*:refs/remotes/{remote}/*" not in specs:
         git("config", "--add", f"remote.{remote}.fetch", spec)
@@ -820,16 +883,23 @@ def untake(undo, old_head):
     git("reset", "--hard", "--quiet", old_head)
 
 
-def apply(config_dir, choices, extra=(), channel=None):
+def apply(config_dir, choices, extra=(), channel=None, staged=None):
     """extra: parts to rebuild whatever the update says (the glass plugin
-    after a Hyprland update); with no Tessera update, only those are rebuilt."""
+    after a Hyprland update); with no Tessera update, only those are rebuilt.
+    staged: a staged update (stage()): exactly its version is taken, its
+    programs and parts swapped in (nothing is downloaded or built: the
+    shell's restart takes seconds)."""
     lock = repo_lock()  # noqa: F841 (held while this runs)
-    report = check(config_dir, fetch=False, channel=channel)
+    report = check(config_dir, fetch=False, channel=channel, pin=staged["to"] if staged else None)
     if report.get("error"):
         raise SystemExit(report["error"])
+    if staged:
+        if not report["available"]:
+            raise SystemExit("The prepared update no longer applies to this copy. Check for updates again.")
+        choices = settled_choices(report, staged.get("choices") or {})
     # (a system update started meanwhile: Tessera's part waits for its
     # ready-made build rather than compiling here)
-    if report["available"] and not report.get("downgrade"):
+    elif report["available"] and not report.get("downgrade"):
         upstream = git("rev-parse", report["upstream"]).strip()
         if preparing(native_plan(upstream, report.get("channel")), upstream):
             report["available"] = False
@@ -855,6 +925,10 @@ def apply(config_dir, choices, extra=(), channel=None):
             shutil.copy2(os.path.join(config_dir, name), backup)
 
     progress(15, "Installing the new version")
+    # (written before anything changes, and as each step is done: an update
+    # cut off anywhere, power off, a crash, is put back at the next start:
+    # recover)
+    journal = Journal(config_dir, backup)
     # Code: set your edits aside, take the update, put back what you keep.
     # If anything after taking the update fails, everything goes back exactly
     # as it was (the old version, your edits, your settings) and it says so.
@@ -872,6 +946,8 @@ def apply(config_dir, choices, extra=(), channel=None):
     # Untracked files the update adds: set aside so taking the update works,
     # put back afterwards if you keep yours (and on any failure)
     aside = os.path.join(backup, "untracked")
+    journal.write(old_head=old_head, here=local_branch(), untracked=untracked, aside=aside)
+    checkpoint("backup")
 
     def put_back_untracked():
         for f in untracked:
@@ -882,7 +958,7 @@ def apply(config_dir, choices, extra=(), channel=None):
     merged = {}  # files kept as both: your edits with the update's merged in
     for f in edited:
         if choices.get("code:" + f) == "both":
-            text = three_way(f, report["upstream"])
+            text = three_way(f, report.get("target") or report["upstream"])
             if text is None:
                 raise SystemExit(f + " no longer merges cleanly: choose mine or new for it")
             merged[f] = text
@@ -897,8 +973,15 @@ def apply(config_dir, choices, extra=(), channel=None):
         if edited:
             git("stash", "push", "-m", "tessera-update " + stamp)
             stash = git("rev-parse", "stash@{0}").strip()
+        journal.write(step="stashed", stash=stash)
+        checkpoint("stashed")
+        journal.write(step="taking")
         undo = take(report)
-    except BaseException:
+        journal.write(step="taken", undo=undo)
+        checkpoint("taken")
+    except BaseException as e0:
+        if isinstance(e0, Cut):
+            raise  # (a power cut: nothing runs after it; recover() puts it back)
         try:
             if stash:
                 git("stash", "pop")
@@ -907,14 +990,27 @@ def apply(config_dir, choices, extra=(), channel=None):
         raise
     try:
         apply_after_merge(config_dir, choices, report, edited, merged, stash)
+        journal.write(step="settings")
+        checkpoint("settings")
         # Untracked files you keep: yours over the update's
         for f in untracked:
             if choices.get("code:" + f) == "mine":
                 shutil.copy2(os.path.join(aside, f), os.path.join(REPO, f))
         # tessera-ui for the new version, with it: the one it replaces is
         # kept as tessera-ui.prev (going back below swaps it back)
-        ui = native_install(40)
+        if staged:
+            # (the programs staged for exactly this version: renames only)
+            progress(60, "Installing the new programs")
+            ui = native_install(60, "--staged")
+            if not ui.get("ok"):
+                raise RuntimeError("the prepared programs couldn't be installed (" + (ui.get("why") or "no answer") + ")")
+        else:
+            ui = native_install(40)
+        journal.write(step="programs", ui_changed=bool(ui and ui.get("changed")))
+        checkpoint("programs")
     except BaseException as e:
+        if isinstance(e, Cut):
+            raise
         # Back to exactly how it was: the old version, then your edits, then
         # your settings (from the backup made above)
         why = str(e) or e.__class__.__name__
@@ -936,10 +1032,16 @@ def apply(config_dir, choices, extra=(), channel=None):
             restored = (" It couldn't all be put back (" + str(e2) + ")." +
                         (" Your edits are kept in git stash " + stash + " (git stash pop to get them back)." if stash else "") +
                         " Your settings backup is in " + backup + ".")
+        journal.done()
         raise SystemExit("The update didn't finish: " + why + "." + restored)
-    todo = list(report.get("rebuild", []))
-    todo += [r for r in extra if r not in todo]
-    built, failed = rebuild(todo)
+    if staged:
+        built, failed = install_parts(staged)
+        checkpoint("parts")
+    else:
+        todo = list(report.get("rebuild", []))
+        todo += [r for r in extra if r not in todo]
+        built, failed = rebuild(todo)
+        remember_parts(built, "HEAD")
     progress(85, "Finishing up")
     # What this copy still keeps under Tessera's old name moves over now (its
     # folder too, to ~/tessera, the old name left as a link; never fatal):
@@ -950,10 +1052,129 @@ def apply(config_dir, choices, extra=(), channel=None):
                        capture_output=True, timeout=120)
     except (OSError, subprocess.SubprocessError):
         pass
+    journal.done()
+    # (a new shell from this update that doesn't stay up goes back to the
+    # build before it: launch-shell.sh's rollback_ui; tessera-ui removes the
+    # mark once it has been up a minute)
+    if ui and ui.get("changed"):
+        try:
+            write_json(fresh_path(), {"to": git("rev-parse", "HEAD").strip(), "from": old_head, "at": int(time.time())})
+        except OSError:
+            pass
     # (the notes, for the new shell's "What's new")
     return {"applied": True, "backup": backup, "stash": stash, "built": built, "failed": failed, "ui": ui,
             "now": git("rev-parse", "--short", "HEAD").strip(),
             "changelog": report.get("changelog", []), "notes": report.get("notes", [])}
+
+
+def journal_path():
+    return os.path.join(state_dir(), "update-journal.json")
+
+
+def fresh_path():
+    return os.path.join(state_dir(), "fresh-update.json")
+
+
+class Journal:
+    """What an update in progress has done so far, on disk: recover() puts
+    it back if the update never finished (the computer went off, the
+    process was killed). Each write replaces the file whole."""
+
+    def __init__(self, config_dir, backup):
+        self.d = {"step": "started", "config": config_dir, "backup": backup, "at": int(time.time()), "pid": os.getpid(),
+                  "repo": os.path.realpath(REPO)}
+        self.write()
+
+    def write(self, **kw):
+        self.d.update(kw)
+        os.makedirs(state_dir(), exist_ok=True)
+        write_json(journal_path(), self.d)
+
+    def done(self):
+        try:
+            os.remove(journal_path())
+        except OSError:
+            pass
+
+
+class Cut(BaseException):
+    """Tests: an update cut off here, as by a power cut (no cleanup runs)"""
+
+
+def checkpoint(name):
+    """TESSERA_UPDATE_CRASH_AT=<name> ends the process right here, as a power
+    cut would (nothing after it runs, not even cleanup); in-process tests
+    replace this with one that raises Cut"""
+    if os.environ.get("TESSERA_UPDATE_CRASH_AT") == name:
+        sys.stderr.flush()
+        os._exit(9)
+
+
+STEPS = ("started", "stashed", "taking", "taken", "settings", "programs")
+
+
+def _alive(pid):
+    return bool(pid) and os.path.exists("/proc/" + str(pid))
+
+
+def recover():
+    """At the next start after an update that was cut off (launch-shell.sh,
+    before any shell; and the shell, if one starts anyway): everything back
+    exactly as it was before it, from its journal: the version, your edits
+    (stashed), files set aside, your settings, and the programs. Never a
+    half state: the checkout and tessera-ui are of the same version again.
+    A staged update stays staged (it's finished again right after, at a
+    login). Returns {"recovered": bool, ...}."""
+    j = load_json(journal_path(), None)
+    # (another checkout's journal: never ours to put back)
+    if isinstance(j, dict) and j.get("repo") and j["repo"] != os.path.realpath(REPO):
+        return {"recovered": False, "other": j["repo"]}
+    if not isinstance(j, dict) or not j.get("old_head"):
+        if isinstance(j, dict) and not _alive(j.get("pid")):  # (cut off before anything changed)
+            try:
+                os.remove(journal_path())
+            except OSError:
+                pass
+        return {"recovered": False}
+    try:
+        lock = repo_lock(wait=False)  # noqa: F841 (an update still running holds it: not ours to undo)
+    except SystemExit:
+        return {"recovered": False, "busy": True}
+    step = j.get("step", "started")
+    at = STEPS.index(step) if step in STEPS else 0
+    old_head = j["old_head"]
+    if at >= STEPS.index("taking"):
+        undo = j.get("undo") or {"here": j.get("here", ""), "branch": j.get("here", ""), "moved": False}
+        if not j.get("undo") and j.get("here") and local_branch() != j.get("here"):
+            undo = {"here": j["here"], "branch": local_branch(), "had": None, "moved": True}
+        untake(undo, old_head)
+    # (the programs of the old version back, when the new ones went in)
+    if at >= STEPS.index("taken"):
+        subprocess.run([sys.executable, "-I", NATIVE, "install", "--offline", "--only-prev", "--json"], capture_output=True, timeout=600)
+    if j.get("stash") and at >= STEPS.index("stashed"):
+        r = subprocess.run(["git", "-C", REPO, "stash", "apply", "--index", j["stash"]], capture_output=True, text=True)
+        if r.returncode == 0:
+            ref = next((l.split()[0] for l in git("stash", "list", "--format=%H %gd", check=False).splitlines()
+                        if l.split()[0] == j["stash"]), None)
+            idx = next((l.split()[1] for l in git("stash", "list", "--format=%H %gd", check=False).splitlines()
+                        if l.split()[0] == j["stash"]), None)
+            if ref and idx:
+                git("stash", "drop", "--quiet", idx, check=False)
+    for f in j.get("untracked") or []:
+        src, dst = os.path.join(j.get("aside", ""), f), os.path.join(REPO, f)
+        if j.get("aside") and os.path.lexists(src):
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            shutil.copy2(src, dst)
+    if at >= STEPS.index("taken") and j.get("config") and j.get("backup"):
+        for name in ("config.json", "keybinds.json"):
+            if os.path.exists(os.path.join(j["backup"], name)):
+                shutil.copy2(os.path.join(j["backup"], name), os.path.join(j["config"], name))
+    try:
+        os.remove(journal_path())
+    except OSError:
+        pass
+    return {"recovered": True, "step": step, "now": git("rev-parse", "--short", "HEAD").strip(),
+            "error": "The last update was cut off, so Tessera went back to how it was before it. Update again when you're ready."}
 
 
 def apply_after_merge(config_dir, choices, report, edited, merged, stash):
@@ -1018,12 +1239,694 @@ def apply_after_merge(config_dir, choices, report, edited, merged, stash):
     write_json(user_path, user)
 
 
+# ── Parts: what each of Tessera's other builds is made from ─────────────────
+# The glass plugin (hypr/plugin/tessera-glass, against Hyprland's headers),
+# the shaders (*.frag, *.vert to .qsb) and the native helpers (shell/native,
+# against Qt): each is built again only when its own sources (or what it's
+# built against) change between the installed version and the new one, or
+# its build isn't there. What each was last built from is kept in
+# $XDG_STATE_HOME/tessera/parts.json.
+
+PARTS = ("plugin", "shaders", "native")
+PART_NAMES = {"plugin": "the glass plugin", "shaders": "the shaders", "native": "the native helpers"}
+
+
+def _xdg(var, default):
+    return os.environ.get(var) or os.path.expanduser(default)
+
+
+def state_dir():
+    return os.path.join(_xdg("XDG_STATE_HOME", "~/.local/state"), "tessera")
+
+
+def data_dir():
+    return os.path.join(_xdg("XDG_DATA_HOME", "~/.local/share"), "tessera")
+
+
+def runtime_dir():
+    return os.environ.get("XDG_RUNTIME_DIR") or "/tmp"
+
+
+def staged_dir():
+    """The staged update (persists across a reboot: it's finished at the next login)"""
+    return os.path.join(state_dir(), "update-staged")
+
+
+def job_dir():
+    """The background job's status, log, pid and what it was asked
+    (request.json): kept across a reboot, so a job cut off is resumed"""
+    return os.path.join(state_dir(), "update-job")
+
+
+def stage_source_dir():
+    """The staging checkout of the new version: built from when something
+    must be built here. Kept between updates (one folder, at one place), so
+    only what changed is rebuilt"""
+    return os.path.join(_xdg("XDG_CACHE_HOME", "~/.cache"), "tessera", "stage-src")
+
+
+def _out(cmd, timeout=30):
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        return r.stdout.strip() if r.returncode == 0 else ""
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def hyprland_headers():
+    return _out(["pkg-config", "--modversion", "hyprland"])
+
+
+def qt_version():
+    return _out(["/usr/lib/qt6/bin/qtpaths", "--qt-version"]) or _out(["qmake6", "-query", "QT_VERSION"])
+
+
+SHADER = re.compile(r"\.(frag|vert)$")
+
+
+def part_key(part, rev, headers=None, qt=None):
+    """What PART at REV is built from (None: it isn't in that version)"""
+    if part == "plugin":
+        t = git("rev-parse", "--verify", "--quiet", rev + ":hypr/plugin/tessera-glass", check=False).strip()
+        return t and t + ":" + (hyprland_headers() if headers is None else headers)
+    if part == "native":
+        t = git("rev-parse", "--verify", "--quiet", rev + ":shell/native", check=False).strip()
+        return t and t + ":" + (qt_version() if qt is None else qt)
+    if part == "shaders":
+        lines = [l for l in git("ls-tree", "-r", rev, "--", "shell", "material", check=False).splitlines() if SHADER.search(l)]
+        return hashlib.sha1("\n".join(sorted(lines)).encode()).hexdigest() if lines else None
+    return None
+
+
+def parts_path():
+    return os.path.join(state_dir(), "parts.json")
+
+
+def parts_record():
+    r = load_json(parts_path(), {})
+    return r if isinstance(r, dict) else {}
+
+
+def remember_parts(parts, rev, keys=None):
+    """PARTS were built from REV (or KEYS, when given)"""
+    if not parts:
+        return
+    rec = parts_record()
+    for p in parts:
+        k = (keys or {}).get(p) or part_key(p, rev)
+        if k:
+            rec[p] = k
+    try:
+        os.makedirs(state_dir(), exist_ok=True)
+        write_json(parts_path(), rec)
+    except OSError:
+        pass
+
+
+def part_built(part):
+    """Is PART's build there (as the session uses it)?"""
+    if part == "plugin":
+        return os.path.isfile(os.path.join(data_dir(), "tessera-glass.so"))
+    if part == "native":
+        return os.path.isdir(os.path.join(REPO, "shell", "native", "build", "qml", "Tessera", "Native"))
+    if part == "shaders":
+        for top in ("shell", "material"):
+            for d, _, files in os.walk(os.path.join(REPO, top)):
+                for f in files:
+                    if SHADER.search(f) and not os.path.exists(os.path.join(d, f + ".qsb")):
+                        return False
+        return True
+    return False
+
+
+def part_buildable(part):
+    """Can PART be built here at all (its compiler and headers are there)?
+    One that can't is left alone instead of failing every update"""
+    if part == "plugin":
+        return bool(hyprland_headers())
+    if part == "shaders":
+        return os.path.exists("/usr/lib/qt6/bin/qsb") or bool(shutil.which("distrobox"))
+    if part == "native":
+        return bool(shutil.which("cmake")) and bool(qt_version())
+    return False
+
+
+def parts_needed(rev, record=None, built=None, buildable=None, keys_now=None):
+    """The parts to build for REV: those whose source key changes from what
+    the installed build was made from, or whose build isn't there"""
+    record = parts_record() if record is None else record
+    built = built or part_built
+    buildable = buildable or part_buildable
+    out = []
+    for p in PARTS:
+        new = part_key(p, rev)
+        if not new or not buildable(p):
+            continue
+        if not built(p):
+            out.append(p)
+            continue
+        old = record.get(p)
+        if old is None:
+            # (built before records were kept: the version installed now is
+            # what it was built from; the plugin says its Hyprland itself)
+            if p == "plugin":
+                headers = _read_text(os.path.join(data_dir(), "tessera-glass.built-for")).strip()
+                old = part_key(p, "HEAD", headers=headers or None)
+            else:
+                old = part_key(p, "HEAD") if keys_now is None else keys_now.get(p)
+        if old != new:
+            out.append(p)
+    return out
+
+
+def _read_text(path):
+    try:
+        with open(path) as f:
+            return f.read()
+    except OSError:
+        return ""
+
+
+# ── The background job ─────────────────────────────────────────────────────
+# Software Update's Update starts `stage` on its own (setsid): with the
+# shell running, it gets the new version ready beside the installed one.
+# Its status, for the shell, in $XDG_RUNTIME_DIR/tessera-stage/status.json:
+#   {"state": running | ready | done | error | cancelled | none, "phase":
+#    prepare | download | build | parts | ready, "percent", "text",
+#    "detail", "how" (patch | full | build | prev | none), "bytes",
+#    "latest", "current", "error", "started", "finished", "pid"}
+
+JOB = None
+
+
+class Job:
+    def __init__(self, directory=None):
+        self.dir = directory or job_dir()
+        os.makedirs(self.dir, exist_ok=True)
+        self.state = {"state": "running", "phase": "prepare", "percent": 0, "text": "Preparing", "detail": "", "how": "",
+                      "bytes": 0, "error": "", "started": time.time(), "finished": 0, "pid": os.getpid()}
+        with open(os.path.join(self.dir, "pid"), "w") as f:
+            f.write(str(os.getpid()))
+        self.write()
+
+    def write(self, **kw):
+        self.state.update(kw)
+        tmp = os.path.join(self.dir, "status.json.tmp")
+        try:
+            with open(tmp, "w") as f:
+                json.dump(self.state, f)
+            os.replace(tmp, os.path.join(self.dir, "status.json"))
+        except OSError:
+            pass
+
+    def log(self, line):
+        try:
+            with open(os.path.join(self.dir, "log"), "a") as f:
+                f.write(line.rstrip("\n") + "\n")
+        except OSError:
+            pass
+
+    def end(self, state, **kw):
+        self.write(state=state, finished=time.time(), **kw)
+        try:
+            os.remove(os.path.join(self.dir, "pid"))
+        except OSError:
+            pass
+
+
+def job_progress(percent, text, phase=None, **kw):
+    """A step of the background job (and the PROGRESS line, as ever)"""
+    progress(percent, text)
+    if JOB:
+        JOB.write(percent=int(percent), text=text, **({"phase": phase} if phase else {}), **kw)
+
+
+def step_phase(text):
+    """The job's phase for one of native-install.py's steps"""
+    t = text.lower()
+    if t.startswith("downloading"):
+        return "download"
+    if t.startswith("building"):
+        return "build"
+    return None
+
+
+MB = re.compile(r"([0-9.]+) MB")
+
+
+def stage_source(rev):
+    """The staging checkout at REV (a git worktree of this repository, only
+    the folders builds need), made or moved there"""
+    wt = stage_source_dir()
+    if not os.path.exists(os.path.join(wt, ".git")):
+        shutil.rmtree(wt, ignore_errors=True)
+        git("worktree", "prune", check=False)
+        os.makedirs(os.path.dirname(wt), exist_ok=True)
+        git("worktree", "add", "--detach", "--no-checkout", wt, rev)
+        subprocess.run(["git", "-C", wt, "sparse-checkout", "set", "--cone", "native", "hypr", "shell", "material", "tools"],
+                       capture_output=True, text=True)
+    r = subprocess.run(["git", "-C", wt, "checkout", "--quiet", "--detach", "--force", rev], capture_output=True, text=True)
+    if r.returncode != 0:
+        # (a staging checkout git no longer knows: made again)
+        shutil.rmtree(wt, ignore_errors=True)
+        git("worktree", "prune", check=False)
+        git("worktree", "add", "--detach", "--no-checkout", wt, rev)
+        subprocess.run(["git", "-C", wt, "sparse-checkout", "set", "--cone", "native", "hypr", "shell", "material", "tools"],
+                       capture_output=True, text=True)
+        git_wt = subprocess.run(["git", "-C", wt, "checkout", "--quiet", "--detach", "--force", rev], capture_output=True, text=True)
+        if git_wt.returncode != 0:
+            raise RuntimeError("the staging checkout couldn't be made: " + (git_wt.stderr.strip() or "git checkout failed"))
+    return wt
+
+
+def native_stage(rev, source, lo=8, hi=78):
+    """tools/native-install.py stage: tessera-ui and tessera-events for REV
+    ready beside the installed ones (only the ones whose sources change; a
+    patch when there is one). Returns its JSON."""
+    try:
+        p = subprocess.Popen([sys.executable, "-I", NATIVE, "stage", "--ref", rev, "--source", source, "--json", "--progress"],
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        for line in p.stderr:
+            line = line.rstrip("\n")
+            if JOB:
+                JOB.log(line)
+            if line.startswith("STEP "):
+                text = line[5:].strip()
+                phase = step_phase(text)
+                m = MB.search(text)
+                extra = {}
+                if phase == "download":
+                    extra = {"how": "patch" if "patch" in text else "full", "bytes": int(float(m.group(1)) * 1e6) if m else 0}
+                elif phase == "build":
+                    extra = {"how": "build"}
+                job_progress(lo + (5 if phase == "download" else 10 if phase == "build" else 0), text, phase, **extra)
+            else:
+                print(line, file=sys.stderr)
+        out = p.stdout.read()
+        p.wait()
+        r = json.loads(out)
+        job_progress(hi, "Programs ready")
+        return r
+    except (OSError, ValueError) as e:
+        return {"ok": False, "why": "tools/native-install.py didn't answer (" + str(e) + ")"}
+
+
+def build_parts_staged(parts, source, into, lo=80, hi=95):
+    """Each part built from the staging checkout, its build kept in INTO
+    (swapped in at the restart: install_parts). Failures are reported, not
+    fatal (the shell falls back: frosted glass without the plugin)."""
+    built, failed = [], []
+    for i, part in enumerate(parts):
+        job_progress(lo + (hi - lo) * i / max(1, len(parts)), "Building " + PART_NAMES[part], "parts")
+        dest = os.path.join(into, part)
+        shutil.rmtree(dest, ignore_errors=True)
+        os.makedirs(dest, exist_ok=True)
+        if part == "plugin":
+            cmd, env = ["bash", os.path.join(source, "tools", "build-plugin.sh")], dict(os.environ, TESSERA_PLUGIN_DEST=dest)
+        elif part == "shaders":
+            cmd, env = ["bash", os.path.join(source, "tools", "build-shaders.sh")], None
+        else:
+            cmd, env = [os.path.join(source, "shell", "native", "build.sh")], None
+        res = subprocess.run(cmd, capture_output=True, text=True, env=env)
+        if JOB:
+            JOB.log((res.stdout or "") + (res.stderr or ""))
+        ok = res.returncode == 0
+        if ok and part == "shaders":
+            for top in ("shell", "material"):
+                for d, _, files in os.walk(os.path.join(source, top)):
+                    for f in files:
+                        if f.endswith(".qsb"):
+                            rel = os.path.relpath(os.path.join(d, f), source)
+                            os.makedirs(os.path.join(dest, os.path.dirname(rel)), exist_ok=True)
+                            shutil.copy2(os.path.join(d, f), os.path.join(dest, rel))
+        elif ok and part == "native":
+            b = os.path.join(source, "shell", "native", "build")
+            for name in ("qml", "glass-ipc", "built-for-qt"):
+                src = os.path.join(b, name)
+                if os.path.isdir(src):
+                    shutil.copytree(src, os.path.join(dest, name), symlinks=True)
+                elif os.path.isfile(src):
+                    shutil.copy2(src, os.path.join(dest, name))
+            ok = os.path.isdir(os.path.join(dest, "qml"))
+        elif ok and part == "plugin":
+            ok = os.path.isfile(os.path.join(dest, "tessera-glass.so"))
+        (built if ok else failed).append(part)
+        if not ok:
+            shutil.rmtree(dest, ignore_errors=True)
+    return built, failed
+
+
+def _swap_file(src, dst):
+    """DST becomes a copy of SRC in one rename (a loaded plugin keeps its copy)"""
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    tmp = dst + ".new"
+    shutil.copy2(src, tmp)
+    os.replace(tmp, dst)
+
+
+def _swap_dir(src, dst):
+    tmp, old = dst + ".new", dst + ".old"
+    shutil.rmtree(tmp, ignore_errors=True)
+    shutil.copytree(src, tmp, symlinks=True)
+    shutil.rmtree(old, ignore_errors=True)
+    if os.path.exists(dst):
+        os.replace(dst, old)
+    os.replace(tmp, dst)
+    shutil.rmtree(old, ignore_errors=True)
+
+
+def install_parts(staged, into=None):
+    """The restart: the staged parts' builds swapped in (the shell is
+    stopped meanwhile). The glass plugin is loaded again now when it was
+    built for the Hyprland that's running; after a Hyprland update it loads
+    at the next login. Returns (built, failed)."""
+    into = into or staged_dir()
+    built, failed = [], list(staged.get("failed") or [])
+    for part in staged.get("parts") or []:
+        src = os.path.join(into, part)
+        try:
+            if part == "plugin":
+                so = os.path.join(src, "tessera-glass.so")
+                _swap_file(so, os.path.join(data_dir(), "tessera-glass.so"))
+                if os.path.exists(os.path.join(src, "tessera-glass.built-for")):
+                    _swap_file(os.path.join(src, "tessera-glass.built-for"), os.path.join(data_dir(), "tessera-glass.built-for"))
+                # (a console session loads the checkout's own build)
+                if os.environ.get("TESSERA_TTY") == "1":
+                    _swap_file(so, os.path.join(REPO, "hypr", "plugin", "tessera-glass", "tessera-glass.so"))
+                reload_plugin(_read_text(os.path.join(src, "tessera-glass.built-for")).strip())
+            elif part == "shaders":
+                for d, _, files in os.walk(src):
+                    for f in files:
+                        rel = os.path.relpath(os.path.join(d, f), src)
+                        _swap_file(os.path.join(d, f), os.path.join(REPO, rel))
+            elif part == "native":
+                b = os.path.join(REPO, "shell", "native", "build")
+                os.makedirs(b, exist_ok=True)
+                for name in os.listdir(src):
+                    s, d = os.path.join(src, name), os.path.join(b, name)
+                    (_swap_dir if os.path.isdir(s) else _swap_file)(s, d)
+            built.append(part)
+        except OSError as e:
+            print("installing " + part + " failed: " + str(e), file=sys.stderr)
+            failed.append(part)
+    remember_parts(built, "HEAD", staged.get("keys"))
+    return built, failed
+
+
+def reload_plugin(built_for):
+    """The new glass plugin into the running Hyprland, when it's built for it"""
+    if not os.environ.get("HYPRLAND_INSTANCE_SIGNATURE") or not shutil.which("hyprctl"):
+        return False
+    m = re.search(r"[0-9]+\.[0-9]+(\.[0-9]+)?", _out(["hyprctl", "version"]))
+    if not m or not built_for or m.group(0) != built_for:
+        return False
+    so = os.path.join(data_dir(), "tessera-glass.so")
+    if os.environ.get("TESSERA_TTY") == "1":
+        so = os.path.join(REPO, "hypr", "plugin", "tessera-glass", "tessera-glass.so")
+    for old in (os.path.join(data_dir(), "tessera-glass.so"), os.path.join(REPO, "hypr", "plugin", "tessera-glass", "tessera-glass.so")):
+        _out(["hyprctl", "plugin", "unload", old])
+    return _out(["hyprctl", "plugin", "load", so]).strip() == "ok"
+
+
+def read_staged():
+    s = load_json(os.path.join(staged_dir(), "staged.json"), {})
+    return s if isinstance(s, dict) else {}
+
+
+def discard():
+    """Forget a staged update (Cancel once it's ready, or a stale one)"""
+    shutil.rmtree(staged_dir(), ignore_errors=True)
+    subprocess.run([sys.executable, "-I", NATIVE, "stage", "--discard"], capture_output=True, timeout=60)
+    # (the job's "ready" is over with it)
+    st = os.path.join(job_dir(), "status.json")
+    if load_json(st, {}).get("state") == "ready":
+        try:
+            os.remove(st)
+        except OSError:
+            pass
+
+
+def staged_info():
+    """{"ready", "latest", "current", "valid", "at", "parts", "ui"}: the
+    staged update, for the shell (Settings, the notice)"""
+    s = read_staged()
+    if not s.get("to"):
+        return {"ready": False}
+    head = git("rev-parse", "HEAD", check=False).strip()
+    return {"ready": True, "valid": head == s.get("from") and s.get("repo", os.path.realpath(REPO)) == os.path.realpath(REPO), "latest": s.get("latest", ""), "current": s.get("current", ""),
+            "at": s.get("at", 0), "parts": s.get("parts", []), "ui": s.get("ui", {}), "channel": s.get("channel", "")}
+
+
+# Conflicts that weren't there when the update was prepared (a setting
+# changed meanwhile) settle the way that changes nothing of yours; a file
+# you changed meanwhile needs a decision, so the update waits for one
+SETTLED = {"setting": "keep", "preset": "keep", "shortcut": "mine"}
+
+
+def settled_choices(report, choices):
+    out = dict(choices)
+    undecided = []
+    for c in report.get("conflicts", []):
+        if out.get(c["id"]) in c["choices"]:
+            continue
+        if c["kind"] in SETTLED and SETTLED[c["kind"]] in c["choices"]:
+            out[c["id"]] = SETTLED[c["kind"]]
+        else:
+            undecided.append(c["title"])
+    if undecided:
+        raise SystemExit("Something changed since the update was prepared (" + ", ".join(undecided[:3]) +
+                         "). Check for updates to decide again.")
+    return out
+
+
+def stage(config_dir, choices, extra=(), channel=None, job=None):
+    """Software Update's Update, in the background with the shell running:
+    the new version made ready beside the installed one (its programs,
+    patched or downloaded or built; its parts built from a staging
+    checkout), the checkout itself untouched. The shell's restart (finish)
+    then takes seconds. extra: parts to rebuild anyway; with no Tessera
+    update, only those, in place (they load at the next login)."""
+    global JOB
+    JOB = job
+    lock = repo_lock()  # noqa: F841 (held while this runs)
+    report = check(config_dir, fetch=False, channel=channel)
+    if report.get("error"):
+        raise SystemExit(report["error"])
+    if report["available"] and not report.get("downgrade"):
+        if preparing(native_plan(report["target"], report.get("channel")), report["target"]):
+            report["available"] = False
+            report["preparing"] = True
+    if not report["available"]:
+        if not extra:
+            return {"staged": False, "state": "none", "message": "Tessera's new version is still being prepared; it's offered once it's ready."
+                    if report.get("preparing") else "Already up to date."}
+        # (after a system update: the parts it needs, in place; Hyprland
+        # loads the new plugin at the next login, keeping the one it has)
+        built, failed = rebuild(list(extra), 10, 80)
+        remember_parts(built, "HEAD")
+        return {"staged": False, "state": "done", "rebuilt": True, "built": built, "failed": failed}
+    missing = [c["id"] for c in report["conflicts"] if choices.get(c["id"]) not in c["choices"]]
+    if missing:
+        raise SystemExit("Decide every conflict first: " + ", ".join(missing))
+    target = report["target"]
+    discard()
+    job_progress(3, "Preparing", "prepare", latest=report.get("latest", ""), current=report.get("current", ""))
+    source = stage_source(target)
+    ui = native_stage(target, source)
+    if not ui.get("ok"):
+        raise SystemExit("Tessera's programs couldn't be made ready: " + (ui.get("why") or "no answer"))
+    parts = list(report.get("rebuild", []))
+    parts += [p for p in extra if p not in parts and p in PARTS]
+    into = staged_dir()
+    os.makedirs(into, exist_ok=True)
+    built, failed = build_parts_staged(parts, source, into)
+    staged = {"format": 1, "repo": os.path.realpath(REPO), "from": git("rev-parse", "HEAD").strip(), "to": target, "latest": report.get("latest", ""),
+              "current": report.get("current", ""), "channel": report.get("channel", ""), "choices": choices,
+              "parts": built, "failed": failed, "keys": {p: part_key(p, target) for p in built},
+              "ui": {k: ui.get(k) for k in ("staged", "kept", "how", "bytes", "label")}, "at": int(time.time()),
+              "changelog": report.get("changelog", []), "notes": report.get("notes", [])}
+    write_json(os.path.join(into, "staged.json"), staged)
+    job_progress(100, "Ready to restart", "ready")
+    return {"staged": True, "state": "ready", "latest": staged["latest"], "parts": built, "failed": failed, "ui": staged["ui"]}
+
+
+def finish(config_dir, if_ready=False):
+    """The shell's restart (update-run.sh finish, or launch-shell.sh at the
+    next login, with no shell running): the staged update installed, in
+    seconds. Whatever happens, the staged update is used up: a failure puts
+    everything back as it was (apply) and says why."""
+    rec = recover()
+    if rec.get("recovered") and if_ready:
+        return rec  # (at login: back as it was; the staged update waits for Restart)
+    s = read_staged()
+    if not s.get("to"):
+        return {"applied": False, "message": "" if if_ready else "There's no prepared update to install."}
+    if s.get("repo") and s["repo"] != os.path.realpath(REPO):
+        return {"applied": False, "message": "" if if_ready else "The prepared update is for another copy of Tessera."}
+    lock = repo_lock()  # noqa: F841 (before anything: a stage still running keeps its work)
+    try:
+        if git("rev-parse", "HEAD").strip() != s.get("from"):
+            raise SystemExit("Tessera changed since the update was prepared. Check for updates again.")
+        progress(20, "Installing the update")
+        return apply(config_dir, {}, (), s.get("channel") if s.get("channel") in CHANNELS else None, staged=s)
+    finally:
+        discard()
+
+
+def _remove_request(d):
+    try:
+        os.remove(os.path.join(d, "request.json"))
+    except OSError:
+        pass
+
+
+def job_interrupted(status=None, alive=None):
+    """Was the background job cut off (its status says running, its
+    process is gone: a reboot, a logout, a crash)?"""
+    st = status if status is not None else load_json(os.path.join(job_dir(), "status.json"), {})
+    if not isinstance(st, dict) or st.get("state") != "running":
+        return False
+    pid = st.get("pid")
+    alive = alive or (lambda p: os.path.exists("/proc/" + str(p)) and "tessera-update" in _read_text("/proc/" + str(p) + "/cmdline"))
+    return not (pid and alive(pid))
+
+
+def resume(a):
+    """A job cut off (job_interrupted): started again from what it was asked
+    (request.json), in the background; what it had done is redone quickly
+    (downloads checked again, builds from the cache)"""
+    req = load_json(os.path.join(job_dir(), "request.json"), None)
+    if not isinstance(req, dict) or not job_interrupted():
+        return {"resumed": False}
+    a.rebuild = req.get("rebuild") or ""
+    a.channel = req.get("channel") if req.get("channel") in CHANNELS else None
+    out = run_stage(a, req.get("config") or a.config, req.get("choices") or {})
+    return dict(out, resumed=True)
+
+
+def unblock_signals():
+    """The shell (tessera-ui) blocks SIGTERM and friends for its signalfd, and
+    a blocked signal stays blocked across fork and exec: a job it started,
+    and the cargo and rustc under it, never heard Cancel (19 Nov, the arena).
+    Unblocked here, first thing, for this process and all it starts."""
+    import signal
+    sigs = {signal.SIGTERM, signal.SIGINT, signal.SIGHUP}
+    try:
+        signal.pthread_sigmask(signal.SIG_UNBLOCK, sigs)
+    except (AttributeError, OSError, ValueError):
+        pass
+    for sg in sigs - {signal.SIGTERM}:
+        try:
+            if signal.getsignal(sg) == signal.SIG_IGN:
+                signal.signal(sg, signal.SIG_DFL)
+        except (OSError, ValueError):
+            pass
+
+
+def cancel_job(grace=10.0, sleep=time.sleep, killpg=None, alive=None):
+    """Stops the background job, its whole process group (cargo, rustc and
+    all): SIGTERM, then SIGKILL after GRACE seconds if any of it is still
+    there. However it ended, its status says cancelled afterwards (a job
+    that died with "running" would be resumed at the next start) and what
+    it was asked is forgotten. True when there was a job."""
+    import signal
+    killpg = killpg or os.killpg
+    alive = alive or _group_alive
+    try:
+        with open(os.path.join(job_dir(), "pid")) as f:
+            pid = int(f.read().strip())
+    except (OSError, ValueError):
+        return False
+    try:
+        killpg(pid, signal.SIGTERM)
+    except OSError:
+        pass
+    waited = 0.0
+    while alive(pid) and waited < grace:
+        sleep(0.25)
+        waited += 0.25
+    if alive(pid):
+        try:
+            killpg(pid, signal.SIGKILL)
+        except OSError:
+            pass
+        for _ in range(20):
+            if not alive(pid):
+                break
+            sleep(0.1)
+    st_path = os.path.join(job_dir(), "status.json")
+    st = load_json(st_path, {})
+    if isinstance(st, dict) and st.get("state") == "running":
+        st.update(state="cancelled", text="Update cancelled", finished=time.time())
+        write_json(st_path, st)
+        discard()
+    _remove_request(job_dir())
+    try:
+        os.remove(os.path.join(job_dir(), "pid"))
+    except OSError:
+        pass
+    return True
+
+
+def _group_alive(pgid):
+    """Is any process of the group PGID still running (not a zombie)?"""
+    try:
+        for d in os.listdir("/proc"):
+            if not d.isdigit():
+                continue
+            try:
+                with open(f"/proc/{d}/stat") as f:
+                    fields = f.read().rsplit(")", 1)[1].split()
+                if int(fields[2]) == pgid and fields[0] != "Z":
+                    return True
+            except (OSError, IndexError, ValueError):
+                continue
+    except OSError:
+        pass
+    return False
+
+
+def run_stage(a, config_dir, choices):
+    """The `stage` command: the job's status kept as it goes; cancelled by
+    SIGTERM (cancel_job), it leaves nothing staged"""
+    import signal
+    job = Job()
+    write_json(os.path.join(job.dir, "request.json"), {"config": config_dir, "choices": choices, "rebuild": a.rebuild, "channel": a.channel})
+
+    def stop(*_):
+        raise KeyboardInterrupt
+    signal.signal(signal.SIGTERM, stop)
+    try:
+        out = stage(config_dir, choices, [r for r in a.rebuild.split(",") if r], a.channel, job=job)
+        _remove_request(job.dir)
+        job.end(out.get("state", "done"), percent=100, text={"ready": "Ready to restart", "none": out.get("message", ""),
+                                                            "done": "Done"}.get(out.get("state"), "Done"))
+        return out
+    except KeyboardInterrupt:
+        discard()
+        job.end("cancelled", text="Update cancelled")
+        _remove_request(job.dir)
+        return {"error": "", "cancelled": True}
+    except (RuntimeError, SystemExit) as e:
+        discard()
+        job.end("error", error=str(e), text="The update didn't finish")
+        return {"error": str(e)}
+    except Exception as e:
+        discard()
+        job.end("error", error="The updater stopped: " + (str(e) or e.__class__.__name__), text="The update didn't finish")
+        return {"error": "The updater stopped: " + (str(e) or e.__class__.__name__)}
+
+
 def main():
+    unblock_signals()
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["check", "apply", "info", "peek", "fetch"])
+    ap.add_argument("command", choices=["check", "apply", "info", "peek", "fetch", "stage", "finish", "discard", "staged", "cancel",
+                                        "recover", "resume"])
+    ap.add_argument("--choices-json", help="stage: the conflicts' choices as JSON text")
+    ap.add_argument("--if-ready", action="store_true", help="finish: quietly nothing when nothing is staged (launch-shell.sh at login)")
     ap.add_argument("--channel", choices=sorted(CHANNELS), help="this channel instead of config.json's update.channel")
     ap.add_argument("--mark", action="store_true", help="peek: write down that a new version was mentioned")
-    ap.add_argument("--config", required=True, help="the shell's config folder (config.json, keybinds.json)")
+    ap.add_argument("--config", default="", help="the shell's config folder (config.json, keybinds.json)")
     ap.add_argument("--choices", help="apply: JSON file mapping conflict ids to choices")
     ap.add_argument("--no-fetch", action="store_true")
     ap.add_argument("--rebuild", default="", help="apply: also rebuild these (comma-separated: plugin,native,shaders)")
@@ -1042,6 +1945,27 @@ def main():
             f = fetch_branch(remote, branch, remote + "/" + branch) if is_checkout() else {"ok": False, "why": [NOT_A_CHECKOUT]}
             out = {"upstream": remote + "/" + branch, "source": f.get("source")} if f["ok"] else \
                 {"error": "Couldn't download the update: " + ((f["why"] or ["no answer"])[-1])}
+        elif a.command == "stage":
+            choices = load_json(a.choices, {}) if a.choices else {}
+            if a.choices_json:
+                try:
+                    choices = json.loads(a.choices_json)
+                except ValueError:
+                    choices = {}
+            out = run_stage(a, a.config, choices if isinstance(choices, dict) else {})
+        elif a.command == "finish":
+            out = finish(a.config, a.if_ready)
+        elif a.command == "discard":
+            discard()
+            out = {"discarded": True}
+        elif a.command == "staged":
+            out = staged_info()
+        elif a.command == "cancel":
+            out = {"cancelled": cancel_job()}
+        elif a.command == "recover":
+            out = recover()
+        elif a.command == "resume":
+            out = resume(a)
         else:
             out = apply(a.config, load_json(a.choices, {}) if a.choices else {}, [r for r in a.rebuild.split(",") if r], a.channel)
     except (RuntimeError, SystemExit) as e:

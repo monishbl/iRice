@@ -359,6 +359,9 @@ fn main() {
             let state = tessera_core::util::xdg("XDG_STATE_HOME", ".local/state");
             let _ = std::fs::remove_file(state.join("tessera/standalone-starts"));
             let _ = std::fs::remove_file(state.join("tessera/fallback"));
+            // (an update's new shell stayed up: no going back to the
+            // previous build for it any more, launch-shell.sh's rollback_ui)
+            let _ = std::fs::remove_file(state.join("tessera/fresh-update.json"));
         });
         // (first: its services are up before any surface asks them)
         parts.insert(0, Box::new(tessera_core::host::HostPart::new(host_services())));

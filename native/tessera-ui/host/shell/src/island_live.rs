@@ -198,7 +198,9 @@ pub fn derive(h: &Host, now: i64) -> Vec<(&'static str, Option<Value>)> {
             let pkg = str_of(job, "package");
             let mut controls = vec![ctl("details", "terminal-window", false, true, false, "Show the update's details", json!({"call": "updates.showDetails", "args": [true], "then": {"call": "panels.openSettings", "args": ["update"]}}))];
             if up["cancellable"].as_bool().unwrap_or(false) {
-                controls.push(ctl("cancel", "x", false, true, false, "Cancel the update", call("updates.cancel", json!([]))));
+                // (the system's job or Tessera's background update: each its own Cancel)
+                let cancel = up["cancel"].as_str().filter(|c| !c.is_empty()).unwrap_or("updates.cancel").to_string();
+                controls.push(ctl("cancel", "x", false, true, false, "Cancel the update", call(&cancel, json!([]))));
             }
             let p = up["progress"].as_f64().unwrap_or(0.0).max(0.0);
             json!({

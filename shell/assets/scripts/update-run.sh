@@ -1,8 +1,19 @@
 #!/usr/bin/env bash
-# Installs a Tessera update behind a full-screen "Installing update" screen,
-# then starts the new shell once (Settings → Software Update → Install update).
+# Restarts the shell into a Tessera update: Software Update's "Restart shell
+# now", the screen locking, or (legacy) the whole update behind the screen.
 #
-#   update-run.sh <work dir> <repo> <config dir>
+#   update-run.sh <work dir> <repo> <config dir> [finish [locked]]
+#
+# finish   (Rust shell, since background updates): the update was already
+#          made ready with the shell running (tools/tessera-update.py stage);
+#          this only stops the shell, installs what was staged (renames and
+#          copies: tessera-update.py finish, a few seconds) and starts the new
+#          shell, behind the update screen for those seconds.
+# locked   the same when the screen has just locked: no update screen (the
+#          lock covers everything); the new shell takes the lock back
+#          (allow_session_lock_restore, its locked mark).
+# (none)   the QML shell's older way: the whole update (download, builds)
+#          behind the full-screen screen.
 #
 # The work dir holds copies of this script and of the update screen (ui/),
 # plus choices.json: the update rewrites the repository, so nothing running
@@ -17,13 +28,24 @@
 # A repo-wide lock (.git/tessera-update.lock, also taken by tessera-update.py
 # apply) makes it one update at a time on a repository, from any session.
 set -uo pipefail
-T="$1" REPO="$2" CONFIG="$3"
-[[ -n "$T" && -d "$T" && -n "$REPO" && -d "$REPO/.git" ]] || { echo "usage: update-run.sh <work dir> <repo> <config dir>" >&2; exit 2; }
+T="$1" REPO="$2" CONFIG="$3" MODE="${4:-}" LOCKED="${5:-}"
+[[ -n "$T" && -d "$T" && -n "$REPO" && -d "$REPO/.git" ]] || { echo "usage: update-run.sh <work dir> <repo> <config dir> [finish [locked]]" >&2; exit 2; }
 RUN="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 SIG="${HYPRLAND_INSTANCE_SIGNATURE:-}"
 SHELL_DIR="$REPO/shell"
 exec >>"$T/log" 2>&1
-echo "== $(date '+%F %T') update"
+echo "== $(date '+%F %T') update${MODE:+ ($MODE${LOCKED:+, $LOCKED})}"
+# (the restart into a staged update: is it still good for this copy? If not,
+# the shell isn't touched; the answer goes where the shell reads results)
+if [[ $MODE == finish ]]; then
+    ok=$(python3 -I "$REPO/tools/tessera-update.py" staged | python3 -c 'import json, sys; s = json.load(sys.stdin); print("yes" if s.get("ready") and s.get("valid") else "no")' 2>/dev/null)
+    if [[ $ok != yes ]]; then
+        python3 -I "$REPO/tools/tessera-update.py" discard >/dev/null 2>&1
+        printf '%s' '{"error": "The prepared update no longer fits this copy of Tessera. Check for updates again."}' >"$RUN/tessera-update-result.json"
+        echo "nothing valid staged: the shell stays"
+        exit 1
+    fi
+fi
 
 status() { # state percent text [detail]
     printf '%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "${4:-}" >"$T/status.new" && mv -f "$T/status.new" "$T/status"
@@ -76,7 +98,7 @@ if ! flock -n 8; then
     status run 0 "Preparing"
     QS0="$(command -v qs || echo qs)"
     screen "$QS0"
-    env -u TESSERA_TTY setsid -f "${SCREEN[@]}" >"$T/ui.log" 2>&1 </dev/null
+    env -u TESSERA_TTY setsid -f "${SCREEN[@]}" >"$T/ui.log" 2>&1 </dev/null 8>&- 9>&-
     sleep 1.2
     status error 100 "Another update is running" "Tessera is already being updated (in another session or window). Wait for it to finish, then check again."
     echo "another update holds the repository lock"
@@ -110,12 +132,19 @@ if [[ -n "$template" ]] && env_of "$template" | grep -qx "TESSERA_TTY=1"; then
     tty_ctl="$REPO/sandbox/tty-shell.sh"
 fi
 
-# The update screen, from its copy here
-status run 0 "Preparing"
-# (without TESSERA_TTY: in the tty session it would pass for the shell)
-screen "$QS"
-env -u TESSERA_TTY setsid -f "${SCREEN[@]}" >"$T/ui.log" 2>&1 </dev/null
-sleep 1.2 # (it fades in over the desktop before the shell goes)
+# The update screen, from its copy here (not while locked: the lock covers
+# everything, and a screen would only show once it's unlocked)
+if [[ $MODE == finish ]]; then
+    status restart 40 "Restarting Tessera"
+else
+    status run 0 "Preparing"
+fi
+if [[ -z $LOCKED ]]; then
+    # (without TESSERA_TTY: in the tty session it would pass for the shell)
+    screen "$QS"
+    env -u TESSERA_TTY setsid -f "${SCREEN[@]}" >"$T/ui.log" 2>&1 </dev/null 8>&- 9>&-
+    sleep 1.2 # (it fades in over the desktop before the shell goes)
+fi
 
 # Hold the shell lock, then stop the shell
 lockdir="$RUN/hypr/$SIG"
@@ -144,10 +173,16 @@ fi
 
 # The update, its steps shown as they come (PROGRESS lines on stderr)
 # (rebuild: parts to rebuild anyway, e.g. "plugin" after a Hyprland update)
-python3 -I "$REPO/tools/tessera-update.py" apply --config "$CONFIG" --choices "$T/choices.json" --rebuild "$(cat "$T/rebuild" 2>/dev/null)" \
+# (finish: what was staged, swapped in; seconds)
+if [[ $MODE == finish ]]; then
+    UPDATE=(finish --config "$CONFIG")
+else
+    UPDATE=(apply --config "$CONFIG" --choices "$T/choices.json" --rebuild "$(cat "$T/rebuild" 2>/dev/null)")
+fi
+python3 -I "$REPO/tools/tessera-update.py" "${UPDATE[@]}" \
     >"$T/result.json" 2> >(while IFS= read -r line; do
         echo "$line" >>"$T/log"
-        [[ $line =~ ^PROGRESS\ ([0-9]+)\ (.*)$ ]] && status run "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+        [[ $line =~ ^PROGRESS\ ([0-9]+)\ (.*)$ ]] && status "$([[ $MODE == finish ]] && echo restart || echo run)" "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
     done)
 code=$?
 sleep 0.2 # (the progress reader's last lines)
@@ -165,16 +200,16 @@ fi
 status restart 92 "Restarting"
 hyprctl tessera-glass clear >/dev/null 2>&1
 if [[ -n "$tty_ctl" ]]; then
-    exec 9>&- 6>&- # the test session's starter takes the lock itself
+    exec 9>&- 6>&- 8>&- # the test session's starter takes the lock itself
     env -i "${tenv[@]}" "$tty_ctl" start
 elif [[ ${#tcmd[@]} -gt 0 ]]; then
     fresh=()
     for e in "${tenv[@]}"; do [[ $e == QS_ICON_THEME=* ]] || fresh+=("$e"); done
-    env -i "${fresh[@]}" setsid -f "$SHELL_DIR/assets/scripts/launch-shell.sh" "${tcmd[@]:1}" >/dev/null 2>&1 6>&- 9>&-
+    env -i "${fresh[@]}" setsid -f "$SHELL_DIR/assets/scripts/launch-shell.sh" "${tcmd[@]:1}" >/dev/null 2>&1 6>&- 8>&- 9>&-
     sleep 2
     exec 9>&- 6>&-
 else
-    setsid -f "$SHELL_DIR/assets/scripts/launch-shell.sh" -c tessera >/dev/null 2>&1 6>&- 9>&-
+    setsid -f "$SHELL_DIR/assets/scripts/launch-shell.sh" -c tessera >/dev/null 2>&1 6>&- 8>&- 9>&-
     sleep 2
     exec 9>&- 6>&-
 fi
@@ -222,6 +257,8 @@ else
     status done 100 "Update installed"
 fi
 # The screen closes itself (done) or waits for Close (error); then clean up
+# (locked: there's no screen; the new shell's Software Update says how it went)
+[[ -n $LOCKED ]] && { rm -rf "$T/ui" "$T/choices.json"; echo "finished: ${err:-ok}"; exit 0; }
 for _ in $(seq 600); do
     pgrep -f -- "-p $T/ui" >/dev/null || break
     sleep 1

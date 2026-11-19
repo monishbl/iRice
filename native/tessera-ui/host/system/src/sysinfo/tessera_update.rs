@@ -39,6 +39,68 @@ pub enum Ev {
     Peek(String),
     /// the notice's answer (notify-send's action: "update", "later" or "")
     Answer(String),
+    /// the background job's status.json (None: none yet)
+    Job(Option<Value>),
+    /// tessera-update.py staged: what's ready to restart into
+    Staged(Option<Value>),
+    /// the ready notice's answer ("restart" or "")
+    ReadyAnswer(String),
+    /// native-install.py cache: the build cache's size (None: couldn't tell)
+    Cache(Option<u64>),
+    /// the cache was deleted (or not: why)
+    CacheDeleted(Result<u64, String>),
+    /// launch-shell.sh went back to the previous build: its note
+    RolledBack(Value),
+}
+
+/// The job's state as Settings and the island show it: (title, detail).
+/// Every state has its words: preparing, downloading N MB (a patch or the
+/// whole update), building, ready to restart, failed (with how to fix it),
+/// cancelled, up to date.
+pub fn job_words(job: &Value) -> (String, String) {
+    let s = |k: &str| job[k].as_str().unwrap_or("").to_string();
+    let mb = job["bytes"].as_f64().unwrap_or(0.0) / 1e6;
+    match job["state"].as_str().unwrap_or("") {
+        "running" => {
+            let title = match job["phase"].as_str().unwrap_or("") {
+                "download" if job["how"] == "patch" => format!("Downloading a patch · {mb:.1} MB"),
+                "download" => format!("Downloading · {mb:.1} MB"),
+                "build" => "Building Tessera".to_string(),
+                "parts" => s("text"),
+                _ => "Preparing the update".to_string(),
+            };
+            (title, "You can keep working. The shell restarts only when you choose.".into())
+        }
+        "ready" => ("Ready to restart".into(), format!("Tessera {} is ready. Restart the shell now, or it restarts the next time you lock the screen or log in. Your windows stay open.", s("latest"))),
+        "error" => ("The update didn't finish".into(), {
+            let e = s("error");
+            format!("{}{}", if e.is_empty() { "Something stopped it." } else { &e }, " Nothing was changed. Try again, or check your connection first.")
+        }),
+        "cancelled" => ("Update cancelled".into(), "Nothing was changed.".into()),
+        "done" => ("Done".into(), "The glass plugin was rebuilt. It loads the next time you log in.".into()),
+        "none" => ("Tessera is up to date".into(), s("text")),
+        _ => (String::new(), String::new()),
+    }
+}
+
+/// Restart at the lock: the screen has just locked (the compositor confirmed
+/// it: lockSecure went true), an update is ready for this copy, and no
+/// restart is under way
+pub fn restart_at_lock(was_secure: bool, secure: bool, ready: bool, restarting: bool) -> bool {
+    secure && !was_secure && ready && !restarting
+}
+
+/// Was the job cut off (it says running, its process is gone)?
+pub fn job_cut_off(job: &Value, alive: impl Fn(i64) -> bool) -> bool {
+    job["state"] == "running" && !job["pid"].as_i64().is_some_and(&alive)
+}
+
+fn pid_alive(pid: i64) -> bool {
+    std::fs::read(format!("/proc/{pid}/cmdline")).map(|c| String::from_utf8_lossy(&c).contains("tessera-update")).unwrap_or(false)
+}
+
+fn state_home() -> String {
+    std::env::var("XDG_STATE_HOME").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| format!("{}/.local/state", std::env::var("HOME").unwrap_or_default()))
 }
 
 /// The first light check after login, then every six hours
@@ -68,6 +130,19 @@ pub struct TesseraUpdate {
     t_start: Ticker,
     t_announce: Ticker,
     t_peek: Ticker,
+    /// the background job's status (tessera-update.py stage: status.json)
+    pub job: Option<Value>,
+    /// what's staged (tessera-update.py staged): {ready, valid, latest, …}
+    pub staged: Option<Value>,
+    /// a restart into the staged update is under way
+    pub restarting: bool,
+    /// the build cache's size in bytes (None: not known yet)
+    pub cache: Option<u64>,
+    pub cache_busy: bool,
+    pub cache_error: String,
+    /// the last lockSecure seen (the lock trigger: restart_at_lock)
+    pub was_secure: bool,
+    t_job: Ticker,
 }
 
 impl Default for TesseraUpdate {
@@ -91,6 +166,14 @@ impl Default for TesseraUpdate {
             t_start: Ticker::new("tuStart"),
             t_announce: Ticker::new("tuAnnounce"),
             t_peek: Ticker::new("tuPeek"),
+            job: None,
+            staged: None,
+            restarting: false,
+            cache: None,
+            cache_busy: false,
+            cache_error: String::new(),
+            was_secure: false,
+            t_job: Ticker::new("tuJob"),
         }
     }
 }
@@ -178,7 +261,181 @@ impl TesseraUpdate {
     }
 
     pub fn publish(&self) {
-        crate::bus::put("tesseraupdate", json!({"checking": self.checking, "applying": self.applying, "available": self.available(), "error": self.error, "undecided": self.undecided()}));
+        let job = self.job.clone().unwrap_or(Value::Null);
+        crate::bus::put("tesseraupdate", json!({"checking": self.checking, "applying": self.applying, "available": self.available(), "error": self.error, "undecided": self.undecided(),
+            // (the island's activity while the job runs)
+            "running": self.job_running(), "job": job, "fraction": self.job_fraction(), "ready": self.ready()}));
+    }
+
+    // ── The background update (tessera-update.py stage / finish) ─────────
+    pub fn job_running(&self) -> bool {
+        self.job.as_ref().is_some_and(|j| j["state"] == "running")
+    }
+    /// An update ready to restart into, for this copy as it is now
+    pub fn ready(&self) -> bool {
+        self.staged.as_ref().is_some_and(|s| s["ready"] == true && s["valid"] == true)
+    }
+    /// How far the job is, 0…1 (a build's own progress while it builds)
+    pub fn job_fraction(&self) -> f64 {
+        let Some(j) = &self.job else { return -1.0 };
+        if j["state"] != "running" {
+            return -1.0;
+        }
+        let pct = j["percent"].as_f64().unwrap_or(0.0) / 100.0;
+        if j["phase"] == "build" {
+            if let Some(f) = tessera_core::build_progress::read().filter(|v| v.active).and_then(|v| v.fraction) {
+                // (the build is most of the job: 15 % … 78 %)
+                return 0.15 + 0.63 * f as f64;
+            }
+        }
+        pct
+    }
+    fn job_dir() -> String {
+        format!("{}/tessera/update-job", state_home())
+    }
+    fn read_job(&self, tx: &Tx) {
+        let (t, p) = (tx.clone(), format!("{}/status.json", Self::job_dir()));
+        std::thread::spawn(move || {
+            let j = std::fs::read_to_string(p).ok().and_then(|s| serde_json::from_str::<Value>(&s).ok());
+            t(Box::new(Ev::Job(j)));
+        });
+    }
+    pub fn read_staged(&self, tx: &Tx) {
+        if self.repo.is_empty() {
+            return;
+        }
+        let (t, helper) = (tx.clone(), self.helper());
+        std::thread::spawn(move || {
+            let out = util::capture(&["python3", "-I", &helper, "staged"], Duration::from_secs(30)).map(|(_, o)| o).unwrap_or_default();
+            t(Box::new(Ev::Staged(serde_json::from_str(out.trim()).ok())));
+        });
+    }
+    /// Update Tessera: the job starts on its own (it outlives Settings and
+    /// the shell); rebuild: parts to build anyway (the glass plugin after a
+    /// Hyprland update)
+    pub fn stage(&mut self, h: &Host, tx: &Tx, rebuild: &[String]) {
+        if !self.allowed() || self.repo.is_empty() || self.job_running() || self.restarting {
+            return;
+        }
+        self.sync_channel(h);
+        self.error.clear();
+        let mut c: Vec<String> = ["setsid", "-f", "python3", "-I", &self.helper(), "stage", "--config", &config_dir()].iter().map(|s| s.to_string()).collect();
+        c.push("--choices-json".into());
+        c.push(Value::Object(self.choices.clone()).to_string());
+        if !rebuild.is_empty() {
+            c.push("--rebuild".into());
+            c.push(rebuild.join(","));
+        }
+        c.extend(channel_args(&self.channel));
+        let c: Vec<&str> = c.iter().map(String::as_str).collect();
+        tessera_core::services::bridge::run(&c);
+        self.staged = None;
+        self.job = Some(json!({"state": "running", "phase": "prepare", "percent": 0, "text": "Preparing", "started": helpers::now_s()}));
+        self.t_job.every(tx, 500);
+        self.publish();
+    }
+    /// Cancel: the job stops (nothing staged stays), or a ready update is forgotten
+    pub fn cancel(&mut self, tx: &Tx) {
+        let helper = self.helper();
+        if self.job_running() {
+            tessera_core::services::bridge::run(&["python3", "-I", &helper, "cancel"]);
+        } else if self.ready() {
+            tessera_core::services::bridge::run(&["python3", "-I", &helper, "discard"]);
+            self.staged = None;
+            self.job = Some(json!({"state": "cancelled"}));
+        }
+        self.read_job(tx);
+        self.publish();
+    }
+    /// Restart shell now (or the lock just engaged: locked): update-run.sh
+    /// finish stops the shell, swaps in what was staged and starts the new
+    /// one, behind the update screen for those seconds (none when locked)
+    pub fn restart(&mut self, h: &Host, tx: &Tx, locked: bool) {
+        if !self.ready() || self.restarting || self.repo.is_empty() {
+            return;
+        }
+        self.restarting = true;
+        let script = "t=$(mktemp -d \"${XDG_RUNTIME_DIR:-/tmp}/tessera-update.XXXXXX\") || exit 1; \
+            cp -r \"$1/shell/assets/updater\" \"$t/ui\" && cp \"$1/shell/assets/scripts/update-run.sh\" \"$t/run.sh\" && printf '{}' > \"$t/choices.json\" && \
+            printf '%s' \"$3\" > \"$t/look.json\" && cp \"$1/shell/assets/fonts/Phosphor-Fill.ttf\" \"$t/ui/\" 2>/dev/null; \
+            exec setsid -f bash \"$t/run.sh\" \"$t\" \"$1\" \"$2\" finish $4 </dev/null >/dev/null 2>&1";
+        let args = ["sh".to_string(), "-c".into(), script.into(), "sh".into(), self.repo.clone(), config_dir(), self.look(h).to_string(), if locked { "locked".into() } else { String::new() }];
+        let c: Vec<&str> = args.iter().map(String::as_str).collect();
+        tessera_core::services::bridge::run(&c);
+        // (still here a minute on: it didn't go ahead; say so)
+        self.t_start.once(tx, 60000);
+        self.publish();
+    }
+    /// The build cache's size (Software Update shows it, with Delete)
+    pub fn read_cache(&mut self, tx: &Tx) {
+        if self.repo.is_empty() || self.cache_busy {
+            return;
+        }
+        let (t, ni) = (tx.clone(), format!("{}/tools/native-install.py", self.repo));
+        std::thread::spawn(move || {
+            let out = util::capture(&["python3", "-I", &ni, "cache", "--json"], Duration::from_secs(60)).map(|(_, o)| o).unwrap_or_default();
+            t(Box::new(Ev::Cache(serde_json::from_str::<Value>(out.trim()).ok().and_then(|v| v["bytes"].as_u64()))));
+        });
+    }
+    pub fn delete_cache(&mut self, tx: &Tx) {
+        if self.repo.is_empty() || self.cache_busy || self.job_running() {
+            return;
+        }
+        self.cache_busy = true;
+        self.cache_error.clear();
+        let (t, ni) = (tx.clone(), format!("{}/tools/native-install.py", self.repo));
+        std::thread::spawn(move || {
+            let out = util::capture(&["python3", "-I", &ni, "cache", "--delete", "--json"], Duration::from_secs(300)).map(|(_, o)| o).unwrap_or_default();
+            let v = serde_json::from_str::<Value>(out.trim()).unwrap_or(Value::Null);
+            t(Box::new(Ev::CacheDeleted(if v["ok"] == true { Ok(v["freed"].as_u64().unwrap_or(0)) } else { Err(v["why"].as_str().unwrap_or("it couldn't be deleted").to_string()) })));
+        });
+    }
+    /// The lock's state, each turn (About's settled): the moment the screen
+    /// locks, a ready update restarts the shell (no screen: the lock covers
+    /// it, and the new shell takes the lock back)
+    pub fn lock_seen(&mut self, h: &Host, tx: &Tx, secure: bool) {
+        let go = restart_at_lock(self.was_secure, secure, self.ready(), self.restarting);
+        self.was_secure = secure;
+        if go {
+            self.restart(h, tx, true);
+        }
+    }
+    fn job_changed(&mut self, h: &mut Host, tx: &Tx, was: &str) {
+        let now = self.job.as_ref().and_then(|j| j["state"].as_str()).unwrap_or("").to_string();
+        if self.job_running() {
+            if !self.t_job.running() {
+                self.t_job.every(tx, 500);
+            }
+        } else {
+            self.t_job.stop();
+        }
+        if was != "running" || now == "running" {
+            return;
+        }
+        let job = self.job.clone().unwrap_or(Value::Null);
+        let (title, detail) = job_words(&job);
+        match now.as_str() {
+            "ready" => {
+                self.read_staged(tx);
+                // The notice: Restart shell now, or later (the lock, the next login)
+                let t = tx.clone();
+                let body = detail.clone();
+                std::thread::spawn(move || {
+                    let c = ["timeout", "86400", "notify-send", "-a", "Tessera", "-i", "system-software-update", "-h", "string:x-tessera-key:tessera-update", "-A", "restart=Restart shell now", "-A", "later=Later", "Tessera is ready to restart", &body];
+                    let out = util::capture(&c, Duration::from_secs(86400 + 60)).map(|(_, o)| o).unwrap_or_default();
+                    t(Box::new(Ev::ReadyAnswer(out.trim().to_string())));
+                });
+            }
+            "error" => {
+                if helpers::island_enabled(h) {
+                    helpers::island_post(h, json!({"kind": "sysupdate", "key": "tessera-update", "icon": "warning-circle", "title": title, "subtitle": detail, "color": "#FF453A", "action": "Details", "onAction": {"call": "panels.openSettings", "args": ["update"]}}), 8000);
+                } else {
+                    helpers::notify_send(&["-a", "Tessera", "-h", "string:x-tessera-key:tessera-update", "-i", "dialog-error", &title, &detail]);
+                }
+            }
+            "done" => helpers::notify_send(&["-a", "Tessera", "-h", "string:x-tessera-key:tessera-update", "-i", "system-software-update", "Glass plugin rebuilt", &detail]),
+            _ => {}
+        }
     }
 
     pub fn start(&mut self, tx: &Tx) {
@@ -204,6 +461,17 @@ impl TesseraUpdate {
             }
             t(Box::new(Ev::Result(found)));
         });
+        // The background job as it was left (still running, ready, or cut
+        // off by a reboot: resumed), and the note of a build gone back from
+        self.read_job(tx);
+        let t = tx.clone();
+        std::thread::spawn(move || {
+            let p = format!("{}/tessera/rolled-back.json", state_home());
+            if let Some(v) = std::fs::read_to_string(&p).ok().and_then(|s| serde_json::from_str::<Value>(&s).ok()) {
+                let _ = std::fs::remove_file(&p);
+                t(Box::new(Ev::RolledBack(v)));
+            }
+        });
     }
 
     pub fn check(&mut self, tx: &Tx) {
@@ -220,6 +488,10 @@ impl TesseraUpdate {
         }
         self.checking = true;
         self.error.clear();
+        // (a new check: the last job's outcome gives way; one running stays)
+        if !self.job_running() {
+            self.job = None;
+        }
         let (t, helper, cfg, ch) = (tx.clone(), self.helper(), config_dir(), channel_args(&self.channel));
         std::thread::spawn(move || {
             let mut c = vec!["python3", "-I", &helper, "check", "--config", &cfg];
@@ -321,7 +593,14 @@ impl TesseraUpdate {
                     self.applying = false;
                     self.error = "The update didn't start. Try again, or run tools/tessera-update.py in the Tessera folder.".into();
                 }
+                // (a restart that should have ended this shell a minute ago)
+                if self.restarting {
+                    self.restarting = false;
+                    self.error = "The shell didn't restart. Try Restart shell now again; your update is still ready.".into();
+                    self.read_staged(tx);
+                }
             }
+            "tuJob" => self.read_job(tx),
             // Updated: an alert once the island is up, its button opens the notes
             "tuAnnounce" => {
                 let cl = self.result.as_ref().and_then(|r| r["changelog"].as_array()).cloned().unwrap_or_default();
@@ -344,15 +623,54 @@ impl TesseraUpdate {
     }
 
     /// An event of its threads. Returns true when a report arrived (SoftwareUpdate reads compat)
-    pub fn event(&mut self, tx: &Tx, ev: Ev) -> bool {
+    pub fn event(&mut self, h: &mut Host, tx: &Tx, ev: Ev) -> bool {
         let mut report_changed = false;
         match ev {
+            Ev::Job(j) => {
+                let was = self.job.as_ref().and_then(|j| j["state"].as_str()).unwrap_or("").to_string();
+                if let Some(j) = j {
+                    // (cut off by a reboot, a logout, a crash: started again
+                    // from what it was asked, in the background)
+                    if job_cut_off(&j, pid_alive) && !self.repo.is_empty() && self.allowed() {
+                        let helper = self.helper();
+                        tessera_core::services::bridge::run(&["setsid", "-f", "python3", "-I", &helper, "resume", "--config", &config_dir()]);
+                        self.job = Some(json!({"state": "running", "phase": "prepare", "percent": 0, "text": "Picking up where the update stopped", "started": helpers::now_s()}));
+                    } else if !(was == "running" && j["state"] == "running" && j["pid"].is_null()) {
+                        self.job = Some(j);
+                    }
+                }
+                self.job_changed(h, tx, &was);
+            }
+            Ev::Staged(s) => {
+                self.staged = s;
+            }
+            Ev::ReadyAnswer(a) => {
+                if a == "restart" {
+                    self.restart(h, tx, false);
+                }
+            }
+            Ev::Cache(c) => self.cache = c,
+            Ev::CacheDeleted(r) => {
+                self.cache_busy = false;
+                match r {
+                    Ok(_) => self.cache = Some(0),
+                    Err(e) => self.cache_error = format!("The build cache couldn't be deleted: {e}. Try again once nothing is building."),
+                }
+                self.read_cache(tx);
+            }
+            Ev::RolledBack(v) => {
+                let back = v["to"].as_str().unwrap_or("").split(" (").next().unwrap_or("").to_string();
+                let body = format!("Back on {}. That version isn't offered again; a newer one is when it's out.", if back.is_empty() { "the version you had" } else { &back });
+                helpers::notify_send(&["-a", "Tessera", "-h", "string:x-tessera-key:tessera-update", "-i", "dialog-warning", "The new version didn't start", &body]);
+            }
             Ev::Source(s) => {
                 if self.repo.is_empty() {
                     self.repo = s;
                 }
                 self.source_ready = true;
                 self.read_info(tx);
+                self.read_staged(tx);
+                self.read_job(tx);
                 self.t_peek.once(tx, PEEK_FIRST_MS);
                 if self.pending_check {
                     self.pending_check = false;
@@ -445,6 +763,40 @@ mod tests {
         t.choose("b", "nope");
         assert_eq!(t.undecided(), 1);
         assert!(t.available());
+    }
+
+    #[test]
+    fn every_state_has_its_words() {
+        let w = |j: Value| job_words(&j).0;
+        assert_eq!(w(json!({"state": "running", "phase": "prepare"})), "Preparing the update");
+        assert_eq!(w(json!({"state": "running", "phase": "download", "how": "patch", "bytes": 7996232})), "Downloading a patch · 8.0 MB");
+        assert_eq!(w(json!({"state": "running", "phase": "download", "how": "full", "bytes": 29949608})), "Downloading · 29.9 MB");
+        assert_eq!(w(json!({"state": "running", "phase": "build"})), "Building Tessera");
+        assert_eq!(w(json!({"state": "running", "phase": "parts", "text": "Building the glass plugin"})), "Building the glass plugin");
+        assert_eq!(w(json!({"state": "ready", "latest": "abc12345"})), "Ready to restart");
+        assert!(job_words(&json!({"state": "ready", "latest": "abc12345"})).1.contains("next time you lock the screen or log in"));
+        let (t, d) = job_words(&json!({"state": "error", "error": "Couldn't reach the update server."}));
+        assert_eq!(t, "The update didn't finish");
+        assert!(d.starts_with("Couldn't reach the update server.") && d.contains("Try again"));
+        assert_eq!(w(json!({"state": "cancelled"})), "Update cancelled");
+        assert_eq!(w(json!({"state": "none"})), "Tessera is up to date");
+    }
+
+    #[test]
+    fn restart_only_as_the_lock_engages_with_an_update_ready() {
+        assert!(restart_at_lock(false, true, true, false));
+        assert!(!restart_at_lock(true, true, true, false), "already locked: not again each turn");
+        assert!(!restart_at_lock(false, true, false, false), "nothing ready");
+        assert!(!restart_at_lock(false, true, true, true), "a restart under way");
+        assert!(!restart_at_lock(true, false, true, false), "unlocking isn't locking");
+    }
+
+    #[test]
+    fn a_job_cut_off_is_one_that_says_running_with_no_process() {
+        assert!(job_cut_off(&json!({"state": "running", "pid": 4242}), |_| false));
+        assert!(!job_cut_off(&json!({"state": "running", "pid": 4242}), |_| true));
+        assert!(job_cut_off(&json!({"state": "running"}), |_| true));
+        assert!(!job_cut_off(&json!({"state": "ready", "pid": 4242}), |_| false));
     }
 
     #[test]

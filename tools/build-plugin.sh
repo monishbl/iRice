@@ -18,7 +18,10 @@ if [[ -z "${TESSERA_PLUGIN_INNER:-}" ]] && command -v python3 >/dev/null && [[ -
 fi
 # (folders under Tessera's old name move over first, never both: migrate-names.py)
 python3 -I "$ROOT/shell/assets/scripts/migrate-names.py" --no-checkout 2>/dev/null || true
-DEST="${XDG_DATA_HOME:-$HOME/.local/share}/tessera"
+# (TESSERA_PLUGIN_DEST: the updater's staging folder, swapped in at the
+# shell's restart; without --load it never touches the session either way:
+# Hyprland loads the plugin at login, and keeps the copy it has loaded)
+DEST="${TESSERA_PLUGIN_DEST:-${XDG_DATA_HOME:-$HOME/.local/share}/tessera}"
 LOAD=0
 [[ "${1:-}" == "--load" ]] && LOAD=1
 # X.Y.Z out of whatever a version says ("v0.57.2-b", "0.57.2.r12.gabc")

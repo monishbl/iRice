@@ -6,6 +6,8 @@
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 install -Dm755 "$here/tessera-release" "$HOME/bin/tessera-release"
+# (the test before a set is offered: a sandbox arena, tools/release-builder/pretest.sh)
+install -Dm755 "$here/pretest.sh" "$HOME/bin/tessera-pretest"
 [[ "${1:-}" == --no-timer ]] && exit 0
 units="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 install -Dm644 "$here/tessera-release.service" "$units/tessera-release.service"

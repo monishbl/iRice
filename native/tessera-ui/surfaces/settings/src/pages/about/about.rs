@@ -222,12 +222,59 @@ pub fn page(cx: &mut Ctx, p: &mut Page) {
         let open = cx.on(move |cx, _| cx.ask("about", "openFile", json!([cfg])));
         p.group("").row(Row::new("Configuration file").button("Open", open));
     }
+    // (only where the release publisher runs: the repository owner's
+    // machine. How server1's builds and this machine's signing are doing)
+    let pipe = &f["pipeline"];
+    if !pipe.is_null() {
+        let (title, detail, tone) = pipeline_words(pipe);
+        p.group("Release pipeline")
+            .footer("Builds happen on the build machine; signing and publishing happen here. The log is ~/.cache/tessera-publish.log.")
+            .row(Row::new(title).detail(detail).tone(i32::from(tone)));
+    }
     p.end_more();
+}
+
+/// The release pipeline's health in a line: (title, detail, tone)
+pub fn pipeline_words(st: &Value) -> (String, String, u8) {
+    let h = &st["health"];
+    let b = &h["builder"];
+    let waiting = h["waiting"].as_array().cloned().unwrap_or_default();
+    let last = st["published"].as_object().and_then(|m| m.values().filter_map(|v| v["at"].as_str()).max().map(str::to_string)).unwrap_or_default();
+    let last = if last.is_empty() { "nothing published yet".to_string() } else { format!("last published {}", last.get(..16).unwrap_or(&last).replace('T', " ")) };
+    if b["state"] == "failed" {
+        return ("The last build failed".into(), format!("{} · {last}", s(&b["error"]).chars().take(160).collect::<String>()), 2);
+    }
+    if st["state"] == "failed" {
+        return ("The last publish failed".into(), format!("{} · {last}", s(&st["error"]).chars().take(160).collect::<String>()), 2);
+    }
+    if !waiting.is_empty() {
+        return (format!("{} waiting to be signed", if waiting.len() == 1 { "1 set".to_string() } else { format!("{} sets", waiting.len()) }), last, 0);
+    }
+    if b["state"] == "building" {
+        return ("Building on server1".into(), format!("{} · {last}", s(&b["step"])), 0);
+    }
+    if !s(&st["reach"]).is_empty() {
+        return ("The build machine is out of reach".into(), format!("Nothing can be published until it answers · {last}"), 1);
+    }
+    ("Everything is published".into(), last, 0)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_pipeline_in_a_line() {
+        let ok = json!({"state": "idle", "health": {"builder": {"state": "idle"}, "waiting": []}, "published": {"tessera-ui-beta": {"at": "2026-11-19T07:39:59+0530"}}});
+        assert_eq!(pipeline_words(&ok), ("Everything is published".to_string(), "last published 2026-11-19 07:39".to_string(), 0));
+        let failed = json!({"health": {"builder": {"state": "failed", "error": "the x86-64-v3 build failed its test before publishing: it did not answer IPC within 30 s"}, "waiting": []}});
+        assert_eq!(pipeline_words(&failed).0, "The last build failed");
+        assert_eq!(pipeline_words(&failed).2, 2);
+        let waiting = json!({"health": {"builder": {"state": "ready"}, "waiting": [{"set": "tessera-ui-beta/abc"}]}});
+        assert_eq!(pipeline_words(&waiting).0, "1 set waiting to be signed");
+        let away = json!({"reach": "ssh: connect to host server1: No route to host", "health": {"builder": {}, "waiting": []}});
+        assert_eq!(pipeline_words(&away).0, "The build machine is out of reach");
+    }
 
     #[test]
     fn a_settings_file_described() {

@@ -13,6 +13,7 @@ tools/release-builder/publish-release, checks it, signs it and publishes it
     tessera-release --build-only        build and pack; no ready set
     tessera-release --status            the status JSON
     tessera-release --list-ready        the sets waiting for the laptop (JSON)
+    tessera-release --health            those and the status, in one answer (the laptop's 2-minute look)
     tessera-release --mark-published TAG TREE   the laptop published that set
 
 What it builds: main (the Stable channel's rolling release tessera-ui-latest),
@@ -36,6 +37,28 @@ last. The laptop's --mark-published renames READY to PUBLISHED.
 
 Built variants are kept per tree in ~/tessera-release/built/<tree> (the newest
 six), so a tree promoted from beta to main is only packed again.
+
+Tested before it's offered: each variant is installed in a hidden sandbox
+arena here (tools/release-builder/pretest.sh, installed as
+~/bin/tessera-pretest) and must start, answer IPC within 30 s, draw, and lock
+and unlock. A variant that fails isn't made ready; the reason is in the log
+and the status (the laptop's publisher says so in a notification).
+TESSERA_RELEASE_NO_PRETEST=1 skips it (tests).
+
+Patches: each set also carries zstd --patch-from patches from the last three
+published builds of the same release (built/<tree> keeps their archives) to
+this one, per variant and program (a program that didn't change gets none:
+an install keeps it). The manifest lists each (file, size, sha256 and the
+sha256 of the program it starts from); the laptop signs them like the rest,
+and tools/native-install.py downloads the patch when it has the program it
+starts from, checking the patch's signature and checksum and the rebuilt
+program's checksum against the manifest. Patches are named for their build
+(tessera-ui-<tree>-…), so a rolling release's pruning of a build takes its
+patches with it.
+
+Started the moment a branch is pushed by tools/push-release (it pokes this
+service over ssh); the 10-minute timer is the fallback. Network steps
+(GitHub) are retried with backoff before a run gives up.
 
 Log: ~/.cache/tessera-release.log (cargo's own output: ~/tessera-release/logs).
 Status: ~/.cache/tessera-release.json: state (idle, building, ready, failed),
@@ -73,6 +96,11 @@ GH_REPO = os.environ.get("TESSERA_RELEASE_GH_REPO") or "monishbl/tessera"
 BRANCHES = {"main": ("stable", "tessera-ui-latest"), "beta": ("beta", "tessera-ui-beta")}
 VARIANTS = (("x86-64-v3", "-C target-cpu=x86-64-v3"), ("generic", ""))
 KEEP_PUBLISHED = 3  # published sets kept here per release
+PATCH_FROM = 3  # patches from this many earlier published builds of the release
+PATCH_LEVEL = 19
+PATCH_WINDOW = 28  # zstd --long (tools/native-install.py's PATCH_WINDOW: the same)
+PRETEST = os.environ.get("TESSERA_PRETEST") or os.path.join(HOME, "bin", "tessera-pretest")
+PATCH_RE = re.compile(r"^tessera-ui-([0-9a-f]{40})-(x86-64-v3|generic)\.(tessera-ui|tessera-events)\.from-([0-9a-f]{12})\.zst$")
 KEEP_BUILT = 6  # built trees kept in built/
 TREE_HEX = re.compile(r"^[0-9a-f]{40}$")
 TAG_RE = re.compile(r"^v[0-9A-Za-z._-]+$")
@@ -162,6 +190,20 @@ def no_display_env():
             if k not in ("WAYLAND_DISPLAY", "WAYLAND_SOCKET", "DISPLAY", "HYPRLAND_INSTANCE_SIGNATURE")}
 
 
+def with_retries(what, fn, tries=4, waits=(5, 20, 60)):
+    """FN, again after a pause when it fails for the network (Stop with
+    "can't be reached" or a 5xx): 5 s, 20 s, 60 s, then it gives up"""
+    for i in range(tries):
+        try:
+            return fn()
+        except Stop as e:
+            transient = any(w in str(e) for w in ("can't be reached", "answered 5", "timed out", "Could not resolve", "Connection"))
+            if not transient or i == tries - 1:
+                raise
+            log(f"{what}: {e}; trying again in {waits[min(i, len(waits) - 1)]} s")
+            time.sleep(waits[min(i, len(waits) - 1)])
+
+
 def published_on_github(tag, tree):
     """Is the tree's manifest in that release? Asked anonymously (the
     repository is public): True / False; raises Stop when GitHub can't be
@@ -199,7 +241,7 @@ def fetch_sources(branches, tags):
     specs = [f"+refs/heads/{b}:refs/remotes/origin/{b}" for b in branches]
     if tags:
         specs.append("+refs/tags/v*:refs/tags/v*")
-    git("fetch", "--quiet", "--prune", "--no-tags", "origin", *specs)
+    with_retries("fetching from GitHub", lambda: git("fetch", "--quiet", "--prune", "--no-tags", "origin", *specs))
 
 
 def targets(branches, tags):
@@ -369,6 +411,101 @@ def pack(outdir, tree, variant, epoch):
     return v
 
 
+# ── Tested before it's offered ───────────────────────────────────────────
+
+def pretest(tree, variants):
+    """Each variant's tessera-ui in a sandbox arena (pretest.sh): it must
+    start, answer, draw, lock and unlock. Raises Stop with why."""
+    if os.environ.get("TESSERA_RELEASE_NO_PRETEST") == "1":
+        return
+    if not os.path.exists(PRETEST):
+        raise Stop(f"the test before publishing isn't installed ({PRETEST}): run tools/release-builder/install.sh")
+    for variant, v in variants.items():
+        status(step=f"{variant}: testing in a sandbox", progress=None)
+        work = os.path.join(ROOT, "pretest", variant)
+        shutil.rmtree(work, ignore_errors=True)
+        os.makedirs(work)
+        unpack_programs(os.path.join(BUILT, tree, v["file"]), work)
+        r = subprocess.run([PRETEST, os.path.join(work, "tessera-ui"), SRC, "71" if variant == "x86-64-v3" else "72"],
+                           capture_output=True, text=True, timeout=600)
+        last = (r.stdout.strip().splitlines() or ["no answer"])[-1]
+        log(f"tree {tree[:12]} {variant}: {last}")
+        shutil.rmtree(work, ignore_errors=True)
+        if r.returncode != 0:
+            raise Stop(f"the {variant} build failed its test before publishing: {last}")
+
+
+def unpack_programs(tarball, into):
+    """Both programs of a packed variant into INTO"""
+    tar = subprocess.Popen(["zstd", "-q", "-d", "-c", tarball], stdout=subprocess.PIPE)
+    r = subprocess.run(["tar", "-x", "-C", into], stdin=tar.stdout, capture_output=True)
+    tar.stdout.close()
+    if tar.wait() != 0 or r.returncode != 0:
+        raise Stop(f"unpacking {os.path.basename(tarball)} failed")
+
+
+# ── Patches from the builds before ───────────────────────────────────────
+
+def earlier_trees(tag, tree):
+    """The last PATCH_FROM builds published in TAG (newest first) whose
+    archives are still kept here"""
+    out = []
+    for _, _, _, info in sorted(sets("PUBLISHED"), key=lambda s: s[3].get("published", ""), reverse=True):
+        old = info.get("tree")
+        if info.get("tag") != tag or old == tree or old in out:
+            continue
+        if all(variant_ok(os.path.join(BUILT, old), v) for v, _ in VARIANTS):
+            out.append(old)
+        if len(out) == PATCH_FROM:
+            break
+    return out
+
+
+def make_patches(tag, tree, variants, dest):
+    """Patches into DEST from each earlier build to this one; each variant's
+    manifest entry gets "patches": {from tree: {program: {file, size,
+    sha256, from_sha256}}}. Returns the patch files' names."""
+    names = []
+    olds = earlier_trees(tag, tree)
+    if not olds:
+        return names
+    work = os.path.join(ROOT, "patching")
+    shutil.rmtree(work, ignore_errors=True)
+    for variant, v in variants.items():
+        new_dir = os.path.join(work, "new-" + variant)
+        os.makedirs(new_dir)
+        unpack_programs(os.path.join(BUILT, tree, v["file"]), new_dir)
+        entry = {}
+        for old in olds:
+            ov = variant_ok(os.path.join(BUILT, old), variant)
+            old_dir = os.path.join(work, old[:12] + "-" + variant)
+            os.makedirs(old_dir, exist_ok=True)
+            unpack_programs(os.path.join(BUILT, old, ov["file"]), old_dir)
+            for prog in ("tessera-ui", "tessera-events"):
+                a, b = os.path.join(old_dir, prog), os.path.join(new_dir, prog)
+                fa, fb = sha256_of(a), sha256_of(b)
+                if fa == fb:
+                    continue  # (the same program: an install keeps it, nothing to download)
+                name = f"tessera-ui-{tree}-{variant}.{prog}.from-{old[:12]}.zst"
+                status(step=f"{variant}: patch from {old[:12]} ({prog})", progress=None)
+                r = subprocess.run(["nice", "-n", "10", "zstd", "-q", "-f", f"-{PATCH_LEVEL}", f"--long={PATCH_WINDOW}",
+                                    f"--patch-from={a}", b, "-o", os.path.join(dest, name)], capture_output=True, text=True, timeout=1800)
+                if r.returncode != 0:
+                    log(f"patch {name} failed (skipped): {r.stderr.strip()[-200:]}")
+                    continue
+                pth = os.path.join(dest, name)
+                entry.setdefault(old, {})[prog] = {"file": name, "size": os.path.getsize(pth), "sha256": sha256_of(pth), "from_sha256": fa}
+                names.append(name)
+            shutil.rmtree(old_dir, ignore_errors=True)
+        if entry:
+            v["patches"] = entry
+    shutil.rmtree(work, ignore_errors=True)
+    if names:
+        log(f"tree {tree[:12]}: {len(names)} patches from {', '.join(o[:12] for o in olds)} "
+            f"({sum(os.path.getsize(os.path.join(dest, n)) for n in names)} bytes)")
+    return names
+
+
 # ── The set for the laptop (unsigned: the laptop signs) ──────────────────
 
 def make_set(t, tree, variants):
@@ -381,6 +518,8 @@ def make_set(t, tree, variants):
     os.makedirs(dest)
     for v in variants.values():
         os.link(os.path.join(built, v["file"]), os.path.join(dest, v["file"]))
+    variants = {k: dict(v) for k, v in variants.items()}
+    patches = make_patches(tag, tree, variants, dest)
     with open(os.path.join(SRC, "native", "tessera-ui", "Cargo.toml")) as f:
         version = next((m[1] for m in (re.match(r'^version = "(.*)"$', l.rstrip("\n")) for l in f) if m), "")
     manifest = {"format": 1, "name": "tessera-ui", "commit": commit, "tree": tree, "version": version,
@@ -390,7 +529,7 @@ def make_set(t, tree, variants):
     files = {n: {"size": os.path.getsize(os.path.join(dest, n)), "sha256": sha256_of(os.path.join(dest, n))}
              for n in sorted(os.listdir(dest))}
     ready = {"name": t["name"], "kind": t["kind"], "tag": tag, "channel": t["channel"], "tree": tree,
-             "commit": commit, "version": version, "ready": now(), "files": files}
+             "commit": commit, "version": version, "ready": now(), "files": files, "patches": sorted(patches)}
     write_json(os.path.join(dest, "READY"), ready)
     log(f"{t['name']}: ready for the laptop to sign and publish: {dest}")
     return ready
@@ -492,7 +631,7 @@ def do_target(t, build_only):
         return
     if os.path.isfile(os.path.join(here, "PUBLISHED")):
         return
-    if not build_only and published_on_github(tag, tree):
+    if not build_only and with_retries("asking GitHub", lambda: published_on_github(tag, tree)):
         if prev.get("tree") != tree or prev.get("result") not in ("published", "up-to-date"):
             log(f"{name}: tree {tree[:12]} is already published in {tag}")
             target_result(name, result="up-to-date", tag=tag, tree=tree, commit=commit)
@@ -506,6 +645,7 @@ def do_target(t, build_only):
     if build_only:
         target_result(name, result="built", tree=tree, commit=commit, seconds=int(time.time() - t0))
         return
+    pretest(tree, variants)
     make_set(t, tree, variants)
     target_result(name, result="ready", tag=tag, tree=tree, commit=commit, dir=here, seconds=int(time.time() - t0))
 
@@ -516,10 +656,14 @@ def main(argv=None):
     ap.add_argument("--build-only", action="store_true", help="build and pack; don't make a ready set")
     ap.add_argument("--status", action="store_true", help="print the status JSON")
     ap.add_argument("--list-ready", action="store_true", help="the sets waiting to be signed and published, as JSON")
+    ap.add_argument("--health", action="store_true", help="the sets waiting and the status, in one answer (the laptop's look)")
     ap.add_argument("--mark-published", nargs=2, metavar=("TAG", "TREE"), help="the laptop published this set")
     a = ap.parse_args(argv)
     if a.status:
         print(json.dumps(load_status(), indent=2))
+        return 0
+    if a.health:
+        print(json.dumps({"ready": list_ready(), "status": load_status()}, indent=2))
         return 0
     if a.list_ready:
         print(json.dumps(list_ready(), indent=2))

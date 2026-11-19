@@ -10,6 +10,32 @@ native/tessera-events), in $XDG_DATA_HOME/tessera/bin, matching this checkout.
     native-install.py restore                         the previous build back (undo)
     native-install.py cpu                             x86-64-v3, generic (or nothing)
     native-install.py can-build [--packages] [--json] whether building here can work
+    native-install.py stage   --ref REF [--source DIR] [--json] [--progress]
+                              the programs for REF made ready beside the installed ones
+                              (fetched, or built from DIR, a checkout of REF); nothing installed
+    native-install.py install --staged [--json]       the staged programs swapped in (HEAD must be REF)
+    native-install.py cache   [--delete] [--json]     the build cache: its size, or delete it
+
+Each program has its own source key (part_keys): tessera-events its folder's
+git tree, tessera-ui its folder's tree and the few files outside it that it
+compiles in (UI_EXTRA). A program whose key is the installed one's is kept
+as it is (never downloaded or built again), even when the other changed.
+
+Patches: a release's manifest may list, per variant and program, zstd
+--patch-from patches from the builds before it (by their native/ tree). When
+the installed program is exactly the one a patch starts from (its sha256),
+the patch is downloaded instead of the archive: its own signature is
+checked, its size and sha256 against the signed manifest, and the rebuilt
+program's sha256 against the manifest's. Any of that failing falls back to
+the whole archive, quietly.
+
+Building here keeps cargo's work between updates in one target folder per
+variant ($XDG_CACHE_HOME/tessera/cargo/generic, …/tuned), with the "local"
+profile (thin LTO, 16 codegen units: minutes, not the release profile's
+three-quarters of an hour), so an update rebuilds only what changed. The
+folder is wiped when the Rust toolchain changes (everything in it is stale
+then) and pruned after each build to CACHE_CAP: units the last build didn't
+use go first, then the other variant's folder.
 
 How (rust.uiSource in Settings' config.json, or --mode):
   auto        (the default) the ready-made build for this exact version,
@@ -19,7 +45,8 @@ How (rust.uiSource in Settings' config.json, or --mode):
               tools/tessera-ui.pub and its sha256 against the signed manifest.
               Without one (a checkout with your own edits, a version not
               built yet, no network, no release key yet), built here instead.
-  build       always built here (tools/build-native.sh), for any x86-64.
+  build       always built here (tools/build-native.sh), for this processor's level
+              (x86-64-v3 or generic, as the ready-made build would be).
   buildTuned  built here for this processor only (-C target-cpu=native).
 
 The build is chosen by the git tree of native/ (git rev-parse HEAD:native):
@@ -65,6 +92,13 @@ MAX_MANIFEST = 256 * 1024
 GIB = 1024 ** 3
 NEED_RAM = 4 * GIB  # (a release build of tessera-ui: link-time optimisation, one codegen unit)
 NEED_DISK = 4 * GIB
+CACHE_CAP = int(4.5 * GIB)  # the build cache, after a build
+PATCH_WINDOW = 28  # zstd --long: the patch window (2^28: room for a program up to 256 MB)
+# Files outside native/tessera-ui that tessera-ui compiles in (include_str!):
+# a change to one is a change to tessera-ui (tests/test_native_install.py checks
+# the list against the sources)
+UI_EXTRA = ("shell/assets/polkit/org.tessera.root.policy", "shell/common/Config.qml", "shell/common/material-symbols.js",
+            "shell/common/phosphor.js", "shell/modules/cheatsheet/elements.js")
 
 # x86-64-v3 (AVX2 and friends): every processor's flags in /proc/cpuinfo must
 # have these. LZCNT shows as "abm" on both Intel and AMD; XSAVE is the
@@ -187,6 +221,23 @@ def native_tree(ref="HEAD", repo=None):
     if tree and ref == "HEAD":
         edited = bool(git("status", "--porcelain", "--untracked-files=normal", "--", "native", repo=repo))
     return tree, commit, edited
+
+
+def part_keys(ref="HEAD", repo=None):
+    """{program: its source key at REF}, None for one that isn't there (or
+    outside a checkout). tessera-events: the git tree of native/tessera-events;
+    tessera-ui: a hash of native/tessera-ui's tree and UI_EXTRA's blobs."""
+    out = {n: None for n in PROGRAMS}
+    commit = git("rev-parse", "--verify", "--quiet", ref + "^{commit}", repo=repo)
+    if not commit:
+        return out
+    ev = git("rev-parse", "--verify", "--quiet", commit + ":native/tessera-events", repo=repo)
+    out["tessera-events"] = ev or None
+    ui = git("rev-parse", "--verify", "--quiet", commit + ":native/tessera-ui", repo=repo)
+    if ui:
+        extra = git("ls-tree", commit, "--", *UI_EXTRA, repo=repo) or ""
+        out["tessera-ui"] = hashlib.sha1(("tessera-ui " + ui + "\n" + extra).encode()).hexdigest()
+    return out
 
 
 def release_tags(commit, repo=None, channel="stable"):
@@ -316,7 +367,32 @@ def _verify_with_program(pubkey_text, data, sig_text, trusted):
 
 # ── Downloading ──────────────────────────────────────────────────────────
 
-def download(url, path, max_bytes, timeout=300, retries=3, connect=10):
+def fetch_resumable(url, work, name, size, sha256):
+    """A big file (an archive, a patch) into WORK/NAME, by way of
+    <dest>/.downloads/NAME: a download cut off (the computer went off, the
+    job was stopped) carries on from where it got to next time. Checked
+    against its signed size and sha256 before it's used; a bad one is
+    thrown away whole. Returns its path; raises Failed."""
+    keep = os.path.join(os.path.dirname(os.path.abspath(work)), ".downloads")
+    os.makedirs(keep, exist_ok=True)
+    part = os.path.join(keep, name)
+    # (only files of the current build are kept going)
+    for old in os.listdir(keep):
+        if old != name and old.split("-")[:3] != name.split("-")[:3]:
+            _remove(os.path.join(keep, old))
+    if os.path.exists(part) and os.path.getsize(part) > (size or 0):
+        _remove(part)
+    if not (os.path.exists(part) and os.path.getsize(part) == size):
+        download(url, part, MAX_DOWNLOAD, resume=True)
+    if os.path.getsize(part) != size or sha256_of(part) != sha256:
+        _remove(part)
+        raise Failed("the download doesn't match its signed checksum (damaged, or not what was published)")
+    dst = os.path.join(work, name)
+    os.replace(part, dst)
+    return dst
+
+
+def download(url, path, max_bytes, timeout=300, retries=3, connect=10, resume=False):
     """curl, with timeouts and retries. Raises Failed(kind=missing) for a
     file that isn't there, Failed(kind=network) for anything else."""
     local = url.startswith("file://")
@@ -327,6 +403,8 @@ def download(url, path, max_bytes, timeout=300, retries=3, connect=10):
            "--connect-timeout", str(connect), "--max-time", str(timeout),
            "--retry", str(retries), "--retry-delay", "2", "--max-filesize", str(max_bytes),
            "--user-agent", "Tessera", "--write-out", "%{http_code}", "--output", path, url]
+    if resume and not local:
+        cmd[1:1] = ["--continue-at", "-", "--retry-all-errors"]
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 60)
     except FileNotFoundError:
@@ -411,11 +489,15 @@ def unpack(tarball, into, expect):
 
 # ── Ready-made: find, check, keep ready ──────────────────────────────────
 
-def fetch(tree, commit, variant, work, *, base=None, tags=None, pubkey=None, repo=None, channel=None):
+def fetch(tree, commit, variant, work, *, base=None, tags=None, pubkey=None, repo=None, channel=None, want=None, have=None, say=None):
     """Downloads and checks the build for TREE into WORK (a new folder in
     the destination's file system): signature, manifest (tree, commit,
-    variant), checksums, contents and --version. Returns
-    {"files": {name: path}, "info": {...}}; raises Failed."""
+    variant), checksums, contents and --version. WANT: the programs wanted
+    (all by default). HAVE: the installed build ({"tree", "variant",
+    "programs": {name: path}}): when the manifest has a patch from it, the
+    patch is downloaded instead, and checked as strictly. Returns
+    {"files": {name: path}, "info": {...}} (info's "how": patch | full,
+    "bytes": what was downloaded); raises Failed."""
     if variant is None:
         raise Failed("there are no ready-made builds for this processor (" + platform.machine() + ")", "missing")
     pubkey = pubkey if pubkey is not None else _read(pubkey_path())
@@ -433,7 +515,7 @@ def fetch(tree, commit, variant, work, *, base=None, tags=None, pubkey=None, rep
     for b in bases:
         shutil.rmtree(work, ignore_errors=True)
         try:
-            return _fetch_from(b, tree, commit, variant, work, tags, pubkey, repo)
+            return _fetch_from(b, tree, commit, variant, work, tags, pubkey, repo, want, have, say)
         except Failed as e:
             errors.append(e)
     shutil.rmtree(work, ignore_errors=True)
@@ -441,7 +523,19 @@ def fetch(tree, commit, variant, work, *, base=None, tags=None, pubkey=None, rep
     raise refused[0] if refused else errors[0]
 
 
-def _fetch_from(base, tree, commit, variant, work, tags, pubkey, repo):
+def mb(n):
+    """"8.0 MB" """
+    return "{:.1f} MB".format((n or 0) / 1e6)
+
+
+def patch_name(tree, variant, name, from_tree):
+    """A patch's file: tessera-ui-<tree>-<variant>.<program>.from-<from tree, 12>.zst
+    (named for its build, so a rolling release's pruning takes it with it)"""
+    return f"tessera-ui-{tree}-{variant}.{name}.from-{from_tree[:12]}.zst"
+
+
+def _fetch_from(base, tree, commit, variant, work, tags, pubkey, repo, want=None, have=None, say=None):
+    say = say or (lambda s: None)
     os.makedirs(work, exist_ok=True)
     mpath = os.path.join(work, "manifest.json")
     found = None
@@ -490,17 +584,25 @@ def _fetch_from(base, tree, commit, variant, work, tags, pubkey, repo):
     entry = variants.get(variant)
     if not isinstance(entry, dict) or entry.get("file") != tarball_name(tree, variant):
         raise Failed("there's no ready-made build of this version for this processor", "missing")
-    tpath = os.path.join(work, entry["file"])
-    download(base.replace("{tag}", tag) + "/" + entry["file"], tpath, MAX_DOWNLOAD)
-    if os.path.getsize(tpath) != entry.get("size", -1) or sha256_of(tpath) != entry.get("sha256"):
-        raise Failed("the download doesn't match its signed checksum (damaged, or not what was published)")
-    files = unpack(tpath, work, PROGRAMS)
+    want = [n for n in PROGRAMS if n in (want or PROGRAMS)]
     progs = entry.get("programs") or {}
-    for name in PROGRAMS:
-        if name not in files:
-            raise Failed(f"the download has no {name}")
-        want = (progs.get(name) or {}).get("sha256")
-        if want and sha256_of(files[name]) != want:
+    rel = base.replace("{tag}", tag)
+    how, got = "full", 0
+    patched = _try_patches(rel, tree, variant, entry, want, have, work, pubkey, say)
+    if patched is not None:
+        files, got = patched
+        how = "patch"
+    else:
+        say("STEP Downloading " + mb(entry.get("size")))
+        tpath = fetch_resumable(rel + "/" + entry["file"], work, entry["file"], entry.get("size", -1), entry.get("sha256"))
+        got = os.path.getsize(tpath)
+        files = unpack(tpath, work, PROGRAMS)
+        for name in PROGRAMS:
+            if name not in files:
+                raise Failed(f"the download has no {name}")
+    for name in want:
+        want_sha = (progs.get(name) or {}).get("sha256")
+        if want_sha and sha256_of(files[name]) != want_sha:
             raise Failed(f"{name} in the download doesn't match its signed checksum")
         said = program_version(files[name])
         if not said.startswith(name + " "):
@@ -509,8 +611,86 @@ def _fetch_from(base, tree, commit, variant, work, tags, pubkey, repo):
         if want_v and said != want_v:
             raise Failed(f"{name} in the download says it's {said}, not {want_v}")
     info = {"source": "ready-made", "variant": variant, "tree": tree, "commit": built_from,
-            "version": manifest.get("version", ""), "channel": manifest.get("channel", ""), "tag": tag}
-    return {"files": files, "info": info}
+            "version": manifest.get("version", ""), "channel": manifest.get("channel", ""), "tag": tag,
+            "how": how, "bytes": got}
+    return {"files": {n: files[n] for n in want}, "info": info}
+
+
+def _try_patches(rel, tree, variant, entry, want, have, work, pubkey, say):
+    """The wanted programs rebuilt from the installed ones with the
+    manifest's patches: ({name: path}, bytes downloaded), or None (no patch
+    from the installed build, or one didn't check out: the archive then)."""
+    if not have or have.get("variant") != variant or not have.get("tree"):
+        return None
+    patches = (entry.get("patches") or {}).get(have["tree"]) or {}
+    progs = entry.get("programs") or {}
+    plan = {}
+    for name in want:
+        old = (have.get("programs") or {}).get(name)
+        target = (progs.get(name) or {}).get("sha256")
+        if not old or not os.path.isfile(old) or not target:
+            return None
+        old_sha = sha256_of(old)
+        p = patches.get(name)
+        if old_sha == target:
+            plan[name] = None  # (the very same program: copied)
+        elif isinstance(p, dict) and p.get("from_sha256") == old_sha and p.get("file") == patch_name(tree, variant, name, have["tree"]):
+            plan[name] = p
+        else:
+            return None
+    total = sum(p.get("size", 0) for p in plan.values() if p)
+    out, got = {}, 0
+    try:
+        if total:
+            say("STEP Downloading a patch, " + mb(total))
+        for name, p in plan.items():
+            dst = os.path.join(work, name)
+            if p is None:
+                shutil.copy2(have["programs"][name], dst)
+            else:
+                ppath = fetch_resumable(rel + "/" + p["file"], work, p["file"], p.get("size", -1), p.get("sha256"))
+                download(rel + "/" + p["file"] + ".minisig", ppath + ".minisig", MAX_MANIFEST, timeout=60)
+                with open(ppath, "rb") as f:
+                    data = f.read()
+                trusted = verify_minisign(pubkey, data, _read(ppath + ".minisig")).split()
+                if p["file"] not in trusted or "tree=" + tree not in trusted:
+                    raise Failed("the patch's signature is for another file")
+                if len(data) != p.get("size") or hashlib.sha256(data).hexdigest() != p.get("sha256"):
+                    raise Failed("the patch doesn't match its signed checksum")
+                got += len(data)
+                del data
+                apply_patch(have["programs"][name], ppath, dst)
+                _remove(ppath)
+            # (the program it makes is the published one, byte for byte)
+            if sha256_of(dst) != progs[name]["sha256"]:
+                raise Failed(f"{name} rebuilt from the patch isn't the published one")
+            os.chmod(dst, 0o755)
+            out[name] = dst
+    except Failed as e:
+        say("The patch didn't work (" + e.why + "): downloading the whole update")
+        for n in plan:
+            _remove(os.path.join(work, n))
+        return None
+    return out, got
+
+
+def apply_patch(old, patch, out):
+    """zstd --patch-from: OUT is OLD with PATCH applied; raises Failed."""
+    try:
+        r = subprocess.run(["zstd", "-q", "-d", "-f", f"--long={PATCH_WINDOW}", f"--patch-from={old}", patch, "-o", out],
+                           capture_output=True, text=True, timeout=300)
+    except (OSError, subprocess.SubprocessError) as e:
+        raise Failed("zstd couldn't apply the patch (" + str(e) + ")") from None
+    if r.returncode != 0:
+        raise Failed("zstd couldn't apply the patch (" + (r.stderr.strip().splitlines() or ["exit " + str(r.returncode)])[-1] + ")")
+
+
+def make_patch(old, new, out, level=19):
+    """The release builder's side: a zstd --patch-from patch turning OLD into NEW."""
+    r = subprocess.run(["zstd", "-q", "-f", f"-{level}", f"--long={PATCH_WINDOW}", f"--patch-from={old}", new, "-o", out],
+                       capture_output=True, text=True, timeout=1800)
+    if r.returncode != 0:
+        raise Failed("zstd couldn't make the patch (" + (r.stderr.strip().splitlines() or ["exit " + str(r.returncode)])[-1] + ")")
 
 
 def _read(path):
@@ -581,11 +761,13 @@ def _write_info(dest, name, info):
     os.replace(tmp, path)
 
 
-def swap_in(dest, files, info):
+def swap_in(dest, files, info, parts=None):
     """Installs FILES ({name: path}, already in DEST's file system) over the
     programs in DEST, one rename each; the replaced ones become <name>.prev.
-    The installed program is always whole: the old one or the new one."""
+    The installed program is always whole: the old one or the new one.
+    PARTS: each program's source key (part_keys), recorded with it."""
     for name, src in files.items():
+        info_n = dict(info, part=(parts or {}).get(name)) if parts is not None else info
         final = os.path.join(dest, name)
         os.chmod(src, 0o755)
         with open(src, "rb") as f:
@@ -606,8 +788,41 @@ def swap_in(dest, files, info):
             said = program_version(final)
             if said.startswith(name + " "):
                 extra["build"] = said
-        _write_info(dest, name, dict(info, at=int(time.time()), **extra))
+        _write_info(dest, name, dict(info_n, at=int(time.time()), **extra))
     _fsync_dir(dest)
+
+
+def keep_as_is(dest, names, tree, commit):
+    """Programs whose sources didn't change stay as they are, now recorded
+    as the build for TREE. Their .prev becomes this same program (with the
+    record it had), so going back with `restore` leaves them as they are
+    instead of bringing back an older one."""
+    for name in names:
+        final, ji = os.path.join(dest, name), os.path.join(dest, name + ".json")
+        if not os.path.exists(final):
+            continue
+        info = read_info(dest, name)
+        if info.get("tree") == tree:
+            continue
+        _keep(final, final + ".prev")
+        if os.path.exists(ji):
+            _keep(ji, os.path.join(dest, name + ".prev.json"))
+        _write_info(dest, name, dict(info, tree=tree, commit=commit, kept=True))
+    _fsync_dir(dest)
+
+
+def is_current(mode, info, path, tree, key, edited=False):
+    """Is the installed program (INFO, at PATH) the right one for the
+    sources (native/ TREE, its part KEY)? A ready-made one for the same
+    tree; one recorded with its part key when that key is the same (only
+    the other program changed); else, an older record, by the tree."""
+    if edited or not os.path.exists(path) or not accepts(mode, info):
+        return False
+    if info.get("source") == "ready-made" and tree and info.get("tree") == tree:
+        return True
+    if info.get("part"):
+        return bool(key) and info["part"] == key
+    return bool(tree) and info.get("tree") == tree
 
 
 def _remove(path):
@@ -703,16 +918,24 @@ def can_build(packages_coming=False, meminfo=None, free_disk=None, cargo=None):
     return {"build": {"ok": not reasons, "why": why}, "buildTuned": {"ok": not reasons, "why": why}}
 
 
-def run_build(stage, tuned, ui, say):
+def run_build(stage, tuned, ui, say, root=None):
     """tools/build-native.sh --stage: builds and copies the programs into
-    STAGE (TESSERA_NATIVE_BUILDER: another command, for tests). Returns
-    {name: path}; raises Failed."""
+    STAGE (TESSERA_NATIVE_BUILDER: another command, for tests). ROOT: the
+    checkout to build from (this one by default; the updater's staging
+    checkout of the new version). cargo's work is kept in the build cache
+    (cache_dir), with the same flags every time, so the next build only
+    compiles what changed. Returns {name: path}; raises Failed."""
+    root = root or REPO
     cmd = os.environ.get("TESSERA_NATIVE_BUILDER")
-    cmd = [cmd] if cmd else ["bash", os.path.join(REPO, "tools", "build-native.sh")]
-    env = dict(os.environ, **build_env(tuned))
+    cmd = [cmd] if cmd else ["bash", os.path.join(root, "tools", "build-native.sh")]
+    variant = local_variant(tuned)
+    target = cache_dir(variant)
+    if not os.environ.get("TESSERA_NATIVE_BUILDER"):
+        cache_prepare(target)
+    env = dict(build_flags(os.environ, variant), **build_env(tuned, repo=root, variant=variant))
+    env.update(TESSERA_CARGO_TARGET=target, TESSERA_CARGO_PROFILE="local")
     cmd += ["--stage", stage] + (["--tuned"] if tuned else []) + (["--ui"] if ui else [])
-    say("STEP Building " + ("tessera-ui and tessera-events" if ui else "tessera-events") + " here" + (", tuned" if tuned else "")
-        + (" (several minutes)" if ui else ""))
+    say("STEP Building " + ("tessera-ui and tessera-events" if ui else "tessera-events") + " here" + (", tuned" if tuned else ""))
     # Its output as it comes, on stderr (stdout is this program's JSON): the
     # build's progress (tools/build-progress.py) live on a terminal, line by
     # line for the installer and the updater; the last lines kept for why
@@ -732,16 +955,47 @@ def run_build(stage, tuned, ui, say):
     files = {n: os.path.join(stage, n) for n in PROGRAMS if os.path.isfile(os.path.join(stage, n))}
     if code != 0 or "tessera-events" not in files:
         raise Failed("it didn't build (" + build_error(last, code) + ")", "build")
+    if not os.environ.get("TESSERA_NATIVE_BUILDER"):
+        try:
+            cache_prune(target)
+        except OSError as e:
+            say("The build cache couldn't be pruned (" + str(e) + ")")
     return files
 
 
-def build_env(tuned, repo=None):
+# Environment that changes what cargo builds (and so throws away its cache
+# when it differs from one run to the next: a build started from a terminal
+# with RUSTFLAGS set, the next one from the shell without)
+FLAG_VARS = ("RUSTFLAGS", "CARGO_ENCODED_RUSTFLAGS", "CARGO_BUILD_RUSTFLAGS", "CARGO_TARGET_DIR", "CARGO_BUILD_TARGET_DIR",
+             "CARGO_PROFILE_RELEASE_LTO", "CARGO_PROFILE_RELEASE_CODEGEN_UNITS", "CARGO_BUILD_TARGET", "CARGO_INCREMENTAL")
+
+
+def local_variant(tuned):
+    """What a build here is for: "native" (tuned: this processor only), else
+    this processor's ready-made level, x86-64-v3 or generic, so it's the
+    same program the ready-made one is (19 Nov: a v3 laptop built generic)"""
+    return "native" if tuned else (detect_cpu() or "generic")
+
+
+def build_flags(environ, variant):
+    """ENVIRON with the same build flags every time: RUSTFLAGS only the
+    variant's target-cpu (x86-64-v3; the tuned build's native is added by
+    build-native.sh), no other flag or target-folder variables, incremental
+    compilation off (the profile's dependencies are what's worth keeping).
+    The same variant gives the same flags, run after run, so cargo's cache
+    stays good."""
+    env = {k: v for k, v in environ.items() if k not in FLAG_VARS and not k.startswith("CARGO_PROFILE_")}
+    env.update(RUSTFLAGS="-C target-cpu=x86-64-v3" if variant == "x86-64-v3" else "", CARGO_INCREMENTAL="0")
+    return env
+
+
+def build_env(tuned, repo=None, variant=None):
     """What a build here tells tessera-ui about itself (its build.rs, for
     `tessera-ui --version` and Settings → About): built locally, generic or
     tuned, and the channel when the checkout follows one (origin/main:
     stable, origin/beta: beta; any other branch: build.rs says "local build")."""
-    env = {"TESSERA_BUILD_KIND": "local", "TESSERA_BUILD_VARIANT": "native" if tuned else "generic"}
-    up = git("rev-parse", "--abbrev-ref", "@{u}", repo=repo) or ""
+    env = {"TESSERA_BUILD_KIND": "local", "TESSERA_BUILD_VARIANT": "native" if tuned else (variant or "generic")}
+    up = git("rev-parse", "--abbrev-ref", "@{u}", repo=repo) or git("rev-parse", "--abbrev-ref", "@{u}") or ""
     channel = {"main": "stable", "beta": "beta"}.get(up.split("/", 1)[1] if "/" in up else "")
     if channel:
         env["TESSERA_BUILD_CHANNEL"] = channel
@@ -761,6 +1015,220 @@ def build_error(last, code):
         pass
     lines = [x.strip() for x in last if x.strip() and not x.lstrip().startswith(("The whole log", "BUILD {"))]
     return lines[-1] if lines else "exit " + str(code)
+
+
+# ── The build cache ──────────────────────────────────────────────────────
+
+HASH16 = re.compile(r"[0-9a-f]{16}")
+
+
+def cache_root():
+    base = os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache")
+    return os.path.join(base, "tessera", "cargo")
+
+
+def cache_dir(variant):
+    """One cargo target folder per variant (native, x86-64-v3, generic),
+    outside the checkout (it survives the checkout moving, a fresh clone
+    and the updater's staging checkout)"""
+    return os.path.join(cache_root(), "tuned" if variant in (True, "native") else variant if variant in VARIANTS else "generic")
+
+
+def dir_size(path):
+    total = 0
+    stack = [path]
+    while stack:
+        p = stack.pop()
+        try:
+            with os.scandir(p) as it:
+                for e in it:
+                    try:
+                        if e.is_dir(follow_symlinks=False):
+                            stack.append(e.path)
+                        else:
+                            total += e.stat(follow_symlinks=False).st_size
+                    except OSError:
+                        pass
+        except (NotADirectoryError, FileNotFoundError, PermissionError):
+            pass
+    return total
+
+
+def legacy_targets(repo=None):
+    """Where builds here went before the cache: native/<crate>/target/release
+    and /tuned in the checkout, when Tessera's own build wrote them (its
+    build-progress stats are there)"""
+    out = []
+    for crate in ("tessera-ui", "tessera-events"):
+        t = os.path.join(repo or REPO, "native", crate, "target")
+        for sub, stats in (("release", os.path.join(t, "tessera-build-stats.json")), ("tuned", os.path.join(t, "tuned", "tessera-build-stats.json"))):
+            if os.path.isdir(os.path.join(t, sub)) and os.path.isfile(stats):
+                out.append(os.path.join(t, sub))
+    return out
+
+
+def cache_info(repo=None):
+    """{"path", "bytes"}: the build cache and the older builds' leftovers"""
+    dirs = [cache_root()] + legacy_targets(repo)
+    return {"path": cache_root(), "bytes": sum(dir_size(d) for d in dirs if os.path.isdir(d)), "dirs": [d for d in dirs if os.path.isdir(d)]}
+
+
+def cache_delete(dest=None, repo=None):
+    """Deletes the build cache (never while a build or install runs)"""
+    with Lock(dest or dest_dir()):
+        info = cache_info(repo)
+        for d in info["dirs"]:
+            shutil.rmtree(d, ignore_errors=True)
+        return info["bytes"]
+
+
+def toolchain():
+    """rustc -vV: the toolchain the cache was made with"""
+    try:
+        r = subprocess.run(["rustc", "-vV"], capture_output=True, text=True, timeout=30)
+        return r.stdout.strip() if r.returncode == 0 else ""
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def cache_prepare(target, now_toolchain=None):
+    """Before a build: a cache made by another Rust toolchain is stale
+    through and through (cargo rebuilds all of it), so it goes rather than
+    sit beside the new one. 19 Nov: rust 1.99 → 1.100 the evening before an
+    update made it compile every crate again."""
+    tc = toolchain() if now_toolchain is None else now_toolchain
+    stamp = os.path.join(target, "tessera-toolchain")
+    if os.path.isdir(target) and tc and _read(stamp).strip() != tc:
+        shutil.rmtree(target, ignore_errors=True)
+    os.makedirs(target, exist_ok=True)
+    if tc:
+        with open(stamp, "w") as f:
+            f.write(tc + "\n")
+
+
+def used_hashes(target):
+    """The unit hashes the last build used (build-progress.py writes every
+    artifact and build-script output folder cargo named, fresh or rebuilt,
+    to tessera-build-used-<label>.json)"""
+    used, found = set(), False
+    try:
+        names = os.listdir(target)
+    except OSError:
+        return used, False
+    for n in names:
+        if n.startswith("tessera-build-used-") and n.endswith(".json"):
+            try:
+                with open(os.path.join(target, n)) as f:
+                    paths = json.load(f)
+            except (OSError, ValueError):
+                continue
+            found = True
+            for p in paths if isinstance(paths, list) else []:
+                used.update(HASH16.findall(str(p)))
+    return used, found
+
+
+def _units(profile_dir):
+    """(path, hashes) of each unit's files and folders: deps/<x>-<hash>.*,
+    .fingerprint/<pkg>-<hash>, build/<pkg>-<hash> and, in cargo's newer
+    layout, build/<pkg>/<hash>"""
+    for top in ("deps", ".fingerprint", "build"):
+        d = os.path.join(profile_dir, top)
+        try:
+            entries = list(os.scandir(d))
+        except OSError:
+            continue
+        for e in entries:
+            hs = HASH16.findall(e.name)
+            if hs:
+                yield e.path, hs
+            elif e.is_dir(follow_symlinks=False):
+                try:
+                    for c in os.scandir(e.path):
+                        ch = HASH16.findall(c.name)
+                        if ch:
+                            yield c.path, ch
+                except OSError:
+                    pass
+
+
+def cache_prune(target, cap=None):
+    """After a build, the cache back under CAP: first the units of TARGET
+    that the build didn't use (old versions of crates, other features),
+    then the other variants' folders. Returns the bytes freed."""
+    cap = CACHE_CAP if cap is None else cap
+    root = os.path.dirname(target)
+    total = dir_size(root)
+    if total <= cap:
+        return 0
+    freed = 0
+    used, known = used_hashes(target)
+    if known:
+        for prof in os.listdir(target):
+            pd = os.path.join(target, prof)
+            if not os.path.isdir(pd):
+                continue
+            for path, hs in list(_units(pd)):
+                if not any(h in used for h in hs):
+                    n = dir_size(path) if os.path.isdir(path) else os.path.getsize(path)
+                    shutil.rmtree(path, ignore_errors=True) if os.path.isdir(path) else _remove(path)
+                    freed += n
+    if total - freed > cap:
+        for other in sorted(os.listdir(root)):
+            p = os.path.join(root, other)
+            if p != target and os.path.isdir(p):
+                n = dir_size(p)
+                shutil.rmtree(p, ignore_errors=True)
+                freed += n
+                if total - freed <= cap:
+                    break
+    return freed
+
+
+# ── A new build that doesn't start: back to the one before ───────────────
+
+def state_home():
+    return os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"), "tessera")
+
+
+def bad_path():
+    return os.path.join(state_home(), "bad-builds.json")
+
+
+def bad_trees():
+    """native/ trees whose build didn't start here (not offered again)"""
+    try:
+        with open(bad_path()) as f:
+            d = json.load(f)
+        return [t for t in d.get("trees", []) if isinstance(t, str)] if isinstance(d, dict) else []
+    except (OSError, ValueError):
+        return []
+
+
+def mark_bad(tree):
+    if not tree:
+        return
+    trees = [t for t in bad_trees() if t != tree][-19:] + [tree]
+    os.makedirs(state_home(), exist_ok=True)
+    _write_info(state_home(), "bad-builds", {"trees": trees})
+
+
+def rollback(dest=None):
+    """launch-shell.sh, when the shell an update just installed didn't stay
+    up: the previous build back (restore), the one it replaces marked bad,
+    and a note for the shell to say so ("Back on …"). Raises Failed."""
+    dest = dest or dest_dir()
+    with Lock(dest):
+        if not os.path.exists(os.path.join(dest, "tessera-ui.prev")):
+            raise Failed("there's no previous build to go back to", "missing")
+        gone = read_info(dest, "tessera-ui")
+        done = _restore(dest, PROGRAMS)
+        back = read_info(dest, "tessera-ui")
+        mark_bad(gone.get("tree"))
+        os.makedirs(state_home(), exist_ok=True)
+        _write_info(state_home(), "rolled-back", {"from": gone.get("build") or gone.get("tree", ""), "tree": gone.get("tree"),
+                                                  "to": back.get("build") or back.get("tree", ""), "at": int(time.time())})
+        return {"restored": done, "bad": gone.get("tree"), "back": back.get("build", "")}
 
 
 # ── install ──────────────────────────────────────────────────────────────
@@ -791,10 +1259,82 @@ def install(mode=None, ui=False, offline=False, only_prev=False, dest=None, repo
                     message="Kept the installed " + ("build" if cur else "programs (none yet)") + ": " + e.why)
 
 
+def _accepts_kw(fn, name):
+    import inspect
+    try:
+        ps = inspect.signature(fn).parameters
+    except (TypeError, ValueError):
+        return False
+    return name in ps or any(p.kind == p.VAR_KEYWORD for p in ps.values())
+
+
+def _todo(mode, names, tree, keys, edited, dest):
+    """The programs that need another build for these sources"""
+    return [n for n in names if not is_current(mode, read_info(dest, n), os.path.join(dest, n), tree, keys.get(n), edited)]
+
+
+def _have(dest, names):
+    """The installed build, for patches: its tree, variant and programs"""
+    info = read_info(dest, "tessera-ui") or read_info(dest, "tessera-events")
+    return {"tree": info.get("tree"), "variant": info.get("variant"),
+            "programs": {n: os.path.join(dest, n) for n in names if os.path.exists(os.path.join(dest, n))}}
+
+
+def _produce(mode, tree, commit, edited, build_ui, todo, offline, dest, repo, say, builder, fetcher, into, source=None):
+    """The programs TODO for these sources, into INTO (in DEST's file
+    system): the ready-made build (by a patch when there is one), else built
+    here. Returns (files, info, fallback); raises Failed."""
+    fallback = ""
+    if mode == "auto":
+        why = ("this checkout has edits of its own in native/" if edited else
+               "this copy of Tessera isn't a git checkout" if not tree else
+               "offline" if offline else "")
+        if not why:
+            variant = detect_cpu()
+            say("STEP Getting tessera-ui (ready-made" + (", " + SHORT[variant] if variant else "") + ")")
+            work = os.path.join(dest, ".incoming-" + secrets.token_hex(4))
+            try:
+                kw = {"repo": repo}
+                if _accepts_kw(fetcher, "want"):
+                    kw.update(want=todo, have=_have(dest, todo), say=say)
+                got = fetcher(tree, commit, variant, work, **kw)
+                os.makedirs(into, exist_ok=True)
+                files = {}
+                for n in todo:
+                    if n in got["files"]:
+                        os.replace(got["files"][n], os.path.join(into, n))
+                        files[n] = os.path.join(into, n)
+                return files, got["info"], ""
+            except Failed as e:
+                why = e.why
+                if e.kind == "refused":
+                    say("! The ready-made build was refused: " + e.why)
+            finally:
+                shutil.rmtree(work, ignore_errors=True)
+        fallback = why
+        say("No ready-made build: " + why + ". Building here instead.")
+    tuned = mode == "buildTuned"
+    os.makedirs(into, exist_ok=True)
+    build = builder
+    if source and builder is run_build:
+        build = lambda s, t, u, sy: run_build(s, t, u, sy, root=source)  # noqa: E731
+    try:
+        files = build(into, tuned, build_ui, say)
+    except Failed as e:
+        raise Failed(e.why + (" (and no ready-made build: " + fallback + ")" if fallback else ""), e.kind) from None
+    info = {"source": "built-tuned" if tuned else "built", "variant": local_variant(tuned),
+            "tree": tree if not edited else None, "commit": commit, "edited": edited}
+    # (a program whose sources didn't change stays as it is, built or not)
+    files = {n: p for n, p in files.items() if n in todo}
+    return files, info, fallback
+
+
 def _install(out, mode, tree, commit, edited, build_ui, names, offline, only_prev, dest, repo, say, builder, fetcher):
-    cur = {n: read_info(dest, n) for n in names}
-    if tree and not edited and all(cur[n].get("tree") == tree and accepts(mode, cur[n]) and os.path.exists(os.path.join(dest, n)) for n in names):
-        info = cur[names[0]]
+    keys = part_keys("HEAD", repo) if tree and not edited else {n: None for n in PROGRAMS}
+    todo = _todo(mode, names, tree, keys, edited, dest)
+    if tree and not edited and not todo:
+        keep_as_is(dest, names, tree, commit)
+        info = read_info(dest, names[0])
         return dict(out, ok=True, source=info.get("source"), variant=info.get("variant"), label=label(info),
                     message="Already installed (" + label(info) + ")")
     # The code went back to the version of the .prev build: it comes back
@@ -806,43 +1346,21 @@ def _install(out, mode, tree, commit, edited, build_ui, names, offline, only_pre
                     message="The previous build is back (" + label(info) + ")")
     if only_prev:
         raise Failed("the previous build isn't for this version", "missing")
-    fallback = ""
-    if mode == "auto":
-        why = ("this checkout has edits of its own in native/" if edited else
-               "this copy of Tessera isn't a git checkout" if not tree else
-               "offline" if offline else "")
-        if not why:
-            variant = detect_cpu()
-            say("STEP Getting tessera-ui (ready-made" + (", " + SHORT[variant] if variant else "") + ")")
-            work = os.path.join(dest, ".incoming-" + secrets.token_hex(4))
-            try:
-                got = fetcher(tree, commit, variant, work, repo=repo)
-                swap_in(dest, got["files"], got["info"])
-                info = got["info"]
-                return dict(out, ok=True, changed=True, source="ready-made", variant=info["variant"], label=label(info),
-                            message="Installed the ready-made build (" + label(info) + ")")
-            except Failed as e:
-                why = e.why
-                if e.kind == "refused":
-                    say("! The ready-made build was refused: " + e.why)
-            finally:
-                shutil.rmtree(work, ignore_errors=True)
-        fallback = why
-        say("No ready-made build: " + why + ". Building here instead.")
-    tuned = mode == "buildTuned"
-    stage = os.path.join(dest, ".built-" + secrets.token_hex(4))
-    os.makedirs(stage)
+    into = os.path.join(dest, ".built-" + secrets.token_hex(4))
     try:
-        try:
-            files = builder(stage, tuned, build_ui, say)
-        except Failed as e:
-            raise Failed(e.why + (" (and no ready-made build: " + fallback + ")" if fallback else ""), e.kind) from None
-        info = {"source": "built-tuned" if tuned else "built", "variant": "native" if tuned else "generic",
-                "tree": tree if not edited else None, "commit": commit, "edited": edited}
-        swap_in(dest, files, info)
+        files, info, fallback = _produce(mode, tree, commit, edited, build_ui, todo, offline, dest, repo, say, builder, fetcher, into)
+        swap_in(dest, files, info, parts=keys)
+        if tree and not edited:
+            keep_as_is(dest, [n for n in names if n not in files], tree, commit)
+        how = info.get("how")
+        if info.get("source") == "ready-made":
+            msg = "Installed the ready-made build (" + label(info) + ")" + (", from a patch" if how == "patch" else "")
+        else:
+            msg = "Built here (" + label(info) + ")"
         res = dict(out, ok=True, changed=True, source=info["source"], variant=info["variant"], label=label(info),
-                   fallback=fallback, message="Built here (" + label(info) + ")")
-        if build_ui and "tessera-ui" not in files:
+                   fallback=fallback, message=msg, how=how, bytes=info.get("bytes", 0),
+                   installed=sorted(files), kept=[n for n in names if n not in files])
+        if build_ui and "tessera-ui" in todo and "tessera-ui" not in files and info.get("source") != "ready-made":
             # (tessera-events is in; the installed tessera-ui, if any, stays)
             res.update(ok=False, kind="build", why="tessera-ui didn't build",
                        message="Built tessera-events here; tessera-ui didn't build, so the shell draws everything in QML meanwhile"
@@ -850,7 +1368,116 @@ def _install(out, mode, tree, commit, edited, build_ui, names, offline, only_pre
                        "Built tessera-events here; tessera-ui didn't build, so the installed one stays")
         return res
     finally:
-        shutil.rmtree(stage, ignore_errors=True)
+        shutil.rmtree(into, ignore_errors=True)
+
+
+# ── Staging: the next version's programs, ready beside the installed ones ─
+
+def staged_dir(dest=None):
+    return os.path.join(dest or dest_dir(), ".staged")
+
+
+def read_staged(dest=None):
+    try:
+        with open(os.path.join(staged_dir(dest), "staged.json")) as f:
+            s = json.load(f)
+            return s if isinstance(s, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def discard_staged(dest=None):
+    shutil.rmtree(staged_dir(dest), ignore_errors=True)
+
+
+def stage(ref, mode=None, ui=False, source=None, dest=None, repo=None, say=None, builder=None, fetcher=None, config=None):
+    """The programs for REF made ready in DEST/.staged (installs nothing:
+    the running shell keeps its programs), for `install --staged` when the
+    checkout is at REF. Only the programs whose sources change are fetched
+    (by a patch when there is one) or built (from SOURCE, a checkout of
+    REF). Returns {"ok", "staged", "kept", "how", "bytes", "label", "why"}."""
+    say = say or (lambda s: print(s[5:] if s.startswith("STEP ") else s, file=sys.stderr, flush=True))
+    config = load_config() if config is None else config
+    mode = mode if mode in MODES else configured_mode(config)
+    dest = dest or dest_dir()
+    builder = builder or run_build
+    fetcher = fetcher or fetch
+    tree, commit, _ = native_tree(ref, repo)
+    build_ui = ui or ui_in_use(config)
+    names = [n for n in PROGRAMS if n == "tessera-events" or build_ui or (mode == "auto" and os.path.exists(os.path.join(dest, n)))]
+    out = {"ok": False, "mode": mode, "tree": tree, "commit": commit, "staged": [], "kept": [], "why": ""}
+    if not tree:
+        return dict(out, why="this copy of Tessera isn't a git checkout", kind="missing")
+    keys = part_keys(ref, repo)
+    try:
+        with Lock(dest):
+            sdir = staged_dir(dest)
+            shutil.rmtree(sdir, ignore_errors=True)
+            todo = _todo(mode, names, tree, keys, False, dest)
+            record = {"format": 1, "tree": tree, "commit": commit, "keys": keys, "names": names, "mode": mode,
+                      "files": {}, "keep": [n for n in names if n not in todo], "at": int(time.time())}
+            prev = {n: read_info(dest, n, prev=True) for n in names}
+            if todo and all(prev[n].get("tree") == tree and accepts(mode, prev[n]) and os.path.exists(os.path.join(dest, n + ".prev")) for n in names):
+                record.update(prev=True, keep=[])  # (going back: the .prev build is it)
+                todo = []
+                info = prev[names[0]]
+                how, got = "prev", 0
+            elif todo:
+                files, info, _ = _produce(mode, tree, commit, False, build_ui, todo, False, dest, repo, say, builder, fetcher,
+                                          os.path.join(sdir, "bin"), source=source)
+                record["files"] = {n: os.path.relpath(p, sdir) for n, p in files.items()}
+                record["info"] = info
+                record["keep"] = [n for n in names if n not in files]
+                todo = sorted(files)
+                how, got = info.get("how") or "build", info.get("bytes", 0)
+            else:
+                info = read_info(dest, names[0])
+                how, got = "none", 0
+            os.makedirs(sdir, exist_ok=True)
+            _write_info(sdir, "staged", record)
+            return dict(out, ok=True, staged=todo, kept=record["keep"], how=how, bytes=got, label=label(info) if info else "",
+                        message=("Nothing to change: " + ", ".join(names) + " stay as they are") if not todo and not record.get("prev") else
+                        "Ready: " + ", ".join(todo or names))
+    except Failed as e:
+        discard_staged(dest)
+        return dict(out, why=e.why, kind=e.kind, message="Couldn't get the new programs ready: " + e.why)
+
+
+def install_staged(dest=None, repo=None):
+    """`install --staged`: the staged programs swapped in, when the checkout
+    is now at the version they were staged for. Never leaves a half-done
+    program; on a mismatch nothing changes."""
+    dest = dest or dest_dir()
+    tree, commit, edited = native_tree("HEAD", repo)
+    out = {"ok": False, "changed": False, "tree": tree, "commit": commit, "why": ""}
+    try:
+        with Lock(dest):
+            s = read_staged(dest)
+            if not s:
+                raise Failed("nothing is staged", "missing")
+            if s.get("tree") != tree or edited:
+                raise Failed("the staged programs are for another version", "refused")
+            names = s.get("names") or list(PROGRAMS)
+            if s.get("prev"):
+                _restore(dest, names)
+                info = read_info(dest, names[0])
+                return dict(out, ok=True, changed=True, label=label(info), message="The previous build is back (" + label(info) + ")")
+            sdir = staged_dir(dest)
+            files = {n: os.path.join(sdir, rel) for n, rel in (s.get("files") or {}).items()}
+            for n, p in files.items():
+                if not os.path.isfile(p):
+                    raise Failed(f"the staged {n} is missing", "missing")
+            swap_in(dest, files, s.get("info") or {}, parts=s.get("keys") or {})
+            keep_as_is(dest, s.get("keep") or [], tree, commit)
+            info = read_info(dest, names[0])
+            return dict(out, ok=True, changed=bool(files), installed=sorted(files), kept=s.get("keep") or [], label=label(info),
+                        message="Installed " + (", ".join(sorted(files)) or "nothing new"))
+    except Failed as e:
+        return dict(out, why=e.why, kind=e.kind, message="Kept the installed programs: " + e.why)
+    finally:
+        s = read_staged(dest)
+        if not s or s.get("tree") == tree:
+            discard_staged(dest)
 
 
 def plan(ref="HEAD", online=False, mode=None, dest=None, repo=None, config=None, channel=None):
@@ -863,8 +1490,12 @@ def plan(ref="HEAD", online=False, mode=None, dest=None, repo=None, config=None,
     tree, commit, edited = native_tree(ref, repo)
     variant = detect_cpu()
     cur = read_info(dest, "tessera-ui") or read_info(dest, "tessera-events")
-    changes = not (tree and cur.get("tree") == tree and accepts(mode, cur))
-    out = {"mode": mode, "variant": variant, "tree": tree, "commit": commit, "changes": changes, "available": None}
+    keys = part_keys(ref, repo) if tree else {n: None for n in PROGRAMS}
+    names = [n for n in PROGRAMS if os.path.exists(os.path.join(dest, n))] or list(PROGRAMS)
+    todo = _todo(mode, names, tree, keys, edited and ref == "HEAD", dest)
+    changes = bool(todo) or not tree
+    out = {"mode": mode, "variant": variant, "tree": tree, "commit": commit, "changes": changes, "available": None,
+           "parts": todo, "kept": [n for n in names if n not in todo]}
     if mode == "build":
         return dict(out, label="tessera-ui: built here")
     if mode == "buildTuned":
@@ -910,7 +1541,11 @@ def status(dest=None):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["install", "fetch", "plan", "status", "restore", "cpu", "can-build"])
+    ap.add_argument("command", choices=["install", "fetch", "plan", "status", "restore", "cpu", "can-build", "stage", "cache", "rollback", "bad"])
+    ap.add_argument("--staged", action="store_true", help="install: the staged programs (native-install.py stage)")
+    ap.add_argument("--source", help="stage: a checkout of REF to build from when it must be built here")
+    ap.add_argument("--delete", action="store_true", help="cache: delete the build cache")
+    ap.add_argument("--discard", action="store_true", help="stage: forget what's staged")
     ap.add_argument("--mode", choices=MODES)
     ap.add_argument("--ui", action="store_true", help="install: tessera-ui too when built here, even before Settings uses it")
     ap.add_argument("--offline", action="store_true", help="install: no download (a .prev build or building here)")
@@ -961,7 +1596,43 @@ def main(argv=None):
             return 1
         finally:
             shutil.rmtree(work, ignore_errors=True)
+    if a.command == "rollback":
+        try:
+            r = rollback()
+        except Failed as e:
+            emit({"ok": False, "why": e.why}, "No: " + e.why)
+            return 1
+        emit(dict(r, ok=True), "Back to the previous build")
+        return 0
+    if a.command == "bad":
+        tree = native_tree(a.ref)[0]
+        emit({"tree": tree, "bad": tree in bad_trees()}, "bad" if tree in bad_trees() else "ok")
+        return 0
+    if a.command == "cache":
+        if a.delete:
+            try:
+                freed = cache_delete()
+            except Failed as e:
+                emit({"ok": False, "why": e.why, "kind": e.kind}, "No: " + e.why)
+                return 1
+            emit({"ok": True, "freed": freed}, "Deleted the build cache (" + mb(freed) + ")")
+            return 0
+        c = cache_info()
+        emit({"path": c["path"], "bytes": c["bytes"]}, c["path"] + ": " + mb(c["bytes"]))
+        return 0
     say = (lambda s: print(s, file=sys.stderr, flush=True)) if a.progress else None
+    if a.command == "stage":
+        if a.discard:
+            discard_staged()
+            emit({"ok": True}, "Nothing staged")
+            return 0
+        r = stage(a.ref, a.mode, ui=a.ui, source=a.source, say=say)
+        emit(r, r.get("message") or r.get("why"))
+        return 0 if r["ok"] else 1
+    if a.staged:
+        r = install_staged()
+        emit(r, r.get("message") or r.get("why"))
+        return 0 if r["ok"] else 1
     r = install(a.mode, ui=a.ui, offline=a.offline, only_prev=a.only_prev, say=say)
     emit(r, r.get("message") or r.get("why"))
     return 0 if r["ok"] else 1
