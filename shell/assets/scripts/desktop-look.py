@@ -501,6 +501,41 @@ def remove_block(d, path, created):
         d.write(path, new.rstrip("\n") + "\n" if new.strip() else "", "took Tessera's lines out of " + home(path))
 
 
+# ── Sign-ins kept: Electron and Chromium apps told which keyring to use ──
+# They pick one from the desktop's name and don't know "Hyprland", so on a
+# fresh install VS Code, Discord, Chrome… saved sign-ins nowhere and asked
+# again every start (19 Nov: system1; the user's own laptop had these lines)
+FLAG_FILES = ("code-flags.conf", "electron-flags.conf", "chrome-flags.conf", "chromium-flags.conf",
+              "brave-flags.conf", "thorium-flags.conf", "discord-flags.conf")
+KEYRING_BLOCK = BEGIN + "\n--password-store=gnome-libsecret\n" + END + "\n"
+
+
+def keyring_ready():
+    """gnome-keyring (or another Secret Service) is there to keep them"""
+    return which("gnome-keyring-daemon") or which("kwalletd6") or which("keepassxc")
+
+
+def apply_keyring(p, d, created):
+    notes = []
+    if not keyring_ready():
+        return ["! No keyring is installed, so apps can't keep sign-ins (sudo pacman -S gnome-keyring)"]
+    for name in FLAG_FILES:
+        path = os.path.join(p.cfg, name)
+        cur = read(path) or ""
+        # (a --password-store of your own wins)
+        if "--password-store" in strip_block(cur):
+            continue
+        if add_block(d, path, KEYRING_BLOCK):
+            created.add(name)
+    notes.append("apps: sign-ins kept in your keyring (VS Code, Chrome, Discord and other Electron apps)")
+    return notes
+
+
+def restore_keyring(p, d, created):
+    for name in FLAG_FILES:
+        remove_block(d, os.path.join(p.cfg, name), name in created)
+
+
 # ── kitty ──
 def kitty_ours(nerd):
     font = "JetBrainsMono Nerd Font" if nerd else "JetBrains Mono"
@@ -826,6 +861,8 @@ def apply(p, state, d):
             created.add("kitty.conf")
         notes.append("kitty: Tessera's font, cursor and padding (your kitty.conf's own lines win)")
 
+    notes += apply_keyring(p, d, created)
+
     if not have_starship:
         notes.append("! starship isn't installed: the prompt comes once it is (sudo pacman -S starship)")
     if not nerd:
@@ -854,6 +891,7 @@ def restore(p, state, d):
     remove_block(d, p.bashrc, "bashrc" in created)
     remove_block(d, p.kitty_conf, "kitty.conf" in created)
     d.remove(p.kitty_ours, "removed " + home(p.kitty_ours))
+    restore_keyring(p, d, created)
     state.pop("starship", None)
     state["created"] = []
     notes.append("Your apps and terminal are as they were (the copies kept as *" + BACKUP + " stay)")

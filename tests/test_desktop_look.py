@@ -269,3 +269,27 @@ else: d[sys.argv[3]] = sys.argv[4]; json.dump(d, open(f, "w"))
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Keyring(Home):
+    """Electron and Chromium apps told to keep sign-ins in the keyring (19 Nov)"""
+
+    def test_flags_written_kept_and_restored(self):
+        self.fake("gnome-keyring-daemon", "exit 0\n")
+        self.put(".config/chrome-flags.conf", "--ozone-platform-hint=wayland\n")
+        self.put(".config/thorium-flags.conf", "--password-store=basic\n")  # (the user's own choice)
+        self.run_look("install")
+        self.assertIn("--password-store=gnome-libsecret", self.text(".config/code-flags.conf"))
+        chrome = self.text(".config/chrome-flags.conf")
+        self.assertIn("--ozone-platform-hint=wayland", chrome)
+        self.assertIn("--password-store=gnome-libsecret", chrome)
+        self.assertNotIn("gnome-libsecret", self.text(".config/thorium-flags.conf"))
+        self.run_look("install")  # (once, however often)
+        self.assertEqual(self.text(".config/chrome-flags.conf").count("--password-store"), 1)
+        self.run_look("off")
+        self.assertIsNone(self.text(".config/code-flags.conf"))
+        self.assertEqual(self.text(".config/chrome-flags.conf").strip(), "--ozone-platform-hint=wayland")
+
+    def test_no_keyring_no_flags(self):
+        self.run_look("install")
+        self.assertIsNone(self.text(".config/code-flags.conf"))
