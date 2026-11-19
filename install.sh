@@ -1342,7 +1342,10 @@ verify() {
     # Inside a running Tessera session: the live parts
     if [[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]] && command -v hyprctl >/dev/null; then
         hyprctl tessera-glass ping 2>/dev/null | grep -q tessera-glass && ok "Glass plugin loaded in Hyprland" || meh "The glass plugin isn't loaded in this session" "tessera rebuild --load"
-        if pgrep -af '(^|/)(tessera-shell|qs|quickshell) ' | grep -qi -e tessera; then
+        # (the Rust shell, tessera-ui --standalone, is the shell since it became
+        # the default; only the QML one was looked for, so every install said
+        # it wasn't running: 19 Nov)
+        if pgrep -af '(^|/)(tessera-shell|qs|quickshell) ' | grep -qi -e tessera || pgrep -af '(^|/)tessera-ui .*--standalone' >/dev/null; then
             ok "The Tessera shell is running"
         else
             bad "The Tessera shell isn't running" "tessera repair"
