@@ -1886,11 +1886,32 @@ def _group_alive(pgid):
     return False
 
 
+
+def hold_awake(why):
+    """The screen stays on and the computer awake while an update runs:
+    a systemd idle and sleep inhibitor (hypridle honours it), let go when
+    this process ends. 19 Nov: the screen went off in the middle of one.
+    None when systemd-inhibit isn't there."""
+    import shutil as _sh
+    if not _sh.which("systemd-inhibit") or os.environ.get("TESSERA_NO_INHIBIT") == "1":
+        return None
+    try:
+        p = subprocess.Popen(["systemd-inhibit", "--what=idle:sleep", "--who=Tessera", "--why=" + why, "--mode=block",
+                              "sh", "-c", "while kill -0 \"$1\" 2>/dev/null; do sleep 5; done", "sh", str(os.getpid())],
+                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    except OSError:
+        return None
+    import atexit
+    atexit.register(lambda: p.poll() is None and p.terminate())
+    return p
+
+
 def run_stage(a, config_dir, choices):
     """The `stage` command: the job's status kept as it goes; cancelled by
     SIGTERM (cancel_job), it leaves nothing staged"""
     import signal
     job = Job()
+    awake = hold_awake("Updating Tessera")  # noqa: F841 (held while this runs)
     write_json(os.path.join(job.dir, "request.json"), {"config": config_dir, "choices": choices, "rebuild": a.rebuild, "channel": a.channel})
 
     def stop(*_):

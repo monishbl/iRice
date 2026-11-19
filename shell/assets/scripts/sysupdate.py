@@ -1059,6 +1059,26 @@ def background():
         subprocess.run(["ionice", "-c", "3", "-p", str(os.getpid())], capture_output=True)
 
 
+
+def hold_awake(why):
+    """The screen stays on and the computer awake while an update runs:
+    a systemd idle and sleep inhibitor (hypridle honours it), let go when
+    this process ends. 19 Nov: the screen went off in the middle of one.
+    None when systemd-inhibit isn't there."""
+    import shutil as _sh
+    if not _sh.which("systemd-inhibit") or os.environ.get("TESSERA_NO_INHIBIT") == "1":
+        return None
+    try:
+        p = subprocess.Popen(["systemd-inhibit", "--what=idle:sleep", "--who=Tessera", "--why=" + why, "--mode=block",
+                              "sh", "-c", "while kill -0 \"$1\" 2>/dev/null; do sleep 5; done", "sh", str(os.getpid())],
+                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    except OSError:
+        return None
+    import atexit
+    atexit.register(lambda: p.poll() is None and p.terminate())
+    return p
+
+
 def run(fake, plan):
     global log
     os.makedirs(DIR, exist_ok=True)
@@ -1068,6 +1088,7 @@ def run(fake, plan):
     except BlockingIOError:
         print("already running", file=sys.stderr)
         return 1
+    awake = hold_awake("Updating system packages")  # noqa: F841 (held while this runs)
     log = open(LOG, "w")
     background()
     for f in (AUTH, os.path.join(DIR, "cancel")):
