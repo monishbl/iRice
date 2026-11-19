@@ -518,3 +518,51 @@ mod tests {
         assert_eq!(showing_now(&chosen, true), "/pictures/sea.jpg");
     }
 }
+
+
+/// The blurred copy of a display's wallpaper that Today (the day greeting)
+/// shows behind itself: `backdrop-<output>.png` in the cache. The QML shell
+/// made it; the Rust shell didn't, so Today kept showing the wallpaper of
+/// the last QML day (19 Nov: a picture from 6 Nov). Small (an eighth of the
+/// screen) and blurred, as Wallpaper.qml's was.
+pub fn backdrop_path(output: &str) -> PathBuf {
+    cache_dir().join(format!("backdrop-{output}.png"))
+}
+
+/// Make `backdrop_path(output)` from the picture `src` for a screen of `px`
+/// pixels; written whole (a temporary file renamed), so a reader never sees
+/// half of it. Errors leave the old one.
+pub fn bake_backdrop(src: &str, output: &str, px: (u32, u32)) -> std::io::Result<()> {
+    let img = image::open(src).map_err(std::io::Error::other)?;
+    let out = backdrop_image(&img, px);
+    let dest = backdrop_path(output);
+    if let Some(d) = dest.parent() {
+        std::fs::create_dir_all(d)?;
+    }
+    let tmp = dest.with_extension("png.tmp");
+    out.save_with_format(&tmp, image::ImageFormat::Png).map_err(std::io::Error::other)?;
+    std::fs::rename(&tmp, &dest)
+}
+
+/// The picture covering a screen of `px`, at an eighth of its size, blurred
+pub fn backdrop_image(img: &image::DynamicImage, px: (u32, u32)) -> image::RgbaImage {
+    let (w, h) = ((px.0 / 8).max(16), (px.1 / 8).max(16));
+    let cover = img.resize_to_fill(w, h, image::imageops::FilterType::Triangle);
+    image::imageops::blur(&cover.to_rgba8(), 6.0)
+}
+
+#[cfg(test)]
+mod backdrop_tests {
+    #[test]
+    fn backdrop_is_an_eighth_and_blurred() {
+        let mut img = image::RgbaImage::new(800, 400);
+        for (x, _, p) in img.enumerate_pixels_mut() {
+            *p = if x < 400 { image::Rgba([0, 0, 0, 255]) } else { image::Rgba([255, 255, 255, 255]) };
+        }
+        let out = super::backdrop_image(&image::DynamicImage::ImageRgba8(img), (1920, 1080));
+        assert_eq!((out.width(), out.height()), (240, 135));
+        // (the hard edge in the middle is softened)
+        let mid = out.get_pixel(120, 60)[0];
+        assert!(mid > 20 && mid < 235, "{mid}");
+    }
+}

@@ -239,6 +239,14 @@ impl Background {
             if sc.asked != (want.clone(), sc.px) {
                 sc.asked = (want.clone(), sc.px);
                 sc.pending = true;
+                // Today's blurred backdrop of this screen, from the same picture
+                // (wallpaper::bake_backdrop; a live wallpaper's poster is a picture too)
+                let (src, output, px) = (want.clone(), sc.output.clone(), sc.px);
+                std::thread::spawn(move || {
+                    if let Err(e) = wallpaper::bake_backdrop(&src, &output, px) {
+                        eprintln!("tessera-ui: wallpaper: no blurred backdrop for {output} ({e})");
+                    }
+                });
             }
         }
         // (one decode per picture and size, the newest wishes only)
