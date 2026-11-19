@@ -153,31 +153,23 @@ class Plan(unittest.TestCase):
         self.assertEqual(got["gpu-nvidia-video"]["packages"], ["libva-nvidia-driver"])
         self.assertFalse(got["gpu-nvidia-video"]["ask"])
 
-    def test_biometrics_each_asked(self):
+    def test_biometrics_are_features_now(self):
+        # (the fingerprint reader and face unlock: the Features step, features.py)
         got = self.items(fingerprint={"id": "0a5c:5843", "name": "Broadcom ControlVault 3", "repo": [],
                                       "aur": ["libfprint-tod", "libfprint-2-tod1-broadcom", "fprintd"]},
                          ir_camera={"path": "/dev/v4l/by-path/x", "name": "Integrated IR Webcam"})
-        self.assertTrue(got["fingerprint"]["ask"])
-        self.assertEqual(got["fingerprint"]["aur"], ["libfprint-tod", "libfprint-2-tod1-broadcom", "fprintd"])
-        self.assertTrue(got["face"]["ask"])
-        self.assertFalse(got["face"]["ticked"])
-        self.assertEqual(got["face"]["aur"], ["howdy-next"])
-        # An unsupported reader, or Howdy already there: nothing
-        got = self.items(fingerprint={"id": "27c6:55a4", "name": "Goodix fingerprint reader", "unsupported": True, "repo": [], "aur": []},
-                         ir_camera={"path": "/dev/video2", "name": "IR"}, installed=["linux-firmware", "howdy-next"])
         self.assertNotIn("fingerprint", got)
         self.assertNotIn("face", got)
+        self.assertNotIn("Biometrics", self.hw.GROUPS)
 
     def test_build_items_are_always_done(self):
         got = self.items()
-        for i in ("build-plugin", "build-native", "build-shaders"):
+        for i in ("build-native", "build-shaders"):
             self.assertTrue(got[i]["locked"])
-        self.assertIn("0.56.2", got["build-plugin"]["title"])
+        self.assertNotIn("build-plugin", got)  # (the glass plugin is a feature: it can be left out)
 
     def test_tuning(self):
-        self.assertIn("power", self.items())
-        self.assertNotIn("power", self.items(power_manager="tlp"))
-        self.assertNotIn("power", self.items(laptop=False))
+        self.assertNotIn("power", self.items())  # (energy modes are a feature)
         self.assertFalse(self.items()["thermald"]["ticked"])
         self.assertNotIn("thermald", self.items(cpu="amd"))
         screen = {"name": "eDP-1", "width": 2880, "height": 1800, "mm": (290, 180), "internal": True, "inches": 13.4, "scale": 2.0}
@@ -234,7 +226,7 @@ class Collect(unittest.TestCase):
         self.assertEqual(f["screens"][0]["name"], "eDP-1")
         self.assertEqual(f["screens"][0]["scale"], 2.0)
         ids = {i["id"] for i in hw.plan(f)}
-        self.assertTrue({"sof", "gpu-intel", "power", "scale-eDP-1"} <= ids)
+        self.assertTrue({"sof", "gpu-intel", "scale-eDP-1"} <= ids)
 
     def test_a_desktop_with_a_wireless_mouse(self):
         with tempfile.TemporaryDirectory() as d:
@@ -316,6 +308,9 @@ class InstallPlan(unittest.TestCase):
         self.assertIn("nope: nothing to do on this computer", out)
         self.assertIn("look material, dark appearance, login style text", out)
         self.assertIn("the Tessera login screen (greetd)", out)
+        # (Tessera's features, everything this computer can use, one password)
+        self.assertIn("Quick Share", out)
+        self.assertIn("one password for all of them", out)
         self.assertIn("hyprland", out)  # (the packages it would install)
         self.assertNotIn("Start?", out)
 
@@ -335,6 +330,17 @@ class InstallPlan(unittest.TestCase):
         self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
         self.assertIn("built here, tuned for this processor", p.stdout)
         self.assertIn("Rust programs buildTuned", p.stdout)  # (kept in Settings)
+
+    def test_features_chosen_and_left_out(self):
+        p = self.plan("--features=cast,glass", "--login=keep", installed="python")
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertIn("Cast web videos: yt-dlp", p.stdout)
+        self.assertNotIn("Quick Share", p.stdout.split("The plan")[1])
+        self.assertIn("kept as it is (Tessera's desktop look isn't chosen)", p.stdout)
+        self.assertIn("the glass plugin", p.stdout)
+        p = self.plan("--features=none", installed="python")
+        self.assertIn("none chosen (Settings sets each up later)", p.stdout)
+        self.assertIn("shaders and native helpers", p.stdout)  # (no glass plugin)
 
     def test_unknown_icon_theme(self):
         p = self.plan("--icons=macos")

@@ -16,6 +16,13 @@
 //!
 //! What it shows is the feed's `upd` (bridge_about.rs upd_feed); every
 //! button asks the shell (`cx.ask("about", …)`).
+//!
+//! "Set up the rest of Tessera": once, after the first update of a version
+//! that has it (on a computer set up before the installer's Features step),
+//! a row under the status opens a sheet listing Tessera's features this
+//! computer can use that aren't set up (features.py), each ticked. One
+//! password sets them up together; then what didn't finish, with how to
+//! finish it. Skip closes it for good: each feature's own page sets it up.
 
 use super::super::super::model::{btn, Ctx, Opt, Page, Row};
 use super::{b, feed, n, plural, s, strings};
@@ -464,6 +471,13 @@ pub fn page(cx: &mut Ctx, p: &mut Page) {
         g.row(Row::new(e.title).icon("warning-circle").tone(2).detail(e.detail).button(label, id));
     }
 
+    // The one-time offer: the features this computer can use, not set up yet
+    let f = &u["features"];
+    if b(&f["pending"]) && (f["items"].as_array().is_some_and(|a| !a.is_empty()) || !f["result"].is_null() || b(&f["running"])) {
+        let id = cx.on(|cx, _| cx.ask("about", "sheet", json!(["features"])));
+        p.group("").row(Row::new("Set up the rest of Tessera").icon("download-simple").detail(offer_line(f)).button("Review", id));
+    }
+
     // Tessera and System, each with its own Update
     let t = part_row(cx, "Tessera", tessera_part(u));
     let sys = part_row(cx, "System", system_part(u));
@@ -738,9 +752,134 @@ fn sheet(cx: &mut Ctx, p: &mut Page, kind: &str) {
         }
         "packages" => packages_sheet(cx, p, u),
         "decide" => decide_sheet(cx, p, u),
+        "features" => features_sheet(cx, p, u),
         _ => {
             head(cx, p, "Software Update", "", vec![done()]);
         }
+    }
+}
+
+// ── Set up the rest of Tessera ───────────────────────────────────────────
+
+/// The offer's row: how many, or how the run went
+pub fn offer_line(f: &Value) -> String {
+    let r = &f["result"];
+    if b(&f["running"]) {
+        return "Setting up…".into();
+    }
+    if !r.is_null() {
+        let failed = r["failed"].as_array().map_or(0, Vec::len);
+        return if !s(&r["error"]).is_empty() || failed > 0 {
+            format!("{} {} a step from you", plural(failed.max(1) as i64, "feature"), if failed <= 1 { "needs" } else { "need" })
+        } else {
+            "All set up".into()
+        };
+    }
+    let n = f["items"].as_array().map_or(0, Vec::len) as i64;
+    format!("{} this computer can use {} set up yet", plural(n, "feature"), if n == 1 { "isn't" } else { "aren't" })
+}
+
+/// The ids still ticked (local "feat.off.<id>" unticks one)
+fn ticked(cx: &Ctx, items: &[Value]) -> Vec<String> {
+    items.iter().map(|i| s(&i["id"])).filter(|id| !cx.local_b(&format!("feat.off.{id}"))).collect()
+}
+
+fn features_sheet(cx: &mut Ctx, p: &mut Page, u: &Value) {
+    let f = &u["features"];
+    let items = f["items"].as_array().cloned().unwrap_or_default();
+    let running = b(&f["running"]);
+    let r = &f["result"];
+    let chosen = ticked(cx, &items);
+    // (title, line, buttons: label, act, style 1 = primary, enabled)
+    let (line, buttons): (String, Vec<(String, String, i32, bool)>) = if running {
+        let job = &u["s"]["job"];
+        (s(&job["text"]), vec![("Show details".into(), "sheet:system-log".into(), 0, true)])
+    } else if !r.is_null() {
+        let failed = r["failed"].as_array().map_or(0, Vec::len);
+        let line = if !s(&r["error"]).is_empty() {
+            format!("{} Nothing else changed; try again from each feature's page in Settings.", s(&r["error"]))
+        } else if failed == 0 {
+            "Everything you chose is set up.".into()
+        } else {
+            format!("{} didn't finish. Each says how to finish it.", plural(failed as i64, "feature"))
+        };
+        (line, vec![("Done".into(), "features.done".into(), 1, true)])
+    } else {
+        let n = chosen.len() as i64;
+        (
+            "One password sets up everything ticked.".into(),
+            vec![("Skip".into(), "features.skip".into(), 0, true), (if n == 0 { "Set up".to_string() } else { format!("Set up {}", plural(n, "feature")) }, "features.setUp".into(), 1, n > 0)],
+        )
+    };
+    let acts: Vec<String> = buttons.iter().map(|x| x.1.clone()).collect();
+    let ids = chosen.clone();
+    let id = cx.on(move |cx, a| {
+        if let Some(w) = acts.get(a.i.max(0) as usize) {
+            match w.as_str() {
+                "features.setUp" => cx.ask("about", "features.setUp", json!([ids.clone()])),
+                w => run(cx, w),
+            }
+        }
+    });
+    let data: Vec<Opt> = buttons.iter().map(|(l, _, style, on)| Opt::new(l.as_str()).style(*style).off(!on)).collect();
+    let blk = p.custom("about", "sheet");
+    blk.title("Set up the rest of Tessera").text(line).data(data).id(id);
+
+    if running {
+        let pct = u["s"]["progress"].as_f64().unwrap_or(-1.0);
+        p.group("").row(Row::custom("about", "progress").num(if pct >= 0.0 { pct.max(0.02) as f32 } else { -1.0 }).text_value(String::new()));
+        return;
+    }
+    if !r.is_null() {
+        let failed = r["failed"].as_array().cloned().unwrap_or_default();
+        if !failed.is_empty() {
+            let g = p.group("Didn't finish");
+            for x in &failed {
+                let why = s(&x["error"]);
+                let detail = [if why.is_empty() { String::new() } else { format!("{}.", capital(&why)) }, s(&x["fix"])].iter().filter(|t| !t.is_empty()).cloned().collect::<Vec<_>>().join(" ");
+                g.row(Row::new(s(&x["title"])).icon("warning-circle").tone(2).detail(detail));
+            }
+        }
+        let ok = r["ok"].as_array().cloned().unwrap_or_default();
+        if !ok.is_empty() {
+            let g = p.group("Set up");
+            for x in &ok {
+                g.row(Row::new(s(&x["title"])).icon("check-circle"));
+            }
+        }
+        return;
+    }
+    // The list, by group, each a switch
+    let mut group = String::new();
+    let mut rows: Vec<(String, Vec<Row>)> = Vec::new();
+    for i in &items {
+        let (iid, g) = (s(&i["id"]), s(&i["group"]));
+        if g != group || rows.is_empty() {
+            group = g.clone();
+            rows.push((g, Vec::new()));
+        }
+        let on = chosen.contains(&iid);
+        let key = format!("feat.off.{iid}");
+        let t = cx.on(move |cx, _| {
+            let off = cx.local_b(&key);
+            cx.local_set(&key, !off);
+        });
+        rows.last_mut().unwrap().1.push(Row::new(s(&i["title"])).detail(s(&i["detail"])).switch(on, t));
+    }
+    for (title, rs) in rows {
+        let g = p.group(title);
+        for r in rs {
+            g.row(r);
+        }
+    }
+}
+
+/// "no camera" → "No camera"
+fn capital(t: &str) -> String {
+    let mut c = t.chars();
+    match c.next() {
+        Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+        None => String::new(),
     }
 }
 
@@ -1111,5 +1250,16 @@ mod tests {
         let l = pkg("hyprland", "0.55", "0.56", "AUR", false);
         assert_eq!((l.detail.as_str(), l.on), ("0.55  →  0.56", true));
         assert!(!pkg("foot", "", "the terminal", "", false).on);
+    }
+
+    #[test]
+    fn the_offer_says_how_many_and_how_it_went() {
+        assert_eq!(offer_line(&json!({"items": [{"id": "a"}]})), "1 feature this computer can use isn't set up yet");
+        assert_eq!(offer_line(&json!({"items": [{"id": "a"}, {"id": "b"}]})), "2 features this computer can use aren't set up yet");
+        assert_eq!(offer_line(&json!({"running": true})), "Setting up…");
+        assert_eq!(offer_line(&json!({"result": {"ok": [], "failed": [{}], "error": ""}})), "1 feature needs a step from you");
+        assert_eq!(offer_line(&json!({"result": {"ok": [], "failed": [{}, {}], "error": ""}})), "2 features need a step from you");
+        assert_eq!(offer_line(&json!({"result": {"ok": [{}], "failed": [], "error": ""}})), "All set up");
+        assert_eq!(capital("no camera"), "No camera");
     }
 }

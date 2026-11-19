@@ -25,6 +25,10 @@ FACTS = {
     "fingerprint": {"id": "0a5c:5843", "name": "Broadcom ControlVault 3", "repo": [], "aur": ["libfprint-tod", "libfprint-2-tod1-broadcom", "fprintd"]},
     "ir_camera": None, "screens": [], "monitors_set": False, "hyprland": "0.56.2",
     "pulseaudio": False, "network": "", "display_manager": "", "apps_missing": False, "walls_ready": True,
+    # Tessera's features (features.py's facts): the reader is one of them
+    "features": {"installed": ["linux", "yt-dlp"], "aur_helper": True,
+                 "fingerprint": {"id": "0a5c:5843", "name": "Broadcom ControlVault 3", "repo": [], "driver": True,
+                                 "aur": ["libfprint-tod", "libfprint-2-tod1-broadcom", "fprintd"], "pam": {}}},
 }
 
 
@@ -42,20 +46,28 @@ class Scripted(unittest.TestCase):
         return frames, command.split()[1:]
 
     def test_the_defaults(self):
-        frames, cmd = self.run_tui("enter enter enter enter enter enter enter")
+        frames, cmd = self.run_tui("enter enter enter enter enter enter enter enter")
         self.assertIn("Set up Tessera", frames[0])
         self.assertIn("Choose a look", frames[1])
         self.assertIn("Review the plan", frames[-2])
         self.assertTrue(cmd[0].endswith("install.sh"))
         self.assertEqual(cmd[1:3], ["--cli", "--yes"])
-        for flag in ("--look=glass", "--mode=auto", "--login=look", "--icons=none", "--extras=pointer,style"):
+        for flag in ("--look=glass", "--mode=auto", "--login=look", "--icons=none", "--extras=pointer"):
             self.assertIn(flag, cmd)
         hw = next(a for a in cmd if a.startswith("--hardware="))
-        # The fingerprint reader is offered (ticked: you see it and can untick
-        # it); NVIDIA's driver never without a tick; builds aren't flags
-        self.assertIn("fingerprint", hw)
+        # NVIDIA's driver never without a tick; builds aren't flags
         self.assertNotIn("gpu-nvidia", hw)
         self.assertNotIn("build-", hw)
+        # Tessera's features: everything this computer can use, ticked (the
+        # fingerprint reader among them); set up ones shown, not offered
+        feats = next(a for a in cmd if a.startswith("--features="))[len("--features="):].split(",")
+        for id in ("fingerprint", "quickshare", "look", "glass", "emoji"):
+            self.assertIn(id, feats)
+        self.assertNotIn("cast", feats)  # (yt-dlp is installed)
+        self.assertNotIn("login", feats)  # (its own page)
+        page = next(f for f in frames if "Cast web videos" in f)
+        self.assertIn("[•] Cast web videos   set up", page)
+        self.assertIn("[✓] Fingerprint", page)
 
     def test_choices_become_flags(self):
         # Material, dark, plain login; tick Colloid (Papirus is installed: shown, not offered)
@@ -64,7 +76,7 @@ class Scripted(unittest.TestCase):
         self.assertIn("--mode=dark", cmd)
         self.assertIn("--login=plain", cmd)
         self.assertIn("--icons=colloid", cmd)
-        self.assertIn("--extras=style", cmd)  # (the pointer unticked)
+        self.assertIn("--extras=none", cmd)  # (the pointer unticked)
         icons = next(f for f in frames if "Icon themes (optional)" in f)
         self.assertIn("[•] Papirus", icons)
 
@@ -76,17 +88,28 @@ class Scripted(unittest.TestCase):
         page = next(f for f in frames if "› [ ] NVIDIA driver" in f)  # (the cursor on it: its packages shown)
         self.assertIn("Packages: nvidia-open-dkms", page)
 
-    def test_another_login_screen_is_kept(self):
-        frames, cmd = self.run_tui("enter " * 7, {"display_manager": "sddm"})
+    def test_another_login_screen_is_replaced_unless_kept(self):
+        # (ticked like every feature: turned off, not removed, and back by itself if Tessera's doesn't start)
+        frames, cmd = self.run_tui("enter " * 8, {"display_manager": "sddm"})
+        self.assertIn("--login=look", cmd)
+        self.assertTrue(any("sddm is turned off" in f for f in frames))
+        frames, cmd = self.run_tui("enter enter enter down down down enter " + "enter " * 4, {"display_manager": "sddm"})
         self.assertIn("--login=keep", cmd)
         self.assertTrue(any("Keep sddm" in f for f in frames))
 
+    def test_a_feature_left_out(self):
+        # (the features page: the first item, the fingerprint reader, unticked)
+        frames, cmd = self.run_tui("enter " * 7 + "space enter")
+        feats = next(a for a in cmd if a.startswith("--features="))
+        self.assertNotIn("fingerprint", feats)
+        self.assertIn("quickshare", feats)
+
     def test_your_system_page_only_when_needed(self):
-        frames, cmd = self.run_tui("enter " * 8, {"pulseaudio": True, "network": "systemd-networkd"})
+        frames, cmd = self.run_tui("enter " * 9, {"pulseaudio": True, "network": "systemd-networkd"})
         self.assertTrue(any("Replace PulseAudio with PipeWire" in f for f in frames))
         self.assertIn("--replace-pulseaudio", cmd)
         self.assertIn("--network=networkmanager", cmd)
-        frames, cmd = self.run_tui("enter " * 7)
+        frames, cmd = self.run_tui("enter " * 8)
         self.assertFalse(any("Your system" in f for f in frames))
         self.assertFalse(any(a.startswith("--network") or a == "--replace-pulseaudio" for a in cmd))
 
@@ -99,14 +122,14 @@ class Scripted(unittest.TestCase):
 
     def test_advanced_is_collapsed_and_greys_what_cannot_work(self):
         # Review, then a: Advanced; the tuned build can't work here, the generic one can
-        frames, cmd = self.run_tui("enter " * 7 + "a down enter",
+        frames, cmd = self.run_tui("enter " * 8 + "a down enter",
                                    {"can_build": {"buildTuned": {"ok": False, "why": "needs about 4 GB of free memory"},
                                                   "build": {"ok": True, "why": ""}}})
         page = next(f for f in frames if "Advanced: Tessera's Rust programs" in f)
         self.assertIn("Can't here: needs about 4 GB of free memory", page)
-        self.assertIn("a advanced", frames[7])
+        self.assertIn("a advanced", frames[8])
         self.assertIn("--ui-source=build", cmd)
-        _, cmd = self.run_tui("enter " * 7)
+        _, cmd = self.run_tui("enter " * 8)
         self.assertFalse(any(a.startswith("--ui-source") for a in cmd))
 
     def test_quit_changes_nothing(self):

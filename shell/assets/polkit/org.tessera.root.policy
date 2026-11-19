@@ -176,6 +176,19 @@
     <annotate key="org.freedesktop.policykit.exec.argv1">quickshare-trust</annotate>
   </action>
 
+  <!-- (always the password: Tessera's features, set up together) -->
+  <action id="org.tessera.root.features">
+    <description>Set up Tessera's features</description>
+    <message>Tessera wants to set up the features you chose.</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/lib/tessera/tessera-root</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">features</annotate>
+  </action>
+
   <action id="org.tessera.root.update">
     <description>Install system updates</description>
     <message>Tessera wants to install updates.</message>

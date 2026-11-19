@@ -10,6 +10,14 @@ started by the shell once this is done (services/SoftwareUpdate.qml).
 --aur-install: these packages from the AUR (and their dependencies, from the
 repositories too), in the AUR step instead of updates: drivers Settings
 offers (a fingerprint reader's). Same single password.
+    sysupdate.py run … --features a,b [--face-camera P] [--fprintd-wait]
+                     [--login-look J] [--shell D]
+--features: Tessera's features (features.py: "Set up the rest of Tessera"),
+once the packages are in: the root helper's part over the same channel
+as the AUR step's pacman ({"features": true}), then the parts done as you
+(features.py apply-user). Same single password. Each feature's result is
+in status.json's "features" ({id: {"ok", "error"}}); one that fails never
+stops the others.
     sysupdate.py run --undo [--snapshot …]
                                 go back to before the last update: the
                                 package versions it replaced, from pacman's
@@ -123,6 +131,7 @@ state = {
     "upgraded": [],
     "restart": False,
     "aur": False,
+    "features": {},       # (--features) {id: {"ok", "error"}}
     "error": "",
     "started": time.time(), "finished": 0,
     "pid": os.getpid(),
@@ -175,7 +184,7 @@ def at(lo, hi, frac):
     return int(max(state["percent"], min(99, p)))
 
 
-WEIGHT = {"snapshot": 6, "setup": 1, "system": 64, "packages": 12, "remove": 4, "aur": 14, "undo": 60}
+WEIGHT = {"snapshot": 6, "setup": 1, "system": 64, "packages": 12, "remove": 4, "aur": 14, "undo": 60, "features": 10}
 
 
 def begin(step):
@@ -187,8 +196,30 @@ def begin(step):
     span = (100 * before / total, 100 * (before + WEIGHT.get(step, 10)) / total)
     text = {"snapshot": "Taking a snapshot", "setup": "Setting up Tessera's system helper", "system": "Checking for updates", "packages": "Installing Tessera's packages",
             "remove": "Removing unused packages", "aur": "Updating from the AUR",
-            "undo": "Going back to the earlier versions"}.get(step, step)
+            "undo": "Going back to the earlier versions", "features": "Setting up features"}.get(step, step)
     set_(step=step, phase=step if step != "system" else "sync", text=text, done=0, total=0, percent=at(0, 0, 0))
+
+
+def feature_line(s):
+    """The root helper's "@@feature <id> start|ok|failed <why>": its result
+    into the status. Returns whether it was one."""
+    m = re.match(r"^@@feature ([a-z]+) (start|ok|failed)\s*(.*)$", s)
+    if not m:
+        return False
+    if m.group(2) == "start":
+        set_(text="Setting up " + FEATURE_WORDS.get(m.group(1), m.group(1)))
+    else:
+        f = dict(state["features"])
+        f[m.group(1)] = {"ok": m.group(2) == "ok", "error": m.group(3).strip()}
+        set_(features=f)
+    return True
+
+
+# What the status says while a feature is set up
+FEATURE_WORDS = {"fingerprint": "the fingerprint reader", "face": "face unlock", "bluetooth": "Bluetooth",
+                 "power": "energy modes", "quickshare": "Quick Share", "login": "the login screen",
+                 "bootsplash": "the boot animation", "look": "the desktop look", "captions": "live captions",
+                 "battery": "the battery guard"}
 
 
 def parse(line, aur=False):
@@ -197,6 +228,8 @@ def parse(line, aur=False):
         return
     if s.startswith("@@step "):
         begin(s[7:].strip())
+        return
+    if feature_line(s):
         return
     if s.startswith(":: Synchronizing package databases"):
         set_(phase="sync", text="Checking for updates", percent=at(0, 5, 0))
@@ -486,6 +519,18 @@ def fake_run(plan):
             time.sleep(delay)
             out(line)
             parse(line)
+        if step == "features":
+            # (the sandbox's: each set up but the first with a root part,
+            # so Settings shows both kinds of result)
+            first = next((x for x in plan["features"] if x in ROOT_FEATURES), "")
+            for x in plan["features"]:
+                time.sleep(0.3)
+                line = f"@@feature {x} failed simulated: nothing is set up in the sandbox" if x == first else f"@@feature {x} ok"
+                out(line)
+                parse(line)
+    if plan.get("features"):
+        failed = [k for k, v in state["features"].items() if not v["ok"]]
+        return finish("done", "Set up" if not failed else f"Set up, {len(failed)} didn't finish")
     finish("done", "Updated")
 
 
@@ -808,6 +853,10 @@ def root_command(plan, broker):
             cmd += ["--" + k, ",".join(plan[k])]
     if plan["setup"]:
         cmd += ["--setup", plan.get("setup_dir") or SHELL]
+    # (only the features with a part of root's: the rest are packages, or done as you)
+    root_ids = [x for x in plan.get("features") or [] if x in ROOT_FEATURES]
+    if root_ids:
+        cmd += ["--features", ",".join(root_ids)] + plan.get("feature_args", [])
     if broker:
         cmd.append("--broker")
     return cmd
@@ -902,6 +951,67 @@ class Broker:
             pass
 
 
+def root_features(chan, env):
+    """The root helper's part of the features ({"features": true} over the
+    AUR step's channel), its lines into the log and the status; then the
+    parts done as you (features.py apply-user). Returns how many failed."""
+    try:
+        chan.sendall(b'{"features": true}\n')
+    except OSError:
+        for id in plan_features:
+            feature_line(f"@@feature {id} failed the root helper stopped")
+        return len(plan_features)
+    rest = ""
+    for raw in chan.makefile("rb"):
+        try:
+            msg = json.loads(raw)
+        except ValueError:
+            continue
+        if "out" in msg:
+            rest += msg["out"]
+            *lines, rest = rest.split("\n")
+            for line in lines:
+                feed(line, False)
+        if "exit" in msg:
+            break
+    if rest:
+        feed(rest, False)
+    return sum(1 for f in state["features"].values() if not f["ok"])
+
+
+def user_features(ids, env):
+    """features.py apply-user: its JSON lines into the status"""
+    if not ids:
+        return
+    script = os.path.join(HERE, "features.py")
+    out("$ features.py apply-user " + " ".join(ids))
+    try:
+        p = subprocess.Popen([sys.executable, "-I", script, "apply-user"] + ids, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                             stdin=subprocess.DEVNULL, env=env, text=True, errors="replace")
+    except OSError as e:
+        for id in ids:
+            feature_line(f"@@feature {id} failed {e}")
+        return
+    for line in p.stdout:
+        try:
+            r = json.loads(line)
+        except ValueError:
+            out(line.rstrip())
+            continue
+        if not isinstance(r, dict) or not isinstance(r.get("id"), str):
+            continue
+        set_(text="Setting up " + FEATURE_WORDS.get(r["id"], r["id"]))
+        before = state["features"].get(r["id"], {"ok": True, "error": ""})
+        f = dict(state["features"])
+        f[r["id"]] = {"ok": before["ok"] and bool(r.get("ok")), "error": before["error"] or ("" if r.get("ok") else str(r.get("error", "")))}
+        set_(features=f)
+        out(("✓ " if r.get("ok") else "! ") + r["id"] + ("" if r.get("ok") else ": " + str(r.get("error", ""))))
+    p.wait()
+
+
+plan_features = []
+
+
 def end_root(chan):
     """Closes the root part's channel (it ends) and waits for it."""
     global root_proc
@@ -982,6 +1092,7 @@ def real_run(plan):
                 helper = "pamac"
     if not helper and all(x == "aur" for x in plan["steps"]):
         return finish("done", "Updated")  # (nothing for root to do)
+    plan_features[:] = plan.get("features") or []
     if cancel_asked:
         return finish("cancelled", "Update cancelled")
     if plan["system"] and "mirrors" not in plan:
@@ -989,7 +1100,7 @@ def real_run(plan):
     # The root part, even for the AUR alone: its pacman commands go through it
     chan, theirs = socket.socketpair()
     try:
-        code = stream_root(["pkexec"] + root_command(plan, bool(helper)), env=env, stdin=theirs)
+        code = stream_root(["pkexec"] + root_command(plan, bool(helper) or bool(plan_features)), env=env, stdin=theirs)
         theirs.close()
         if code in (126, 127) and not authed:
             # 126: the dialog was dismissed (or Cancel stopped it); 127: not authorised
@@ -1039,12 +1150,31 @@ def real_run(plan):
                     stream([SHIM, "pacman", "-S", "--noconfirm", "--"] + swap, aur=True, env=broker.env(env))
             finally:
                 broker.close()
-            if code != 0:
+            if code != 0 and not plan_features:
                 return finish("error", "The AUR updates didn't finish",
                               "Updates from your distribution are installed. " + tail())
+            if code != 0:
+                # (the features go on: the ones the AUR's packages were for fail on their own)
+                out("The AUR packages didn't all install: " + tail(2))
+        if plan_features:
+            out("@@step features")
+            parse("@@step features")
+            root_ids = [x for x in plan_features if x in ROOT_FEATURES]
+            if root_ids:
+                root_features(chan, env)
+            user_features([x for x in plan_features if x in USER_FEATURES], env)
+            for x in plan_features:
+                if x not in state["features"]:
+                    feature_line(f"@@feature {x} ok")
     finally:
         theirs.close()
         end_root(chan)
+    if plan_features:
+        failed = [k for k, v in state["features"].items() if not v["ok"]]
+        if not failed:
+            subprocess.run([sys.executable, "-I", os.path.join(HERE, "features.py"), "record", "--chosen", ",".join(plan_features)],
+                           stdin=subprocess.DEVNULL, capture_output=True)
+        return finish("done", "Set up" if not failed else f"Set up, {len(failed)} didn't finish")
     finish("done", "Updated")
 
 
@@ -1224,6 +1354,15 @@ def plan_of(a, fake=False):
     p = {"snapshot": snap if snap in ("snapper", "timeshift") else "", "system": "--system" in a,
          "ignore": names("--ignore"), "install": names("--install"), "remove": names("--remove"),
          "aur_install": names("--aur-install")}
+    # Tessera's features (features.py's ids), with their options for the root helper
+    feats = a[a.index("--features") + 1] if "--features" in a and a.index("--features") + 1 < len(a) else ""
+    p["features"] = [x for x in feats.split(",") if re.fullmatch(r"[a-z]+", x)]
+    p["feature_args"] = []
+    for flag in ("--face-camera", "--login-look", "--shell"):
+        if p["features"] and flag in a and a.index(flag) + 1 < len(a):
+            p["feature_args"] += [flag, a[a.index(flag) + 1]]
+    if p["features"] and "--fprintd-wait" in a:
+        p["feature_args"].append("--fprintd-wait")
     # A snapshot tool's pacman hook already takes one around each pacman run
     # (snap-pac for snapper, timeshift-autosnap): a second would only take space
     if p["snapshot"] and not fake and installed(AUTOSNAP[p["snapshot"]]):
@@ -1243,10 +1382,16 @@ def plan_of(a, fake=False):
     os.makedirs(DIR, exist_ok=True)
     p["setup_dir"] = (stage_incoming(incoming) if incoming and not fake else None) or SHELL
     p["setup"] = not fake and not helper_current(p["setup_dir"])
-    p["kind"] = "update" if p["system"] or "--aur" in a else "install"
+    p["kind"] = "update" if p["system"] or "--aur" in a else "features" if p["features"] else "install"
     p["steps"] = ([("snapshot")] if p["snapshot"] else []) + (["setup"] if p["setup"] else []) + (["system"] if p["system"] else []) + \
-        (["packages"] if p["install"] else []) + (["remove"] if p["remove"] else []) + (["aur"] if "--aur" in a or p["aur_install"] else [])
+        (["packages"] if p["install"] else []) + (["remove"] if p["remove"] else []) + (["aur"] if "--aur" in a or p["aur_install"] else []) + \
+        (["features"] if p["features"] else [])
     return p
+
+
+# Which features have a root part and which a part done as you (features.py's ROOT_PARTS, USER_PARTS)
+ROOT_FEATURES = {"fingerprint", "face", "bluetooth", "power", "quickshare", "login", "bootsplash"}
+USER_FEATURES = {"face", "battery", "look", "captions"}
 
 
 def undo_plan_of(snap, fake):

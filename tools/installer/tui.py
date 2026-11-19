@@ -3,7 +3,8 @@
 offers it, or ./install.sh --tui).
 
 It asks everything first (look, light or dark, login screen, icon themes,
-extras, what this computer's hardware is missing; on the review, "a" opens
+extras, what this computer's hardware is missing, Tessera's features: one
+list, everything ticked, set up in one go; on the review, "a" opens
 Advanced: how Tessera's Rust programs are installed), shows the whole plan
 (install.sh --plan with those choices), and only then runs install.sh with
 them as flags (--cli --yes …), showing its steps live and a summary at the
@@ -66,6 +67,16 @@ def load_native():
 
 
 native = load_native()
+
+
+def load_features():
+    spec = importlib.util.spec_from_file_location("tessera_features", os.path.join(ROOT, "shell", "assets", "scripts", "features.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+features = load_features()
 
 # The Quiet Interface in a terminal: neutral, one accent for selection and
 # focus, red only for what failed
@@ -133,7 +144,7 @@ def apps_missing():
 
 
 class Installer:
-    def __init__(self, facts, passthrough, system=None):
+    def __init__(self, facts, passthrough, system=None, feature_facts=None):
         self.facts = facts
         self.passthrough = [a for a in passthrough if a in PASS]
         self.dry = "--dry-run" in passthrough
@@ -149,11 +160,13 @@ class Installer:
         self.login = Radio([("look", "Tessera, following the look", "Glass or Material, like the lock screen"),
                             ("text", "Tessera, text", "A clock and a password field on your wallpaper"),
                             ("plain", "Tessera, plain", "The smallest: a name and a password")]
-                           + [keep], "keep" if dm else "look")
+                           + [keep], "look")
         if dm:
-            # (another login screen is only replaced when you pick a Tessera one;
-            # it's turned off, not removed, and tessera uninstall turns it back on)
-            self.login.options[:3] = [(v, l, d + "; " + dm + " is turned off") for v, l, d in self.login.options[:3]]
+            # (another login screen is turned off, not removed: it comes back
+            # by itself if Tessera's doesn't start, and tessera uninstall
+            # turns it back on)
+            self.login.options[:3] = [(v, l, d + "; " + dm + " is turned off, and comes back if Tessera's doesn't start")
+                                      for v, l, d in self.login.options[:3]]
         self.icons = Checks([{"id": i, "label": label, "ticked": False,
                               "detail": "installed" if ICON_PACKAGES[i] in have else "from the " + src,
                               "locked": ICON_PACKAGES[i] in have} for i, label, src in ICON_THEMES])
@@ -162,10 +175,6 @@ class Installer:
             extras.append({"id": "apps", "label": "Basic apps", "detail": "kitty, Files, Firefox, mpv, an image viewer", "ticked": True})
         if "bibata-cursor-theme-bin" not in have:
             extras.append({"id": "pointer", "label": "Bibata pointer", "detail": "the pointer in both looks (from the AUR)", "ticked": True})
-        if not {"darkly-bin", "breeze-plus"} <= have:
-            extras.append({"id": "style", "label": "App style", "detail": "Darkly for Qt apps and Breeze Plus icons (from the AUR)", "ticked": True})
-        if not {"ttf-apple-emoji", "ttf-fluent-emoji"} <= have:
-            extras.append({"id": "emoji", "label": "Apple and Fluent emoji", "detail": "Noto emoji is the default (from the AUR)", "ticked": False})
         self.extras = Checks(extras)
         system_items = []
         if facts.get("pulseaudio"):
@@ -188,11 +197,19 @@ class Installer:
         self.hardware = Checks([{"id": i["id"], "label": i["title"], "detail": i["why"], "ticked": i["ticked"] or i["locked"],
                                  "locked": i["locked"], "group": i["group"], "ask": i["ask"],
                                  "packages": i["packages"] + i["aur"]} for i in items])
+        # Tessera's features (features.py): everything this computer can use,
+        # ticked; the ones set up already shown as such. The login screen is
+        # its own page (its style), so it isn't here
+        feats = features.plan(feature_facts if feature_facts is not None else features.collect())
+        self.features = Checks([{"id": i["id"], "label": i["title"], "detail": i["detail"], "ticked": True,
+                                 "locked": i["setUp"], "done": i["setUp"], "group": i["group"],
+                                 "packages": i["packages"] + i["aur"]} for i in feats if i["id"] != "login"])
         no_extras = "--no-extras" in passthrough
         self.pages = [p for p in [
             ("welcome", "Welcome"), ("look", "Look"), ("mode", "Light or dark"), ("login", "Login screen"),
             None if no_extras else ("icons", "Icon themes"), None if no_extras or not extras else ("extras", "Extras"),
             ("system", "Your system") if system_items else None, ("hardware", "This computer"),
+            ("features", "Features") if self.features.items else None,
             ("review", "Review"), ("install", "Install")] if p]
         self.page = 0
         self.plan_text = ""
@@ -215,6 +232,7 @@ class Installer:
             a += ["--icons=" + (",".join(self.icons.chosen()) or "none"),
                   "--extras=" + (",".join(self.extras.chosen()) or "none")]
         a.append("--hardware=" + (",".join(self.hardware.chosen()) or "none"))
+        a.append("--features=" + (",".join(self.features.chosen()) or "none"))
         sysc = {i["id"]: i["ticked"] for i in self.system.items}
         if sysc.get("pulse"):
             a.append("--replace-pulseaudio")
@@ -266,8 +284,8 @@ class Installer:
         return None
 
     def widget(self):
-        return {"look": self.look, "mode": self.mode, "login": self.login, "icons": self.icons,
-                "extras": self.extras, "system": self.system, "hardware": self.hardware, "advanced": self.uisource}.get(self.name)
+        return {"look": self.look, "mode": self.mode, "login": self.login, "icons": self.icons, "extras": self.extras,
+                "system": self.system, "hardware": self.hardware, "features": self.features, "advanced": self.uisource}.get(self.name)
 
     # ── Installing: install.sh's output, line by line ──
     # Its lines: "[n/14] Step" starts a step, "✓ ", "! ", "✗ … didn't
@@ -366,6 +384,8 @@ class Installer:
                   "extras": ("Extras (optional)", ""),
                   "system": ("Your system", "These replace or turn off something of yours, so they're up to you."),
                   "hardware": ("This computer", "Only what's missing for the hardware found here. Asked ones start unticked."),
+                  "features": ("Features", "Everything this computer can use, ticked. One password sets them all up; "
+                               "Settings sets up any you leave out."),
                   "advanced": ("Advanced: Tessera's Rust programs", "tessera-ui and tessera-events. Most people keep the first.")}
         title, sub = titles[n]
         out = [Text(title, style="bold")]
@@ -396,7 +416,7 @@ class Installer:
                 out.append(Text.assemble(("› " if on else "  ", ACCENT + " bold"),
                                          (box + " ", "dim" if it.get("locked") else ACCENT if it["ticked"] else ""),
                                          (it["label"], "bold" if on else "dim" if it.get("locked") else ""),
-                                         ("   always" if it.get("locked") and it.get("group") else "", "dim")))
+                                         ("   set up" if it.get("done") else "   always" if it.get("locked") and it.get("group") else "", "dim")))
                 # (what's always done says why only when you're on it)
                 if it.get("detail") and (on or not it.get("locked") or not it.get("group")):
                     out.append(Padding(Text(it["detail"], style="dim"), (0, 0, 0, 8)))
@@ -693,9 +713,10 @@ def main(argv):
             facts = json.load(f)
         system = {"apps_missing": facts.get("apps_missing", False), "walls_ready": facts.get("walls_ready", True),
                   "can_build": facts.get("can_build", {m: {"ok": True, "why": ""} for m in ("build", "buildTuned")})}
+        feature_facts = facts.get("features", {})
     else:
-        facts, system = hardware.collect(), None
-    ins = Installer(facts, rest, system)
+        facts, system, feature_facts = hardware.collect(), None, None
+    ins = Installer(facts, rest, system, feature_facts)
     if keys is not None:
         return scripted(ins, keys, width)
     if not run or not (sys.stdin.isatty() and sys.stdout.isatty()):

@@ -23,7 +23,10 @@
 # the recommended ones, and nothing asked by name is done):
 #   --look=glass|material  --mode=auto|light|dark  --login=keep|look|text|plain
 #   --icons=colloid,tela-circle,numix-circle,flat-remix,papirus|none
-#   --extras=apps,pointer,style,emoji|none  --hardware=ID,…|none (see --plan)
+#   --extras=apps,pointer|none  --hardware=ID,…|none (see --plan)
+#   --features=ID,…|none   Tessera's features, set up in one go with one password
+#                          (shell/assets/scripts/features.py list shows them;
+#                          everything this computer can use, without it)
 #   --replace-pulseaudio  --network=networkmanager|keep
 #   --ui-source=auto|build|buildTuned  (advanced) tessera-ui and tessera-events:
 #                          auto (the default) ready-made and signed, built here when
@@ -48,7 +51,7 @@ LOG="$CACHE/tessera/install.log"
 
 YES=0 DEV=0 DEPS=1 DRY=0 PLAIN=0 GREETER=ask EXTRAS=1 VERIFY_ONLY=0 ONLY=""
 # (lists: "-" until chosen, then names separated by spaces; "" for none)
-UI=ask PLAN_ONLY=0 SNAPSHOT=1 LOOK="" MODE="" LOGIN_STYLE="" ICONS=- EXTRAS_LIST=- HW=- PULSE=ask NETWORK=ask
+UI=ask PLAN_ONLY=0 SNAPSHOT=1 LOOK="" MODE="" LOGIN_STYLE="" ICONS=- EXTRAS_LIST=- HW=- PULSE=ask NETWORK=ask FEATURES=-
 UI_SOURCE="" # (--ui-source; empty: as Settings has it, ready-made by default)
 list() { [[ $1 == none ]] && return 0; printf '%s' "${1//,/ }"; }
 for a in "$@"; do
@@ -78,7 +81,8 @@ for a in "$@"; do
         --network=networkmanager) NETWORK=yes ;;
         --network=keep) NETWORK=no ;;
         --ui-source=auto|--ui-source=build|--ui-source=buildTuned) UI_SOURCE=${a#*=} ;;
-        -h|--help) sed -n '2,33p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        --features=*) FEATURES=$(list "${a#*=}") ;;
+        -h|--help) sed -n '2,36p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "Unknown option: $a (see --help)"; exit 1 ;;
     esac
 done
@@ -227,7 +231,7 @@ ask() { # question, default (y|n) -> 0 for yes
     [[ "$reply" == [yY]* ]]
 }
 
-STEP=0 TOTAL=15
+STEP=0 TOTAL=16
 # step "Title" function [optional]: runs it; on failure, offer Retry / Skip / Abort
 step() {
     local title="$1" fn="$2" optional="${3:-}" ok
@@ -499,10 +503,6 @@ decide() {
         if [[ $DEPS == 1 ]]; then
             apps_missing && want_extra apps "Install basic apps (kitty terminal, Files, Firefox, mpv, image viewer)?" y && WANT_APPS=1
             [[ -n "$(missing_of "${AUR[@]}")" ]] && want_extra pointer "Install the Bibata pointer (from the AUR)?" y && WANT_POINTER=1
-            [[ -n "$(missing_of "${STYLE_AUR[@]}")" ]] &&
-                want_extra style "Install Tessera's app style: Darkly for Qt apps and Breeze Plus icons (from the AUR)?" y && WANT_STYLE=1
-            [[ -n "$(missing_of "${EMOJI_AUR[@]}")" ]] &&
-                want_extra emoji "Install the Apple and Fluent emoji styles (from the AUR; Noto emoji is the default)?" n && WANT_EMOJI=1
         fi
     fi
     # Icon themes: none unless chosen (Tessera styles the apps' own icons)
@@ -539,17 +539,103 @@ decide() {
             fi
         fi
     fi
-    # The login screen: another one is only replaced when you say so
     OTHER_DM=$(other_login_manager)
-    if [[ $GREETER == ask ]]; then
-        if [[ -n "$OTHER_DM" ]]; then
-            ask "Use the Tessera login screen instead of $OTHER_DM?" n && GREETER=yes || GREETER=no
+    decide_hardware
+    # Tessera's features, the login screen among them: one list, everything
+    # ticked (decide_features)
+    decide_features
+    decide_ui_source
+}
+
+# ── Features ────────────────────────────────────────────────────────────
+# Tessera's features (shell/assets/scripts/features.py: the same list
+# Settings' "Set up the rest of Tessera" goes by): hardware (fingerprint,
+# face, Bluetooth, battery, energy modes), sharing, the look and login, and
+# extras. Only what this computer can use; the ones already set up aren't
+# asked. One question for all of them (each on its own if you say no), and
+# one step that sets them all up: the packages in one pacman, the AUR's in
+# one go, root's part in one sudo (tessera-root features), the rest as you.
+# One that fails is listed at the end with how to finish it; the rest go on.
+# The login screen, the desktop look, the glass plugin and the AUR helper
+# are done by their own steps (Login, Desktop look, Building, AUR helper).
+FEAT_PLAN="" FEAT_LATER=0 FEAT_FAILED=() FEAT_DONE=()
+feat_line() { [[ -n "$FEAT_PLAN" ]] && awk -F'\t' -v id="$1" '$1 == id' <<<"$FEAT_PLAN"; }
+feat_title() { local l; l=$(feat_line "$1"); [[ -n "$l" ]] && cut -f4 <<<"$l" || printf '%s' "$1"; }
+feature_on() { [[ " $FEATURES " == *" $1 "* ]]; }
+decide_features() {
+    FEAT_LATER=0
+    if ! command -v python3 >/dev/null; then
+        # (Python comes with the packages: asked then, everything ticked)
+        FEAT_LATER=1
+        [[ $FEATURES == - ]] && FEATURES=all
+        features_follow
+        return 0
+    fi
+    FEAT_PLAN=$(python3 -I "$ROOT/shell/assets/scripts/features.py" list 2>/dev/null || true)
+    local id setup group title detail pkgs aur last="" offered=()
+    if [[ $FEATURES == - || $FEATURES == all ]]; then
+        while IFS=$'\t' read -r id setup group title detail pkgs aur; do
+            [[ -z "$id" || $setup == 1 ]] && continue
+            # (with --yes: another login screen is only replaced when asked by name)
+            [[ $id == login && -n "$OTHER_DM" ]] && unattended && [[ $GREETER != yes ]] && continue
+            offered+=("$id")
+        done <<<"$FEAT_PLAN"
+        # (a dry run shows the list too: its answers are the defaults, all of them)
+        if [[ $FEATURES == all || $YES == 1 || $PLAN_ONLY == 1 ]] || (( ${#offered[@]} == 0 )); then
+            FEATURES="${offered[*]}"
         else
-            ask "Set up the Tessera login screen (recommended)?" y && GREETER=yes || GREETER=no
+            say "  ${B}Features${R}  (everything this computer can use; Settings sets up any you leave out)"
+            while IFS=$'\t' read -r id setup group title detail pkgs aur; do
+                [[ " ${offered[*]} " == *" $id "* ]] || continue
+                [[ $group != "$last" ]] && { say "  $group"; last=$group; }
+                say "    ${GRN}✓${R} $title"
+                note "    $detail"
+            done <<<"$FEAT_PLAN"
+            FEATURES=""
+            if ask "Set up all of these?" y; then
+                FEATURES="${offered[*]}"
+            else
+                while IFS=$'\t' read -r id setup group title detail pkgs aur; do
+                    [[ " ${offered[*]} " == *" $id "* ]] || continue
+                    ask "  $title?" y && FEATURES+=" $id"
+                done <<<"$FEAT_PLAN"
+            fi
         fi
     fi
-    decide_hardware
-    decide_ui_source
+    features_follow
+}
+# What the other choices take from the features (and the older flags that
+# meant the same: --extras=style,emoji, --login, --greeter)
+features_follow() {
+    if [[ $FEATURES == all ]]; then
+        # (not known yet, Python comes with the packages: everything, and
+        # another login screen only replaced when asked)
+        [[ $GREETER == ask ]] && { [[ -z "$OTHER_DM" ]] && GREETER=yes || GREETER=no; }
+        [[ $EXTRAS == 1 && -n "$(missing_of "${STYLE_AUR[@]}")" ]] && WANT_STYLE=1
+        [[ $EXTRAS == 1 && -n "$(missing_of "${EMOJI_AUR[@]}")" ]] && WANT_EMOJI=1
+        return 0
+    fi
+    [[ " $EXTRAS_LIST " == *" style "* ]] && ! feature_on look && FEATURES+=" look"
+    [[ " $EXTRAS_LIST " == *" emoji "* ]] && ! feature_on emoji && FEATURES+=" emoji"
+    case "$GREETER" in
+        yes) feature_on login || [[ -z "$FEAT_PLAN" ]] || [[ -z "$(feat_line login)" ]] || FEATURES+=" login" ;;
+        no) FEATURES=" $FEATURES "; FEATURES=${FEATURES// login / }; FEATURES=${FEATURES# }; FEATURES=${FEATURES% } ;;
+        ask)
+            if feature_on login; then GREETER=yes
+            elif [[ -n "$(feat_line login)" && "$(feat_line login | cut -f2)" == 1 ]]; then GREETER=yes # (set up already: kept up to date)
+            else GREETER=no
+            fi ;;
+    esac
+    feature_on look && [[ -n "$(missing_of "${STYLE_AUR[@]}")" ]] && WANT_STYLE=1
+    feature_on emoji && [[ -n "$(missing_of "${EMOJI_AUR[@]}")" ]] && WANT_EMOJI=1
+    return 0
+}
+# Whether a feature is left out on purpose: listed, not set up, not chosen
+feature_off() {
+    [[ $FEATURES == all || -z "$FEAT_PLAN" ]] && return 1
+    local l
+    l=$(feat_line "$1")
+    [[ -n "$l" && "$(cut -f2 <<<"$l")" == 0 ]] && ! feature_on "$1"
 }
 
 # tessera-ui and tessera-events (tools/native-install.py): ready-made and
@@ -655,7 +741,21 @@ show_plan() {
     else
         plan_row Hardware "nothing chosen"
     fi
-    plan_row Builds "shaders, the glass plugin and native helpers, for this machine ($DATA/tessera)"
+    if [[ $FEAT_LATER == 1 ]]; then
+        plan_row Features "everything this computer can use, set up after the packages (the check needs Python, which comes with them)"
+    elif [[ -n "${FEATURES// /}" ]]; then
+        first=Features
+        local fl fid fsetup fgroup ftitle fdetail fpkgs faur
+        while IFS=$'\t' read -r fid fsetup fgroup ftitle fdetail fpkgs faur; do
+            [[ -n "$fid" ]] && feature_on "$fid" || continue
+            plan_row "$first" "$ftitle${fpkgs:+: $fpkgs}${faur:+${fpkgs:+,}${fpkgs:-:} AUR: $faur}"
+            first=""
+        done <<<"$FEAT_PLAN"
+        plan_row "" "one password for all of them; one that doesn't finish is listed at the end with how to finish it"
+    else
+        plan_row Features "none chosen (Settings sets each up later)"
+    fi
+    plan_row Builds "shaders$(feature_off glass || echo ", the glass plugin") and native helpers, for this machine ($DATA/tessera)"
     case "$(ui_source_now)" in
         build) t="built here, for any x86-64 (several minutes)" ;;
         buildTuned) t="built here, tuned for this processor (several minutes; they run only on it)" ;;
@@ -675,13 +775,14 @@ show_plan() {
         plan_row Login "Hyprland starts when you log in on tty1 ($(login_profile))"
     fi
     plan_row "" "your keyring unlocks with your login password (a marked line in its PAM file, kept as .pre-tessera)"
+    feature_off look && plan_row Look "kept as it is (Tessera's desktop look isn't chosen)" ||
     plan_row Look "Tessera's desktop look: Tessera Sans Flex for apps (~/.local/share/fonts/tessera; SIL Open Font License), grayscale font smoothing,$([[ $WANT_STYLE == 1 ]] && echo " Darkly and Breeze Plus for Qt apps,") no greeting in the terminal, the starship prompt in Tessera's colours, kitty to match (what it replaces kept as *.pre-tessera; Settings → Appearance turns it off)"
     p="NetworkManager"
     if [[ -n "$OTHER_NET" ]]; then
         [[ $NETWORK == yes ]] && p="NetworkManager instead of $OTHER_NET (after a reboot)" || p="(keeps $OTHER_NET: Tessera's Wi-Fi menus won't work)"
     fi
     pm=$(power_manager) || pm=""
-    plan_row Services "$p, bluetooth, avahi-daemon$([[ -z $pm ]] && echo ", power-profiles-daemon"), plocate-updatedb.timer, Tessera's root helper and polkit rule"
+    plan_row Services "$p, bluetooth, avahi-daemon$([[ -z $pm ]] && ! feature_off power && echo ", power-profiles-daemon"), plocate-updatedb.timer, Tessera's root helper and polkit rule"
     say "  Nothing else of yours is changed or removed."
 }
 
@@ -754,6 +855,8 @@ install_packages() {
     local pm
     if pm=$(power_manager); then
         note "Keeping your power manager ($pm); power-profiles-daemon isn't installed."
+        want=("${want[@]/power-profiles-daemon/}")
+    elif feature_off power; then
         want=("${want[@]/power-profiles-daemon/}")
     fi
     # The GPUs' video drivers (VA-API: video decoding, recording)
@@ -831,6 +934,10 @@ install_yay() {
     have=$(aur_helper)
     if [[ -n "$have" ]]; then
         note "$(basename "$have") is installed: Tessera uses it for the AUR."
+        return 0
+    fi
+    if feature_off aur; then
+        note "Skipped: no AUR helper chosen. The features from the AUR are left out (Settings sets them up later)."
         return 0
     fi
     if command -v pamac >/dev/null && ! ask "Install yay too (Tessera's AUR extras and tessera update use it; pamac stays as it is)?" n; then
@@ -943,6 +1050,142 @@ write_scale() { # output scale
     note "Scale $2 for $1 (Settings → Displays changes it)"
 }
 
+# Tessera's features (decide_features): everything chosen in one go. The
+# packages in one pacman, the AUR's in one go (a driver that replaces one
+# from the repositories, Dell's fingerprint driver, swapped in first and the
+# old one put back if it doesn't install), root's part in one sudo
+# (tessera-root features), then the parts done as you (features.py
+# apply-user). One that fails is said with how to finish it, and the rest go
+# on; FEAT_FAILED lists them at the end. The login screen, the desktop look,
+# the glass plugin and the AUR helper have steps of their own.
+features_step() {
+    if [[ $FEAT_LATER == 1 ]]; then
+        FEAT_PLAN=$(python3 -I "$ROOT/shell/assets/scripts/features.py" list 2>/dev/null || true)
+        FEATURES=$(awk -F'\t' '$2 == 0 {print $1}' <<<"$FEAT_PLAN" | grep -vx login | xargs)
+        FEAT_LATER=0
+        features_follow
+    fi
+    local ids=() id
+    for id in $FEATURES; do
+        case "$id" in login|look|glass|aur) ;; *) ids+=("$id") ;; esac
+    done
+    if (( ${#ids[@]} == 0 )); then
+        note "Nothing else to set up."
+        record_features
+        return 0
+    fi
+    local plan install=() aur=() rootargs=() user=() kind rest
+    plan=$(python3 -I "$ROOT/shell/assets/scripts/features.py" plan "${ids[@]}") || { warn "The features couldn't be planned."; return 1; }
+    while IFS=$'\t' read -r kind rest; do
+        case "$kind" in
+            install) read -r -a install <<<"$rest" ;;
+            aur) read -r -a aur <<<"$rest" ;;
+            root) mapfile -t rootargs < <(tr '\037' '\n' <<<"$rest") ;;
+            user) read -r -a user <<<"$rest" ;;
+        esac
+    done < <(python3 -I -c 'import json, sys
+p = json.load(sys.stdin)
+for k in ("install", "aur", "user"):
+    print(k + "\t" + " ".join(p[k]))
+print("root\t" + "\x1f".join(p["rootArgs"]))' <<<"$plan")
+    # (an empty rootargs line: no root part)
+    [[ ${#rootargs[@]} == 1 && -z "${rootargs[0]}" ]] && rootargs=()
+    local titles
+    titles=""
+    for id in "${ids[@]}"; do titles+="${titles:+, }$(feat_title "$id")"; done
+    say "  Setting up: $titles"
+    local pkg_ok=1 aur_ok=1
+    mapfile -t install < <(missing_of "${install[@]}")
+    if (( ${#install[@]} )); then
+        pac -S --needed --noconfirm "${install[@]}" || { pkg_ok=0; warn "Their packages didn't all install (${install[*]})."; }
+    fi
+    mapfile -t aur < <(missing_of "${aur[@]}")
+    if (( ${#aur[@]} )); then
+        aur_with_swap "${aur[@]}" || { aur_ok=0; warn "The AUR's packages didn't all install (${aur[*]})."; }
+    fi
+    # Root's part: one sudo, each feature on its own
+    local line fid fstate why
+    if (( ${#rootargs[@]} )); then
+        if [[ $DRY == 1 ]]; then
+            run sudo /usr/bin/python3 -I "$ROOT/shell/assets/scripts/tessera-root.py" features "${rootargs[@]}"
+        else
+            while IFS= read -r line; do
+                if [[ $line =~ ^@@feature\ ([a-z]+)\ (ok|failed)\ ?(.*)$ ]]; then
+                    fid=${BASH_REMATCH[1]} fstate=${BASH_REMATCH[2]} why=${BASH_REMATCH[3]}
+                    if [[ $fstate == ok ]]; then FEAT_DONE+=("$fid"); else feature_failed "$fid" "$why"; fi
+                elif [[ $line != "@@feature "* ]]; then
+                    printf '  %s\n' "$line"
+                fi
+            done < <(sudo /usr/bin/python3 -I "$ROOT/shell/assets/scripts/tessera-root.py" features "${rootargs[@]}" 2>&1)
+        fi
+    fi
+    # The parts done as you
+    if (( ${#user[@]} )); then
+        if [[ $DRY == 1 ]]; then
+            run python3 -I "$ROOT/shell/assets/scripts/features.py" apply-user "${user[@]}"
+        else
+            while IFS= read -r line; do
+                fid=$(python3 -I -c 'import json, sys
+r = json.loads(sys.argv[1])
+print(r["id"] + "\t" + ("ok" if r["ok"] else "failed") + "\t" + r.get("error", ""))' "$line" 2>/dev/null) || continue
+                IFS=$'\t' read -r fid fstate why <<<"$fid"
+                if [[ $fstate == failed ]]; then feature_failed "$fid" "$why"; else FEAT_DONE+=("$fid"); fi
+            done < <(python3 -I "$ROOT/shell/assets/scripts/features.py" apply-user "${user[@]}" 2>/dev/null)
+        fi
+    fi
+    # The ones whose packages didn't come: said, unless their own part said so
+    for id in "${ids[@]}"; do
+        [[ " ${FEAT_FAILED[*]%%:*} " == *" $id "* ]] && continue
+        if [[ $pkg_ok == 0 || $aur_ok == 0 ]] && feature_needs_missing "$id"; then
+            feature_failed "$id" "its packages didn't install"
+        fi
+    done
+    record_features
+    (( ${#FEAT_FAILED[@]} == 0 )) && note "All set up." || note "${#FEAT_FAILED[@]} didn't finish; the rest are set up (listed again at the end)."
+    return 0
+}
+feature_failed() { # id why
+    local l fix
+    l=$(feat_line "$1")
+    fix=$(python3 -I -c 'import importlib.util, sys
+spec = importlib.util.spec_from_file_location("f", sys.argv[1]); m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+print(m.FIX.get(sys.argv[2], ""))' "$ROOT/shell/assets/scripts/features.py" "$1" 2>/dev/null)
+    FEAT_FAILED+=("$1:$(feat_title "$1"): ${2:-it stopped}.${fix:+ $fix}")
+    warn "$(feat_title "$1") didn't finish: ${2:-see the log}.${fix:+ $fix}"
+}
+# Whether a feature's packages (from the plan) are still missing
+feature_needs_missing() {
+    local l p
+    l=$(feat_line "$1")
+    for p in $(cut -f6,7 <<<"$l" | tr '\t' ' '); do pkg_installed "$p" || return 0; done
+    return 1
+}
+# What was chosen, into your settings: the chosen and the left out (Settings'
+# offer after an update leaves those out), and the offer as done (the
+# installer asked)
+record_features() {
+    [[ $DRY == 1 || -z "$FEAT_PLAN" ]] && return 0
+    local chosen declined
+    chosen=$(tr ' ' ',' <<<"$(xargs <<<"$FEATURES")")
+    declined=$(awk -F'\t' '$2 == 0 {print $1}' <<<"$FEAT_PLAN" | while read -r id; do feature_on "$id" || printf '%s,' "$id"; done)
+    python3 -I "$ROOT/shell/assets/scripts/features.py" record --chosen "$chosen" --declined "${declined%,}" --offer done >/dev/null 2>&1 || true
+}
+# AUR packages, one that replaces a repository package swapped in first
+# (yay won't with --noconfirm: libfprint-tod for libfprint), and the old one
+# back if the AUR's doesn't install
+aur_with_swap() {
+    local swap=()
+    [[ " $* " == *" libfprint-tod "* ]] && pkg_installed libfprint && ! pkg_installed libfprint-tod && swap=(libfprint)
+    if (( ${#swap[@]} )); then
+        run sudo pacman -Rdd --noconfirm "${swap[@]}" || return 1
+    fi
+    if ! aur_install 1 "The features' AUR packages" "$@"; then
+        (( ${#swap[@]} )) && run sudo pacman -S --needed --noconfirm "${swap[@]}"
+        return 1
+    fi
+    return 0
+}
+
 # A snapper or Timeshift snapshot of the system before anything changes,
 # when one of them is set up (nothing is set up for you)
 snapshot() {
@@ -1010,6 +1253,7 @@ PY
 # again (and then an install leaves it off).
 desktop_look() {
     local out
+    feature_off look && { note "Not chosen: your apps' look stays as it is (Settings → Appearance turns it on)."; return 0; }
     if [[ $DRY == 1 ]]; then
         out=$(python3 -I "$ROOT/shell/assets/scripts/desktop-look.py" install --dry-run --text 2>&1)
     else
@@ -1030,14 +1274,19 @@ build() {
     # rebuilt after Hyprland updates (tessera rebuild, or Settings).
     say "  Compiling shaders…"
     run "$ROOT/tools/build-shaders.sh" || return 1
-    say "  Building the glass plugin for Hyprland $(hypr_version)…"
+    # (the plugin's source is kept either way: Settings → Appearance builds it later)
     run mkdir -p "$DATA/tessera/src/tools" "$DATA/tessera/src/hypr"
     run rm -rf "$DATA/tessera/src/hypr/plugin"
     run cp -r "$ROOT/hypr/plugin" "$DATA/tessera/src/hypr/plugin"
     run cp "$ROOT/tools/build-plugin.sh" "$ROOT/tools/build-progress.py" "$DATA/tessera/src/tools/"
-    run make -C "$DATA/tessera/src/hypr/plugin/tessera-glass" clean >/dev/null 2>&1
-    run "$DATA/tessera/src/tools/build-plugin.sh" || return 1
-    [[ $DRY == 1 ]] || hypr_version >"$DATA/tessera/tessera-glass.built-for"
+    if feature_off glass; then
+        note "The glass plugin isn't chosen: glass looks frosted (Settings → Appearance builds it)."
+    else
+        say "  Building the glass plugin for Hyprland $(hypr_version)…"
+        run make -C "$DATA/tessera/src/hypr/plugin/tessera-glass" clean >/dev/null 2>&1
+        run "$DATA/tessera/src/tools/build-plugin.sh" || return 1
+        [[ $DRY == 1 ]] || hypr_version >"$DATA/tessera/tessera-glass.built-for"
+    fi
     # Native helpers (glass kept in step from C++, the C request helper),
     # built inside the shell so they're copied with it. Optional: without
     # them the shell uses its QML and Python fall-backs.
@@ -1219,7 +1468,7 @@ services() {
     local pm
     if pm=$(power_manager); then
         note "Energy modes are left to $pm."
-    else
+    elif ! feature_off power; then
         svc_on power-profiles-daemon
     fi
     case "$VIRT" in
@@ -1313,29 +1562,8 @@ login() {
         # Its look, from your settings (the shell keeps it up to date after:
         # LoginScreen, through tessera-root login-look)
         local look
-        look=$(python3 -I - "$CONFIG/tessera/config.json" <<'PY' 2>/dev/null || true
-import json, sys
-try:
-    c = json.load(open(sys.argv[1]))
-except (OSError, ValueError):
-    c = {}
-a, l = c.get("appearance", {}), c.get("lock", {})
-pick = lambda v, ok, d: v if v in ok else d
-whole = lambda v, lo, hi, d: v if type(v) is int and lo <= v <= hi else d
-seed = a.get("materialSeed", "")
-print(json.dumps({
-    "clockFace": pick(l.get("clockFace"), ("dynamic", "stacked", "wide", "overlap", "analog", "weather"), "dynamic"),
-    "clockRound": l.get("clockRound") if type(l.get("clockRound")) is bool else True,
-    "clockWeight": whole(l.get("clockWeight"), 100, 1000, 640),
-    "clockWidth": whole(l.get("clockWidth"), 25, 151, 112),
-    "look": pick(a.get("look"), ("glass", "material"), "glass"),
-    "materialStyle": pick(a.get("materialStyle"), ("tonalSpot", "vibrant", "expressive", "neutral", "content", "fidelity", "monochrome"), "tonalSpot"),
-    "mode": "light" if a.get("mode") == "light" else "dark",
-    "seed": seed if isinstance(seed, str) and len(seed) == 7 and seed.startswith("#") else "#6750A4",
-    "style": pick(l.get("loginStyle"), ("look", "text", "plain"), "look"),
-}, sort_keys=True, separators=(",", ":")))
-PY
-)
+        # (features.py login-look: the same look Settings' "Set up the rest" sends)
+        look=$(XDG_CONFIG_HOME="$CONFIG" python3 -I "$ROOT/shell/assets/scripts/features.py" login-look 2>/dev/null || true)
         [[ -n $look ]] || look='{"clockFace":"dynamic","clockRound":true,"clockWeight":640,"clockWidth":112,"look":"glass","materialStyle":"tonalSpot","mode":"dark","seed":"#6750A4","style":"look"}'
         # The switch itself is the root helper's, the same one Settings → Lock &
         # Login Screen uses: greetd's greeter user, the login screen's copy in
@@ -1535,7 +1763,9 @@ ${B}Tessera${R}  A glass desktop for Hyprland
 This sets up Tessera on $(. /etc/os-release 2>/dev/null && echo "$PRETTY_NAME"):
   • takes a snapshot first, when snapper or Timeshift is set up
   • installs Hyprland, Quickshell and everything Tessera uses (pacman; updates the system)
-  • what this computer's hardware is missing, if you like (firmware, drivers, biometrics)
+  • what this computer's hardware is missing, if you like (firmware, drivers)
+  • Tessera's features, all in one go: fingerprint and face unlock, Quick Share, the login
+    screen, the desktop look and more (only what this computer can use)
   • builds the glass plugin and shaders for this machine
   • installs the shell and its Hyprland config (yours is backed up first)
   • sets up the login screen, services and, if you like, apps and icons
@@ -1556,7 +1786,7 @@ ask "Start?" y || { say "Nothing changed."; exit 0; }
 screen_start "Checking your system" 2 "Safety snapshot" 2 "Installing packages" 30 "AUR helper (yay)" 3 \
     "Pointer and app style (optional)" 4 "Emoji styles (optional)" 2 "Icon themes (optional)" 2 "For this computer (optional)" 4 \
     "Building Tessera" 34 "Installing Tessera" 5 "Wallpapers (optional)" 1 "Your settings" 1 "Desktop look" 1 \
-    "Starting services" 4 "Login" 6
+    "Starting services" 4 "Features" 6 "Login" 6
 adopt_old_names
 step "Checking your system" preflight
 step "Safety snapshot" snapshot optional
@@ -1572,6 +1802,7 @@ step "Wallpapers (optional)" extras optional
 step "Your settings" settings optional
 step "Desktop look" desktop_look optional
 step "Starting services" services optional
+step "Features" features_step optional
 step "Login" login optional
 screen_stop
 printf '\n%s[✓]%s %sChecking the result%s\n' "$BLU" "$R" "$B" "$R"
@@ -1584,6 +1815,10 @@ verify
 result=$?
 if [[ -n "$OLD_CONFIG" ]]; then
     printf '\n%s\n' "$OLD_CONFIG" | sed 's/^/  /'
+fi
+if (( ${#FEAT_FAILED[@]} )); then
+    printf '\n%sFeatures to finish%s (everything else is set up)\n' "$B" "$R"
+    for f in "${FEAT_FAILED[@]}"; do printf '  %s!%s %s\n' "$YEL" "$R" "${f#*:}"; done
 fi
 
 printf '\n%s%s%s\n' "$B" "$([[ $result == 0 ]] && echo "Tessera is ready." || echo "Tessera is installed, with problems above.")" "$R"

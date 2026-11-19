@@ -51,6 +51,7 @@ FROZEN_QML = {"loginBack", "loginSwitch",
     "health.setPolkit", "loginRefresh",  # (19 Nov: Rust only)
     "sys.update", "cache.delete",  # (19 Nov: background updates, Rust only)
     "sheet", "sheet.copy", "su.updateAll",  # (19 Nov: Software Update redesigned, Rust only)
+    "features.setUp", "features.skip", "features.done",  # (20 Nov: "Set up the rest of Tessera", Rust only)
     
     "ai.continueCircle",
     "apps.activateOrLaunch",

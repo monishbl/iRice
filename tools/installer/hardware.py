@@ -15,9 +15,10 @@
 Only reads: lspci, /sys, /proc and pacman's database; nothing here installs
 or changes anything (install.sh does, after showing the plan). The plan
 holds only what's missing and relevant: firmware and drivers for the
-hardware found, the fingerprint reader's and the face camera's (each asked),
-what the installer builds for this machine (shown, always done), and
-tuning. An NVIDIA driver is only ever installed when asked for by name.
+hardware found, what the installer builds for this machine (shown, always
+done), and tuning. An NVIDIA driver is only ever installed when asked for by
+name. The fingerprint reader, face unlock and energy modes are Tessera's
+features (shell/assets/scripts/features.py: the installer's Features step).
 
 Detection is pure functions over text (parse_lspci, parse_cpu, edid_size,
 suggest_scale, plan): tests feed them fixtures. TESSERA_SYSTEM_ROOT moves /sys,
@@ -35,7 +36,7 @@ HERE = os.path.dirname(os.path.realpath(__file__))
 SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(HERE)), "shell", "assets", "scripts")
 ROOT = os.environ.get("TESSERA_SYSTEM_ROOT", "/")
 
-GROUPS = ["Firmware & drivers", "Biometrics", "Build for this machine", "Tuning"]
+GROUPS = ["Firmware & drivers", "Build for this machine", "Tuning"]
 # PCI vendors
 INTEL, AMD, NVIDIA, BROADCOM = "8086", "1002", "10de", "14e4"
 VENDOR_NAMES = {INTEL: "Intel", AMD: "AMD", NVIDIA: "NVIDIA", BROADCOM: "Broadcom"}
@@ -177,43 +178,24 @@ def plan(f):
                             nv[0]["name"] + " runs on nouveau now; NVIDIA's driver is faster and needed for many games. Changes how the screen is driven: only if you want it",
                             miss(["nvidia-open-dkms", "nvidia-utils", "libva-nvidia-driver"] + headers), ticked=False, ask=True))
 
-    # Biometrics (each asked)
-    fp = f.get("fingerprint")
-    if fp and not fp.get("unsupported") and (fp.get("repo") or fp.get("aur")):
-        out.append(item("fingerprint", G[1], "Fingerprint: " + fp["name"],
-                        "Unlock and approve with a finger (set it up in Settings → Privacy & Security)"
-                        + ("; its driver comes from the AUR" if fp.get("aur") else ""),
-                        fp.get("repo", []), fp.get("aur", []), ask=True))
-    cam = f.get("ir_camera")
-    if cam and not have & {"howdy-next", "howdy", "howdy-git", "howdy-beta-git"}:
-        out.append(item("face", G[1], "Face unlock: " + cam["name"],
-                        "Unlock by looking at the infrared camera (Howdy, built from the AUR: a few minutes)",
-                        [], ["howdy-next"], ticked=False, ask=True))
-
     # What the installer builds here (always, in its Building step)
-    out.append(item("build-plugin", G[2], "Glass plugin for Hyprland " + (f.get("hyprland") or "(installed next)"),
-                    "Compiled against this Hyprland, so the glass and window controls match it exactly", locked=True))
-    out.append(item("build-native", G[2], "Native helpers for this Qt",
+    # (the glass plugin is one of the features: features.py)
+    out.append(item("build-native", G[1], "Native helpers for this Qt",
                     "Faster glass sync and requests than the fall-backs, built for the Qt installed here; "
                     "and tessera-events, one process that follows the system for the shell", locked=True))
-    out.append(item("build-shaders", G[2], "Shaders", "Compiled once for this machine's Qt", locked=True))
+    out.append(item("build-shaders", G[1], "Shaders", "Compiled once for this machine's Qt", locked=True))
 
     # Tuning
     laptop = f.get("laptop", False)
     pm = f.get("power_manager", "")
-    # (power-profiles-daemon is one of Tessera's packages, turned on with the
-    # services: shown here, done there; never next to another power manager)
-    if laptop and not pm and "power-profiles-daemon" not in have:
-        out.append(item("power", G[3], "Energy modes", "Balanced, Power Saver and Performance from the menu bar; longer battery life",
-                        ["power-profiles-daemon"], services=["power-profiles-daemon"], locked=True))
     if laptop and f.get("cpu") == "intel" and "thermald" not in have and not pm:
-        out.append(item("thermald", G[3], "Intel thermal daemon",
+        out.append(item("thermald", G[2], "Intel thermal daemon",
                         "Keeps an Intel laptop cooler and quieter under load, before it has to slow down",
                         ["thermald"], services=["thermald"], ticked=False))
     # (only before Settings → Displays has its own: that's yours to change)
     for s in [] if f.get("monitors_set") else f.get("screens", []):
         if s.get("scale", 1.0) > 1.0:
-            i = item("scale-" + s["name"], G[3], "Display scale {:g} for {}".format(s["scale"], s["name"]),
+            i = item("scale-" + s["name"], G[2], "Display scale {:g} for {}".format(s["scale"], s["name"]),
                      "{}×{} on a {:.1f}\" screen: text and controls at a comfortable size (Settings → Displays changes it)".format(
                          s["width"], s["height"], s["inches"]))
             i["scale"] = s["scale"]

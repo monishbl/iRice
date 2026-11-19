@@ -97,6 +97,23 @@ With the password, once, at the start:
       update has). Only pacman runs, from /usr/bin, its arguments checked
       (check_pacman); output and exit code go back the same way. It ends
       when sysupdate.py closes the socket, so nothing outlives the update.
+      --features <ids> [the features' options below]: after the AUR step
+      (sysupdate.py asks for it over the same socket, {"features": true}),
+      or straight after the packages without one, the features below; the
+      same password
+  features <ids> [--face-camera <camera>] [--fprintd-wait]
+           [--login-look <json>] [--shell <folder>]
+      what root does for Tessera's features (features.py; the installer's
+      Features step, with sudo): a comma list of fingerprint (pam_fprintd
+      for password prompts, sudo and the login screen; --fprintd-wait: the
+      "fprintd" fix first), face (Howdy's models and that camera, as face
+      setup), bluetooth (bluetoothd's Experimental = true in main.conf, kept
+      once as .pre-tessera, and the "btpairing" fix), power
+      (power-profiles-daemon on), quickshare (quickshare-trust on, Avahi
+      on), login (login-switch on, with --shell and --login-look) and
+      bootsplash (Tessera's first boot animation, where Plymouth is in the
+      boot image). Each on its own: "@@feature <id> ok" or "@@feature <id>
+      failed <why>", the rest going on; exit 1 when any failed
   quickshare-trust on|off
       Quick Share's Wi-Fi helper starts without the password for you (a
       polkit rule naming you, at this computer, in the session on screen);
@@ -2077,13 +2094,27 @@ def check_package_file(v, dirs):
 def parse_update(args, dirs=None):
     """update's arguments, strictly: known flags only, package names checked."""
     p = {"snapshot": "", "system": False, "ignore": [], "install": [], "remove": [], "downgrade": [], "mirrors": [], "setup": "",
-         "broker": False}
+         "broker": False, "features": None}
+    feat = []
     i = 0
     while i < len(args):
         a = args[i]
         if a in ("--system", "--broker"):
             p[a[2:]] = True
             i += 1
+            continue
+        # (the features to set up once the packages are in: `features`'
+        # own arguments, checked by it)
+        if a == "--fprintd-wait":
+            feat.append(a)
+            i += 1
+            continue
+        if a in ("--features", "--face-camera", "--login-look", "--shell") and i + 1 < len(args):
+            if a == "--features":
+                feat.insert(0, args[i + 1])
+            else:
+                feat += [a, args[i + 1]]
+            i += 2
             continue
         if a not in ("--snapshot", "--ignore", "--install", "--remove", "--downgrade", "--mirrors", "--setup") or i + 1 >= len(args):
             raise Refused(f"unknown argument: {a}")
@@ -2109,6 +2140,10 @@ def parse_update(args, dirs=None):
             if bad:
                 raise Refused("not a package name: " + ", ".join(bad))
             p[a[2:]] = names
+    if feat:
+        if feat[0].startswith("--"):
+            raise Refused("--features: which ones")
+        p["features"] = parse_features(feat)
     return p
 
 
@@ -2176,15 +2211,30 @@ def _send(sock, obj):
     sock.sendall((json.dumps(obj) + "\n").encode())
 
 
-def serve(sock, log=None, pacman=None):
+def serve(sock, log=None, pacman=None, on_features=None):
     """The broker: one request per line from sysupdate.py ({"argv", "cwd"}),
     answered with {"out": text} lines and one {"exit": code}. Requests run
-    one after another. Ends when the socket closes."""
+    one after another. Ends when the socket closes. {"features": true}:
+    the features this update was started with (--features), once the AUR's
+    packages are in: on_features(say) runs them, once."""
     pacman = pacman or PACMAN
     reader = sock.makefile("rb")
     for line in reader:
         try:
             req = json.loads(line)
+            if isinstance(req, dict) and req.get("features") is True:
+                if on_features is None:
+                    raise Refused("this update has no features to set up")
+
+                def say(text):
+                    if log:
+                        log.write(text + "\n")
+                        log.flush()
+                    _send(sock, {"out": text + "\n"})
+                run_them, on_features = on_features, None
+                code = 1 if run_them(say) else 0
+                _send(sock, {"exit": code})
+                continue
             args = check_pacman(req.get("argv"))
             cwd = req.get("cwd")
             if not isinstance(cwd, str) or not cwd.startswith("/") or not os.path.isdir(cwd):
@@ -2264,6 +2314,7 @@ def update(args, uid, out=sys.stdout):
                           stdout=out, stderr=subprocess.STDOUT).returncode
     if code != 0:
         return code
+    on_features = (lambda s: features(p["features"], uid, s)) if p["features"] else None
     say("@@root-done")
     if p["broker"]:
         try:
@@ -2273,8 +2324,141 @@ def update(args, uid, out=sys.stdout):
             return 0
         if sock.type != socket.SOCK_STREAM:
             return 0
-        serve(sock, out)
+        serve(sock, out, on_features=on_features)
+    elif on_features:
+        on_features(say)
     return 0
+
+
+
+# ── features (the installer's Features step, Settings' "Set up the rest") ─
+# What root does for each of Tessera's features (features.py lists them):
+# fixed jobs by name, nothing free-form. Each is done on its own: one that
+# fails is said ("@@feature <id> failed <why>") and the rest go on.
+FEATURE_IDS = ("fingerprint", "face", "bluetooth", "power", "quickshare", "login", "bootsplash")
+BT_CONF = "/etc/bluetooth/main.conf"
+
+
+def parse_features(args):
+    """`features`' arguments: the ids (a comma list), then --face-camera
+    <camera>, --fprintd-wait, --login-look <json>, --shell <folder>."""
+    if not args or args[0].startswith("--"):
+        raise Refused("features: which ones (" + ",".join(FEATURE_IDS) + ")")
+    ids = [x for x in args[0].split(",") if x]
+    bad = [x for x in ids if x not in FEATURE_IDS]
+    if bad or not ids:
+        raise Refused("no feature called " + ", ".join(bad or ["(none)"]))
+    p = {"ids": list(dict.fromkeys(ids)), "camera": "", "fprintd_wait": False, "look": "", "shell": ""}
+    i = 1
+    while i < len(args):
+        a = args[i]
+        if a == "--fprintd-wait":
+            p["fprintd_wait"] = True
+            i += 1
+            continue
+        if a not in ("--face-camera", "--login-look", "--shell") or i + 1 >= len(args):
+            raise Refused(f"unknown argument: {a}")
+        v = args[i + 1]
+        i += 2
+        if a == "--face-camera":
+            if not CAMERA_PATH.match(v):
+                raise Refused(f"not a camera: {v}")
+            p["camera"] = v
+        elif a == "--login-look":
+            p["look"] = v
+        else:
+            p["shell"] = check_folder(v)
+    return p
+
+
+def bt_with_experimental(text):
+    """bluetoothd's main.conf with Experimental = true in [General] (BlueZ's
+    battery levels of headphones and phones, and LE features Quick Share
+    uses), everything else as it was."""
+    out, section, done, general = [], "", False, False
+    for line in text.splitlines():
+        m = re.match(r"^\s*\[(.+)\]\s*$", line)
+        if m:
+            if section == "General" and not done:
+                out.append("Experimental = true")
+                done = True
+            section = m.group(1).strip()
+            general = general or section == "General"
+        elif section == "General" and re.match(r"^\s*#?\s*Experimental\s*=", line):
+            if not done:
+                out.append("Experimental = true")
+                done = True
+            continue
+        out.append(line)
+    if not done:
+        if section != "General":
+            out += (["", "[General]"] if out else ["[General]"])
+        out.append("Experimental = true")
+    return "\n".join(out) + "\n"
+
+
+def bluetooth_extras(prefix=None, run=subprocess.run):
+    """Experimental on (main.conf kept once as .pre-tessera), and the
+    pairing fix (it restarts Bluetooth, which reads both)."""
+    prefix = PREFIX if prefix is None else prefix
+    conf = _at(prefix, BT_CONF)
+    text = read_text(conf)
+    if text is not None:
+        new = bt_with_experimental(text)
+        if new != text:
+            if not os.path.lexists(conf + ".pre-tessera"):
+                copy_file(conf, conf + ".pre-tessera")
+            write_root(conf, new.encode(), 0o644)
+    elif os.path.isdir(os.path.dirname(conf)):
+        write_root(conf, bt_with_experimental("").encode(), 0o644)
+    if prefix == "/":
+        r = run(FIXES["btpairing"], capture_output=True, text=True)
+        if r.returncode != 0:
+            raise Refused("Bluetooth didn't restart: " + ((r.stderr or r.stdout or "").strip().splitlines() or ["systemctl failed"])[-1])
+
+
+def features(p, uid, say, run=subprocess.run):
+    """Sets up each of p["ids"] (parse_features'); says "@@feature <id> ok"
+    or "@@feature <id> failed <why>" for each. Returns how many failed."""
+    failed = 0
+    for id in p["ids"]:
+        say(f"@@feature {id} start")
+        try:
+            if id == "fingerprint":
+                if p["fprintd_wait"]:
+                    # (a reader whose driver updates its firmware as fprintd
+                    # first starts: fprintd gets the time it needs)
+                    run(FIXES["fprintd"], capture_output=True, text=True)
+                for where in ("polkit", "sudo", "login"):
+                    for d in fingerprint(True, where):
+                        say("changed " + d)
+            elif id == "face":
+                if not p["camera"]:
+                    raise Refused("which camera (--face-camera)")
+                if face(["setup", p["camera"]], uid, run=run) != 0:
+                    raise Refused("Howdy couldn't be set up")
+            elif id == "bluetooth":
+                bluetooth_extras(run=run)
+            elif id == "power":
+                if run(["systemctl", "enable", "--now", "power-profiles-daemon"], capture_output=True).returncode != 0:
+                    raise Refused("power-profiles-daemon didn't start")
+            elif id == "quickshare":
+                for d in quickshare_trust(True, uid):
+                    say("changed " + d)
+                run(["systemctl", "enable", "--now", "avahi-daemon"], capture_output=True)
+            elif id == "login":
+                if not p["shell"] or not p["look"]:
+                    raise Refused("the login screen needs --shell and --login-look")
+                login_switch_on(p["shell"], p["look"], uid, run=run)
+            elif id == "bootsplash":
+                for d in bootsplash(BOOTSPLASH_IDS[0], run=run):
+                    say(d)
+            say(f"@@feature {id} ok")
+        except (Refused, OSError, subprocess.SubprocessError, ValueError) as e:
+            failed += 1
+            why = " ".join(str(e).split()) or type(e).__name__
+            say(f"@@feature {id} failed {why}")
+    return failed
 
 
 # ── wifi-helper ─────────────────────────────────────────────────────────
@@ -2365,13 +2549,16 @@ def main(argv):
                 raise Refused(f"{cmd} is the system's own, as the computer starts")
             print((login_fallback if cmd == "login-fallback" else login_check)())
             return 0
+        if cmd == "features" and args:
+            p = parse_features(args)
+            return 1 if features(p, uid, lambda t: print(t, flush=True)) else 0
         if cmd == "setup" and len(args) == 1:
             for d in setup(args[0], uid):
                 print("installed", d)
             return 0
         raise Refused("usage: tessera-root wallpaper <path> | login-look <json> | fix <id> | wifi-helper | fingerprint on|off <where> | phonecam on|off | face … | bootmenu on|off | "
                       "bootsplash <id>|system|none | quickshare-trust on|off | priority on|off | sharing-ports open [<set>…]|close | "
-                      "update … | setup <folder> | login-switch on <shell folder> <look json> | login-switch off [<login manager>]")
+                      "update … | features <ids> [--face-camera <camera>] [--fprintd-wait] [--login-look <json>] [--shell <folder>] | setup <folder> | login-switch on <shell folder> <look json> | login-switch off [<login manager>]")
     except Refused as e:
         print(f"tessera-root: {e}", file=sys.stderr)
         return REFUSED_EXIT

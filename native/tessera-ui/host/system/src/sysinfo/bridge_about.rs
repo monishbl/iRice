@@ -55,6 +55,13 @@ struct Read {
 }
 /// The undo notice of an import ran out (8 s)
 struct IeExpire(String);
+/// Tessera's features not set up yet (features.py missing), and whether to
+/// announce the one-time offer (a notification) when there are some
+struct FeatList(Value, bool);
+/// What setting the chosen features up takes (features.py plan)
+struct FeatPlan(Value);
+/// The offer's notification was answered ("setup" or "")
+struct FeatAnswer(String);
 
 #[derive(Default)]
 pub struct About {
@@ -75,6 +82,13 @@ pub struct About {
     log_on: bool,
     /// yay or paru is installed (Options' Include AUR updates)
     aur_helper: bool,
+    /// "Set up the rest of Tessera" (features.py): the features this
+    /// computer can use that aren't set up ({"items": […]}), a run of them
+    /// started here, its results, and a check under way
+    feat: Value,
+    feat_running: bool,
+    feat_result: Value,
+    feat_checking: bool,
 }
 
 fn obj(name: &str) -> Value {
@@ -196,6 +210,10 @@ impl About {
             let tx = self.tx().clone();
             // (Software Update and its sub-pages: what they show, read once on the way in)
             if new.starts_with("update") && !old.starts_with("update") {
+                // (the one-time offer, while it's open: what's still to set up)
+                if h.cfg()["features"]["offer"] == "pending" {
+                    self.features_check(false);
+                }
                 self.su.check_undo(&tx, &self.up);
                 self.tu.read_cache(&tx);
                 self.tu.read_staged(&tx);
@@ -334,6 +352,63 @@ impl About {
         })
     }
 
+    // ── "Set up the rest of Tessera" (features.py) ──────────────────────
+    /// What's still to set up, read again; `announce`: the offer's
+    /// notification when there's anything (the first time only)
+    fn features_check(&mut self, announce: bool) {
+        if self.feat_checking {
+            return;
+        }
+        self.feat_checking = true;
+        let (t, script) = (self.tx().clone(), util::script("features.py"));
+        std::thread::spawn(move || {
+            let out = util::capture(&["python3", "-I", &script, "missing"], Duration::from_secs(60)).map(|(_, o)| o).unwrap_or_default();
+            t(Box::new(FeatList(serde_json::from_str(out.trim()).unwrap_or(Value::Null), announce)));
+        });
+    }
+
+    /// The offer, once: pending while it's open in Software Update, done
+    /// when there's nothing to offer. One notification; Review opens it.
+    fn features_announce(&mut self) {
+        let items = self.feat["items"].as_array().cloned().unwrap_or_default();
+        if items.is_empty() {
+            util::config_set("features.offer", json!("done"));
+            return;
+        }
+        util::config_set("features.offer", json!("pending"));
+        let body = offer_text(&items);
+        let t = self.tx().clone();
+        std::thread::spawn(move || {
+            let c = ["timeout", "86400", "notify-send", "-a", "Tessera", "-i", "system-software-update", "-h", "string:x-tessera-key:tessera-features",
+                     "-A", "setup=Review", "Set up the rest of Tessera", &body];
+            let out = util::capture(&c, Duration::from_secs(86400 + 60)).map(|(_, o)| o).unwrap_or_default();
+            t(Box::new(FeatAnswer(out.trim().to_string())));
+        });
+    }
+
+    /// A run of them ended (sysupdate.py's status, `features` per id): what
+    /// was set up and what wasn't, with how to finish it. Never offered again.
+    fn features_finished(&mut self, job: &Value) {
+        if job["state"] == "cancelled" {
+            return;
+        }
+        let items = self.feat["items"].as_array().cloned().unwrap_or_default();
+        self.feat_result = features_result(&items, job);
+        util::config_set("features.offer", json!("done"));
+        self.features_check(false);
+    }
+
+    /// The feed's `upd.features`
+    fn features_feed(&self, h: &Host) -> Value {
+        let pending = h.cfg()["features"]["offer"] == "pending";
+        let items: Vec<Value> = self.feat["items"].as_array().map(|a| a.iter().map(|i| json!({"id": s(&i["id"]), "title": s(&i["title"]), "detail": s(&i["detail"]), "group": s(&i["group"])})).collect()).unwrap_or_default();
+        json!({
+            "pending": pending || self.feat_running || !self.feat_result.is_null(),
+            "items": if pending || self.feat_running { items } else { vec![] },
+            "running": self.feat_running, "result": self.feat_result,
+        })
+    }
+
     fn feed(&self, h: &Host) -> Value {
         let up = &self.up;
         let health = st(h, "health");
@@ -351,7 +426,13 @@ impl About {
         let clock24 = h.cfg()["appearance"]["clock24"].as_bool().unwrap_or(false);
         json!({
             // (Software Update's pages; About's Version row reads its channel too)
-            "upd": if self.page().starts_with("update") || self.page() == "about" { self.upd_feed(clock24) } else { Value::Null },
+            "upd": if self.page().starts_with("update") || self.page() == "about" {
+                let mut u = self.upd_feed(clock24);
+                u["features"] = self.features_feed(h);
+                u
+            } else {
+                Value::Null
+            },
             "needsInstalling": st(h, "needs")["installing"].as_bool().unwrap_or(false),
             "health": {
                 "checks": checks, "groups": HEALTH_GROUPS, "checking": b(&health["checking"]), "fixing": health["fixing"].clone(), "error": s(&health["error"]),
@@ -569,13 +650,35 @@ impl About {
             "sys.update" => self.su.update_system(&tx, &mut self.tu, &mut self.up),
             // Software Update's sheets: a log, the notes, the packages, the decisions
             "sheet" => {
-                self.sheet = if matches!(a0s.as_str(), "tessera-log" | "system-log" | "busy-log" | "notes" | "result" | "packages" | "decide") { a0s.clone() } else { String::new() };
+                self.sheet = if matches!(a0s.as_str(), "tessera-log" | "system-log" | "busy-log" | "notes" | "result" | "packages" | "decide" | "features") { a0s.clone() } else { String::new() };
                 self.sync_log();
             }
             "sheet.copy" => {
                 if let Some(p) = self.sheet_log_path() {
                     tessera_core::services::bridge::run(&["sh", "-c", "wl-copy < \"$1\"", "sh", &p.to_string_lossy()]);
                 }
+            }
+            // "Set up the rest of Tessera": the ones ticked, one password
+            "features.setUp" => {
+                let known: Vec<String> = self.feat["items"].as_array().map(|a| a.iter().filter_map(|i| i["id"].as_str().map(str::to_string)).collect()).unwrap_or_default();
+                let ids: Vec<String> = a0.as_array().map(|a| a.iter().filter_map(|x| x.as_str()).filter(|x| known.iter().any(|k| k == x)).map(str::to_string).collect()).unwrap_or_default();
+                if !ids.is_empty() && !self.up.running() && !self.feat_running {
+                    self.feat_running = true;
+                    self.feat_result = Value::Null;
+                    let (t, script) = (tx.clone(), util::script("features.py"));
+                    std::thread::spawn(move || {
+                        let mut c = vec!["python3", "-I", script.as_str(), "plan"];
+                        c.extend(ids.iter().map(String::as_str));
+                        let out = util::capture(&c, Duration::from_secs(120)).map(|(_, o)| o).unwrap_or_default();
+                        t(Box::new(FeatPlan(serde_json::from_str(out.trim()).unwrap_or(Value::Null))));
+                    });
+                }
+            }
+            // (not now, and never again: each feature's own page sets it up)
+            "features.skip" | "features.done" => {
+                util::config_set("features.offer", json!("done"));
+                self.feat_result = Value::Null;
+                self.sheet.clear();
             }
             "tu.cancel" => self.tu.cancel(&tx),
             "tu.restart" => self.tu.restart(h, &tx, false),
@@ -788,6 +891,12 @@ impl Service for About {
                     }
                     self.up.refresh(&tx); // a fresh check
                     self.su.updates_finished(h, &tx, &mut self.tu, &self.up, &job);
+                    if std::mem::take(&mut self.feat_running) {
+                        self.features_finished(&job);
+                    } else if job["state"] == "done" && h.cfg()["features"]["offer"].is_null() {
+                        // (the first update since this version: the offer, once)
+                        self.features_check(true);
+                    }
                 }
                 return self.after(h);
             }
@@ -796,6 +905,10 @@ impl Service for About {
         let msg = match msg.downcast::<tessera_update::Ev>() {
             Ok(ev) => {
                 self.tu.event(h, &tx, *ev);
+                // (Tessera's part applied: the first start of this version offers the rest, once)
+                if self.tu.result.as_ref().is_some_and(|r| helpers::truthy(&r["applied"])) && h.cfg()["features"]["offer"].is_null() {
+                    self.features_check(true);
+                }
                 // The update notice's Update: Software Update, with a fresh check
                 if std::mem::take(&mut self.tu.open_asked) {
                     h.ask("panels.openSettings", json!(["update"]));
@@ -838,6 +951,43 @@ impl Service for About {
                 match r.res {
                     Ok(text) => h.ask("keymap.previewFile", json!({"text": text, "sections": r.secs, "reply": {"call": "about.iePreview", "key": r.key}})),
                     Err(e) => self.ie_set(&r.key, json!({"error": format!("Couldn't read {}{}. Check the path and that the file exists.", r.path, if e.is_empty() { String::new() } else { format!(" ({}: {e})", expand(&r.path)) })})),
+                }
+                return self.after(h);
+            }
+            Err(m) => m,
+        };
+        let msg = match msg.downcast::<FeatList>() {
+            Ok(m) => {
+                let FeatList(v, announce) = *m;
+                self.feat_checking = false;
+                if v.is_object() {
+                    self.feat = v;
+                }
+                if announce && h.cfg()["features"]["offer"].is_null() {
+                    self.features_announce();
+                }
+                return self.after(h);
+            }
+            Err(m) => m,
+        };
+        let msg = match msg.downcast::<FeatPlan>() {
+            Ok(m) => {
+                match features_args(&m.0) {
+                    Some(a) => self.up.update(&tx, &a),
+                    None => {
+                        self.feat_running = false;
+                        self.feat_result = json!({"error": "The features couldn't be planned. Try again."});
+                    }
+                }
+                return self.after(h);
+            }
+            Err(m) => m,
+        };
+        let msg = match msg.downcast::<FeatAnswer>() {
+            Ok(a) => {
+                if a.0 == "setup" {
+                    self.sheet = "features".into();
+                    h.ask("panels.openSettings", json!(["update"]));
                 }
                 return self.after(h);
             }
@@ -889,6 +1039,86 @@ mod log_tail_tests {
         let long = "é".repeat(100_000);
         assert!(log_tail(&long, 2).chars().all(|c| c == 'é'));
         assert_eq!(log_tail("", 5), "");
+    }
+}
+
+/// The offer's notification: how many, and the first few by name
+pub fn offer_text(items: &[Value]) -> String {
+    let names: Vec<String> = items.iter().take(3).filter_map(|i| i["title"].as_str()).map(str::to_string).collect();
+    let n = items.len();
+    let more = if n > names.len() { format!(" and {} more", n - names.len()) } else { String::new() };
+    format!("{}{more} can be set up on this computer. Review them in Software Update; one password sets them all up.", names.join(", "))
+}
+
+/// sysupdate.py's arguments for features.py's plan (None: no plan)
+pub fn features_args(plan: &Value) -> Option<Vec<String>> {
+    let list = |k: &str| -> Vec<String> { plan[k].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect()).unwrap_or_default() };
+    let ids = list("ids");
+    if ids.is_empty() {
+        return None;
+    }
+    let mut a: Vec<String> = Vec::new();
+    for (flag, key) in [("--install", "install"), ("--aur-install", "aur")] {
+        let l = list(key);
+        if !l.is_empty() {
+            a.push(flag.into());
+            a.push(l.join(","));
+        }
+    }
+    a.push("--features".into());
+    a.push(ids.join(","));
+    // (the root helper's options: its first is the ids again)
+    a.extend(list("rootArgs").into_iter().skip(1));
+    Some(a)
+}
+
+/// What a run of features did: {"ok": [{id, title}], "failed": [{id, title,
+/// error, fix}], "error"}. A run that stopped before its features (the
+/// packages didn't install) fails all of them with its error.
+pub fn features_result(items: &[Value], job: &Value) -> Value {
+    let title = |id: &str| items.iter().find(|i| i["id"] == id).and_then(|i| i["title"].as_str()).unwrap_or(id).to_string();
+    let fix = |id: &str| items.iter().find(|i| i["id"] == id).and_then(|i| i["fix"].as_str()).unwrap_or("").to_string();
+    let res = job["features"].as_object().cloned().unwrap_or_default();
+    let (mut ok, mut failed) = (Vec::new(), Vec::new());
+    for (id, r) in &res {
+        if r["ok"] == true {
+            ok.push(json!({"id": id, "title": title(id)}));
+        } else {
+            failed.push(json!({"id": id, "title": title(id), "error": r["error"].as_str().unwrap_or(""), "fix": fix(id)}));
+        }
+    }
+    let error = if job["state"] == "done" { String::new() } else { job["error"].as_str().filter(|e| !e.is_empty()).or(job["text"].as_str()).unwrap_or("It stopped.").to_string() };
+    json!({"ok": ok, "failed": failed, "error": error})
+}
+
+#[cfg(test)]
+mod features_tests {
+    use super::*;
+    use serde_json::json;
+    #[test]
+    fn the_offer_names_a_few() {
+        let items = vec![json!({"title": "Fingerprint"}), json!({"title": "Quick Share"}), json!({"title": "Boot animation"}), json!({"title": "Cloud drives"})];
+        assert_eq!(offer_text(&items[..1]), "Fingerprint can be set up on this computer. Review them in Software Update; one password sets them all up.");
+        assert!(offer_text(&items).starts_with("Fingerprint, Quick Share, Boot animation and 1 more can be set up"));
+    }
+    #[test]
+    fn a_plan_becomes_one_run() {
+        let plan = json!({"ids": ["fingerprint", "cast"], "install": ["yt-dlp"], "aur": ["libfprint-tod", "fprintd"], "root": ["fingerprint"], "user": [],
+                          "rootArgs": ["fingerprint", "--fprintd-wait"]});
+        assert_eq!(features_args(&plan).unwrap(), ["--install", "yt-dlp", "--aur-install", "libfprint-tod,fprintd", "--features", "fingerprint,cast", "--fprintd-wait"]);
+        assert!(features_args(&json!({"ids": []})).is_none());
+        assert!(features_args(&Value::Null).is_none());
+    }
+    #[test]
+    fn results_say_what_to_finish() {
+        let items = vec![json!({"id": "face", "title": "Face unlock", "fix": "Settings → Privacy & Security → Face sets it up."})];
+        let r = features_result(&items, &json!({"state": "done", "features": {"face": {"ok": false, "error": "no camera"}, "cast": {"ok": true, "error": ""}}}));
+        assert_eq!(r["failed"][0]["title"], "Face unlock");
+        assert_eq!(r["failed"][0]["fix"], "Settings → Privacy & Security → Face sets it up.");
+        assert_eq!(r["ok"][0]["id"], "cast");
+        assert_eq!(r["error"], "");
+        let r = features_result(&items, &json!({"state": "error", "error": "The packages didn't install", "features": {}}));
+        assert_eq!(r["error"], "The packages didn't install");
     }
 }
 
