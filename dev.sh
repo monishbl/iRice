@@ -138,6 +138,12 @@ case "${1:-help}" in
         stop_sandbox_shells
         running && kill "$(sandbox_pid)" && echo "Sandbox stopped." \
             || echo "Sandbox not running."
+        # (the sandbox session's gvfsd-fuse mount outlives it, dead: the next
+        # start under the same runtime folder then failed to create its
+        # display; 19 Nov)
+        if mountpoint -q "$RT/gvfs" 2>/dev/null || [[ -e "$RT/gvfs" && ! -r "$RT/gvfs" ]]; then
+            fusermount3 -uz "$RT/gvfs" 2>/dev/null || fusermount -uz "$RT/gvfs" 2>/dev/null || true
+        fi
         ;;
     status)  running && echo "running (pid $(sandbox_pid))" || echo "stopped" ;;
     reload)  "$ROOT/tools/build-shaders.sh" && nested env TESSERA_LAB="${TESSERA_LAB:-0}" "$ROOT/sandbox/reload-shell.sh" ;;
