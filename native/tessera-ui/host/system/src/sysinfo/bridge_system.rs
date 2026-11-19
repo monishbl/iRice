@@ -338,7 +338,9 @@ impl SystemBridge {
             }
             // Fingerprint (fprintd and PAM through the shell's helper)
             "fpEnroll" => {
-                let known = a0.as_str().is_some_and(|f| !obj("fingerprint")["fingerNames"][f].is_null());
+                // (one of fprintd's ten: the names come from here, not the
+                // fingerprint service, so checking those dropped every Add)
+                let known = a0.as_str().is_some_and(|f| !crate::accounts::fingerprint::finger_name(f).is_empty());
                 if known {
                     self.takes = 0;
                     self.misses = 0;
