@@ -655,6 +655,157 @@ time.sleep(300)
         self.assertFalse(self.m.cancel_job(grace=0.1))
 
 
+class RepoLock(unittest.TestCase):
+    """"Another update is running" (19 Nov): never for a stale lock. Its
+    holder gone, or only a process that inherited the descriptor keeping it
+    (a shell started by an older update-run.sh): the lock is taken. An
+    update really running: said since when, where and what, never a dead end."""
+
+    # (holds the lock as an update would: its cmdline names tessera-update.py)
+    HOLDER = """
+import fcntl, json, os, sys, time
+f = open(sys.argv[1], "a+")
+fcntl.flock(f, fcntl.LOCK_EX)
+if sys.argv[2] == "record":
+    start = int(open(f"/proc/{os.getpid()}/stat").read().rsplit(")", 1)[1].split()[19])
+    f.seek(0); f.truncate()
+    json.dump({"pid": os.getpid(), "start": start, "what": "stage", "started": 1700000000, "session": "other", "log": ""}, f)
+    f.flush()
+print("held", flush=True)
+time.sleep(60)
+"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.tmp.name) / "repo"
+        (self.repo / ".git").mkdir(parents=True)
+        self.env = mock.patch.dict(os.environ, {"XDG_STATE_HOME": self.tmp.name, "HYPRLAND_INSTANCE_SIGNATURE": "mine"})
+        self.env.start()
+        os.environ.pop("TESSERA_UPDATE_HELD", None)
+        self.m = load_update()
+        self.m.REPO = str(self.repo)
+        self.procs = []
+
+    def tearDown(self):
+        for p in self.procs:
+            p.kill()
+            p.wait()
+            if p.stdout:
+                p.stdout.close()
+        self.env.stop()
+        self.tmp.cleanup()
+
+    def held_by_an_update(self, record=True):
+        p = subprocess.Popen([sys.executable, "-c", self.HOLDER, self.m.lock_path(), "record" if record else "bare", "tessera-update.py"],
+                             stdout=subprocess.PIPE, text=True)
+        self.procs.append(p)
+        self.assertEqual(p.stdout.readline().strip(), "held")
+        return p
+
+    def inherited_by_a_shell(self, record):
+        """The lock taken by a process that's gone, its descriptor kept by
+        a child that isn't an update (the old bug's shell)"""
+        import fcntl
+        f = open(self.m.lock_path(), "a+")
+        fcntl.flock(f, fcntl.LOCK_EX)
+        if record:
+            dead = subprocess.Popen(["true"])
+            dead.wait()
+            f.seek(0)
+            f.truncate()
+            json.dump({"pid": dead.pid, "start": 1, "what": "restart", "started": 1700000000, "session": "mine", "log": ""}, f)
+            f.flush()
+        shell = subprocess.Popen(["sleep", "60"], pass_fds=(f.fileno(),))
+        self.procs.append(shell)
+        f.close()
+        return shell
+
+    def test_a_lock_whose_holder_is_gone_is_taken(self):
+        shell = self.inherited_by_a_shell(record=True)
+        held = self.m.repo_lock()
+        self.assertIsNotNone(held)
+        rec = json.loads(Path(self.m.lock_path()).read_text())
+        self.assertEqual((rec["pid"], rec["what"], rec["session"]), (os.getpid(), "update", "mine"))
+        self.assertIsNone(shell.poll(), "the shell that kept the old one is left alone")
+
+    def test_an_inherited_lock_without_a_record_is_taken(self):
+        self.inherited_by_a_shell(record=False)
+        self.assertIsNotNone(self.m.repo_lock())
+
+    def test_an_update_running_is_named_not_a_dead_end(self):
+        self.held_by_an_update()
+        with self.assertRaises(self.m.Busy) as e:
+            self.m.repo_lock()
+        msg = str(e.exception)
+        at = time.strftime("%H:%M", time.localtime(1700000000))
+        self.assertTrue(msg.startswith(f"Software Update is already running (started {at}) in another session"), msg)
+        self.assertIn("getting an update ready", msg)
+        self.assertIn("then try again", msg)
+        self.assertNotIn("Another update", msg)
+        self.assertEqual(e.exception.holder["what"], "stage")
+        # (still a SystemExit: every caller that said why still does)
+        self.assertIsInstance(e.exception, SystemExit)
+
+    def test_an_update_without_a_record_still_counts(self):
+        self.held_by_an_update(record=False)
+        self.assertIsNotNone(self.m.lock_holder())
+        with self.assertRaises(self.m.Busy):
+            self.m.repo_lock()
+
+    def test_lock_holder_reports_and_marks_the_job(self):
+        self.assertEqual(self.m.lock_report(), {"free": True})
+        self.inherited_by_a_shell(record=True)
+        self.assertEqual(self.m.lock_report(), {"stale": True})
+        self.assertEqual(self.m.lock_report(), {"free": True}, "taken apart: free again")
+        self.held_by_an_update()
+        r = self.m.lock_report(mark=True)
+        self.assertTrue(r["busy"])
+        st = json.loads(Path(self.m.job_dir(), "status.json").read_text())
+        self.assertEqual(st["state"], "busy")
+        self.assertEqual(st["holder"]["what"], "stage")
+        self.assertTrue(st["error"].startswith("Software Update is already running"))
+
+    def test_a_running_job_keeps_its_own_status(self):
+        d = Path(self.m.job_dir())
+        d.mkdir(parents=True)
+        me = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)", "tessera-update.py"])
+        self.procs.append(me)
+        (d / "status.json").write_text(json.dumps({"state": "running", "pid": me.pid}))
+        time.sleep(0.2)
+        self.assertFalse(self.m.mark_busy({"what": "restart"}))
+        self.assertEqual(json.loads((d / "status.json").read_text())["state"], "running")
+
+    def test_a_second_stage_leaves_the_first_ones_files_alone(self):
+        self.held_by_an_update()
+        a = mock.Mock(rebuild="", channel=None)
+        out = self.m.run_stage(a, str(self.repo), {})
+        self.assertTrue(out["busy"])
+        self.assertFalse(Path(self.m.job_dir(), "pid").exists(), "no second job: the first one's pid stays its own")
+        self.assertEqual(json.loads(Path(self.m.job_dir(), "status.json").read_text())["state"], "busy")
+
+    def test_held_for_us_only_by_our_parent(self):
+        # (an older update-run.sh exported TESSERA_UPDATE_HELD=1, and the shell
+        # it started passed it to every update after, which then never locked)
+        with mock.patch.dict(os.environ, {"TESSERA_UPDATE_HELD": "1"}):
+            self.assertIsNotNone(self.m.repo_lock())
+        self.m._HELD = None
+        with mock.patch.dict(os.environ, {"TESSERA_UPDATE_HELD": str(os.getppid())}):
+            self.assertIsNone(self.m.repo_lock())
+
+    def test_update_run_sh_takes_a_stale_lock_and_never_leaks_held(self):
+        sh = (ROOT / "shell/assets/scripts/update-run.sh").read_text()
+        self.assertNotIn("export TESSERA_UPDATE_HELD", sh)
+        self.assertIn('TESSERA_UPDATE_HELD=$$ python3 -I "$REPO/tools/tessera-update.py" "${UPDATE[@]}"', sh)
+        self.assertIn('exec 8<>"$LOCKF"', sh, "opening the lock never empties its holder's record")
+        self.assertIn("lock-holder", sh)
+        self.assertNotIn("Another update is running", sh)
+        self.assertIn("TESSERA_UPDATE_HELD=*", sh, "stripped from the shell it starts")
+
+    def test_nothing_says_another_update_any_more(self):
+        for f in ("tools/tessera-update.py", "shell/assets/scripts/update-run.sh", "shell/assets/scripts/sysupdate.py"):
+            self.assertNotIn("Another update is running", (ROOT / f).read_text(), f)
+
+
 # ── sysupdate.py ──────────────────────────────────────────────────────────
 
 class RestartNeeded(unittest.TestCase):

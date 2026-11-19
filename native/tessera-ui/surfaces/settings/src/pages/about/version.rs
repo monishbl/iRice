@@ -39,7 +39,7 @@ pub fn followed(cx: &Ctx) -> String {
     if chosen == "stable" || chosen == "beta" {
         return chosen;
     }
-    s(&feed(cx)["tu"]["info"]["channel"])
+    s(&feed(cx)["upd"]["info"]["channel"])
 }
 
 /// The plain words when this build isn't the channel Software Update

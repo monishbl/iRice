@@ -590,7 +590,7 @@ impl Panels {
             "installUpdates" => h.ask("system.installUpdates", json!([])),
             // Software Update's buttons, by script (the sandbox arena's check
             // of the background update: `ipc call rustui act update tu.update`)
-            "update" if ["su.check", "tu.update", "tu.restart", "tu.cancel", "sys.update", "cache.delete"].contains(&a[0]) => h.ask(&format!("about.{}", a[0]), json!([])),
+            "update" if ["su.check", "su.updateAll", "tu.update", "tu.restart", "tu.cancel", "sys.update", "su.cancel", "cache.delete"].contains(&a[0]) => h.ask(&format!("about.{}", a[0]), json!([])),
             "repairShell" => h.ask("system.repairShell", json!([])),
             "power" => h.ask("system.power", json!([a[0]])),
             "darkMode" => h.ask("system.toggleDarkMode", json!([])),

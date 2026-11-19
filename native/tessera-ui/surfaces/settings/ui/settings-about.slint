@@ -1,7 +1,8 @@
 // Settings: the views only the "about" page group's pages have (custom rows
 // and row controls; src/surfaces/settings/pages/about/*.rs fills them): the
-// update notes (UpdateNotes.qml), the packages affected, the steps and the
-// progress (WavyProgress.qml), the output (LogView.qml), the bug report's
+// update notes (UpdateNotes.qml), the packages affected, a part of Software
+// Update while it runs, the progress (WavyProgress.qml), the output
+// (LogView.qml), Software Update's sheet head (a block), the bug report's
 // boxes and screenshot, the health checks' status, the login items and the
 // apps to add, an import's preview lines. A row's `sub` says which view;
 // it reports through SBus.act(id, int, float, string).
@@ -13,9 +14,67 @@
 import { Theme } from "@tessera/theme.slint";
 import { SIc, SOpt, SetRow, SBlock, SBus, SG, SM, SIcon, SFocusRing, SSwitch, SSlider, SSegmented, SChoice, SButton, SField, SChip, SSwatch, SFilled, STip, SWavy, SWrap, SWrapStyled } from "settings-kit.slint";
 
-// (no custom blocks in this group: its views are rows)
+// A sheet's head (Software Update's sheets, in the page's place: a log,
+// What's new, the packages, the decisions before Tessera updates): b.title,
+// b.text (one line), b.data its buttons (style: 0, 1 primary; off:
+// disabled), each SBus.act(b.id, i); Esc presses the last (Done, Cancel)
+component SheetHead inherits VerticalLayout {
+    in property <SBlock> b;
+    padding-bottom: 8px;
+    spacing: 0;
+    init => { keys.focus(); }
+    keys := FocusScope {
+        width: 0;
+        height: 0;
+        // (a click goes to what's under it: keys only)
+        focus-on-click: false;
+        key-pressed(e) => {
+            if e.text == Key.Escape && root.b.data.length > 0 {
+                SBus.act(root.b.id, root.b.data.length - 1, 0, "");
+                return accept;
+            }
+            reject
+        }
+    }
+    HorizontalLayout {
+        spacing: 12px;
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 4px;
+            Text {
+                text: root.b.title;
+                overflow: elide;
+                color: Theme.label;
+                font-size: 20px;
+                font-weight: Theme.material ? 400 : 600;
+                letter-spacing: -0.1px;
+                accessible-role: AccessibleRole.text;
+            }
+            if root.b.text != "": Text {
+                text: root.b.text;
+                overflow: elide;
+                color: Theme.secondary;
+                font-size: 13px;
+            }
+        }
+        for o[i] in root.b.data: VerticalLayout {
+            horizontal-stretch: 0;
+            alignment: center;
+            SButton {
+                text: o.text;
+                style: o.style;
+                enabled: !o.off;
+                label: root.b.title;
+                clicked => { SBus.act(root.b.id, i, 0, ""); }
+            }
+        }
+    }
+}
+
 export component AboutBlock inherits VerticalLayout {
     in property <SBlock> b;
+    if b.sub == "sheet": SheetHead { b: root.b; }
 }
 
 // A field that commits on Enter only (a search: leaving it doesn't pick)
@@ -99,6 +158,18 @@ component LogBox inherits Rectangle {
         }
         changed content-height => {
             if root.follow && self.at-end {
+                self.content-y = -max(0px, self.content-height - self.height);
+            }
+        }
+        // (made with its text already there, a sheet opened on a long log:
+        // the end once it has its size, not the top)
+        changed height => {
+            if root.follow && self.at-end {
+                self.content-y = -max(0px, self.content-height - self.height);
+            }
+        }
+        init => {
+            if root.follow {
                 self.content-y = -max(0px, self.content-height - self.height);
             }
         }
@@ -392,39 +463,6 @@ export component AboutCtl {
             }
         }
 
-        // ── The steps, the current one bold ──
-        // (a long list ends in "…" at the row's edge, update.qml 366–378:
-        // the steps shrink from the last, each eliding)
-        if whole && r.sub == "steps": Rectangle {
-            height: 30px;
-            clip: true;
-            HorizontalLayout {
-                padding-left: pad;
-                padding-right: pad;
-                alignment: start;
-                for st[i] in r.data: HorizontalLayout {
-                    if i > 0: Text {
-                        text: "  ·  ";
-                        vertical-alignment: center;
-                        color: Theme.secondary;
-                        font-size: Theme.small;
-                    }
-                    Text {
-                        // (the step it's on keeps its words, up to 240 px; the
-                        // others shrink first)
-                        horizontal-stretch: st.on ? 0 : 1;
-                        min-width: st.on ? min(self.preferred-width, 240px) : 0;
-                        text: st.text;
-                        vertical-alignment: center;
-                        overflow: elide;
-                        color: Theme.secondary;
-                        font-size: Theme.small;
-                        font-weight: st.on ? 700 : 400;
-                    }
-                }
-            }
-        }
-
         // ── Progress (WavyProgress.qml) and how far ──
         if whole && r.sub == "progress": HorizontalLayout {
             height: 32px;
@@ -474,6 +512,95 @@ export component AboutCtl {
                 vertical-alignment: center;
                 color: Theme.secondary;
                 font-size: Theme.small;
+            }
+        }
+
+        // ── A part of Software Update while it runs (Tessera, System): its
+        // name and buttons (Show details, Cancel), a thin bar and how far
+        // (r.num 0…1, -1 not known; r.value the percent), one line of what
+        // it's doing (r.text) ──
+        if whole && r.sub == "part": VerticalLayout {
+            padding-left: pad;
+            padding-right: Theme.material ? 16px : 10px;
+            padding-top: Theme.material ? 12px : 8px;
+            padding-bottom: Theme.material ? 14px : 10px;
+            spacing: 6px;
+            HorizontalLayout {
+                spacing: 8px;
+                Text {
+                    horizontal-stretch: 1;
+                    text: r.label;
+                    overflow: elide;
+                    vertical-alignment: center;
+                    color: Theme.label;
+                    font-size: Theme.material ? 16px : Theme.body;
+                }
+                for o[i] in r.opts: VerticalLayout {
+                    horizontal-stretch: 0;
+                    alignment: center;
+                    SButton {
+                        text: o.text;
+                        style: o.style;
+                        enabled: !o.off;
+                        label: r.label;
+                        clicked => { SBus.act(r.id, i, 0, ""); }
+                    }
+                }
+            }
+            HorizontalLayout {
+                height: 12px;
+                spacing: 10px;
+                if Theme.material: VerticalLayout {
+                    horizontal-stretch: 1;
+                    alignment: center;
+                    SWavy { value: r.num < 0 ? -1 : max(0, min(1, r.num)); }
+                }
+                if !Theme.material: pbar := Rectangle {
+                    horizontal-stretch: 1;
+                    property <float> v: max(0, min(1, r.num));
+                    // (not known yet: a short stretch slides there and back)
+                    property <float> u: mod(animation-tick() / 1800ms, 1);
+                    property <float> half: u < 0.5 ? u * 2 : 2 - u * 2;
+                    property <float> eased: half < 0.5 ? 4 * half * half * half : 1 - (2 - 2 * half) * (2 - 2 * half) * (2 - 2 * half) / 2;
+                    Rectangle {
+                        y: (parent.height - self.height) / 2;
+                        height: 4px;
+                        border-radius: 2px;
+                        background: Theme.toggle-off;
+                        clip: true;
+                        if r.num >= 0: Rectangle {
+                            x: 0;
+                            width: parent.width * pbar.v;
+                            border-radius: 2px;
+                            background: Theme.accent;
+                            animate width { duration: 200ms; }
+                        }
+                        if r.num < 0: Rectangle {
+                            x: pbar.eased * (parent.width - parent.width * 0.3);
+                            width: parent.width * 0.3;
+                            border-radius: 2px;
+                            background: Theme.accent;
+                        }
+                    }
+                    accessible-role: AccessibleRole.progress-indicator;
+                    accessible-label: r.label;
+                    accessible-value: r.num < 0 ? "In progress" : round(self.v * 100) + "%";
+                }
+                if r.value != "": Text {
+                    horizontal-stretch: 0;
+                    min-width: 32px;
+                    text: r.value;
+                    vertical-alignment: center;
+                    horizontal-alignment: right;
+                    color: Theme.secondary;
+                    font-size: Theme.small;
+                }
+            }
+            Text {
+                text: r.text;
+                overflow: elide;
+                color: Theme.secondary;
+                font-size: Theme.material ? 14px : Theme.small;
             }
         }
 

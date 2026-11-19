@@ -25,8 +25,9 @@
 # update with it, and running half-new code without its rebuilt parts).
 # The shell lock (tessera-shell.lock, shared with keep-shell.sh, repair-shell.sh
 # and the tty session's watchdog) is held meanwhile, so nothing restarts it early.
-# A repo-wide lock (.git/tessera-update.lock, also taken by tessera-update.py
-# apply) makes it one update at a time on a repository, from any session.
+# A repo-wide lock (.git/tessera-update.lock, also taken by tessera-update.py)
+# makes it one update at a time on a repository, from any session; a stale
+# one (its holder gone, or only inherited) is taken, never a dead end.
 set -uo pipefail
 T="$1" REPO="$2" CONFIG="$3" MODE="${4:-}" LOCKED="${5:-}"
 [[ -n "$T" && -d "$T" && -n "$REPO" && -d "$REPO/.git" ]] || { echo "usage: update-run.sh <work dir> <repo> <config dir> [finish [locked]]" >&2; exit 2; }
@@ -92,19 +93,48 @@ screen() {
 }
 
 # One update at a time on this repository (another session may be updating
-# it): nothing is touched unless this is the only one
-exec 8>"$REPO/.git/tessera-update.lock"
-if ! flock -n 8; then
+# it): nothing is touched unless this is the only one. The lock's file says
+# who holds it (tessera-update.py's repo_lock reads it the same way); a
+# stale lock (its holder gone, or kept only by a shell that inherited the
+# descriptor) is taken apart by tessera-update.py lock-holder and taken.
+LOCKF="$REPO/.git/tessera-update.lock"
+take_repo_lock() {
+    local _ start
+    for _ in 1 2 3 4; do
+        exec 8<>"$LOCKF" || return 1 # (<>: opening doesn't empty the holder's record)
+        if flock -n 8; then
+            # (still the file at the path: one replaced meanwhile isn't the lock)
+            if [[ "$(stat -L -c %d:%i "/proc/$$/fd/8" 2>/dev/null)" == "$(stat -c %d:%i "$LOCKF" 2>/dev/null)" ]]; then
+                start="$(sed 's/.*) //' "/proc/$$/stat" 2>/dev/null | cut -d' ' -f20)"
+                printf '{"pid": %d, "start": %s, "what": "%s", "started": %d, "session": "%s", "log": "%s"}\n' \
+                    "$$" "${start:-0}" "$([[ $MODE == finish ]] && echo restart || echo apply)" "$(date +%s)" "$SIG" "$T/log" >"$LOCKF"
+                return 0
+            fi
+        fi
+        exec 8>&-
+        HOLDER="$(python3 -I "$REPO/tools/tessera-update.py" lock-holder ${MARK:+--mark} 2>/dev/null)"
+        [[ $HOLDER == *'"stale": true'* || $HOLDER == *'"free": true'* ]] || return 1
+    done
+    return 1
+}
+MARK=$([[ $MODE == finish ]] && echo 1)
+if ! take_repo_lock; then
+    msg="$(printf '%s' "$HOLDER" | python3 -c 'import json, sys; print(json.load(sys.stdin).get("message", ""))' 2>/dev/null)"
+    msg="${msg:-Software Update is already running. Wait for it to finish, then try again.}"
+    echo "another update holds the repository lock: $msg"
+    if [[ $MODE == finish ]]; then
+        # (the restart: no screen, the shell stays; Software Update says who's
+        # running, from the job's status: lock-holder --mark)
+        exit 1
+    fi
     status run 0 "Preparing"
     QS0="$(command -v qs || echo qs)"
     screen "$QS0"
     env -u TESSERA_TTY setsid -f "${SCREEN[@]}" >"$T/ui.log" 2>&1 </dev/null 8>&- 9>&-
     sleep 1.2
-    status error 100 "Another update is running" "Tessera is already being updated (in another session or window). Wait for it to finish, then check again."
-    echo "another update holds the repository lock"
+    status error 100 "Software Update is already running" "$msg"
     exit 1
 fi
-export TESSERA_UPDATE_HELD=1 # (tessera-update.py apply: this process holds the repo lock)
 
 mine=($(shells))
 template="${mine[0]:-}"
@@ -112,6 +142,11 @@ QS=qs
 if [[ -n "$template" ]]; then
     QS="$(readlink -f "/proc/$template/exe")"
     mapfile -d '' tenv <"/proc/$template/environ"
+    # (an older update-run.sh exported TESSERA_UPDATE_HELD: the shell it started
+    # passed it on to every update after; never into the next shell)
+    kept=()
+    for e in "${tenv[@]}"; do [[ $e == TESSERA_UPDATE_HELD=* ]] || kept+=("$e"); done
+    tenv=("${kept[@]}")
     mapfile -d '' tcmd <"/proc/$template/cmdline"
     # (the shell is tessera-ui --standalone: Quickshell, for a QML screen, is
     # the one on the PATH; the shell starts again the usual way, and the
@@ -179,7 +214,10 @@ if [[ $MODE == finish ]]; then
 else
     UPDATE=(apply --config "$CONFIG" --choices "$T/choices.json" --rebuild "$(cat "$T/rebuild" 2>/dev/null)")
 fi
-python3 -I "$REPO/tools/tessera-update.py" "${UPDATE[@]}" \
+# (TESSERA_UPDATE_HELD=<this script's pid>: its child, the updater, knows the
+# lock is held for it; nothing else this starts inherits that, the new shell
+# least of all)
+TESSERA_UPDATE_HELD=$$ python3 -I "$REPO/tools/tessera-update.py" "${UPDATE[@]}" \
     >"$T/result.json" 2> >(while IFS= read -r line; do
         echo "$line" >>"$T/log"
         [[ $line =~ ^PROGRESS\ ([0-9]+)\ (.*)$ ]] && status "$([[ $MODE == finish ]] && echo restart || echo run)" "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"

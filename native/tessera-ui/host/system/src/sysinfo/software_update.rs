@@ -12,7 +12,8 @@
 //!                    the background; a new Hyprland's glass plugin is
 //!                    rebuilt after it (loaded at the next login); a kernel,
 //!                    driver or core library ends with "Restart the computer")
-//! One part at a time.
+//! One part at a time. Install updates does both: the system first, with
+//! Tessera's own packages (one password), then Tessera's part.
 //!
 //! A plain model owned by the About service (bridge_about.rs).
 
@@ -34,6 +35,8 @@ pub enum Ev {
 
 pub struct SoftwareUpdate {
     pub checked: bool,
+    /// when the last check asked for finished (s; "Last checked at …")
+    pub checked_at: f64,
     asked: bool,
     pub restart_pending: bool,
     /// the tested Hyprland range of the version that would be installed
@@ -65,6 +68,7 @@ impl Default for SoftwareUpdate {
     fn default() -> Self {
         Self {
             checked: false,
+            checked_at: 0.0,
             asked: false,
             restart_pending: false,
             compat: None,
@@ -119,15 +123,11 @@ fn strs(v: &Value) -> Vec<String> {
 }
 
 impl SoftwareUpdate {
-    pub fn fake_run(up: &Updates) -> bool {
-        up.fake
-    }
-
     pub fn checking(&self, tu: &TesseraUpdate, up: &Updates) -> bool {
         tu.checking || up.checking || tu.packages_checking || self.compat_pending || self.compat_busy || self.hypr_busy || self.snap_busy || self.helper_busy
     }
     pub fn running(up: &Updates, tu: &TesseraUpdate) -> bool {
-        up.running() || tu.applying || tu.job_running() || tu.restarting
+        up.running() || tu.job_running() || tu.restarting
     }
 
     /// `onCheckingChanged`: a check that was asked for has finished
@@ -138,6 +138,7 @@ impl SoftwareUpdate {
             if !now && self.asked {
                 self.asked = false;
                 self.checked = true;
+                self.checked_at = helpers::now_s();
             }
         }
     }
@@ -381,33 +382,12 @@ impl SoftwareUpdate {
         let n = |k: &str| p[k].as_array().map(|a| a.len()).unwrap_or(0);
         p["tessera"] == true || p["system"] == true || p["aur"] == true || n("install") > 0 || n("remove") > 0 || (p["setup"] == true && !up.fake)
     }
-    pub fn undecided(&self, tu: &TesseraUpdate, up: &Updates) -> usize {
-        (if tu.available() { tu.undecided() } else { 0 }) + usize::from(self.hypr_too_new(up) && self.hold == -1)
-    }
-    pub fn can_update(&self, tu: &TesseraUpdate, up: &Updates) -> bool {
-        self.can_update_tessera(tu, up) || self.can_update_system(tu, up)
-    }
     pub fn undo_count(&self) -> usize {
         self.undo["packages"].as_array().map(|a| a.len()).unwrap_or(0)
     }
     pub fn can_go_back(&self, tu: &TesseraUpdate, up: &Updates) -> bool {
         self.undo_count() > 0 && self.undo["missing"].as_array().map(|a| a.is_empty()).unwrap_or(true) && !Self::running(up, tu)
     }
-    /// The steps, for the system packages' progress view (Tessera's own
-    /// part shows its own progress)
-    pub fn steps(&self, _tu: &TesseraUpdate, up: &Updates) -> Vec<String> {
-        up.job.as_ref().map(|j| strs(&j["steps"])).unwrap_or_default()
-    }
-    pub fn step_now(&self, tu: &TesseraUpdate, up: &Updates) -> String {
-        if tu.applying {
-            "tessera".into()
-        } else if up.running() {
-            up.job.as_ref().and_then(|j| j["step"].as_str()).unwrap_or("").to_string()
-        } else {
-            String::new()
-        }
-    }
-
     // ── Update ──────────────────────────────────────────────────────────
     // Two parts, each with its own Update, both in the background (no
     // full-screen screen): Tessera (TesseraUpdate.stage: the new version
@@ -427,17 +407,6 @@ impl SoftwareUpdate {
         let sys = p["system"] == true || p["aur"] == true;
         self.checked && !self.checking(tu, up) && sys && !(self.hypr_too_new(up) && self.hold == -1) && !Self::running(up, tu)
     }
-    /// Why one part waits for the other, in words (empty: it doesn't)
-    pub fn waits_for(tu: &TesseraUpdate, up: &Updates) -> &'static str {
-        if up.running() {
-            "Wait for the system packages to finish."
-        } else if tu.job_running() {
-            "Wait for Tessera's update to finish."
-        } else {
-            ""
-        }
-    }
-
     /// Update Tessera. Tessera's own packages it needs (and the root
     /// helper, when it's older) come first, through sysupdate.py with one
     /// password; then the job starts.
@@ -445,13 +414,31 @@ impl SoftwareUpdate {
         if !self.can_update_tessera(tu, up) {
             return;
         }
-        let p = self.plan(tu, up);
-        let list = |k: &str| strs(&p[k]);
-        let (install, remove) = (list("install"), list("remove"));
-        if install.is_empty() && remove.is_empty() && p["setup"] != true {
+        let mut args = self.tessera_packages(tu, up);
+        if args.is_empty() {
             tu.stage(h, tx, &[]);
             return;
         }
+        args.push("--then".into());
+        args.push(json!({"tessera": true, "rebuild": [], "at": helpers::now_s()}).to_string());
+        up.update(tx, &args);
+    }
+
+    /// Update the system packages (pacman, and the AUR if you chose).
+    /// Hyprland changing: its glass plugin is rebuilt in the background
+    /// afterwards, and Hyprland loads it at the next login. A kernel,
+    /// driver, mesa, systemd or glibc update ends with "Restart the
+    /// computer to finish" instead of interrupting.
+    pub fn update_system(&mut self, tx: &Tx, tu: &mut TesseraUpdate, up: &mut Updates) {
+        self.system_then(tx, tu, up, false);
+    }
+
+    /// Tessera's own packages (and its root helper, when older), as
+    /// sysupdate.py's arguments: none when it needs nothing
+    fn tessera_packages(&self, tu: &TesseraUpdate, up: &Updates) -> Vec<String> {
+        let p = self.plan(tu, up);
+        let list = |k: &str| strs(&p[k]);
+        let (install, remove) = (list("install"), list("remove"));
         let mut args: Vec<String> = Vec::new();
         if !install.is_empty() {
             args.push("--install".into());
@@ -466,17 +453,11 @@ impl SoftwareUpdate {
             args.push("--incoming".into());
             args.push(incoming);
         }
-        args.push("--then".into());
-        args.push(json!({"tessera": true, "rebuild": [], "at": helpers::now_s()}).to_string());
-        up.update(tx, &args);
+        args
     }
 
-    /// Update the system packages (pacman, and the AUR if you chose).
-    /// Hyprland changing: its glass plugin is rebuilt in the background
-    /// afterwards, and Hyprland loads it at the next login. A kernel,
-    /// driver, mesa, systemd or glibc update ends with "Restart the
-    /// computer to finish" instead of interrupting.
-    pub fn update_system(&mut self, tx: &Tx, tu: &mut TesseraUpdate, up: &mut Updates) {
+    /// The system packages, then (tessera) Tessera's part once they're done
+    fn system_then(&mut self, tx: &Tx, tu: &mut TesseraUpdate, up: &mut Updates, tessera: bool) {
         if !self.can_update_system(tu, up) {
             return;
         }
@@ -498,17 +479,23 @@ impl SoftwareUpdate {
         if p["aur"] == true {
             args.push("--aur".into());
         }
+        if tessera {
+            args.extend(self.tessera_packages(tu, up));
+        }
         args.push("--then".into());
-        args.push(json!({"tessera": false, "rebuild": rebuild, "at": helpers::now_s()}).to_string());
+        args.push(json!({"tessera": tessera, "rebuild": rebuild, "at": helpers::now_s()}).to_string());
         up.update(tx, &args);
     }
 
-    /// Both, as before (the menu bar's "Install updates" opens the page;
-    /// nothing calls this without a part any more but old callers)
+    /// Install updates (the status's button): both parts. The system's
+    /// first, with Tessera's own packages in the same run (one password);
+    /// Tessera's part starts in the background once it's done
+    /// (updates_finished). Only one of them to do: that one.
     pub fn update(&mut self, h: &Host, tx: &Tx, tu: &mut TesseraUpdate, up: &mut Updates) {
+        let tessera = self.can_update_tessera(tu, up);
         if self.can_update_system(tu, up) {
-            self.update_system(tx, tu, up);
-        } else {
+            self.system_then(tx, tu, up, tessera);
+        } else if tessera {
             self.update_tessera(h, tx, tu, up);
         }
     }

@@ -1,8 +1,8 @@
 //! shell/modules/settings/RustBridgeAbout.qml: the "about" page group of
 //! Settings. Also home of the three update models it shows (updates.rs,
 //! tessera_update.rs, software_update.rs): one Service owns the prefixes
-//! "about" (Settings' acts and live/page), and "updates", "tesseraupdate",
-//! "softwareupdate" (their QML functions as calls, args = positional array).
+//! "about" (Settings' acts and live/page), "updates" (their QML functions
+//! as calls, args = positional array) and "tesseraupdate" (the island's Cancel, Restart).
 //!
 //! While Settings is open (`about.live [true]`, `about.page [id]`) it tells
 //! the pages what only the shell knows (`{"to":"settings","feed":{"about":
@@ -67,11 +67,14 @@ pub struct About {
     ie: Map<String, Value>,
     last_feed: Value,
     t_feed: Option<Ticker>,
-    log_shown: bool,
-    /// a build's output shown (Software Update's build section)
-    build_details: bool,
-    /// the failed build (its started_at) dismissed with Done
-    build_dismissed: f64,
+    /// Software Update's sheet on show ("" none): a log ("tessera-log",
+    /// "system-log", "busy-log": the update running elsewhere), "notes",
+    /// "result", "packages" or "decide"
+    sheet: String,
+    /// the system update's log read while its sheet shows (Updates.log_users)
+    log_on: bool,
+    /// yay or paru is installed (Options' Include AUR updates)
+    aur_helper: bool,
 }
 
 fn obj(name: &str) -> Value {
@@ -128,6 +131,23 @@ pub fn log_tail(log: &str, n: usize) -> String {
     lines[lines.len().saturating_sub(n)..].join("\n")
 }
 
+/// Where the update running elsewhere runs, against this session ("this",
+/// "other"; "" when it doesn't say)
+pub fn busy_where(session: &str, here: &str) -> &'static str {
+    if session.is_empty() {
+        ""
+    } else if session == here {
+        "this"
+    } else {
+        "other"
+    }
+}
+
+/// yay or paru on the PATH (the AUR's updates can be included)
+fn has_aur_helper() -> bool {
+    std::env::var_os("PATH").is_some_and(|p| std::env::split_paths(&p).any(|d| d.join("yay").is_file() || d.join("paru").is_file()))
+}
+
 /// The release publisher's status (tools/release-builder/publish-release),
 /// on the machine where it's installed (~/tessera-verify/publish-release.sh);
 /// null anywhere else
@@ -174,12 +194,19 @@ impl About {
         let new = self.page().to_string();
         if new != old {
             let tx = self.tx().clone();
-            if new == "update" {
+            // (Software Update and its sub-pages: what they show, read once on the way in)
+            if new.starts_with("update") && !old.starts_with("update") {
                 self.su.check_undo(&tx, &self.up);
                 self.tu.read_cache(&tx);
                 self.tu.read_staged(&tx);
+                self.aur_helper = has_aur_helper();
                 h.ask("bootsnapshots.refresh", json!([]));
-            } else if new == "about/health" {
+            }
+            // (a sheet belongs to the page it opened on: leaving it, it closes)
+            if old == "update" && new != "update" {
+                self.sheet.clear();
+            }
+            if new == "about/health" {
                 h.ask("health.check", json!([]));
             } else if new == "about/bugreport" {
                 let b = st(h, "bugreport");
@@ -188,40 +215,127 @@ impl About {
                 }
             }
         }
-        // The update's full output is read only while someone shows it
-        let shown = self.page() == "update" && self.up.show_details && self.up.job.is_some();
-        if shown != self.log_shown {
-            self.log_shown = shown;
+        self.sync_log();
+    }
+
+    /// The system update's output is read only while its sheet shows it
+    fn sync_log(&mut self) {
+        let shown = self.page() == "update" && self.sheet == "system-log" && self.up.job.is_some();
+        if shown != self.log_on {
+            self.log_on = shown;
             let tx = self.tx().clone();
             self.up.set_log_users(&tx, if shown { 1 } else { -1 });
         }
     }
 
-    fn feed(&self, h: &Host) -> Value {
+    /// The sheet's log: its last 200 lines (the sheet shows about thirty;
+    /// Copy log copies the whole file)
+    fn sheet_log(&self) -> String {
+        match self.sheet.as_str() {
+            "system-log" => log_tail(&self.up.log, 200),
+            "tessera-log" => tessera_core::build_progress::tail(&tessera_update::job_log(), 200),
+            "busy-log" => self.busy_log().map(|p| tessera_core::build_progress::tail(&p, 200)).unwrap_or_default(),
+            _ => String::new(),
+        }
+    }
+
+    /// The log of the update running elsewhere (the repo lock's holder), if it says
+    fn busy_log(&self) -> Option<std::path::PathBuf> {
+        let p = self.tu.job.as_ref()?["holder"]["log"].as_str()?.to_string();
+        (!p.is_empty()).then(|| std::path::PathBuf::from(p))
+    }
+
+    /// The file the sheet's Copy log copies
+    fn sheet_log_path(&self) -> Option<std::path::PathBuf> {
+        match self.sheet.as_str() {
+            "system-log" => Some(std::path::PathBuf::from(format!("{}/log", self.up.dir))),
+            "tessera-log" => Some(tessera_update::job_log()),
+            "busy-log" => self.busy_log(),
+            _ => None,
+        }
+    }
+
+    /// Software Update's part of the feed (pages/about/update.rs): what its
+    /// three pages and its sheets show, and nothing more
+    fn upd_feed(&self, clock24: bool) -> Value {
         let (tu, up, su) = (&self.tu, &self.up, &self.su);
         let plan = su.plan(tu, up);
-        let n = |k: &str| plan[k].as_array().map(|a| a.len()).unwrap_or(0);
-        let hyprmax = su.hypr_max();
-        let steps: Vec<Value> = {
-            let now = su.step_now(tu, up);
-            su.steps(tu, up).iter().map(|st| json!({"name": software_update::step_name(st), "now": *st == now})).collect()
-        };
-        let at = su.undo["at"].as_f64().unwrap_or(0.0);
-        let sk: Vec<Value> = su.skipped_all(up).iter().map(|p| json!({"name": p["name"], "to": p["to"]})).collect();
-        let report = tu.report.as_ref().map(|r| json!({"current": s(&r["current"]), "latest": s(&r["latest"]), "ui": s(&r["ui"]["label"]), "preparing": r["preparing"].as_u64().unwrap_or(0), "changelog": r["changelog"].as_array().cloned().map(Value::from).unwrap_or(json!([])), "notes": r["notes"].as_array().cloned().map(Value::from).unwrap_or(json!([])),
-            "downgrade": r["downgrade"] == true, "ahead": r["ahead"].as_u64().unwrap_or(0), "leaving": r["leaving"].as_array().cloned().map(Value::from).unwrap_or(json!([])), "channelName": s(&r["channelName"])}));
-        // (the channel: what this copy is now, no download)
-        let tu_info = tu.info.as_ref().map(|i| {
+        let r = tu.report.clone().unwrap_or(Value::Null);
+        let arr = |v: &Value| v.as_array().cloned().map(Value::from).unwrap_or(json!([]));
+        let n = |v: &Value| v.as_array().map(|a| a.len()).unwrap_or(0);
+        let info = tu.info.as_ref().map(|i| {
             let date = i["date"].as_i64().unwrap_or(0);
             json!({"channel": s(&i["channel"]), "channelName": s(&i["channelName"]), "branch": s(&i["branch"]), "current": s(&i["current"]), "date": if date > 0 { helpers::fmt_date(date) } else { String::new() }})
         });
-        let result = tu.result.as_ref().map(|r| json!({"backup": helpers::home_tilde(r["backup"].as_str().unwrap_or("")), "now": s(&r["now"]), "changelog": r["changelog"].as_array().cloned().map(Value::from).unwrap_or(json!([])), "notes": r["notes"].as_array().cloned().map(Value::from).unwrap_or(json!([]))}));
-        let conflicts: Vec<Value> = tu.conflicts().iter().map(|c| json!({"id": c["id"], "kind": c["kind"], "title": s(&c["title"]), "detail": s(&c["detail"]), "mine": s(&c["mine"]), "theirs": s(&c["theirs"]), "choices": c["choices"].as_array().cloned().map(Value::from).unwrap_or(json!([])), "labels": if c["labels"].is_object() { c["labels"].clone() } else { json!({}) }, "change": s(&c["change"])})).collect();
-        let job = up.job.as_ref().map(|j| json!({
+        // (the background job; one running elsewhere said with when and where)
+        let mut job = tu.job.clone().unwrap_or(Value::Null);
+        if job["state"] == "busy" {
+            let started = job["holder"]["started"].as_f64().unwrap_or(0.0);
+            let here = std::env::var("HYPRLAND_INSTANCE_SIGNATURE").unwrap_or_default();
+            let session = job["holder"]["session"].as_str().unwrap_or("").to_string();
+            job["holder"]["at"] = json!(if started > 0.0 { helpers::fmt_hm(started as i64, clock24) } else { String::new() });
+            job["holder"]["where"] = json!(busy_where(&session, &here));
+        }
+        let sjob = up.job.as_ref().map(|j| json!({
             "state": s(&j["state"]), "kind": s(&j["kind"]), "text": s(&j["text"]), "phase": s(&j["phase"]), "package": s(&j["package"]), "error": s(&j["error"]),
             "restart": j["restart"] == true, "upgraded": j["upgraded"].as_array().map(|a| a.len()).unwrap_or(0),
-            "aur": j["steps"].as_array().is_some_and(|a| a.iter().any(|x| x == "aur")),
         }));
+        let packages = self.sheet == "packages";
+        let notes = matches!(self.sheet.as_str(), "notes" | "decide");
+        let at = su.undo["at"].as_f64().unwrap_or(0.0);
+        let bs = obj("bootsnapshots");
+        let result = tu.result.as_ref().map(|r| json!({"backup": helpers::home_tilde(r["backup"].as_str().unwrap_or("")), "now": s(&r["now"]), "changelog": arr(&r["changelog"]), "notes": arr(&r["notes"])}));
+        let conflicts: Vec<Value> = if self.sheet == "decide" {
+            tu.conflicts().iter().map(|c| json!({"id": c["id"], "kind": c["kind"], "title": s(&c["title"]), "detail": s(&c["detail"]), "mine": s(&c["mine"]), "theirs": s(&c["theirs"]), "choices": arr(&c["choices"]), "labels": if c["labels"].is_object() { c["labels"].clone() } else { json!({}) }, "change": s(&c["change"])})).collect()
+        } else {
+            vec![]
+        };
+        json!({
+            "allowed": tu.allowed(), "fake": up.fake,
+            "checking": su.checking(tu, up), "checked": su.checked,
+            "checkedAt": if su.checked_at > 0.0 { helpers::fmt_hm(su.checked_at as i64, clock24) } else { String::new() },
+            "anything": su.anything(tu, up), "running": SoftwareUpdate::running(up, tu),
+            "restartComputer": !up.running() && (su.restart_pending || up.job.as_ref().is_some_and(|j| j["state"] == "done" && j["restart"] == true)),
+            "t": {
+                "current": s(&r["current"]), "latest": s(&r["latest"]), "available": tu.available(), "downgrade": r["downgrade"] == true,
+                "channelName": s(&r["channelName"]), "ahead": r["ahead"].as_u64().unwrap_or(0), "preparing": r["preparing"].as_u64().unwrap_or(0),
+                "hasNotes": n(&r["changelog"]) + n(&r["notes"]) > 0,
+                "changelog": if notes { arr(&r["changelog"]) } else { json!([]) }, "notes": if notes { arr(&r["notes"]) } else { json!([]) },
+                "leaving": if notes { arr(&r["leaving"]) } else { json!([]) },
+                "error": tu.error, "offline": tu.error.starts_with("Couldn't reach the update server"),
+                "job": job, "fraction": tu.job_fraction(), "ready": tu.ready(),
+                "staged": tu.staged.as_ref().map(|x| s(&x["latest"])).unwrap_or(json!("")), "restarting": tu.restarting,
+                "canUpdate": su.can_update_tessera(tu, up), "undecided": tu.undecided(), "result": result,
+                "conflicts": conflicts, "choices": Value::Object(tu.choices.clone()),
+            },
+            "s": {
+                "count": plan["sysCount"], "aurCount": plan["aurCount"], "aurAll": up.aur_list.len(), "includeAur": su.include_aur, "removeDropped": su.remove_dropped,
+                "canCheck": up.available || !su.checked, "canUpdate": su.can_update_system(tu, up),
+                "running": up.running(), "job": sjob, "progress": up.progress(), "cancellable": up.cancellable(), "interrupted": up.interrupted,
+                "hyprTooNew": su.hypr_too_new(up), "hyprShort": su.hypr_short(up), "hyprNow": su.hypr_now(), "hyprMax": su.hypr_max(), "hold": su.hold,
+                "missing": n(&tu.packages["missing"]), "dropped": n(&tu.packages["dropped"]),
+                // (the lists only while the packages sheet shows them)
+                "list": if packages { pkgs(&up.list) } else { vec![] }, "aurList": if packages { pkgs(&up.aur_list) } else { vec![] },
+                "held": if packages { su.held(up) } else { vec![] }, "heldHypr": if packages { su.held_hypr(up) } else { vec![] },
+                "missingList": if packages { arr(&tu.packages["missing"]) } else { json!([]) }, "droppedList": if packages { arr(&tu.packages["dropped"]) } else { json!([]) },
+                "reasons": if packages && tu.packages["reasons"].is_object() { tu.packages["reasons"].clone() } else { json!({}) },
+            },
+            "back": {
+                "count": su.undo_count(), "long": if at > 0.0 { helpers::fmt_long(at as i64) } else { String::new() },
+                "day": if at > 0.0 { helpers::fmt_day(at as i64) } else { String::new() },
+                "packages": su.undo["packages"].as_array().map(|a| a.iter().map(|p| p["name"].clone()).collect::<Vec<_>>()).unwrap_or_default(),
+                "missing": su.undo["missing"].as_array().cloned().unwrap_or_default(), "canGoBack": su.can_go_back(tu, up),
+                "skipped": su.skipped_all(up).iter().map(|p| json!({"name": p["name"], "to": p["to"]})).collect::<Vec<_>>(), "include": su.include_skipped,
+            },
+            "snap": {"tool": su.snapshot, "booted": bs["booted"], "assistant": bs["assistant"], "canMenu": bs["canMenu"], "grubBtrfs": bs["grubBtrfs"], "menuOn": bs["menuOn"], "error": bs["error"], "busy": bs["busy"]},
+            "info": info, "aurHelper": self.aur_helper,
+            "cache": tu.cache.map(|c| json!(c)).unwrap_or(Value::Null), "cacheBusy": tu.cache_busy, "cacheError": tu.cache_error,
+            "sheet": self.sheet, "log": self.sheet_log(),
+        })
+    }
+
+    fn feed(&self, h: &Host) -> Value {
+        let up = &self.up;
         let health = st(h, "health");
         let checks: Vec<Value> = health["checks"].as_array().map(|a| a.iter().map(|c| json!({"id": c["id"], "name": s(&c["name"]), "group": s(&c["group"]), "status": s(&c["status"]), "detail": s(&c["detail"]), "fix": s(&c["fix"]), "canFix": c["canFix"] == true, "fixRoot": c["fixRoot"] == true, "fixPassword": c["fixPassword"] == true, "fixCommand": s(&c["fixCommand"])})).collect()).unwrap_or_default();
         let checked_at = health["checkedAt"].as_f64().unwrap_or(0.0);
@@ -233,41 +347,11 @@ impl About {
         let b = |v: &Value| v.as_bool().unwrap_or(false);
         let drives = obj("clouddrives");
         let km = obj("keymap");
-        let bs = obj("bootsnapshots");
         // (TimeFormat.hm: the 24-hour setting, as the QML's "Checked at")
         let clock24 = h.cfg()["appearance"]["clock24"].as_bool().unwrap_or(false);
         json!({
-            "su": {
-                "running": SoftwareUpdate::running(up, tu), "checking": su.checking(tu, up), "checked": su.checked, "anything": su.anything(tu, up),
-                "restartPending": su.restart_pending, "hyprNow": su.hypr_now(), "hyprTooNew": su.hypr_too_new(up), "hyprShort": su.hypr_short(up), "hyprMax": hyprmax,
-                "hold": su.hold, "heldHypr": su.held_hypr(up), "held": su.held(up), "snapshot": su.snapshot, "includeAur": su.include_aur, "removeDropped": su.remove_dropped,
-                "undecided": su.undecided(tu, up), "canUpdate": su.can_update(tu, up), "canUpdateSystem": su.can_update_system(tu, up),
-                "plan": {"system": plan["system"] == true, "aur": plan["aur"] == true, "sysCount": plan["sysCount"], "aurCount": plan["aurCount"], "install": n("install"), "remove": n("remove"),
-                         "setup": plan["setup"] == true, "tessera": plan["tessera"] == true, "rebuild": n("rebuild")},
-                "steps": steps, "undoCount": su.undo_count(),
-                "undoMissing": su.undo["missing"].as_array().cloned().unwrap_or_default(),
-                "undoPackages": su.undo["packages"].as_array().map(|a| a.iter().map(|p| p["name"].clone()).collect::<Vec<_>>()).unwrap_or_default(),
-                "undoLong": if at > 0.0 { helpers::fmt_long(at as i64) } else { String::new() },
-                "undoDay": if at > 0.0 { helpers::fmt_day(at as i64) } else { String::new() },
-                "canGoBack": su.can_go_back(tu, up), "skippedAll": sk, "includeSkipped": su.include_skipped,
-            },
-            "tu": {
-                "allowed": tu.allowed(), "available": tu.available(), "error": tu.error, "applying": tu.applying, "report": report, "info": tu_info, "result": result,
-                // (the background update: its job, what's ready, the restart)
-                "job": tu.job.clone().unwrap_or(Value::Null), "jobRunning": tu.job_running(), "jobFraction": tu.job_fraction(),
-                "ready": tu.ready(), "staged": tu.staged.clone().unwrap_or(Value::Null), "restarting": tu.restarting,
-                "canUpdate": su.can_update_tessera(tu, up), "waits": SoftwareUpdate::waits_for(tu, up),
-                "cache": tu.cache.map(|c| json!(c)).unwrap_or(Value::Null), "cacheBusy": tu.cache_busy, "cacheError": tu.cache_error,
-                "conflicts": conflicts, "choices": Value::Object(tu.choices.clone()),
-                "missing": tu.packages["missing"].as_array().cloned().unwrap_or_default(), "dropped": tu.packages["dropped"].as_array().cloned().unwrap_or_default(),
-                "reasons": if tu.packages["reasons"].is_object() { tu.packages["reasons"].clone() } else { json!({}) },
-            },
-            "up": {
-                "job": job, "list": pkgs(&up.list), "aurList": pkgs(&up.aur_list), "fake": up.fake, "interrupted": up.interrupted,
-                "cancellable": up.cancellable(), "running": up.running(), "progress": up.progress(), "showDetails": up.show_details,
-                "log": if self.log_shown { log_tail(&up.log, 200) } else { String::new() },
-            },
-            "bs": {"booted": bs["booted"], "assistant": bs["assistant"], "canMenu": bs["canMenu"], "grubBtrfs": bs["grubBtrfs"], "menuOn": bs["menuOn"], "error": bs["error"], "busy": bs["busy"]},
+            // (Software Update's pages; About's Version row reads its channel too)
+            "upd": if self.page().starts_with("update") || self.page() == "about" { self.upd_feed(clock24) } else { Value::Null },
             "needsInstalling": st(h, "needs")["installing"].as_bool().unwrap_or(false),
             "health": {
                 "checks": checks, "groups": HEALTH_GROUPS, "checking": b(&health["checking"]), "fixing": health["fixing"].clone(), "error": s(&health["error"]),
@@ -290,29 +374,9 @@ impl About {
             },
             "keymap": {"ready": b(&km["ready"]), "dialog": b(&km["hasZenity"]) || b(&km["hasKdialog"])},
             "ie": Value::Object(self.ie.clone()),
-            "build": if self.page() == "update" { self.build_feed() } else { Value::Null },
             // (About's release pipeline line: only where the publisher runs)
             "pipeline": if self.page() == "about" { pipeline() } else { Value::Null },
-            "jobElapsed": if up.running() { up.job.as_ref().and_then(|j| j["started"].as_f64()).map(|t| helpers::now_s() - t).unwrap_or(0.0) } else { 0.0 },
         })
-    }
-
-    /// A build in progress (tools/build-progress.py: the updater's, `tessera
-    /// rebuild`'s, the installer's), or one that just failed: null when none
-    fn build_feed(&self) -> Value {
-        let Some(v) = tessera_core::build_progress::read() else { return Value::Null };
-        if v.failed && v.id == self.build_dismissed {
-            return Value::Null;
-        }
-        let log = if self.build_details {
-            let path = if v.log.is_empty() { tessera_core::build_progress::log_path() } else { std::path::PathBuf::from(&v.log) };
-            let t = tessera_core::build_progress::tail(&path, 200);
-            if t.is_empty() { v.tail.join("\n") } else { t }
-        } else {
-            String::new()
-        };
-        json!({"active": v.active, "failed": v.failed, "title": v.title, "step": v.step, "time": v.time,
-               "fraction": v.fraction.map_or(-1.0, |f| f as f64), "id": v.id, "details": self.build_details, "log": log})
     }
 
     fn push(&mut self, h: &mut Host) {
@@ -454,6 +518,18 @@ impl About {
         }
     }
 
+    /// Show (or hide) the log of the part that's running: the system's, else Tessera's
+    fn show_details(&mut self, on: bool) {
+        self.sheet = if !on {
+            String::new()
+        } else if self.up.running() || (self.up.job.is_some() && !self.tu.job_running()) {
+            "system-log".into()
+        } else {
+            "tessera-log".into()
+        };
+        self.sync_log();
+    }
+
     /// `about.<what>`: Settings' acts
     fn act(&mut self, h: &mut Host, what: &str, args: &Value) {
         let a: Vec<Value> = args.as_array().cloned().unwrap_or_else(|| if args.is_null() { vec![] } else { vec![args.clone()] });
@@ -479,10 +555,28 @@ impl About {
                     self.su.check(&tx, &mut self.tu, &mut self.up)
                 }
             }
-            "su.update" => self.su.update(h, &tx, &mut self.tu, &mut self.up),
+            // (Install updates: both parts, the system first with Tessera's
+            // own packages, one password, then Tessera's in the background)
+            "su.update" | "su.updateAll" => {
+                self.sheet.clear();
+                self.su.update(h, &tx, &mut self.tu, &mut self.up)
+            }
             // (the two parts, each its own Update)
-            "tu.update" => self.su.update_tessera(h, &tx, &mut self.tu, &mut self.up),
+            "tu.update" => {
+                self.sheet.clear();
+                self.su.update_tessera(h, &tx, &mut self.tu, &mut self.up)
+            }
             "sys.update" => self.su.update_system(&tx, &mut self.tu, &mut self.up),
+            // Software Update's sheets: a log, the notes, the packages, the decisions
+            "sheet" => {
+                self.sheet = if matches!(a0s.as_str(), "tessera-log" | "system-log" | "busy-log" | "notes" | "result" | "packages" | "decide") { a0s.clone() } else { String::new() };
+                self.sync_log();
+            }
+            "sheet.copy" => {
+                if let Some(p) = self.sheet_log_path() {
+                    tessera_core::services::bridge::run(&["sh", "-c", "wl-copy < \"$1\"", "sh", &p.to_string_lossy()]);
+                }
+            }
             "tu.cancel" => self.tu.cancel(&tx),
             "tu.restart" => self.tu.restart(h, &tx, false),
             "cache.delete" => self.tu.delete_cache(&tx),
@@ -493,21 +587,13 @@ impl About {
             "su.removeDropped" => self.su.remove_dropped = a0.as_bool().unwrap_or(false),
             "su.includeSkip" => self.su.include_skip(&a0s, a.get(1).and_then(Value::as_bool).unwrap_or(false)),
             "tu.choose" => self.tu.choose(&a0s, a.get(1).and_then(Value::as_str).unwrap_or("")),
-            "tu.dismissResult" => self.tu.dismiss_result(),
+            "tu.dismissResult" => {
+                self.tu.dismiss_result();
+                self.sheet.clear();
+            }
             "up.dismiss" => self.up.dismiss(),
             "up.copyLog" => self.up.copy_log(),
-            // A build's section: its output, copying it, Done after a failure
-            "build.details" => self.build_details = a0.as_bool().unwrap_or(false),
-            "build.copyLog" => {
-                let log = tessera_core::build_progress::log_path();
-                tessera_core::services::bridge::run(&["sh", "-c", "wl-copy < \"$1\"", "sh", &log.to_string_lossy()]);
-            }
-            "build.dismiss" => self.build_dismissed = a0.as_f64().unwrap_or(0.0),
-            "up.showDetails" => {
-                self.up.show_details = a0.as_bool().unwrap_or(false);
-                let old = self.page().to_string();
-                self.page_changed(h, &old);
-            }
+            "up.showDetails" => self.show_details(a0.as_bool().unwrap_or(false)),
             "reboot" => tessera_core::services::bridge::run(&["systemctl", "reboot"]),
             "bs.openAssistant" => h.ask("bootsnapshots.openAssistant", json!([])),
             "bs.setMenu" => h.ask("bootsnapshots.setMenu", json!([a0.as_bool().unwrap_or(false)])),
@@ -603,7 +689,7 @@ impl Service for About {
         "About"
     }
     fn calls(&self) -> &'static [&'static str] {
-        &["about", "updates", "tesseraupdate", "softwareupdate"]
+        &["about", "updates", "tesseraupdate"]
     }
 
     fn start(&mut self, h: &mut Host) {
@@ -664,36 +750,14 @@ impl Service for About {
                     self.tu.sync_channel(h);
                     self.su.check(&tx, &mut self.tu, &mut self.up);
                 }
-                "showDetails" => {
-                    self.up.show_details = args.as_array().and_then(|a| a.first()).and_then(Value::as_bool).unwrap_or(false);
-                }
+                // (the island's Details: the log of whichever part runs, in its sheet)
+                "showDetails" => self.show_details(args.as_array().and_then(|a| a.first()).and_then(Value::as_bool).unwrap_or(false)),
                 _ => {}
             },
+            // (the island's controls while the background update runs, and once it's ready)
             "tesseraupdate" => match f {
-                "check" => {
-                    self.tu.sync_channel(h);
-                    self.tu.check(&tx)
-                }
-                "choose" => {
-                    let a = args.as_array().cloned().unwrap_or_default();
-                    self.tu.choose(a.first().and_then(Value::as_str).unwrap_or(""), a.get(1).and_then(Value::as_str).unwrap_or(""));
-                }
-                "launch" => self.tu.launch(h, &tx, &list(&args.as_array().and_then(|a| a.first()).cloned().unwrap_or(json!([])))),
-                // (the island's controls while the background update runs, and once it's ready)
                 "cancel" => self.tu.cancel(&tx),
                 "restart" => self.tu.restart(h, &tx, false),
-                "dismissResult" => self.tu.dismiss_result(),
-                _ => {}
-            },
-            "softwareupdate" => match f {
-                "check" => {
-                    self.tu.sync_channel(h);
-                    self.su.check(&tx, &mut self.tu, &mut self.up)
-                }
-                "update" => self.su.update(h, &tx, &mut self.tu, &mut self.up),
-                "cancel" => self.up.cancel(),
-                "goBack" => self.su.go_back(&tx, &self.tu, &mut self.up),
-                "checkUndo" => self.su.check_undo(&tx, &self.up),
                 _ => {}
             },
             _ => {}
@@ -794,6 +858,12 @@ mod tests {
         assert_eq!(ie_default(&["gestures".into()]), "~/Documents/tessera-gestures.json");
         assert_eq!(ie_default(&["keybinds".into()]), "~/Documents/tessera-shortcuts.json");
         assert_eq!(ie_default(&["keybinds".into(), "gestures".into()]), "~/Documents/tessera-shortcuts.json");
+    }
+    #[test]
+    fn the_update_running_elsewhere_says_where() {
+        assert_eq!(busy_where("abc_1", "abc_1"), "this");
+        assert_eq!(busy_where("abc_1", "xyz_2"), "other");
+        assert_eq!(busy_where("", "xyz_2"), "");
     }
     #[test]
     fn steps_are_not_output() {

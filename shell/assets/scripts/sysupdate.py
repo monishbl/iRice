@@ -959,9 +959,11 @@ def aur_command(helper, plan):
 def real_run(plan):
     if os.path.exists(DBLOCK):
         busy = subprocess.run(["pgrep", "-x", "pacman|yay|paru|pamac|octopi"], capture_output=True).returncode == 0
-        return finish("error", "Another update is running",
-                      "Another package manager is using the package database. Wait until it's done, then try again." if busy
-                      else f"pacman's lock file is left over from an interrupted update. Remove it with: sudo rm {DBLOCK}")
+        # (said as what it is: another package manager now, or a lock file left
+        # over from one that was cut off, with how to clear it)
+        return finish("error", "The package database is in use" if busy else "pacman's lock file is left over",
+                      "Another package manager (pacman, yay, paru or pamac) is running. Wait until it's done, then try again." if busy
+                      else f"An earlier package update was cut off. Remove its lock file with: sudo rm {DBLOCK}, then try again.")
     if not shutil.which("pkexec"):
         return finish("error", "Can't ask for your password", "pkexec isn't installed (it comes with the polkit package).")
     env = dict(os.environ, LANG="C", LC_ALL="C")

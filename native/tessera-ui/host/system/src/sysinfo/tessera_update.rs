@@ -5,10 +5,11 @@
 //! code edits, settings whose defaults change, the material you use,
 //! shortcut clashes); nothing is applied until each one is decided.
 //!
-//! Installing hands over to assets/scripts/update-run.sh, started detached
-//! from a copy (with the update screen's): it stops this shell, updates
-//! behind a full-screen "Tessera is updating" screen, rebuilds, and starts
-//! the new shell once.
+//! Updating is the background job (`stage`: the new version made ready
+//! with the shell running); restarting into it hands over to
+//! assets/scripts/update-run.sh … finish, started detached from a copy: it
+//! stops this shell, swaps in what was staged and starts the new shell, in
+//! seconds.
 //!
 //! The channel (config.json's update.channel: stable follows the branch
 //! main, beta the branch beta) is passed to the helper. Every few hours,
@@ -79,6 +80,8 @@ pub fn job_words(job: &Value) -> (String, String) {
         "cancelled" => ("Update cancelled".into(), "Nothing was changed.".into()),
         "done" => ("Done".into(), "The glass plugin was rebuilt. It loads the next time you log in.".into()),
         "none" => ("Tessera is up to date".into(), s("text")),
+        // (the repo lock held by an update running elsewhere: tessera-update.py's words)
+        "busy" => ("Software Update is already running".into(), s("error")),
         _ => (String::new(), String::new()),
     }
 }
@@ -99,6 +102,12 @@ fn pid_alive(pid: i64) -> bool {
     std::fs::read(format!("/proc/{pid}/cmdline")).map(|c| String::from_utf8_lossy(&c).contains("tessera-update")).unwrap_or(false)
 }
 
+/// The background job's log (tessera-update.py's job_dir()/log): the
+/// details sheet's while Tessera's part runs
+pub fn job_log() -> std::path::PathBuf {
+    std::path::PathBuf::from(format!("{}/tessera/update-job/log", state_home()))
+}
+
 fn state_home() -> String {
     std::env::var("XDG_STATE_HOME").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| format!("{}/.local/state", std::env::var("HOME").unwrap_or_default()))
 }
@@ -113,7 +122,6 @@ pub struct TesseraUpdate {
     pending_check: bool,
     pub report: Option<Value>,
     pub checking: bool,
-    pub applying: bool,
     pub error: String,
     pub result: Option<Value>,
     pub choices: Map<String, Value>,
@@ -142,6 +150,8 @@ pub struct TesseraUpdate {
     pub cache_error: String,
     /// the last lockSecure seen (the lock trigger: restart_at_lock)
     pub was_secure: bool,
+    /// when the restart was asked for (a "busy" status after it ends it)
+    restart_at: f64,
     t_job: Ticker,
 }
 
@@ -153,7 +163,6 @@ impl Default for TesseraUpdate {
             pending_check: false,
             report: None,
             checking: false,
-            applying: false,
             error: String::new(),
             result: None,
             choices: Map::new(),
@@ -173,6 +182,7 @@ impl Default for TesseraUpdate {
             cache_busy: false,
             cache_error: String::new(),
             was_secure: false,
+            restart_at: 0.0,
             t_job: Ticker::new("tuJob"),
         }
     }
@@ -223,7 +233,7 @@ impl TesseraUpdate {
     }
     /// The light check (tuPeek): fetches, and says whether to mention a new version
     fn peek(&mut self, h: &Host, tx: &Tx) {
-        if self.peeking || self.checking || self.applying || self.repo.is_empty() || !self.allowed() || h.cfg()["update"]["autoCheck"] == false {
+        if self.peeking || self.checking || self.job_running() || self.repo.is_empty() || !self.allowed() || h.cfg()["update"]["autoCheck"] == false {
             return;
         }
         self.sync_channel(h);
@@ -262,7 +272,7 @@ impl TesseraUpdate {
 
     pub fn publish(&self) {
         let job = self.job.clone().unwrap_or(Value::Null);
-        crate::bus::put("tesseraupdate", json!({"checking": self.checking, "applying": self.applying, "available": self.available(), "error": self.error, "undecided": self.undecided(),
+        crate::bus::put("tesseraupdate", json!({"checking": self.checking, "available": self.available(), "error": self.error, "undecided": self.undecided(),
             // (the island's activity while the job runs)
             "running": self.job_running(), "job": job, "fraction": self.job_fraction(), "ready": self.ready()}));
     }
@@ -355,6 +365,7 @@ impl TesseraUpdate {
             return;
         }
         self.restarting = true;
+        self.restart_at = helpers::now_s();
         let script = "t=$(mktemp -d \"${XDG_RUNTIME_DIR:-/tmp}/tessera-update.XXXXXX\") || exit 1; \
             cp -r \"$1/shell/assets/updater\" \"$t/ui\" && cp \"$1/shell/assets/scripts/update-run.sh\" \"$t/run.sh\" && printf '{}' > \"$t/choices.json\" && \
             printf '%s' \"$3\" > \"$t/look.json\" && cp \"$1/shell/assets/fonts/Phosphor-Fill.ttf\" \"$t/ui/\" 2>/dev/null; \
@@ -362,8 +373,10 @@ impl TesseraUpdate {
         let args = ["sh".to_string(), "-c".into(), script.into(), "sh".into(), self.repo.clone(), config_dir(), self.look(h).to_string(), if locked { "locked".into() } else { String::new() }];
         let c: Vec<&str> = args.iter().map(String::as_str).collect();
         tessera_core::services::bridge::run(&c);
-        // (still here a minute on: it didn't go ahead; say so)
+        // (still here a minute on: it didn't go ahead; say so. Meanwhile the
+        // job's status is read: an update running elsewhere says so there)
         self.t_start.once(tx, 60000);
+        self.t_job.every(tx, 1000);
         self.publish();
     }
     /// The build cache's size (Software Update shows it, with Delete)
@@ -402,7 +415,11 @@ impl TesseraUpdate {
     }
     fn job_changed(&mut self, h: &mut Host, tx: &Tx, was: &str) {
         let now = self.job.as_ref().and_then(|j| j["state"].as_str()).unwrap_or("").to_string();
-        if self.job_running() {
+        // (the restart found an update running elsewhere: it didn't go ahead)
+        if self.restarting && now == "busy" && self.job.as_ref().and_then(|j| j["finished"].as_f64()).unwrap_or(0.0) >= self.restart_at - 2.0 {
+            self.restarting = false;
+        }
+        if self.job_running() || self.restarting {
             if !self.t_job.running() {
                 self.t_job.every(tx, 500);
             }
@@ -483,7 +500,7 @@ impl TesseraUpdate {
             self.error = "The installation source is missing. Reinstall Tessera from its checkout.".into();
             return;
         }
-        if self.checking || self.applying {
+        if self.checking {
             return;
         }
         self.checking = true;
@@ -551,49 +568,14 @@ impl TesseraUpdate {
         json!({"glyph": tessera_core::icons::glyph_or(name, "circle-wavy"), "image": image})
     }
 
-    /// Started by SoftwareUpdate, after the system part. rebuild: parts to
-    /// rebuild anyway ("plugin" after a Hyprland update); with no Tessera
-    /// update, only those are rebuilt (same screen, same restart).
-    pub fn launch(&mut self, h: &Host, tx: &Tx, rebuild: &[String]) {
-        if !self.allowed() || !self.source_ready || self.repo.is_empty() {
-            return;
-        }
-        self.applying = true;
-        self.error.clear();
-        self.result = None;
-        let script = "t=$(mktemp -d \"${XDG_RUNTIME_DIR:-/tmp}/tessera-update.XXXXXX\") || exit 1; \
-            cp -r \"$1/shell/assets/updater\" \"$t/ui\" && cp \"$1/shell/assets/scripts/update-run.sh\" \"$t/run.sh\" && printf '%s' \"$2\" > \"$t/choices.json\" && \
-            printf '%s' \"$4\" > \"$t/look.json\" && printf '%s' \"$5\" > \"$t/rebuild\" && cp \"$1/shell/assets/fonts/Phosphor-Fill.ttf\" \"$t/ui/\" 2>/dev/null; \
-            exec setsid -f bash \"$t/run.sh\" \"$t\" \"$1\" \"$3\" </dev/null >/dev/null 2>&1";
-        let args = [
-            "sh".to_string(),
-            "-c".into(),
-            script.into(),
-            "sh".into(),
-            self.repo.clone(),
-            Value::Object(self.choices.clone()).to_string(),
-            config_dir(),
-            self.look(h).to_string(),
-            rebuild.join(","),
-        ];
-        let c: Vec<&str> = args.iter().map(String::as_str).collect();
-        tessera_core::services::bridge::run(&c);
-        self.t_start.once(tx, 20000);
-    }
-
     pub fn tick(&mut self, h: &mut Host, tx: &Tx, name: &str) {
         match name {
             "tuPeek" => {
                 self.t_peek.once(tx, PEEK_EVERY_MS);
                 self.peek(h, tx);
             }
-            // If the update screen never took over (the helper couldn't start)
+            // (a restart that should have ended this shell a minute ago)
             "tuStart" => {
-                if self.applying {
-                    self.applying = false;
-                    self.error = "The update didn't start. Try again, or run tools/tessera-update.py in the Tessera folder.".into();
-                }
-                // (a restart that should have ended this shell a minute ago)
                 if self.restarting {
                     self.restarting = false;
                     self.error = "The shell didn't restart. Try Restart shell now again; your update is still ready.".into();
@@ -628,6 +610,10 @@ impl TesseraUpdate {
         match ev {
             Ev::Job(j) => {
                 let was = self.job.as_ref().and_then(|j| j["state"].as_str()).unwrap_or("").to_string();
+                // (a job just asked for: the last job's file, read before the
+                // new one wrote its own, isn't this one's news)
+                let asked = self.job.as_ref().filter(|x| x["state"] == "running" && x["pid"].is_null()).and_then(|x| x["started"].as_f64()).unwrap_or(0.0);
+                let j = j.filter(|j| asked <= 0.0 || j["started"].as_f64().unwrap_or(0.0) >= asked - 2.0);
                 if let Some(j) = j {
                     // (cut off by a reboot, a logout, a crash: started again
                     // from what it was asked, in the background)
@@ -710,7 +696,7 @@ impl TesseraUpdate {
             Ev::Peek(text) => {
                 self.peeking = false;
                 let r = serde_json::from_str::<Value>(text.trim()).unwrap_or(Value::Null);
-                if let Some(body) = notice(&r).filter(|_| !self.applying) {
+                if let Some(body) = notice(&r).filter(|_| !self.job_running()) {
                     // (waits for the answer: the notice can sit in Notification Center)
                     let t = tx.clone();
                     std::thread::spawn(move || {
@@ -780,6 +766,10 @@ mod tests {
         assert!(d.starts_with("Couldn't reach the update server.") && d.contains("Try again"));
         assert_eq!(w(json!({"state": "cancelled"})), "Update cancelled");
         assert_eq!(w(json!({"state": "none"})), "Tessera is up to date");
+        // (an update running elsewhere: never "another update", always since when and where)
+        let (t, d) = job_words(&json!({"state": "busy", "error": "Software Update is already running (started 21:58) in another session. Wait for it to finish, then try again."}));
+        assert_eq!(t, "Software Update is already running");
+        assert!(d.contains("started 21:58") && !d.contains("Another update"));
     }
 
     #[test]

@@ -50,13 +50,11 @@ STANDALONE_ONLY_SOURCES = ("surfaces/screenfx/", "surfaces/desktop/src/gallery.r
 FROZEN_QML = {"loginBack", "loginSwitch",
     "health.setPolkit", "loginRefresh",  # (19 Nov: Rust only)
     "sys.update", "cache.delete",  # (19 Nov: background updates, Rust only)
+    "sheet", "sheet.copy", "su.updateAll",  # (19 Nov: Software Update redesigned, Rust only)
     
     "ai.continueCircle",
     "apps.activateOrLaunch",
     "brightness.setFor",
-    "build.copyLog",
-    "build.details",
-    "build.dismiss",
     "cal.move",
     "cal.remove",
     "cal.restore",

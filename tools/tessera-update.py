@@ -12,6 +12,7 @@ conflict you decide, and nothing is applied until all of them are decided.
                                                        -> the new version made ready in the background
     tessera-update.py finish --config <dir> [--if-ready] -> install what stage made ready (the restart)
     tessera-update.py staged | discard | cancel        -> what's staged; forget it; stop the stage job
+    tessera-update.py lock-holder [--mark]             -> who holds the repo lock (a stale one is taken apart)
 
 Background updates (Software Update's Update, docs/releases.md): `stage`
 runs with the shell up and changes nothing it uses. It takes the repo
@@ -799,24 +800,196 @@ def rebuild(todo, base=45, span=40):
     return built, failed
 
 
+# ── The repo lock: one update at a time on this repository ─────────────────
+# .git/tessera-update.lock, taken with flock by this script and by
+# update-run.sh (the restart). Its holder writes who it is in it: {"pid",
+# "start" (the process's start time, so a reused pid isn't taken for it),
+# "what", "started", "session", "log"}. A lock is stale when no update holds
+# it: its holder is gone, or what keeps it is a process that only inherited
+# the descriptor (19 Nov: shells started by an older update-run.sh kept its
+# fd 8, and every later update in that session was refused as "Another
+# update is running"). A stale lock is taken: the file is replaced by a new
+# one (flock locks the file, not the name), and whoever kept the old one
+# keeps a lock on nothing.
+
+LOCK_WHAT = {"what": "update", "log": ""}  # (what this process is, for its record: main sets it)
+WHAT_WORDS = {"stage": "getting an update ready", "resume": "getting an update ready", "finish": "installing an update",
+              "restart": "restarting Tessera into an update", "apply": "updating Tessera", "update": "updating Tessera",
+              "recover": "putting back an update that was cut off"}
+
+
+def lock_path():
+    return os.path.join(REPO, ".git", "tessera-update.lock")
+
+
+def proc_start(pid):
+    """A process's start time (clock ticks since boot: /proc/PID/stat's
+    22nd field), None when it's gone"""
+    try:
+        with open(f"/proc/{int(pid)}/stat") as f:
+            return int(f.read().rsplit(")", 1)[1].split()[19])
+    except (OSError, IndexError, ValueError, TypeError):
+        return None
+
+
+def proc_cmdline(pid):
+    try:
+        with open(f"/proc/{int(pid)}/cmdline", "rb") as f:
+            return f.read().replace(b"\0", b" ").decode(errors="replace").strip()
+    except (OSError, ValueError, TypeError):
+        return ""
+
+
+def is_updater(cmdline):
+    """An update's own process: this script, update-run.sh, or its copy in
+    a tessera-update.XXXXXX work dir (not a shell that inherited the lock)"""
+    return "tessera-update.py" in cmdline or "update-run.sh" in cmdline or bool(re.search(r"/tessera-update\.[^/ ]+/run\.sh\b", cmdline))
+
+
+def lock_openers(path, me=None):
+    """The processes (other than `me`) that have the lock file open"""
+    me = os.getpid() if me is None else me
+    try:
+        st = os.stat(path)
+        procs = [d for d in os.listdir("/proc") if d.isdigit()]
+    except OSError:
+        return []
+    out = []
+    for d in procs:
+        if int(d) == me:
+            continue
+        try:
+            fds = os.listdir(f"/proc/{d}/fd")
+        except OSError:
+            continue
+        for fd in fds:
+            try:
+                s = os.stat(f"/proc/{d}/fd/{fd}")
+            except OSError:
+                continue
+            if s.st_ino == st.st_ino and s.st_dev == st.st_dev:
+                out.append(int(d))
+                break
+    return out
+
+
+def lock_holder(path=None, cmdline=proc_cmdline, start=proc_start, openers=lock_openers):
+    """Who holds the repo lock as an update, or None when no update does
+    (stale, or free). The holder's record while that process is still that
+    update; without a record (an older updater's empty file), any update's
+    process that has the file open."""
+    path = path or lock_path()
+    rec = load_json(path, None)
+    if isinstance(rec, dict) and rec.get("pid"):
+        pid = rec["pid"]
+        same = not rec.get("start") or start(pid) == rec.get("start")
+        return rec if same and is_updater(cmdline(pid)) else None
+    for pid in openers(path):
+        if is_updater(cmdline(pid)):
+            return {"pid": pid, "what": "update", "started": int(os.path.getmtime(path)) if os.path.exists(path) else 0}
+    return None
+
+
+def break_lock(path=None):
+    """A stale lock replaced by a fresh file (its keepers keep a lock on nothing)"""
+    path = path or lock_path()
+    tmp = path + ".new"
+    with open(tmp, "w"):
+        pass
+    os.replace(tmp, path)
+
+
+def busy_words(holder, session=None):
+    """What's said when an update is already running: since when, where, what"""
+    holder = holder or {}
+    session = os.environ.get("HYPRLAND_INSTANCE_SIGNATURE", "") if session is None else session
+    started = holder.get("started") or 0
+    at = time.strftime("%H:%M", time.localtime(started)) if started else ""
+    where = ""
+    if holder.get("session"):
+        where = " in this session" if holder["session"] == session else " in another session"
+    what = WHAT_WORDS.get(holder.get("what", ""), "")
+    return ("Software Update is already running" + (f" (started {at})" if at else "") + where +
+            (f", {what}" if what else "") + ". Wait for it to finish, then try again.")
+
+
+class Busy(SystemExit):
+    """The repo lock is held by an update that's running (holder: its record)"""
+
+    def __init__(self, holder):
+        self.holder = holder or {}
+        super().__init__(busy_words(self.holder))
+
+
 def repo_lock(wait=False):
     """One update at a time on this repository, from any session: the same
-    lock update-run.sh takes (it says so with TESSERA_UPDATE_HELD=1, and then
-    holds it for us). Kept open (held) until this process ends."""
+    lock update-run.sh takes (it says so with TESSERA_UPDATE_HELD=<its
+    pid>, and holds it for us, its child). Kept open (held) until this
+    process ends. A stale lock is taken (lock_holder); an update that's
+    running raises Busy, saying since when and where."""
     global _HELD
-    if os.environ.get("TESSERA_UPDATE_HELD") == "1" or (_HELD is not None and _HELD() is not None):
+    if os.environ.get("TESSERA_UPDATE_HELD") == str(os.getppid()) or (_HELD is not None and _HELD() is not None):
         return None  # (held already: by update-run.sh, or by our caller: finish → apply)
     import fcntl
     import weakref
-    f = open(os.path.join(REPO, ".git", "tessera-update.lock"), "w")
-    try:
-        fcntl.flock(f, fcntl.LOCK_EX | (0 if wait else fcntl.LOCK_NB))
-    except BlockingIOError:
-        f.close()
-        raise SystemExit("Another update is running on this copy of Tessera. Wait for it to finish, then try again.")
-    held = _Held(f)
-    _HELD = weakref.ref(held)
-    return held
+    path = lock_path()
+    deadline = time.time() + (3600 if wait else 0)
+    broken = 0
+    while True:
+        f = open(path, "a+")
+        try:
+            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            f.close()
+            holder = lock_holder(path)
+            if holder is None and broken < 3:
+                broken += 1
+                break_lock(path)
+                continue
+            if wait and time.time() < deadline:
+                time.sleep(1)
+                continue
+            raise Busy(holder)
+        # (still the file at the path: one replaced meanwhile isn't the lock)
+        try:
+            same = os.fstat(f.fileno()).st_ino == os.stat(path).st_ino
+        except OSError:
+            same = False
+        if not same:
+            f.close()
+            continue
+        f.seek(0)
+        f.truncate()
+        json.dump({"pid": os.getpid(), "start": proc_start(os.getpid()), "what": LOCK_WHAT["what"], "started": int(time.time()),
+                   "session": os.environ.get("HYPRLAND_INSTANCE_SIGNATURE", ""), "log": LOCK_WHAT["log"]}, f)
+        f.flush()
+        held = _Held(f)
+        _HELD = weakref.ref(held)
+        return held
+
+
+def lock_report(mark=False):
+    """`lock-holder` (update-run.sh, when the lock is taken): {"free": true},
+    {"stale": true} once a stale lock was taken apart, or {"busy": true,
+    "message", …the holder}. mark: the background job's status says so
+    (Software Update shows it), unless that job is the one running"""
+    path = lock_path()
+    if not os.path.exists(path):
+        return {"free": True}
+    import fcntl
+    with open(path, "a+") as f:
+        try:
+            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return {"free": True}
+        except BlockingIOError:
+            pass
+    holder = lock_holder(path)
+    if holder is None:
+        break_lock(path)
+        return {"stale": True}
+    if mark:
+        mark_busy(holder)
+    return dict(holder, busy=True, message=busy_words(holder))
 
 
 _HELD = None  # (a weak reference to the lock this process holds)
@@ -1427,6 +1600,11 @@ class Job:
                       "bytes": 0, "error": "", "started": time.time(), "finished": 0, "pid": os.getpid()}
         with open(os.path.join(self.dir, "pid"), "w") as f:
             f.write(str(os.getpid()))
+        # (a new job, a new log: the details show this one's)
+        try:
+            open(os.path.join(self.dir, "log"), "w").close()
+        except OSError:
+            pass
         self.write()
 
     def write(self, **kw):
@@ -1452,6 +1630,21 @@ class Job:
             os.remove(os.path.join(self.dir, "pid"))
         except OSError:
             pass
+
+
+def mark_busy(holder, directory=None):
+    """Another update holds the repo lock: the job's status says who
+    ({"state": "busy", "holder", "error"}), for Software Update, unless the
+    status is a job that's still running (that one shows itself)"""
+    d = directory or job_dir()
+    st_path = os.path.join(d, "status.json")
+    st = load_json(st_path, {})
+    if isinstance(st, dict) and st.get("state") == "running" and _alive(st.get("pid")) and "tessera-update" in proc_cmdline(st.get("pid")):
+        return False
+    os.makedirs(d, exist_ok=True)
+    write_json(st_path, {"state": "busy", "holder": holder or {}, "error": busy_words(holder), "text": "Software Update is already running",
+                         "started": time.time(), "finished": time.time()})
+    return True
 
 
 def job_progress(percent, text, phase=None, **kw):
@@ -1908,8 +2101,17 @@ def hold_awake(why):
 
 def run_stage(a, config_dir, choices):
     """The `stage` command: the job's status kept as it goes; cancelled by
-    SIGTERM (cancel_job), it leaves nothing staged"""
+    SIGTERM (cancel_job), it leaves nothing staged. The repo lock first:
+    while another update runs, the job's files are left to it (a second
+    job wrote over the first one's status and pid), and its status says
+    who's running"""
     import signal
+    LOCK_WHAT.update(what="stage", log=os.path.join(job_dir(), "log"))
+    try:
+        lock = repo_lock()  # noqa: F841 (held while this runs: stage() finds it held)
+    except Busy as e:
+        mark_busy(e.holder)
+        return {"error": str(e), "busy": True}
     job = Job()
     awake = hold_awake("Updating Tessera")  # noqa: F841 (held while this runs)
     write_json(os.path.join(job.dir, "request.json"), {"config": config_dir, "choices": choices, "rebuild": a.rebuild, "channel": a.channel})
@@ -1942,18 +2144,21 @@ def main():
     unblock_signals()
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("command", choices=["check", "apply", "info", "peek", "fetch", "stage", "finish", "discard", "staged", "cancel",
-                                        "recover", "resume"])
+                                        "recover", "resume", "lock-holder"])
     ap.add_argument("--choices-json", help="stage: the conflicts' choices as JSON text")
     ap.add_argument("--if-ready", action="store_true", help="finish: quietly nothing when nothing is staged (launch-shell.sh at login)")
     ap.add_argument("--channel", choices=sorted(CHANNELS), help="this channel instead of config.json's update.channel")
-    ap.add_argument("--mark", action="store_true", help="peek: write down that a new version was mentioned")
+    ap.add_argument("--mark", action="store_true", help="peek: write down that a new version was mentioned; lock-holder: the job's status says who's running")
     ap.add_argument("--config", default="", help="the shell's config folder (config.json, keybinds.json)")
     ap.add_argument("--choices", help="apply: JSON file mapping conflict ids to choices")
     ap.add_argument("--no-fetch", action="store_true")
     ap.add_argument("--rebuild", default="", help="apply: also rebuild these (comma-separated: plugin,native,shaders)")
     a = ap.parse_args()
+    LOCK_WHAT["what"] = a.command
     try:
-        if a.command == "check":
+        if a.command == "lock-holder":
+            out = lock_report(a.mark)
+        elif a.command == "check":
             out = check(a.config, fetch=not a.no_fetch, channel=a.channel)
         elif a.command == "info":
             out = position(a.config, False, a.channel) if is_checkout() else {"error": NOT_A_CHECKOUT}

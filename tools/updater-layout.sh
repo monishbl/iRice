@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# updater-layout.sh: Settings → Software Update with long real values (a long
-# commit message, a channel-mismatch line, "Built locally from the branch …",
-# an update running, a build in progress and failed, 40 packages), in a hidden
-# arena, shot from top to bottom, to check that no row's text runs under its
-# buttons. Never the real screen; shots are for looking at, never committed.
-#   ARENA=N tools/updater-layout.sh <tessera-ui binary> <out dir> <glass|material> [screen width]
+# updater-layout.sh: Settings → Software Update in each of its states (up
+# to date, updates ready, running with progress, ready to restart, an error,
+# an update running elsewhere, Options, the log sheet), in a hidden arena, a
+# shot of each, to check them against the design rules. Never the real
+# screen; shots are for looking at, never committed.
+#   [MODE=light|dark] ARENA=N tools/updater-layout.sh <tessera-ui binary> <out dir> <glass|material> [screen width]
 # A screen narrower than the window (860 / 1040 px) narrows Settings with it
 # (fit_window): 700 checks a narrow window. Scenarios: tools/updater-layout-feed.py.
 # The Settings shown is a second tessera-ui (--surfaces settings) fed on
@@ -40,15 +40,20 @@ sleep 3
 exec 4>"$F"
 echo '{"cmd":"open","surface":"settings","screen":"TESSERA-TEST","page":"update"}' >&4
 X=$((W / 2 + 100))
-for sc in plan running build failed; do
+M=${MODE:-dark}
+for sc in uptodate ready running restart error busy options sheet; do
+    page=update
+    [[ $sc == options ]] && page=update/options
     python3 -I "$ROOT/tools/updater-layout-feed.py" "$sc" >&4
+    echo "{\"cmd\":\"page\",\"surface\":\"settings\",\"page\":\"$page\"}" >&4
     sleep 3
-    dev shot "$OUT/$LOOK-$W-$sc-0.png" >/dev/null 2>&1
-    for k in 1 2 3 4 5 6; do
-        inbox "P move $X 600 sleep 100 swipe 420 300 sleep 600" >/dev/null 2>&1; sleep 1.2
-        dev shot "$OUT/$LOOK-$W-$sc-$k.png" >/dev/null 2>&1
-    done
-    inbox "P move $X 600 sleep 100 swipe -6000 300 sleep 400 swipe -6000 300" >/dev/null 2>&1; sleep 1
+    dev shot "$OUT/$LOOK-$M-$W-$sc.png" >/dev/null 2>&1
+    # (Options is longer than the window: its end too)
+    if [[ $sc == options ]]; then
+        inbox "P move $X 600 sleep 100 swipe 900 300 sleep 600" >/dev/null 2>&1; sleep 1.2
+        dev shot "$OUT/$LOOK-$M-$W-$sc-end.png" >/dev/null 2>&1
+        inbox "P move $X 600 sleep 100 swipe -6000 300 sleep 400" >/dev/null 2>&1; sleep 1
+    fi
 done
 kill "$(cat "$TESSERA_RT/updater-layout.pid")" 2>/dev/null
 exec 4>&-

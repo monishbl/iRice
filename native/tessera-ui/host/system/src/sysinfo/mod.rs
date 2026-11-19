@@ -9,8 +9,7 @@
 //!   tessera_update   services/TesseraUpdate.qml
 //!   software_update  services/SoftwareUpdate.qml
 //!   bridge_about     modules/settings/RustBridgeAbout.qml (owns the three
-//!                    update models; prefixes about/updates/tesseraupdate/
-//!                    softwareupdate)
+//!                    update models; prefixes about/updates/tesseraupdate)
 
 pub mod bridge_about;
 pub mod bridge_system;

@@ -1,4 +1,5 @@
-//! The "about" page group: Software Update (update.qml), About (about.qml)
+//! The "about" page group: Software Update (update.qml; its sub-pages
+//! Options and Go back are Rust only), About (about.qml)
 //! and its subpages System health (about-health.qml), Report a Bug
 //! (about-bugreport.qml) and Login Items (about-loginitems.qml); and two
 //! parts other groups' pages show: a cloud drive's folder (DriveGroup.qml:
@@ -26,6 +27,8 @@ use serde_json::Value;
 pub fn build(page: &str, cx: &mut Ctx, p: &mut Page) -> bool {
     match page {
         "update" => update::page(cx, p),
+        "update/options" => update::options(cx, p),
+        "update/back" => update::back(cx, p),
         "about" => about::page(cx, p),
         "about/health" => health::page(cx, p),
         "about/bugreport" => bugreport::page(cx, p),
