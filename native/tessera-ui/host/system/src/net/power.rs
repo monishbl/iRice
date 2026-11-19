@@ -337,7 +337,11 @@ impl Power {
         if tessera_core::env::sandboxed() || !self.ppd {
             return;
         }
-        if self.applied.is_empty() {
+        // (each change starts the grace in which a report of the old profile
+        // is the daemon catching up, not someone else's change: it was only
+        // at the first, so a report arriving just after a click undid the
+        // click and Low Power / Balanced took several clicks; 19 Nov)
+        if self.applied != mode {
             self.applied_at = now_ms();
         }
         self.applied = mode.clone();
