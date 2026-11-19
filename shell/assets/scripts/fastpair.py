@@ -437,8 +437,7 @@ class Watcher:
                       GLib.Variant("(o)", (APP_PATH,)), None, Gio.DBusCallFlags.NONE, 10000, None, done)
 
     def duty(self):
-        """Every 30 s: the monitor (else scan 4 s, continuously on the
-        charger), only while powered."""
+        """Every 30 s: the monitor (else a 4 s scan), only while powered."""
         self.adapter, props = self.find_adapter()
         if not self.adapter or not props.get("Powered"):
             self.scan(False)
@@ -448,10 +447,13 @@ class Watcher:
                 self.monitor()
             if not self.monitor_failed:
                 return True
+        # Without the monitor (bluetoothd with no AdvertisementMonitorManager1):
+        # a 4 s scan every 30 s, on battery and on the charger alike. It used
+        # to scan without pause on the charger, every repeat from every
+        # device nearby: bluetoothd, WirePlumber, upowerd and NetworkManager
+        # then kept a laptop's processor busy and its fan up (19 Nov: system1,
+        # 252 devices heard, ~70% of a core in all, idle)
         self.subscribe_all()
-        if not self.on_battery_power():
-            self.scan(True)
-            return True
         self.scan(True)
         self.GLib.timeout_add_seconds(4, lambda: (self.scan(False), False)[1])
         return True
