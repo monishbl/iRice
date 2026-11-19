@@ -71,6 +71,8 @@ pub fn sheet_texts(done: bool, failed: bool, edges: bool, finger: &str, retry: &
     ];
     let title = if done {
         format!("Your {finger} is added")
+    } else if stage == "saving" {
+        "Saving your fingerprint".into()
     } else if failed {
         "That didn't work".into()
     } else if edges {
@@ -86,6 +88,8 @@ pub fn sheet_texts(done: bool, failed: bool, edges: bool, finger: &str, retry: &
         retry.to_string()
     } else if stage == "starting" {
         "Getting the reader ready…".into()
+    } else if stage == "saving" {
+        "Lift your finger. The reader stores it securely, which can take up to a minute.".into()
     } else {
         STEPS.get(target.max(0) as usize).copied().unwrap_or("").to_string()
     };
@@ -110,7 +114,8 @@ fn sheet(cx: &mut Ctx, p: &mut Page, finger: &str) {
     let name = if name.is_empty() { "finger".to_string() } else { name };
     let retry = s(&sh["retry"]);
     let (title, text) = sheet_texts(done, failed, edges, &name, &retry, &stage, &s(&fp["enrollError"]), target);
-    let caption = if done {
+    let saving = stage == "saving";
+    let caption = if done || saving {
         "All 11 sections recorded".to_string()
     } else if failed {
         String::new()
@@ -161,8 +166,35 @@ fn sheet(cx: &mut Ctx, p: &mut Page, finger: &str) {
             });
         }
     });
-    let b = Row::new("").button(if done { "Done" } else { "Cancel" }, close);
-    rows.push(if done { b.primary() } else { b });
+    if saving {
+        // (no Cancel: stopping the reader mid-save loses the print)
+        rows.push(Row::new("Saving…").spinner());
+    } else {
+        let b = Row::new("").button(if done { "Done" } else { "Cancel" }, close);
+        rows.push(if done { b.primary() } else { b });
+    }
+    // Done: the check shows, then the sheet closes by itself (unless another
+    // finger is being added from it)
+    if done && !cx.local_b("fp.closing") {
+        if cx.local_b("fp.autoclose") {
+            cx.local.remove("fp.autoclose");
+            cx.local_set("fp.closing", true);
+            cx.local.remove("fp.closed");
+            cx.spawn("fp.closed", || {
+                std::thread::sleep(std::time::Duration::from_millis(SHEET_CLOSE_MS));
+                Value::Bool(true)
+            });
+        } else if !cx.local_b("fp.autoclose.asked") {
+            cx.local_set("fp.autoclose.asked", true);
+            cx.spawn("fp.autoclose", || {
+                std::thread::sleep(std::time::Duration::from_millis(1800));
+                Value::Bool(true)
+            });
+        }
+    }
+    if !done {
+        cx.local.remove("fp.autoclose.asked");
+    }
 
     let blk = p.custom("system", "fp-sheet");
     blk.title(title).text(text).data(data);

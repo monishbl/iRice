@@ -288,7 +288,10 @@ impl Service for Fingerprint {
                 self.refresh();
             }
             M::EnrollLine(v) => {
-                if v["stage"] == "claimed" {
+                if v["stage"] == "saving" {
+                    self.enroll_stage = "saving".into();
+                    self.enroll_hint.clear();
+                } else if v["stage"] == "claimed" {
                     self.enroll_stage = "waiting".into();
                     self.enroll_stages = v["stages"].as_i64().unwrap_or(0);
                     self.enroll_hint = "Touch the fingerprint reader".into();
@@ -306,7 +309,7 @@ impl Service for Fingerprint {
                 }
             }
             M::EnrollExit => {
-                if self.enroll_stage == "starting" || self.enroll_stage == "waiting" {
+                if self.enroll_stage == "starting" || self.enroll_stage == "waiting" || self.enroll_stage == "saving" {
                     self.enroll_stage = "error".into();
                     if self.enroll_error.is_empty() {
                         self.enroll_error = "The reader stopped. Try again.".into();

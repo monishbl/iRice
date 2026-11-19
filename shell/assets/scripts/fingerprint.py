@@ -234,6 +234,17 @@ def enroll(finger):
         stages = 0
     emit({"stage": "claimed", "stages": stages})
 
+    # (waiting for a touch: 60 s each; after the last one Dell's driver
+    # stores the print in its chip, which can take minutes: 5 then. One
+    # deadline for the whole thing ended long enrollments as "too long",
+    # and the save showed nothing, as if hung; 20 Nov, system1)
+    timer = {"id": 0}
+
+    def deadline(secs):
+        if timer["id"]:
+            fp.GLib.source_remove(timer["id"])
+        timer["id"] = fp.GLib.timeout_add_seconds(secs, lambda: (state.update(end="enroll-timeout"), loop.quit(), False)[2])
+
     def on_status(conn, sender, path_, iface, signal, params):
         result, done = params.unpack()
         if result == "enroll-stage-passed":
@@ -242,10 +253,15 @@ def enroll(finger):
         if done:
             state["end"] = result
             loop.quit()
+        elif stages and state["count"] >= stages:
+            emit({"stage": "saving"})
+            deadline(300)
+        else:
+            deadline(60)
     sub = fp.bus.signal_subscribe(FP, FP + ".Device", "EnrollStatus", dev, None, fp.Gio.DBusSignalFlags.NONE, on_status)
     try:
         fp.call(dev, FP + ".Device", "EnrollStart", "(s)", (finger,))
-        fp.GLib.timeout_add_seconds(120, lambda: (state.update(end="enroll-timeout"), loop.quit()))
+        deadline(60)
         loop.run()
     except Exception as e:  # noqa: BLE001
         state["end"] = "error:" + dbus_error(e)
@@ -261,7 +277,7 @@ def enroll(finger):
               "enroll-data-full": "The reader is full: delete a fingerprint first.",
               "enroll-duplicate": "That finger is already added.",
               "enroll-disconnected": "The reader was disconnected.",
-              "enroll-timeout": "It took too long. Try again."}
+              "enroll-timeout": "The reader stopped answering. Try again."}
     emit({"ok": end == "enroll-completed", "error": "" if end == "enroll-completed" else errors.get(end, end or "")})
     return 0 if end == "enroll-completed" else 1
 
