@@ -10,7 +10,9 @@
 //!
 //! Thumbnails are decoded off the UI thread, cropped to the thumbnail's
 //! shape at its pixels, and only for the ones in view (and a few either
-//! side); ones scrolled far away are let go, and all of them when it closes.
+//! side); ones scrolled far away are let go, and all of them when it closes
+//! (the decoded ones stay in a small cache for five minutes after: opening
+//! it again shows them without decoding every picture again).
 //! The strip scrolls with the wheel, a touchpad (gliding on after the fingers
 //! lift, as Momentum.qml) and the arrow keys, and drags and flicks with the
 //! pointer, as the QML's ListView. Where it differs: Slint gets no scroll
@@ -34,6 +36,7 @@ use smithay_client_toolkit::reexports::client::protocol::wl_output::WlOutput;
 use smithay_client_toolkit::shell::wlr_layer::{Anchor, KeyboardInteractivity, Layer};
 use std::any::Any;
 use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 
 const NAME: &str = "wallpaper";
 /// (not the QML's tessera:wallpaper, the desktop's namespace: the glass
@@ -79,6 +82,49 @@ pub struct WallpaperPicker {
     range: (usize, usize),
     pool: Option<Pool>,
     bundled: Option<Bundled>,
+    /// the thumbnails decoded, kept a while after it closes (opening it
+    /// again shows them at once instead of decoding every picture again)
+    cache: Arc<Mutex<ThumbCache>>,
+    /// lets go of `cache` a few minutes after it closed
+    forget: slint::Timer,
+}
+
+/// How long the thumbnails are kept once the picker closed, and how many
+const CACHE_FOR: std::time::Duration = std::time::Duration::from_secs(300);
+const CACHE_MAX: usize = 48;
+
+/// Thumbnails decoded before, by picture (its path, size and modification
+/// time: a changed picture is decoded again) and tile size
+#[derive(Default)]
+pub struct ThumbCache {
+    items: Vec<(String, (u32, u32), (u64, u128), slint::SharedPixelBuffer<slint::Rgb8Pixel>)>,
+}
+
+impl ThumbCache {
+    pub fn get(&self, path: &str, size: (u32, u32), stamp: (u64, u128)) -> Option<slint::SharedPixelBuffer<slint::Rgb8Pixel>> {
+        self.items.iter().find(|(p, s, t, _)| p == path && *s == size && *t == stamp).map(|(_, _, _, px)| px.clone())
+    }
+
+    /// Keep it (the oldest go past CACHE_MAX)
+    pub fn put(&mut self, path: &str, size: (u32, u32), stamp: (u64, u128), px: slint::SharedPixelBuffer<slint::Rgb8Pixel>) {
+        self.items.retain(|(p, s, _, _)| !(p == path && *s == size));
+        self.items.push((path.to_string(), size, stamp, px));
+        if self.items.len() > CACHE_MAX {
+            let extra = self.items.len() - CACHE_MAX;
+            self.items.drain(..extra);
+        }
+    }
+
+    pub fn clear(&mut self) {
+        self.items.clear();
+    }
+}
+
+/// A picture's length and modification time (what a cached thumbnail is
+/// checked against)
+fn stamp(path: &str) -> Option<(u64, u128)> {
+    let m = std::fs::metadata(path).ok()?;
+    Some((m.len(), m.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()?.as_nanos()))
 }
 
 /// The output's size in logical pixels (the panel's width follows it)
@@ -151,6 +197,8 @@ impl WallpaperPicker {
     }
 
     fn open(&mut self, st: &mut State, screen: Option<String>) {
+        // (open again: the thumbnails kept stay)
+        self.forget.stop();
         let output = screen.or_else(|| self.win.as_ref().map(|w| w.output.clone())).or_else(|| st.outputs_now().first().map(|o| o.1.clone()));
         let Some(output) = output else { return };
         if self.win.as_ref().is_some_and(|w| w.output != output) {
@@ -257,9 +305,21 @@ impl WallpaperPicker {
             if self.loaded[i] {
                 continue;
             }
-            let (path, gen, tx) = (self.files[i].clone(), self.listing, st.tx.clone());
+            let (path, gen, tx, cache) = (self.files[i].clone(), self.listing, st.tx.clone(), self.cache.clone());
             jobs.push(Box::new(move || {
-                let px = picture::decode(&path, bw, bh);
+                // (one decoded before, of the picture as it is now: at once)
+                let when = stamp(&path);
+                let hit = when.and_then(|t| cache.lock().ok().and_then(|c| c.get(&path, (bw, bh), t)));
+                let px = match hit {
+                    Some(px) => Some(px),
+                    None => {
+                        let px = picture::decode(&path, bw, bh);
+                        if let (Some(t), Some(p), Ok(mut c)) = (when, &px, cache.lock()) {
+                            c.put(&path, (bw, bh), t, p.clone());
+                        }
+                        px
+                    }
+                };
                 let _ = tx.send(crate::Msg::Part(NAME, Box::new(Msg::Thumb(gen, i, path, px))));
             }));
         }
@@ -319,6 +379,13 @@ impl WallpaperPicker {
             self.loaded.clear();
             self.pool = None;
             self.listing += 1;
+            // (the decoded thumbnails stay a few minutes, for opening it again)
+            let cache = self.cache.clone();
+            self.forget.start(slint::TimerMode::SingleShot, CACHE_FOR, move || {
+                if let Ok(mut c) = cache.lock() {
+                    c.clear();
+                }
+            });
         }
     }
 
@@ -461,6 +528,31 @@ impl Part for WallpaperPicker {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn thumbnails_are_kept_for_the_picture_as_it_is() {
+        let px = |w| slint::SharedPixelBuffer::<slint::Rgb8Pixel>::new(w, 1);
+        let mut c = ThumbCache::default();
+        c.put("/w/a.jpg", (220, 124), (10, 1), px(1));
+        assert_eq!(c.get("/w/a.jpg", (220, 124), (10, 1)).map(|p| p.width()), Some(1));
+        // changed on disk, or another tile size: decoded again
+        assert!(c.get("/w/a.jpg", (220, 124), (10, 2)).is_none());
+        assert!(c.get("/w/a.jpg", (440, 248), (10, 1)).is_none());
+        // a newer decode replaces the old one
+        c.put("/w/a.jpg", (220, 124), (11, 3), px(2));
+        assert_eq!(c.items.len(), 1);
+        assert_eq!(c.get("/w/a.jpg", (220, 124), (11, 3)).map(|p| p.width()), Some(2));
+        // the oldest go past the limit
+        for i in 0..CACHE_MAX + 5 {
+            c.put(&format!("/w/{i}.jpg"), (220, 124), (1, 1), px(1));
+        }
+        assert_eq!(c.items.len(), CACHE_MAX);
+        assert!(c.get("/w/0.jpg", (220, 124), (1, 1)).is_none());
+        assert!(c.get(&format!("/w/{}.jpg", CACHE_MAX + 4), (220, 124), (1, 1)).is_some());
+        c.clear();
+        assert!(c.items.is_empty());
+        let _ = stamp("/nonexistent/x.jpg");
+    }
 
     #[test]
     fn sized_as_the_qml() {

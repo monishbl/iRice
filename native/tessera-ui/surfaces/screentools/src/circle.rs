@@ -69,6 +69,17 @@ pub struct Crop {
     thumb: (u32, u32, Vec<u8>),
 }
 
+/// The JPEG goes with the crop (a new circle, Restart, the circle closing):
+/// it's a private picture of the screen in the in-memory runtime folder.
+/// One handed on (Continue in chat) has its path taken out first.
+impl Drop for Crop {
+    fn drop(&mut self) {
+        if !self.path.is_empty() {
+            let _ = std::fs::remove_file(&self.path);
+        }
+    }
+}
+
 /// What an error's button does
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum Fix {
@@ -334,6 +345,8 @@ fn cut(img: &image::RgbaImage, r: Rect, w: f32) -> Result<Crop, String> {
     {
         use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
         let _ = std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&dir);
+        // (ones left from before, a crash or a chat that took one: a day on)
+        super::session::prune_old(&dir, "shot-circle-", Duration::from_secs(86_400));
         let path = dir.join(format!("shot-circle-{}.jpg", crate::util::now_ms()));
         let mut f = std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&path).map_err(|e| e.to_string())?;
         std::io::Write::write_all(&mut f, &jpeg).map_err(|e| e.to_string())?;
@@ -701,9 +714,9 @@ impl Circle {
     /// Translate with no model set up: tesseract, then translate-shell (as the
     /// screen's Translate); false when either is missing
     fn translate_without_ai(&mut self, st: &mut State) -> bool {
-        let has = |t: &str| Command::new("sh").args(["-c", "command -v \"$1\" >/dev/null", "sh", t]).status().is_ok_and(|s| s.success());
+        // (looked up on $PATH here: no shell started on the UI thread)
         let Some(crop) = &self.crop else { return false };
-        if !has("tesseract") || !has("trans") {
+        if !crate::util::on_path("tesseract") || !crate::util::on_path("trans") {
             return false;
         }
         self.model = Model { name: "Translate".into(), ..Model::none() };
@@ -955,7 +968,9 @@ impl Circle {
                 if self.answer.is_empty() {
                     return;
                 }
-                let path = self.crop.as_ref().map(|c| c.path.clone()).unwrap_or_default();
+                // (the chat keeps the picture: taken out of the crop, so it
+                // isn't removed when the circle closes)
+                let path = self.crop.as_mut().map(|c| std::mem::take(&mut c.path)).unwrap_or_default();
                 crate::shell::ask("ai.continueCircle", json!([self.asked.shown, self.raw.clone(), path, self.screen]));
                 self.dismiss(st);
             }

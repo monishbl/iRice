@@ -163,10 +163,84 @@ struct Screen {
     playing: bool,
 }
 
+/// The newest backdrop wish per screen: (picture, pixels)
+type Wishes = std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, (String, (u32, u32))>>>;
+
+/// Today's blurred backdrops, baked on one thread, one at a time, only the
+/// newest wish per screen: a screen's size settling after its first frame,
+/// or clicks through the picker, no longer start a decode thread each (all
+/// at once, several GB with big pictures) writing one temporary file
+/// together, the last to finish winning whichever picture it was for.
+#[derive(Default)]
+struct Backdrops {
+    wishes: Wishes,
+    pool: Option<Pool>,
+}
+
+impl Backdrops {
+    fn wish(&mut self, output: &str, src: &str, px: (u32, u32)) {
+        if let Ok(mut w) = self.wishes.lock() {
+            w.insert(output.to_string(), (src.to_string(), px));
+        }
+        // (one job that bakes until no wish is left; one still waiting is
+        // replaced by it, one running picks the new wish up itself)
+        let wishes = self.wishes.clone();
+        let pool = self.pool.get_or_insert_with(|| Pool::new(1, "tessera-backdrop"));
+        let job = Box::new(move || {
+            drain(&wishes, |src, output, px| {
+                if let Err(e) = wallpaper::bake_backdrop(src, output, px) {
+                    eprintln!("tessera-ui: wallpaper: no blurred backdrop for {output} ({e})");
+                }
+            })
+        }) as Box<dyn FnOnce() + Send>;
+        pool.replace(vec![job]);
+    }
+}
+
+/// Bake every wish, newest per screen, one at a time (a wish made meanwhile
+/// is baked too, after the one running)
+fn drain(wishes: &Wishes, bake: impl Fn(&str, &str, (u32, u32))) {
+    loop {
+        let next = {
+            let Ok(mut w) = wishes.lock() else { return };
+            let Some(output) = w.keys().next().cloned() else { return };
+            w.remove(&output).map(|(src, px)| (output, src, px))
+        };
+        if let Some((output, src, px)) = next {
+            bake(&src, &output, px);
+        }
+    }
+}
+
+#[cfg(test)]
+mod backdrop_queue_tests {
+    use super::*;
+
+    #[test]
+    fn only_the_newest_wish_per_screen_is_baked() {
+        let b = Backdrops::default();
+        {
+            let mut w = b.wishes.lock().unwrap();
+            w.insert("DP-1".into(), ("/old.jpg".into(), (1920, 1080)));
+            w.insert("DP-1".into(), ("/new.jpg".into(), (2560, 1440)));
+            w.insert("HDMI-A-1".into(), ("/new.jpg".into(), (1920, 1080)));
+        }
+        let done = std::cell::RefCell::new(Vec::new());
+        drain(&b.wishes, |src, output, px| done.borrow_mut().push((output.to_string(), src.to_string(), px)));
+        let mut done = done.into_inner();
+        done.sort();
+        assert_eq!(done, vec![("DP-1".to_string(), "/new.jpg".to_string(), (2560, 1440)), ("HDMI-A-1".to_string(), "/new.jpg".to_string(), (1920, 1080))]);
+        assert!(b.wishes.lock().unwrap().is_empty());
+    }
+}
+
 #[derive(Default)]
 pub struct Background {
     screens: Vec<Screen>,
     pool: Option<Pool>,
+    /// Today's blurred backdrops: the newest wish per screen, baked one at a
+    /// time on a thread of their own (Backdrops)
+    backdrops: Backdrops,
     /// the time-of-day folder and its pictures
     folder: (String, Vec<String>),
     /// the live wallpaper's video and its poster, once made
@@ -241,12 +315,7 @@ impl Background {
                 sc.pending = true;
                 // Today's blurred backdrop of this screen, from the same picture
                 // (wallpaper::bake_backdrop; a live wallpaper's poster is a picture too)
-                let (src, output, px) = (want.clone(), sc.output.clone(), sc.px);
-                std::thread::spawn(move || {
-                    if let Err(e) = wallpaper::bake_backdrop(&src, &output, px) {
-                        eprintln!("tessera-ui: wallpaper: no blurred backdrop for {output} ({e})");
-                    }
-                });
+                self.backdrops.wish(&sc.output, &want, sc.px);
             }
         }
         // (one decode per picture and size, the newest wishes only)

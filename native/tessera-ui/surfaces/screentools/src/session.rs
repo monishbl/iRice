@@ -270,6 +270,30 @@ pub fn base_name(p: &str) -> &str {
     p.rsplit('/').next().unwrap_or(p)
 }
 
+/// The markup can be saved over this file: it's a PNG (what flattening
+/// writes). A JPG, WebP, GIF… is never overwritten with PNG data under its
+/// own name: Save writes "<name> (edited).png" beside it instead
+pub fn writes_back(path: &str) -> bool {
+    std::path::Path::new(path).extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("png"))
+}
+
+/// Remove the files in `dir` whose names start with `prefix` and that
+/// weren't changed for `age` (the runtime folder's left-over crops and
+/// shared copies: it's in memory, and they're private pictures of the screen)
+pub fn prune_old(dir: &std::path::Path, prefix: &str, age: std::time::Duration) {
+    let Ok(rd) = std::fs::read_dir(dir) else { return };
+    let now = std::time::SystemTime::now();
+    for e in rd.flatten() {
+        if !e.file_name().to_string_lossy().starts_with(prefix) {
+            continue;
+        }
+        let old = e.metadata().ok().filter(|m| m.is_file()).and_then(|m| m.modified().ok()).and_then(|t| now.duration_since(t).ok()).is_some_and(|d| d >= age);
+        if old {
+            let _ = std::fs::remove_file(e.path());
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -357,5 +381,33 @@ mod tests {
         assert_eq!(copy_name("/s/Shot.png", |p| taken.contains(&p)), "/s/Shot (edited 3).png");
         assert_eq!(copy_name("/s.d/Shot", |_| false), "/s.d/Shot (edited).png");
         assert_eq!(base_name("/s/Shot.png"), "Shot.png");
+    }
+
+    #[test]
+    fn only_pngs_are_saved_over() {
+        assert!(writes_back("/s/Shot.png") && writes_back("/s/Shot.PNG"));
+        for p in ["/p/photo.jpg", "/p/photo.JPEG", "/p/a.webp", "/p/anim.gif", "/p/a.bmp", "/p/a.avif", "/p.png/noext"] {
+            assert!(!writes_back(p), "{p}");
+        }
+        // (Save of a JPG: a PNG beside it, the original kept)
+        assert_eq!(copy_name("/p/photo.jpg", |_| false), "/p/photo (edited).png");
+    }
+
+    #[test]
+    fn old_left_overs_are_pruned() {
+        let d = std::env::temp_dir().join(format!("tessera-prune-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        for n in ["shot-circle-1.jpg", "shot-circle-2.jpg", "other.jpg"] {
+            std::fs::write(d.join(n), b"x").unwrap();
+        }
+        // (nothing a day old yet: all kept)
+        prune_old(&d, "shot-circle-", std::time::Duration::from_secs(86_400));
+        assert_eq!(std::fs::read_dir(&d).unwrap().count(), 3);
+        // (age 0: every match goes, the others stay)
+        prune_old(&d, "shot-circle-", std::time::Duration::ZERO);
+        let left: Vec<String> = std::fs::read_dir(&d).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+        assert_eq!(left, vec!["other.jpg".to_string()]);
+        let _ = std::fs::remove_dir_all(&d);
     }
 }

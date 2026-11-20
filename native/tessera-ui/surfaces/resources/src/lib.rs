@@ -98,7 +98,13 @@ impl Resources {
     fn sample(&mut self) {
         let now = self.now();
         self.sampler.sample(now);
-        self.gpu.sample(now);
+        // (the GPU only while its row can be seen: the popover, or an island
+        // whose popover may open; the menu bar's figures don't show it)
+        if self.shown || self.warm {
+            self.gpu.sample(now);
+        } else {
+            self.gpu.locate();
+        }
     }
 
     fn rows(&self, st: &State) -> Vec<ui::ResRow> {

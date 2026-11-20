@@ -37,6 +37,8 @@ use std::any::Any;
 use std::io::{BufRead, BufReader};
 use std::os::unix::net::UnixStream;
 use std::rc::Rc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 const NAME: &str = "tabs";
@@ -136,6 +138,26 @@ struct Bar {
     tabs: tessera_core::rows::Rows<ui::TbTab>,
 }
 
+/// The listening thread's off switch: the flag, and its socket, shut down
+/// so a read waiting on it returns at once (no timer polling the flag)
+#[derive(Default)]
+struct Listener {
+    stop: AtomicBool,
+    conn: Mutex<Option<UnixStream>>,
+}
+
+impl Listener {
+    fn end(&self) {
+        self.stop.store(true, Ordering::SeqCst);
+        if let Some(c) = self.conn.lock().ok().and_then(|mut c| c.take()) {
+            let _ = c.shutdown(std::net::Shutdown::Both);
+        }
+    }
+    fn ended(&self) -> bool {
+        self.stop.load(Ordering::SeqCst)
+    }
+}
+
 #[derive(Default)]
 pub struct Tabs {
     bars: Vec<Bar>,
@@ -143,6 +165,8 @@ pub struct Tabs {
     on: bool,
     settled: bool,
     listening: bool,
+    /// ends the listening thread (Window tabs turned off)
+    listener: Arc<Listener>,
     icons: AppIcons,
     later: slint::Timer,
     settle: slint::Timer,
@@ -163,13 +187,26 @@ impl Tabs {
             return;
         }
         self.listening = true;
+        // (a new switch per thread: one told to end never starts again)
+        let stop = Arc::new(Listener::default());
+        self.listener = stop.clone();
         let to = send(st);
         std::thread::spawn(move || loop {
+            if stop.ended() {
+                return;
+            }
             let Some(path) = crate::services::hypr::dir().map(|d| d.join(".socket2.sock")) else { return };
             let Ok(stream) = UnixStream::connect(path) else {
                 std::thread::sleep(Duration::from_secs(1));
                 continue;
             };
+            // (the switch can shut it; turned off meanwhile: end now)
+            if let (Ok(c), Ok(mut slot)) = (stream.try_clone(), stop.conn.lock()) {
+                *slot = Some(c);
+            }
+            if stop.ended() {
+                return;
+            }
             let mut r = BufReader::new(stream);
             let mut line = String::new();
             let mut moving: Option<bool> = None;
@@ -237,6 +274,10 @@ impl Tabs {
                 st.drop_surface(&b.surface);
             }
             self.strips.clear();
+            // (Hyprland's events no longer followed: no wake-up per window
+            // move for the rest of the session)
+            self.listener.end();
+            self.listening = false;
         }
     }
 
@@ -455,6 +496,24 @@ fn wglyph(name: &str, material: bool, bold: bool) -> ui::WGlyph {
 mod tests {
     use super::*;
     use crate::services::clients::WsRef;
+
+    #[test]
+    fn turning_tabs_off_ends_the_listening_read() {
+        // (a socket pair stands in for Hyprland's event socket)
+        let (ours, _hypr) = UnixStream::pair().unwrap();
+        let l = Arc::new(Listener::default());
+        *l.conn.lock().unwrap() = Some(ours.try_clone().unwrap());
+        let t = std::thread::spawn(move || {
+            let mut r = BufReader::new(ours);
+            let mut line = String::new();
+            r.read_line(&mut line).map(|n| n == 0).unwrap_or(true)
+        });
+        std::thread::sleep(Duration::from_millis(50));
+        assert!(!l.ended());
+        l.end();
+        assert!(l.ended() && l.conn.lock().unwrap().is_none());
+        assert!(t.join().unwrap(), "the blocked read returned");
+    }
 
     fn c(a: &str, ws: i32, at: (i32, i32), size: (i32, i32)) -> Client {
         Client { address: a.into(), workspace: WsRef { id: ws, name: ws.to_string() }, at, size, ..Default::default() }

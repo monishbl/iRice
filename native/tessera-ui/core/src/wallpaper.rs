@@ -531,17 +531,28 @@ pub fn backdrop_path(output: &str) -> PathBuf {
 
 /// Make `backdrop_path(output)` from the picture `src` for a screen of `px`
 /// pixels; written whole (a temporary file renamed), so a reader never sees
-/// half of it. Errors leave the old one.
+/// half of it. Errors leave the old one. The picture is decoded straight to
+/// the backdrop's size (picture::decode: cropped, shrunk, its memory given
+/// back), and each bake writes a temporary file of its own, so two bakes
+/// for one screen never write or rename each other's.
 pub fn bake_backdrop(src: &str, output: &str, px: (u32, u32)) -> std::io::Result<()> {
-    let img = image::open(src).map_err(std::io::Error::other)?;
-    let out = backdrop_image(&img, px);
+    static BAKES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let (bw, bh) = ((px.0 / 8).max(16), (px.1 / 8).max(16));
+    let buf = crate::picture::decode(src, bw, bh).ok_or_else(|| std::io::Error::other(format!("{src} can't be read")))?;
+    let rgb = image::RgbImage::from_raw(buf.width(), buf.height(), buf.as_bytes().to_vec()).ok_or_else(|| std::io::Error::other("decoded picture of the wrong size"))?;
+    drop(buf);
+    let out = backdrop_image(&image::DynamicImage::ImageRgb8(rgb), px);
     let dest = backdrop_path(output);
     if let Some(d) = dest.parent() {
         std::fs::create_dir_all(d)?;
     }
-    let tmp = dest.with_extension("png.tmp");
-    out.save_with_format(&tmp, image::ImageFormat::Png).map_err(std::io::Error::other)?;
-    std::fs::rename(&tmp, &dest)
+    let n = BAKES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let tmp = dest.with_extension(format!("png.{}-{n}.tmp", std::process::id()));
+    let done = out.save_with_format(&tmp, image::ImageFormat::Png).map_err(std::io::Error::other).and_then(|_| std::fs::rename(&tmp, &dest));
+    if done.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    done
 }
 
 /// The picture covering a screen of `px`, at an eighth of its size, blurred

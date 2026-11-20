@@ -9,7 +9,7 @@
 use super::draw::{self, LabelFont};
 use super::geometry::{integer_clip, Rect};
 use super::livetext::{self, Live, Ocr};
-use super::session::{base_name, copy_name, Ann, Opened, Session, Thumb, PALETTE, PALETTE_NAMES, TOOLS};
+use super::session::{base_name, copy_name, prune_old, writes_back, Ann, Opened, Session, Thumb, PALETTE, PALETTE_NAMES, TOOLS};
 use super::{ic, ltui, Bridge, M};
 use crate::services::hypr::Glass;
 use crate::shell::Command;
@@ -544,6 +544,24 @@ impl Core {
             }
             None => {}
         }
+        if !self.e_visible {
+            self.let_go_of_base();
+        }
+    }
+
+    /// The editor is gone: its full-size picture (decoded, and Slint's copy
+    /// on the hidden window) and the redactions' blocks go with it; opening
+    /// it again (Undo after Delete too) decodes the file again (editor_now)
+    fn let_go_of_base(&mut self) {
+        self.base = None;
+        self.base_img = slint::Image::default();
+        self.base_key = (String::new(), 0);
+        self.status = 0;
+        self.img = (0, 0);
+        self.pix_cache.borrow_mut().clear();
+        if let Some(ui) = self.eui() {
+            ui.set_base(slint::Image::default());
+        }
     }
 
     fn request_close(&mut self) {
@@ -874,7 +892,15 @@ impl Core {
                 None => copy_name(&path, |p| std::path::Path::new(p).exists()),
             };
             if let Some(dir) = std::path::Path::new(&target).parent() {
-                let _ = std::fs::create_dir_all(dir);
+                if action == "share" {
+                    // (the copies handed to Share live in the runtime folder,
+                    // in memory: owner-only, and ones over a day old go)
+                    use std::os::unix::fs::DirBuilderExt;
+                    let _ = std::fs::DirBuilder::new().recursive(true).mode(0o700).create(dir);
+                    prune_old(dir, "", Duration::from_secs(86_400));
+                } else {
+                    let _ = std::fs::create_dir_all(dir);
+                }
             }
             let font: Option<LabelFont> = if items.iter().any(|a| matches!(a, Ann::Text { .. })) { draw::label_font(material) } else { None };
             let ok = draw::flatten(&base, &items, crop, font.as_ref()).is_some_and(|img| draw::write_png(&img, &target));
@@ -894,7 +920,12 @@ impl Core {
         }
         self.busy = "save".into();
         self.push_editor();
-        self.flatten_to("save", Some(self.s.path.clone()));
+        // (the markup is written as PNG: over a PNG it saves in place; a JPG,
+        // WebP, GIF… opened from Quick Look is kept as it was, its EXIF and
+        // frames with it, and the marked-up picture saved beside it as
+        // "<name> (edited).png", as Save a Copy)
+        let target = writes_back(&self.s.path).then(|| self.s.path.clone());
+        self.flatten_to("save", target);
     }
 
     fn save_copy(&mut self) {
@@ -914,7 +945,9 @@ impl Core {
         self.prepare();
         self.busy = "copy".into();
         self.push_editor();
-        if !self.s.dirty() {
+        // (a picture that isn't PNG goes through the flattening too: the
+        // clipboard is told image/png, so it gets PNG data)
+        if !self.s.dirty() && writes_back(&self.s.path) {
             send_png(self.tx.clone(), self.s.path.clone());
         } else {
             self.flatten_to("copy", Some(format!("{}/tessera-markup.png", runtime_dir())));
@@ -1189,7 +1222,9 @@ impl Core {
     }
 
     /// A redaction's blocks as a picture: the one made for this mark before
-    /// (a draft's, every move, made anew)
+    /// (a draft's, every move, made anew: from a few pixels of each block, so
+    /// a drag over a 5K screenshot doesn't read every pixel under it on each
+    /// move; the mark made on release is averaged whole, in push_anns)
     fn pixel_image(&self, r: Rect, block: f32) -> slint::Image {
         let k = pixel_key(r, block);
         if let Some((_, img)) = self.pix_cache.borrow().iter().find(|(kk, _)| *kk == k) {
@@ -1197,7 +1232,7 @@ impl Core {
         }
         match &self.base {
             Some(base) => {
-                let (cw, ch, px) = draw::pixelate(base, r, block);
+                let (cw, ch, px) = draw::pixelate_sampled(base, r, block, draw::DRAFT_SAMPLES);
                 slint::Image::from_rgba8(SharedPixelBuffer::clone_from_slice(&px, cw, ch))
             }
             None => slint::Image::default(),

@@ -120,7 +120,10 @@ pub struct Gpu {
 }
 
 fn glob_first(pattern_dirs: &[&str]) -> Option<String> {
-    let cards: Vec<_> = std::fs::read_dir("/sys/class/drm").ok()?.flatten().map(|e| e.path()).filter(|p| p.file_name().is_some_and(|n| n.to_string_lossy().starts_with("card") && !n.to_string_lossy().contains('-'))).collect();
+    let mut cards: Vec<_> = std::fs::read_dir("/sys/class/drm").ok()?.flatten().map(|e| e.path()).filter(|p| p.file_name().is_some_and(|n| n.to_string_lossy().starts_with("card") && !n.to_string_lossy().contains('-'))).collect();
+    // (the card the firmware booted on first: on a hybrid laptop that's the
+    // integrated one that drives the screens, not a discrete one asleep)
+    cards.sort_by_key(|c| (std::fs::read_to_string(c.join("device/boot_vga")).map_or(true, |v| v.trim() != "1"), c.clone()));
     for rel in pattern_dirs {
         for c in &cards {
             let f = c.join(rel);
@@ -132,6 +135,16 @@ fn glob_first(pattern_dirs: &[&str]) -> Option<String> {
     None
 }
 
+/// `<card>/device/gpu_busy_percent`'s device is runtime-suspended
+fn asleep(busy_file: &str) -> bool {
+    std::path::Path::new(busy_file).parent().and_then(|d| std::fs::read_to_string(d.join("power/runtime_status")).ok()).is_some_and(|s| suspended(&s))
+}
+
+/// A runtime_status that means the device is asleep
+pub fn suspended(status: &str) -> bool {
+    matches!(status.trim(), "suspended" | "suspending")
+}
+
 impl Gpu {
     fn find() -> Option<(bool, String)> {
         if let Some(f) = glob_first(&["device/gpu_busy_percent"]) {
@@ -140,9 +153,24 @@ impl Gpu {
         glob_first(&["gt/gt0/rc6_residency_ms", "device/tile0/gt0/gtidle/idle_residency_ms"]).map(|f| (false, f))
     }
 
+    /// Which card is read (once), without reading it: while only the menu
+    /// bar's figures are sampled (they don't show the GPU) the card is left
+    /// alone, so a discrete GPU can stay asleep
+    pub fn locate(&mut self) {
+        self.found.get_or_insert_with(Self::find);
+        // (the next reading starts afresh: no idle time over the gap)
+        self.last_idle = None;
+    }
+
     pub fn sample(&mut self, now: f64) {
         let found = self.found.get_or_insert_with(Self::find).clone();
         let Some((busy, path)) = found else { return };
+        // (a card in runtime suspend is idle: reading its busy file could
+        // wake it, on some kernels, every second)
+        if busy && asleep(&path) {
+            self.push(0.0);
+            return;
+        }
         let Ok(text) = std::fs::read_to_string(&path) else { return };
         let Ok(v) = text.trim().parse::<f64>() else { return };
         let load = if busy {
@@ -152,10 +180,14 @@ impl Gpu {
             prev.filter(|(_, t)| now > *t).map(|(pv, t)| (1.0 - (v - pv) / ((now - t) * 1000.0)).clamp(0.0, 1.0))
         };
         if let Some(l) = load {
-            self.history.push(l);
-            if self.history.len() > sysstat::HISTORY {
-                self.history.remove(0);
-            }
+            self.push(l);
+        }
+    }
+
+    fn push(&mut self, l: f64) {
+        self.history.push(l);
+        if self.history.len() > sysstat::HISTORY {
+            self.history.remove(0);
         }
     }
 
@@ -211,5 +243,25 @@ mod tests {
         let r = rows(&stats, "", Some(&g));
         assert_eq!((r[1].title, r[1].icon, r.len()), ("Graphics", "graphics-card", 4));
         assert_eq!(mem_detail("MemTotal: 16148844 kB\nMemAvailable: 9759008 kB\n"), "6.1 of 15.4 GB");
+    }
+
+    #[test]
+    fn a_sleeping_gpu_is_left_asleep() {
+        assert!(suspended("suspended\n") && suspended("suspending"));
+        assert!(!suspended("active\n") && !suspended("resuming") && !suspended("unsupported"));
+        // a card in runtime suspend reads as idle, its busy file not read
+        let d = std::env::temp_dir().join(format!("tessera-gpu-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(d.join("power")).unwrap();
+        std::fs::write(d.join("power/runtime_status"), "suspended\n").unwrap();
+        let busy = d.join("gpu_busy_percent");
+        std::fs::write(&busy, "80\n").unwrap();
+        let mut g = Gpu { found: Some(Some((true, busy.to_string_lossy().into_owned()))), ..Default::default() };
+        g.sample(1.0);
+        assert_eq!(g.history, vec![0.0]);
+        std::fs::write(d.join("power/runtime_status"), "active\n").unwrap();
+        g.sample(2.0);
+        assert_eq!(g.history, vec![0.0, 0.8]);
+        let _ = std::fs::remove_dir_all(&d);
     }
 }

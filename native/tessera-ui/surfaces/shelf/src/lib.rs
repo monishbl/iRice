@@ -124,7 +124,11 @@ pub struct Shelf {
     zone_leave: slint::Timer,
     /// pictures' thumbnails, by path (None: couldn't be decoded)
     thumbs: HashMap<String, Option<SharedPixelBuffer<Rgba8Pixel>>>,
-    decoding: HashSet<String>,
+    /// the pictures last asked of the decoder, in order
+    decoding: Vec<String>,
+    /// one thread decodes them, one at a time (80 photos dropped at once
+    /// were 80 threads each holding a whole decoded photo)
+    pool: Option<tessera_core::picture::Pool>,
     pointer_over: bool,
     drag_over: bool,
     /// the drag over the card is one of ours (a row taken out)
@@ -132,6 +136,31 @@ pub struct Shelf {
     hovered_sent: bool,
     over_zone: bool,
     over: Option<Target>,
+}
+
+/// The pictures on the shelf with no thumbnail yet, in shelf order, each once
+pub fn thumbs_wanted<V>(items: &[Item], have: &HashMap<String, V>) -> Vec<String> {
+    let mut seen: HashSet<&str> = HashSet::new();
+    items
+        .iter()
+        .filter(|i| i.kind == "image" && !i.path.is_empty() && !have.contains_key(&i.path) && seen.insert(i.path.as_str()))
+        .map(|i| i.path.clone())
+        .collect()
+}
+
+#[cfg(test)]
+mod thumb_tests {
+    use super::*;
+
+    #[test]
+    fn missing_thumbnails_are_asked_once_in_order() {
+        let it = |path: &str, kind: &str| Item { path: path.into(), kind: kind.into(), ..Default::default() };
+        let items = vec![it("/a.jpg", "image"), it("/doc.pdf", "file"), it("/b.jpg", "image"), it("/a.jpg", "image"), it("", "image"), it("/c.png", "image")];
+        let mut have: HashMap<String, Option<()>> = HashMap::new();
+        assert_eq!(thumbs_wanted(&items, &have), vec!["/a.jpg", "/b.jpg", "/c.png"]);
+        have.insert("/b.jpg".into(), None);
+        assert_eq!(thumbs_wanted(&items, &have), vec!["/a.jpg", "/c.png"]);
+    }
 }
 
 fn glyph(name: &str) -> SharedString {
@@ -275,19 +304,26 @@ impl Shelf {
             st.set_input_region(&w.surface, Some(&region));
             w.region = region;
         }
-        // Pictures' thumbnails, decoded off this thread
-        for it in self.feed.items.iter().filter(|i| i.kind == "image" && !i.path.is_empty()) {
-            if self.thumbs.contains_key(&it.path) || !self.decoding.insert(it.path.clone()) {
-                continue;
-            }
-            let (path, tx) = (it.path.clone(), st.tx.clone());
-            std::thread::spawn(move || {
-                let thumb = image::open(&path).ok().map(|img| {
-                    let t = img.resize_to_fill(64, 64, image::imageops::FilterType::Triangle).to_rgba8();
-                    SharedPixelBuffer::clone_from_slice(t.as_raw(), t.width(), t.height())
-                });
-                let _ = tx.send(crate::Msg::Part(NAME, Box::new(M::Thumb(path, thumb))));
-            });
+        // Pictures' thumbnails, decoded off this thread: the ones still
+        // missing, queued on one worker (what was waiting and is no longer
+        // on the shelf is dropped)
+        let want = thumbs_wanted(&self.feed.items, &self.thumbs);
+        if want != self.decoding {
+            let jobs: Vec<Box<dyn FnOnce() + Send>> = want
+                .iter()
+                .map(|path| {
+                    let (path, tx) = (path.clone(), st.tx.clone());
+                    Box::new(move || {
+                        let thumb = image::open(&path).ok().map(|img| {
+                            let t = img.resize_to_fill(64, 64, image::imageops::FilterType::Triangle).to_rgba8();
+                            SharedPixelBuffer::clone_from_slice(t.as_raw(), t.width(), t.height())
+                        });
+                        let _ = tx.send(crate::Msg::Part(NAME, Box::new(M::Thumb(path, thumb))));
+                    }) as Box<dyn FnOnce() + Send>
+                })
+                .collect();
+            self.pool.get_or_insert_with(|| tessera_core::picture::Pool::new(1, "tessera-shelf")).replace(jobs);
+            self.decoding = want;
         }
     }
 
@@ -584,7 +620,7 @@ impl Part for Shelf {
             }
             M::Cancel => shell::ask("shelf", json!(["cancelZone"])),
             M::Thumb(path, thumb) => {
-                self.decoding.remove(&path);
+                self.decoding.retain(|p| *p != path);
                 if self.feed.items.iter().any(|i| i.path == path) {
                     self.thumbs.insert(path, thumb);
                     if self.card_on {

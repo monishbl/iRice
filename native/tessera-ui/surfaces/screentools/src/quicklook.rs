@@ -142,7 +142,8 @@ enum Q {
     /// then their icons, once each
     FolderIcons(String, Vec<(&'static str, Option<Px>)>),
     Icon(String, Option<Px>),
-    Media(String, f32),
+    /// (path, duration in seconds, a video's width and height)
+    Media(String, f32, (u32, u32)),
     Frame,
     Ended(String),
     Key(String, bool),
@@ -275,6 +276,8 @@ pub struct QuickLook {
     text_mode: bool,
     ocr: Rc<RefCell<Ocr>>,
     player: Player,
+    /// the video's pixels (load()'s probe), for play()'s frames
+    video_px: (u32, u32),
     frame: Arc<Mutex<Option<Px>>>,
     tick: slint::Timer,
     glow: tessera_core::pacing::FrameTimer,
@@ -305,6 +308,7 @@ impl Default for QuickLook {
             text_mode: false,
             ocr: Rc::new(RefCell::new(Ocr::default())),
             player: Player::default(),
+            video_px: (1280, 720),
             frame: Arc::new(Mutex::new(None)),
             tick: slint::Timer::default(),
             glow: tessera_core::pacing::FrameTimer::default(),
@@ -573,14 +577,17 @@ impl QuickLook {
                     let icon = icon_px(icon_name(&p2, false), 96);
                     send(&tx2, Q::Icon(p2, icon));
                 });
+                // (its length, and a video's size for play(): one probe, here,
+                // off the UI thread)
                 std::thread::spawn(move || {
-                    let d = std::process::Command::new("ffprobe")
-                        .args(["-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", "--", &p])
+                    let out = std::process::Command::new("ffprobe")
+                        .args(["-v", "error", "-select_streams", "v:0", "-show_entries", "format=duration:stream=width,height", "-of", "default=nw=1", "--", &p])
                         .output()
                         .ok()
-                        .and_then(|o| String::from_utf8_lossy(&o.stdout).trim().parse::<f32>().ok())
-                        .unwrap_or(0.0);
-                    send(&tx, Q::Media(p, d));
+                        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+                        .unwrap_or_default();
+                    let (d, px) = probed(&out);
+                    send(&tx, Q::Media(p, d, px));
                 });
             }
             _ => {
@@ -600,14 +607,8 @@ impl QuickLook {
         if self.kind == "video" {
             let slot = self.frame.clone();
             let Some(tx) = self.tx.clone() else { return };
-            let probe = std::process::Command::new("ffprobe")
-                .args(["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0", "--", &p])
-                .output()
-                .ok()
-                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-                .unwrap_or_default();
-            let mut it = probe.split(',').filter_map(|x| x.trim().parse::<u32>().ok());
-            let (vw, vh) = (it.next().unwrap_or(1280), it.next().unwrap_or(720));
+            // (the size load()'s probe found: no ffprobe waited for here)
+            let (vw, vh) = self.video_px;
             let k = (1280.0 / vw as f32).min(720.0 / vh as f32).min(1.0);
             let (w, h) = (((vw as f32 * k) as u32 / 2 * 2).max(2), ((vh as f32 * k) as u32 / 2 * 2).max(2));
             let child = std::process::Command::new("ffmpeg")
@@ -853,12 +854,52 @@ pub fn file_uri(path: &str) -> String {
     u
 }
 
+/// ffprobe's `default=nw=1` lines for a file: its duration (seconds, 0 when
+/// unknown) and its first video stream's width and height (1280×720 when
+/// there's none or it can't be read)
+pub fn probed(out: &str) -> (f32, (u32, u32)) {
+    let (mut d, mut w, mut h) = (0.0f32, 0u32, 0u32);
+    for l in out.lines() {
+        let Some((k, v)) = l.trim().split_once('=') else { continue };
+        match k {
+            "duration" => d = v.trim().parse::<f32>().ok().filter(|x| x.is_finite() && *x > 0.0).unwrap_or(d),
+            "width" => w = v.trim().parse().unwrap_or(w),
+            "height" => h = v.trim().parse().unwrap_or(h),
+            _ => {}
+        }
+    }
+    (d, if w > 0 && h > 0 { (w, h) } else { (1280, 720) })
+}
+
+/// Trash with Undo (`sh -c TRASH_SCRIPT sh <path> <name>`). Undo puts back
+/// the very entry this deleted: the home Trash's info file it made (GLib
+/// names it "<name>.2"… when the Trash already holds that name, so restoring
+/// trash:///<name> brought back an older file), moved back by hand, no URI
+/// to encode. A file on another drive's Trash falls back to gio's restore.
+const TRASH_SCRIPT: &str = r#"T="${XDG_DATA_HOME:-$HOME/.local/share}/Trash"
+b=$(ls -A "$T/info" 2>/dev/null)
+gio trash -- "$1" || exit
+x=$(ls -At "$T/info" 2>/dev/null | head -n 1)
+case "
+$b
+" in *"
+$x
+"*) x= ;; esac
+a=$(timeout 600 notify-send -a Files -i user-trash -t 8000 -A undo=Undo 'Moved to Trash' "$2")
+[ "$a" = undo ] || exit 0
+f="$T/files/${x%.trashinfo}"
+if [ -n "$x" ] && { [ -e "$f" ] || [ -L "$f" ]; } && ! { [ -e "$1" ] || [ -L "$1" ]; }; then
+  mv -- "$f" "$1" && rm -f -- "$T/info/$x"
+else
+  gio trash --restore "trash:///$(basename "$1")"
+fi
+"#;
+
 /// Move to Trash, with Undo in the notification (as the desktop's files.rs
 /// and the QML: gio, then notify-send whose action restores it)
 fn trash(path: &str) {
     let name = path.rsplit('/').next().unwrap_or(path).to_string();
-    let script = "gio trash -- \"$1\" || exit; a=$(timeout 600 notify-send -a Files -i user-trash -t 8000 -A undo=Undo 'Moved to Trash' \"$2\"); [ \"$a\" = undo ] && gio trash --restore \"trash:///$(basename \"$1\")\"";
-    let argv = vec!["sh".to_string(), "-c".into(), script.into(), "sh".into(), path.to_string(), name];
+    let argv = vec!["sh".to_string(), "-c".into(), TRASH_SCRIPT.into(), "sh".into(), path.to_string(), name];
     std::thread::spawn(move || {
         let _ = std::process::Command::new("setsid").arg("-f").args(argv).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status();
     });
@@ -1031,9 +1072,10 @@ impl Part for QuickLook {
                     w.ui.set_file_icon(image_of(&i));
                 }
             }
-            Q::Media(p, d) => {
+            Q::Media(p, d, px) => {
                 if p == self.path && self.open {
                     self.player.duration = d;
+                    self.video_px = px;
                     self.play(); // (it plays as it opens, as the QML's)
                     self.push();
                 }
@@ -1217,6 +1259,63 @@ mod tests {
     fn file_uris_for_copying() {
         assert_eq!(file_uri("/home/a/My shot (1).png"), "file:///home/a/My%20shot%20%281%29.png");
         assert_eq!(file_uri("/tmp/é"), "file:///tmp/%C3%A9");
+    }
+
+    #[test]
+    fn one_probe_gives_length_and_size() {
+        assert_eq!(probed("width=1920\nheight=1080\nduration=12.500000\n"), (12.5, (1920, 1080)));
+        // audio: no video stream
+        assert_eq!(probed("duration=3.2\n"), (3.2, (1280, 720)));
+        assert_eq!(probed("width=N/A\nheight=N/A\nduration=N/A\n"), (0.0, (1280, 720)));
+        assert_eq!(probed(""), (0.0, (1280, 720)));
+    }
+
+    #[test]
+    fn undo_restores_the_entry_just_trashed() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = std::env::temp_dir().join(format!("tessera-ql-trash-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let (bin, data, a, b) = (root.join("bin"), root.join("data"), root.join("a"), root.join("b"));
+        for d in [&bin, &a, &b, &data.join("Trash/files"), &data.join("Trash/info")] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        // stand-ins: gio trash as GLib names a clash ("<name>.2"), Undo pressed
+        let gio = r#"#!/bin/sh
+T="$XDG_DATA_HOME/Trash"
+if [ "$1" = trash ] && [ "$2" = -- ]; then
+  n=$(basename "$3"); m="$n"; i=2
+  while [ -e "$T/files/$m" ]; do m="$n.$i"; i=$((i+1)); done
+  mv -- "$3" "$T/files/$m" && printf '[Trash Info]\nPath=%s\n' "$3" > "$T/info/$m.trashinfo"
+elif [ "$1" = trash ] && [ "$2" = --restore ]; then
+  echo "$3" > "$T/../gio-restored"
+fi
+"#;
+        for (n, body) in [("gio", gio), ("notify-send", "#!/bin/sh\necho undo\n")] {
+            let p = bin.join(n);
+            std::fs::write(&p, body).unwrap();
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        // an older report.pdf from another folder is already in the Trash
+        std::fs::write(data.join("Trash/files/report.pdf"), b"old").unwrap();
+        let old_info = data.join("Trash/info/report.pdf.trashinfo");
+        std::fs::write(&old_info, format!("[Trash Info]\nPath={}/report.pdf\n", a.display())).unwrap();
+        let past = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+        std::fs::File::options().write(true).open(&old_info).unwrap().set_modified(past).unwrap();
+        let file = b.join("report.pdf");
+        std::fs::write(&file, b"new").unwrap();
+        let path = format!("{}:{}", bin.display(), std::env::var("PATH").unwrap_or_else(|_| "/usr/bin:/bin".into()));
+        let st = std::process::Command::new("sh")
+            .args(["-c", TRASH_SCRIPT, "sh", file.to_str().unwrap(), "report.pdf"])
+            .env("PATH", path)
+            .env("XDG_DATA_HOME", &data)
+            .status()
+            .unwrap();
+        assert!(st.success());
+        assert_eq!(std::fs::read(&file).unwrap(), b"new");
+        assert_eq!(std::fs::read(data.join("Trash/files/report.pdf")).unwrap(), b"old");
+        assert!(old_info.exists() && !data.join("Trash/info/report.pdf.2.trashinfo").exists());
+        assert!(!data.join("gio-restored").exists());
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

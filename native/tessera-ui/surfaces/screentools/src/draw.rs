@@ -42,10 +42,23 @@ pub fn rect_radius(r: Rect, width: f32) -> f32 {
 /// A redaction's blocks: the screenshot under it averaged in `block` px
 /// cells (cols × rows, RGBA)
 pub fn pixelate(base: &RgbaImage, r: Rect, block: f32) -> (u32, u32, Vec<u8>) {
+    pixelate_sampled(base, r, block, u32::MAX)
+}
+
+/// Pixels read per block side while a redaction is being dragged out (its
+/// draft is made again on every move: at most 6 × 6 of each block's pixels
+/// read, not all of them; the mark made on release reads them all)
+pub const DRAFT_SAMPLES: u32 = 6;
+
+/// `pixelate`, reading at most `per_side` × `per_side` evenly spaced pixels
+/// of each block (u32::MAX: every pixel)
+pub fn pixelate_sampled(base: &RgbaImage, r: Rect, block: f32, per_side: u32) -> (u32, u32, Vec<u8>) {
     let b = block.max(1.0);
     let cols = ((r.w / b).ceil() as u32).max(1);
     let rows = ((r.h / b).ceil() as u32).max(1);
     let (iw, ih) = base.dimensions();
+    let raw = base.as_raw();
+    let per = per_side.max(1);
     let mut out = Vec::with_capacity((cols * rows * 4) as usize);
     for j in 0..rows {
         for i in 0..cols {
@@ -53,12 +66,14 @@ pub fn pixelate(base: &RgbaImage, r: Rect, block: f32) -> (u32, u32, Vec<u8>) {
             let y0 = (r.y + j as f32 * b).floor().max(0.0) as u32;
             let x1 = ((r.x + (i + 1) as f32 * b).min(r.x + r.w).ceil() as u32).min(iw);
             let y1 = ((r.y + (j + 1) as f32 * b).min(r.y + r.h).ceil() as u32).min(ih);
+            let (sx, sy) = ((x1.saturating_sub(x0) / per).max(1), (y1.saturating_sub(y0) / per).max(1));
             let (mut s, mut n) = ([0u64; 4], 0u64);
-            for y in y0..y1.max(y0) {
-                for x in x0..x1.max(x0) {
-                    let p = base.get_pixel(x, y).0;
+            for y in (y0..y1.max(y0)).step_by(sy as usize) {
+                let row = y as usize * iw as usize;
+                for x in (x0..x1.max(x0)).step_by(sx as usize) {
+                    let k = (row + x as usize) * 4;
                     for c in 0..4 {
-                        s[c] += p[c] as u64;
+                        s[c] += raw[k + c] as u64;
                     }
                     n += 1;
                 }
@@ -309,6 +324,24 @@ mod tests {
         // ragged edge: a smaller last cell
         let (c, _, _) = pixelate(&img, Rect::new(0.0, 0.0, 3.0, 2.0), 2.0);
         assert_eq!(c, 2);
+    }
+
+    #[test]
+    fn a_dragged_redaction_reads_a_few_pixels_of_each_block() {
+        // two flat halves: the draft's blocks match the exact ones
+        let mut img = RgbaImage::new(64, 32);
+        for (x, _, p) in img.enumerate_pixels_mut() {
+            *p = image::Rgba([if x < 32 { 10 } else { 250 }, 20, 30, 255]);
+        }
+        let r = Rect::new(0.0, 0.0, 64.0, 32.0);
+        let exact = pixelate(&img, r, 32.0);
+        let draft = pixelate_sampled(&img, r, 32.0, DRAFT_SAMPLES);
+        assert_eq!(exact, draft);
+        assert_eq!(&draft.2[..], &[10, 20, 30, 255, 250, 20, 30, 255]);
+        // a box past the picture's edge: no pixel read outside it
+        let (c, rws, px) = pixelate_sampled(&img, Rect::new(48.0, 16.0, 40.0, 40.0), 16.0, 2);
+        assert_eq!((c, rws, px.len()), (3, 3, 36));
+        assert_eq!(&px[..4], &[250, 20, 30, 255]);
     }
 
     #[test]
