@@ -778,6 +778,38 @@ def face_admin_on(uid, device, kind, exists=os.path.exists, which=shutil.which, 
     return [root(overlay), root(FACE_DROPIN)]
 
 
+def face_admin_refresh(prefix="/", run=subprocess.run):
+    """polkit's PAM file changed (a fingerprint turned on or off for
+    administrator prompts) while faces approve them: our copy is made again
+    from it, so the helper sees that change too (it sees only the copy), and
+    the drop-in follows the file PAM reads now (/etc's, or the package's
+    again once /etc's copy went). Nothing when face admin is off. Returns
+    the files written."""
+    root = lambda p: os.path.join(prefix, p.lstrip("/"))
+    if not os.path.exists(root(FACE_DROPIN)):
+        return []
+    target = next((p for p in POLKIT_PAM if os.path.exists(root(p))), "")
+    if not target:
+        # (no PAM file for polkit at all: nothing to show the helper instead)
+        return face_admin_off(prefix=prefix, run=run)
+    with open(root(target)) as f:
+        text = f.read()
+    overlay = f"{FACE_ADMIN_DIR}/polkit-1"
+    written = []
+    for path, data in ((overlay, polkit_with_face(text)), (FACE_DROPIN, face_dropin(overlay, target))):
+        try:
+            with open(root(path)) as f:
+                same = f.read() == data
+        except OSError:
+            same = False
+        if not same:
+            write_root(root(path), data.encode(), 0o644)
+            written.append(root(path))
+    if prefix == "/" and root(FACE_DROPIN) in written:
+        run(["systemctl", "daemon-reload"], timeout=30, check=False)
+    return written
+
+
 def face_admin_off(uid=None, prefix="/", run=subprocess.run):
     """Faces no longer approve administrator prompts: the drop-in and our
     copy go (polkit sees its own PAM file again)"""
@@ -1543,6 +1575,25 @@ def refresh_login(src, uid, prefix=None):
         if data != before:
             write_root(dest, data, 0o644)
             written.append(dest)
+    # The Rust login screen, where the switch put one (greeter-start.sh
+    # prefers it): the one you run now. Only the QML copy was refreshed, so
+    # the login screen stayed the program from the day of the switch
+    ui = os.path.join(share, "bin", "tessera-ui")
+    if os.path.isfile(ui) and not os.path.islink(ui):
+        try:
+            data = read_login_ui(uid)
+        except (OSError, Refused) as e:
+            data = None
+            print(f"tessera-root: the login screen's tessera-ui stays as it was ({e})", file=sys.stderr)
+        if data is not None:
+            try:
+                with open(ui, "rb") as f:
+                    same = f.read() == data
+            except OSError:
+                same = False
+            if not same:
+                write_root(ui, data, 0o755)
+                written.append(ui)
     return written
 
 
@@ -1725,6 +1776,32 @@ def caller_home(uid):
         return ""
 
 
+LOGIN_UI_FROM = ".local/share/tessera/bin/tessera-ui"  # (in the caller's home)
+
+
+def read_login_ui(uid, home=None):
+    """The Rust login screen to copy for greetd: your installed tessera-ui
+    (tools/native-install.py's, checked there: signature or your own build),
+    read as you. Refused unless it's a program (ELF) that only you (or root)
+    could have written: owned by you or root, not writable by the group or
+    others, nor its folder; so another account can't plant the program that
+    reads every password at the login screen."""
+    home = caller_home(uid) if home is None else home
+    if not home:
+        raise Refused("there's no home folder to take the login screen from")
+    path = os.path.join(home, LOGIN_UI_FROM)
+    with as_user(uid):
+        dst = os.lstat(os.path.dirname(path))
+        fst = os.lstat(path)
+    for what, st in (("its folder", dst), ("tessera-ui", fst)):
+        if st.st_uid not in (uid, 0) or st.st_mode & 0o022:
+            raise Refused(f"{what} could be changed by another account: the login screen's copy isn't refreshed")
+    data = read_as(uid, path, MAX_UI)
+    if not data.startswith(b"\x7fELF"):
+        raise Refused("tessera-ui isn't a program")
+    return data
+
+
 def login_wallpaper_from(uid, home, repo):
     """The wallpaper you use (your settings' dark one, else the one), read as
     you; Tessera's own when it can't be read"""
@@ -1765,9 +1842,8 @@ def install_login_copy(repo, look, uid, prefix, run, chown=os.chown):
              ("wallpaper.jpg", login_wallpaper_from(uid, caller_home(uid), repo), 0o644)]
     # The login screen in Rust (tessera-ui --greeter), when you have it;
     # greeter-start.sh starts the QML one without it
-    ui = os.path.join(caller_home(uid), ".local/share/tessera/bin/tessera-ui")
     try:
-        files.append(("bin/tessera-ui", read_as(uid, ui, MAX_UI), 0o755))
+        files.append(("bin/tessera-ui", read_login_ui(uid), 0o755))
     except (OSError, Refused):
         pass
     for rel, data, mode in files:
@@ -1865,9 +1941,14 @@ def login_back(prefix, run, state, reason=None, now=False):
     out = write_record(prefix, previous=previous, state=state, reason=reason)
     if now:
         # (the boot goes on with the one before; nothing was logged in through greetd)
-        if previous != "greetd":
+        if previous == "greetd":
+            # (greetd reads its config only as it starts: running Tessera's
+            # greeter, a "start" did nothing until the next boot. A restart
+            # brings the greeter before back now, and starts a failed greetd)
+            _systemctl(run, "restart", "--no-block", "greetd.service")
+        else:
             _systemctl(run, "stop", "--no-block", "greetd.service")
-        _systemctl(run, "start", "--no-block", f"{previous}.service" if previous else "getty@tty1.service")
+            _systemctl(run, "start", "--no-block", f"{previous}.service" if previous else "getty@tty1.service")
     return out
 
 
@@ -2432,6 +2513,8 @@ def features(p, uid, say, run=subprocess.run):
                 for where in ("polkit", "sudo", "login"):
                     for d in fingerprint(True, where):
                         say("changed " + d)
+                for d in face_admin_refresh(run=run):
+                    say("changed " + d)
             elif id == "face":
                 if not p["camera"]:
                     raise Refused("which camera (--face-camera)")
@@ -2513,6 +2596,10 @@ def main(argv):
         if cmd == "fingerprint" and len(args) == 2 and args[0] in ("on", "off"):
             for d in fingerprint(args[0] == "on", args[1]):
                 print("changed", d)
+            if args[1] == "polkit":
+                # (face admin's copy of polkit's PAM file follows it)
+                for d in face_admin_refresh():
+                    print("changed", d)
             return 0
         if cmd == "face" and args:
             return face(args, uid)

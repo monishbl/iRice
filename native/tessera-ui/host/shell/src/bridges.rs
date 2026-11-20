@@ -483,11 +483,15 @@ impl Bridges {
         if e["sound"] == "error" {
             h.ask("sound.play", json!(["error"]));
         }
-        // (the lock part has already tried again a few times; there's no
-        // other locker here to hand it to, as Lock.qml had: it stays the
-        // lock's, still wanted, so a later lock goes on trying)
+        // (the lock part has already tried again a few times, and told the
+        // person; there's no other locker here to hand it to, as Lock.qml
+        // had. Nothing covers the screen, so the shell isn't locked either:
+        // as a lock undone before it showed. Left "locked", Super+L, the idle
+        // and lid locks did nothing until a restart, and sleep was refused)
         if e["refused"] == true && self.rust_lock {
             eprintln!("tessera-ui: lock: the compositor refused the session lock");
+            self.set_held(h, false);
+            self.set_locked(h, false);
         }
     }
 

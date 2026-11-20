@@ -85,6 +85,8 @@ pub fn say(style: Style, m: &Model) -> (String, bool) {
 pub fn placeholder(style: Style, m: &Model) -> String {
     match style {
         _ if m.busy && style != Style::Text => "Logging in…".into(),
+        // (PAM's next question after the password: a new one, a code…)
+        _ if !m.question.is_empty() && style != Style::Text => m.question.clone(),
         Style::Glass if m.finger != Finger::None => "Fingerprint or Password".into(),
         Style::Glass => "Enter Password".into(),
         Style::Plain => "Password".into(),
@@ -289,6 +291,11 @@ mod tests {
         assert_eq!(placeholder(Style::Material, &m), "Enter password");
         m.finger = Finger::Waiting;
         assert_eq!(placeholder(Style::Glass, &m), "Fingerprint or Password");
+        // PAM's second question (a code after the password) shows in the field
+        m.question = "Verification code".into();
+        assert_eq!(placeholder(Style::Glass, &m), "Verification code");
+        assert_eq!(placeholder(Style::Text, &m), "");
+        m.question.clear();
         m.busy = true;
         assert_eq!(placeholder(Style::Material, &m), "Logging in…");
         assert_eq!(session_label(Style::Glass, &m), "Tessera  ▾");

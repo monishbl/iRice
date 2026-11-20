@@ -241,6 +241,19 @@ class LoginSwitch(unittest.TestCase):
         self.assertEqual(self.dm(), "greetd")
         self.assertIn("agreety", (self.root / "etc/greetd/config.toml").read_text())
 
+    def test_greetd_with_another_greeter_comes_back_now_when_nothing_shows(self):
+        # (greetd on already: a start does nothing; the restored config needs a restart)
+        self.sys.link().unlink()
+        self.sys.link().symlink_to("/usr/lib/systemd/system/greetd.service")
+        self.switch()
+        self.boot("boot-2", up=200)
+        self.sys.greetd_show = "ActiveState=active\nActiveEnterTimestampMonotonic=20000000\n"
+        self.assertEqual(self.check(), "reverted")
+        self.assertIn("agreety", (self.root / "etc/greetd/config.toml").read_text())
+        self.assertTrue(self.sys.ran("systemctl", "restart", "--no-block", "greetd.service"))
+        self.assertFalse(self.sys.ran("systemctl", "stop", "--no-block", "greetd.service"))
+        self.assertFalse(self.sys.ran("systemctl", "start", "--no-block", "greetd.service"))
+
     # ── after the restart ──
     def check(self):
         return self.r.login_check(prefix=str(self.root), run=self.sys)

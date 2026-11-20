@@ -70,6 +70,11 @@ pub enum Effect {
     FocusName,
 }
 
+/// Conversations that fail in a row with nothing typed (a PAM stack that
+/// refuses before asking: /etc/nologin…) before the screen stops reopening
+/// them by itself (every 300 ms otherwise, for as long as it lasts)
+const QUIET_FAILS: u32 = 3;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Kind {
     Create,
@@ -100,11 +105,22 @@ pub struct Model {
     pub power_choice: String,
     /// the text style's row: 0 session, 1 login, 2 password
     pub row: i32,
+    /// PAM's next question after an answer (a new password, a one-time
+    /// code…): shown in the field, the next Enter answers it
+    pub question: String,
     /// a password waiting for greetd's prompt
     pending: Option<String>,
     /// the conversation: open (a person's chosen), and asked for the password
     open: bool,
     asked: bool,
+    /// an answer was typed and sent in this conversation (so a refusal is
+    /// "Incorrect password", not PAM's own reason)
+    answered: bool,
+    /// what PAM said was wrong in this conversation (pam_nologin, a locked account…)
+    pam_error: Option<String>,
+    /// conversations in a row that failed with nothing typed: after
+    /// QUIET_FAILS it isn't reopened by itself, only when the person acts
+    quiet_fails: u32,
     /// greetd has a session for us (created, not cancelled)
     live: bool,
     gen: u64,
@@ -268,12 +284,15 @@ impl Model {
         }
         self.set_error("");
         self.busy = true;
+        self.quiet_fails = 0;
+        self.question.clear();
         if self.mock {
             self.out.push(Effect::MockCheck(password.to_string()));
             return;
         }
         if self.asked {
             self.asked = false;
+            self.answered = true;
             self.send(Request::PostAuthMessageResponse { response: Some(password.to_string()) });
         } else {
             self.pending = Some(password.to_string());
@@ -289,11 +308,18 @@ impl Model {
         }
         self.open = true;
         self.asked = false;
+        self.answered = false;
+        self.pam_error = None;
         let username = self.user_name();
         self.send(Request::CreateSession { username });
     }
 
     pub fn restart(&mut self) {
+        self.restart_with(true);
+    }
+
+    /// Cancels the conversation; `reopen`: a new one in 300 ms
+    fn restart_with(&mut self, reopen: bool) {
         if self.mock {
             return;
         }
@@ -303,8 +329,11 @@ impl Model {
         self.open = false;
         self.asked = false;
         self.message.clear();
+        self.question.clear();
         self.finger = Finger::None;
-        self.out.push(Effect::BeginLater);
+        if reopen {
+            self.out.push(Effect::BeginLater);
+        }
     }
 
     fn launch(&mut self) {
@@ -350,6 +379,24 @@ impl Model {
         self.restart();
     }
 
+    /// PAM refused (greetd's auth_error): a typed answer was wrong, or the
+    /// stack refused before asking anything (then PAM's own reason stays
+    /// on screen, and after QUIET_FAILS in a row no new conversation opens
+    /// until the person types or picks someone)
+    fn refused(&mut self) {
+        if self.answered {
+            self.quiet_fails = 0;
+            self.failed("Incorrect password. Try again.");
+            return;
+        }
+        self.quiet_fails += 1;
+        let e = self.pam_error.take().unwrap_or_else(|| "Login failed. Try again.".into());
+        self.busy = false;
+        self.pending = None;
+        self.set_error(&e);
+        self.restart_with(self.quiet_fails < QUIET_FAILS);
+    }
+
     /// greetd's answer to the oldest request still waiting for one
     pub fn heard(&mut self, r: Response) {
         let Some((kind, gen)) = self.queue.pop_front() else { return };
@@ -373,10 +420,24 @@ impl Model {
             }
             (_, Response::AuthMessage { auth_message_type: t, auth_message: msg }) => match t {
                 AuthKind::Visible | AuthKind::Secret => match self.pending.take() {
-                    Some(p) => self.send(Request::PostAuthMessageResponse { response: Some(p) }),
+                    Some(p) => {
+                        self.answered = true;
+                        self.send(Request::PostAuthMessageResponse { response: Some(p) })
+                    }
                     None => {
                         self.asked = true;
                         self.prompt = if msg.is_empty() { "Password".into() } else { msg };
+                        if self.answered {
+                            // (a second question after the password: a new
+                            // password, a one-time code… The next Enter
+                            // answers it, so the screen mustn't stay busy)
+                            self.question = self.prompt.trim().trim_end_matches(':').trim().to_string();
+                            if self.busy {
+                                self.out.push(Effect::ClearField);
+                                self.out.push(Effect::FocusPassword);
+                            }
+                        }
+                        self.busy = false;
                     }
                 },
                 AuthKind::Info | AuthKind::Error => {
@@ -392,6 +453,7 @@ impl Model {
                         self.finger = if error { Finger::Miss } else { Finger::Waiting };
                         self.message = msg;
                     } else if error {
+                        self.pam_error = Some(msg.clone());
                         self.set_error(&msg);
                     } else {
                         self.message = msg;
@@ -400,7 +462,7 @@ impl Model {
                     self.send(Request::PostAuthMessageResponse { response: None });
                 }
             },
-            (_, Response::Error { error_type: ErrorType::AuthError, .. }) => self.failed("Incorrect password. Try again."),
+            (_, Response::Error { error_type: ErrorType::AuthError, .. }) => self.refused(),
             (_, Response::Error { description, .. }) => self.failed(if description.is_empty() { "Login failed. Try again." } else { &description }),
         }
     }
@@ -414,6 +476,7 @@ impl Model {
         self.gen += 1;
         self.busy = false;
         self.pending = None;
+        self.question.clear();
         self.set_error("The login service isn't answering. Try again in a moment.");
     }
 
@@ -536,18 +599,33 @@ impl Model {
 /// onto the console between the login screen and the desktop (which
 /// greeter-session.sh already cleared). greetd runs the words joined by
 /// spaces in a shell line (". /etc/profile; exec <cmd>"), so this only puts
-/// plain words in front, never quoting or a script.
+/// plain words in front, never a script; and each of the session's words
+/// that isn't plain (a space in a path, `;`, `$`, quotes…) goes in single
+/// quotes, so the shell gives it back as the one word the session file meant.
 pub fn quiet(command: Vec<String>) -> Vec<String> {
     quiet_with(command, std::path::Path::new("/usr/bin/systemd-cat").exists())
 }
 
 pub fn quiet_with(command: Vec<String>, journal: bool) -> Vec<String> {
+    let command: Vec<String> = command.iter().map(|w| shell_word(w)).collect();
     if !journal || command.is_empty() {
         return command;
     }
     let mut cmd = vec!["systemd-cat".to_string(), "-t".into(), "tessera-session".into()];
     cmd.extend(command);
     cmd
+}
+
+/// One word as a shell reads it back: plain words bare (so the usual
+/// commands stay exactly as they were), anything else in single quotes,
+/// each ' in it written as '\''
+pub fn shell_word(w: &str) -> String {
+    let plain = !w.is_empty() && w.chars().all(|c| c.is_ascii_alphanumeric() || "_-./:=@%+,".contains(c));
+    if plain {
+        w.to_string()
+    } else {
+        format!("'{}'", w.replace('\'', r"'\''"))
+    }
 }
 
 #[cfg(test)]
@@ -618,6 +696,76 @@ mod tests {
         // greetd joins the words into "exec …": plain words only, nothing a shell would re-read
         assert!(c.iter().all(|w| !w.contains(['\'', '"', ';', '$', '\\', ' '])));
         assert_eq!(quiet_with(vec!["Hyprland".into()], false), ["Hyprland"]);
+    }
+
+    #[test]
+    fn session_words_that_arent_plain_are_quoted_for_greetds_shell() {
+        // Exec="/opt/My Desktop/start" --x: one word for the path, not "/opt/My"
+        let c = quiet_with(vec!["/opt/My Desktop/start".into(), "--x".into()], false);
+        assert_eq!(c, ["'/opt/My Desktop/start'", "--x"]);
+        let c = quiet_with(vec!["run".into(), "a;b $HOME".into(), "it's".into(), String::new()], true);
+        assert_eq!(c, ["systemd-cat", "-t", "tessera-session", "run", "'a;b $HOME'", r"'it'\''s'", "''"]);
+        // plain words stay bare
+        assert_eq!(shell_word("start-hyprland"), "start-hyprland");
+        assert_eq!(shell_word("--config=/a/b.conf"), "--config=/a/b.conf");
+        // sh reading greetd's line gives the same words back
+        if std::path::Path::new("/bin/sh").exists() {
+            let words = ["/opt/My Desktop/start", "it's", "a;b $HOME", r"\n", "\"q\""];
+            let line: Vec<String> = words.iter().map(|w| shell_word(w)).collect();
+            let out = std::process::Command::new("/bin/sh").arg("-c").arg(format!("printf '%s\\n' {}", line.join(" "))).output().unwrap();
+            let got: Vec<String> = String::from_utf8_lossy(&out.stdout).lines().map(String::from).collect();
+            assert_eq!(got, words);
+        }
+    }
+
+    #[test]
+    fn a_second_question_after_the_password_can_be_answered() {
+        let mut m = Model::new(false, people(), sessions());
+        m.submit("tessera");
+        m.take();
+        // the password waited for PAM's first question, then went
+        m.heard(secret());
+        assert_eq!(sent(&m.take()), vec![Request::PostAuthMessageResponse { response: Some("tessera".into()) }]);
+        assert!(m.busy);
+        // a second module asks for a code: not busy any more, the field says so
+        m.heard(Response::AuthMessage { auth_message_type: AuthKind::Visible, auth_message: "Verification code: ".into() });
+        assert!(!m.busy);
+        assert_eq!(m.question, "Verification code");
+        let e = m.take();
+        assert!(e.contains(&Effect::ClearField) && e.contains(&Effect::FocusPassword));
+        // the next Enter answers it
+        m.submit("123456");
+        assert_eq!(sent(&m.take()), vec![Request::PostAuthMessageResponse { response: Some("123456".into()) }]);
+        assert!(m.busy && m.question.is_empty());
+        m.heard(Response::Success);
+        assert!(matches!(sent(&m.take())[..], [Request::StartSession { .. }]));
+    }
+
+    #[test]
+    fn a_refusal_before_anything_was_asked_keeps_pams_reason_and_stops_reopening() {
+        let mut m = Model::new(false, people(), sessions());
+        for round in 1..=QUIET_FAILS {
+            m.begin();
+            m.take();
+            // pam_nologin: says why, then fails without asking
+            m.heard(Response::AuthMessage { auth_message_type: AuthKind::Error, auth_message: "System is going down".into() });
+            m.take();
+            m.heard(Response::Error { error_type: ErrorType::AuthError, description: String::new() });
+            assert_eq!(m.error, "System is going down", "not 'Incorrect password'");
+            let e = m.take();
+            assert_eq!(sent(&e), vec![Request::CancelSession]);
+            assert_eq!(e.contains(&Effect::BeginLater), round < QUIET_FAILS, "round {round}");
+            m.heard(Response::Success); // (the cancel's answer)
+        }
+        // the person types: a new conversation at once
+        m.submit("pw");
+        assert_eq!(sent(&m.take()), vec![Request::CreateSession { username: "ada".into() }]);
+        // nothing said, nothing typed: a plain failure line
+        let mut m = Model::new(false, people(), sessions());
+        m.begin();
+        m.take();
+        m.heard(Response::Error { error_type: ErrorType::AuthError, description: String::new() });
+        assert_eq!(m.error, "Login failed. Try again.");
     }
 
     #[test]

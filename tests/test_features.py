@@ -241,7 +241,8 @@ class RootPart(unittest.TestCase):
         r = load(SOURCE, "tessera_root_features_run")
         did = []
         r.fingerprint = lambda on, where: did.append(("fp", where)) or ["/etc/pam.d/" + where]
-        r.face = lambda args, uid, run=None: (_ for _ in ()).throw(r.Refused("Howdy isn't installed (howdy-next)"))
+        r.face_admin_refresh = lambda run=None: did.append(("face-admin",)) or []
+        r.face =lambda args, uid, run=None: (_ for _ in ()).throw(r.Refused("Howdy isn't installed (howdy-next)"))
         r.bluetooth_extras = lambda run=None: did.append(("bt",))
         r.quickshare_trust = lambda on, uid: did.append(("qs", on)) or []
         ran = []
@@ -256,6 +257,7 @@ class RootPart(unittest.TestCase):
         for ok in ("fingerprint", "bluetooth", "quickshare", "power"):
             self.assertIn(f"@@feature {ok} ok", lines)
         self.assertEqual([d for d in did if d[0] == "fp"], [("fp", "polkit"), ("fp", "sudo"), ("fp", "login")])
+        self.assertIn(("face-admin",), did)  # (face admin's copy of polkit's PAM file follows it)
         self.assertIn(R.FIXES["fprintd"], ran)  # (--fprintd-wait: the fix first)
         self.assertIn(["systemctl", "enable", "--now", "power-profiles-daemon"], ran)
         self.assertIn(["systemctl", "enable", "--now", "avahi-daemon"], ran)

@@ -170,6 +170,13 @@ pub fn account_name() -> String {
     }
 }
 
+/// The lock was refused (another locker holds the screen, or the compositor
+/// has no session lock): the shell stops counting itself locked (bridges),
+/// and the person is told, since the desktop is still there to use
+fn tell_not_locked() {
+    tessera_core::util::notify("Tessera", "system-lock-screen-symbolic", "critical", "Couldn't lock the screen", "Another program is holding the screen lock, or this desktop doesn't allow it. Your screen is not locked.");
+}
+
 /// An answer is the running password check's (ids start at 1; 0: none runs)
 fn is_pass(id: u64, pass_id: u64) -> bool {
     pass_id != 0 && id == pass_id
@@ -207,6 +214,8 @@ enum M {
     Lockout(logic::Faillock, Option<String>),
     Wallpaper(String, (u32, u32), Option<(slint::SharedPixelBuffer<slint::Rgb8Pixel>, slint::SharedPixelBuffer<slint::Rgb8Pixel>)>),
     Photo(String, Option<slint::SharedPixelBuffer<slint::Rgb8Pixel>>),
+    /// Bedside Mode's photos, listed on a thread
+    Photos(Vec<String>),
     Avatar(Option<(Vec<u8>, Vec<u8>)>),
     Art(String, Option<(Vec<u8>, Vec<u8>)>),
     /// the player's position (bus, µs), read once a second while its timeline shows
@@ -579,6 +588,25 @@ fn field_light(soft: &slint::SharedPixelBuffer<slint::Rgb8Pixel>) -> (f32, f32) 
     (at(3), at(97))
 }
 
+/// Bedside Mode shows one photo at a time, picked at random: this many is plenty
+const MAX_PHOTOS: usize = 2000;
+
+/// The pictures in a folder (jpg, jpeg, png, webp), sorted, at most `cap`
+/// (run on a thread: a stat per entry)
+fn list_photos(folder: &str, cap: usize) -> Vec<String> {
+    let mut list: Vec<String> = std::fs::read_dir(folder)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().and_then(|e| e.to_str()).is_some_and(|e| ["jpg", "jpeg", "png", "webp"].contains(&e.to_lowercase().as_str())) && p.is_file())
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect();
+    list.sort();
+    list.truncate(cap);
+    list
+}
+
 /// Your picture (~/.face, else AccountsService's), square and in a cookie
 fn avatar_files() -> Option<(Vec<u8>, Vec<u8>)> {
     let home = std::env::var("HOME").unwrap_or_default();
@@ -641,6 +669,11 @@ impl Lock {
         self.sb.idle = false;
         self.password.clear();
         self.typed_on = None;
+        // (a match or a password check from the lock before this one never
+        // unlocks this one: its timers stop and its answers are ignored)
+        self.t_match.stop();
+        self.t_pass.stop();
+        self.pass_id = 0;
         if held {
             eprintln!("tessera-ui: lock: held ({})", if self.demo { "demo: overlay surfaces" } else { "session lock" });
             self.leaving = false;
@@ -675,6 +708,7 @@ impl Lock {
                 None => {
                     eprintln!("tessera-ui: lock: this compositor has no ext-session-lock-v1");
                     crate::shell::tell(NAME, serde_json::json!({"refused": true}));
+                    tell_not_locked();
                     return;
                 }
             }
@@ -1198,18 +1232,17 @@ impl Lock {
         if self.sb.photos.is_empty() { 2 } else { 3 }
     }
 
+    /// Bedside Mode's photos, listed off the UI thread (a folder of
+    /// thousands, or on a network mount, held up the lock's first frames),
+    /// and only when Bedside Mode is on at all
     fn photos(&mut self, st: &State) {
+        if !b(cfg_lock(st), "standby", true) {
+            self.sb.photos.clear();
+            return;
+        }
         let folder = st.shell.cfg["desktop"]["photosFolder"].as_str().filter(|f| !f.is_empty()).map(str::to_string).unwrap_or_else(|| format!("{}/Pictures", std::env::var("HOME").unwrap_or_default()));
-        let mut list: Vec<String> = std::fs::read_dir(&folder)
-            .into_iter()
-            .flatten()
-            .flatten()
-            .map(|e| e.path())
-            .filter(|p| p.is_file() && p.extension().and_then(|e| e.to_str()).is_some_and(|e| ["jpg", "jpeg", "png", "webp"].contains(&e.to_lowercase().as_str())))
-            .map(|p| p.to_string_lossy().into_owned())
-            .collect();
-        list.sort();
-        self.sb.photos = list;
+        let to = Self::send(st);
+        std::thread::spawn(move || to(Box::new(M::Photos(list_photos(&folder, MAX_PHOTOS)))));
     }
 
     fn bedside(&mut self, st: &State) {
@@ -1583,7 +1616,9 @@ impl Lock {
                 self.pass_conv = None;
                 self.busy = false;
                 match out {
-                    Outcome::Success => self.unlocked(),
+                    // (only while this lock is up: never a later one's)
+                    Outcome::Success if self.held && !self.leaving => self.unlocked(),
+                    Outcome::Success => {}
                     Outcome::Failure(_) => {
                         self.fails += 1;
                         self.error = if self.pam_locked { logic::locked_text(self.faillock.unlock) } else { "Incorrect password. Try again.".into() };
@@ -2014,6 +2049,9 @@ impl Part for Lock {
                             self.t_retake.start(slint::TimerMode::SingleShot, Duration::from_millis(1000), move || to(Box::new(M::Retake)));
                         } else {
                             crate::shell::tell(NAME, serde_json::json!({"refused": true}));
+                            if self.held && !self.demo {
+                                tell_not_locked();
+                            }
                         }
                     }
                 }
@@ -2117,7 +2155,11 @@ impl Part for Lock {
                     self.bedside(st);
                 }
             }
-            M::MatchShown => self.unlocked(),
+            M::MatchShown => {
+                if self.held && !self.leaving {
+                    self.unlocked();
+                }
+            }
             M::PassTimeout(id) => {
                 if is_pass(id, self.pass_id) && self.busy {
                     eprintln!("tessera-ui: lock: password check: no answer in 20 s, stopped");
@@ -2315,6 +2357,15 @@ impl Part for Lock {
                     d.set_photo(img.clone().unwrap_or_default());
                 });
             }
+            M::Photos(list) => {
+                if list != self.sb.photos {
+                    self.sb.photos = list;
+                    self.sb.photo = 0;
+                    if self.held {
+                        self.bedside(st);
+                    }
+                }
+            }
             M::Avatar(files) => {
                 self.avatar = files.map(|(round, cookie)| (shape::to_image(round, 128), shape::to_image(cookie, 128)));
                 if let Some((round, cookie)) = &self.avatar {
@@ -2493,6 +2544,23 @@ mod tests {
         assert!(!is_pass(6, 5) && !is_pass(7, 5));
         // stopped after 20 s: a late answer is nobody's
         assert!(!is_pass(5, 0) && !is_pass(0, 0));
+    }
+
+    #[test]
+    fn bedside_photos_are_pictures_sorted_and_capped() {
+        let dir = std::env::temp_dir().join(format!("tessera-lock-photos-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("sub.jpg")).unwrap();
+        for f in ["c.PNG", "a.jpg", "b.webp", "notes.txt", "d.jpeg"] {
+            std::fs::write(dir.join(f), b"x").unwrap();
+        }
+        let d = dir.to_string_lossy().into_owned();
+        let names = |v: Vec<String>| v.iter().map(|p| p.rsplit('/').next().unwrap().to_string()).collect::<Vec<_>>();
+        // (a folder named like a picture isn't one)
+        assert_eq!(names(super::list_photos(&d, 10)), ["a.jpg", "b.webp", "c.PNG", "d.jpeg"]);
+        assert_eq!(names(super::list_photos(&d, 2)), ["a.jpg", "b.webp"]);
+        assert!(super::list_photos(&format!("{d}/missing"), 10).is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

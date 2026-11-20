@@ -59,6 +59,36 @@ enum M {
     Cancel,
     MissOver,
     Gone,
+    /// the wait after a conversation that failed before asking is over (its conversation)
+    Retry(u64),
+}
+
+/// After a conversation that ended in failure with nothing typed
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Again {
+    /// a new one at once (the reader's turn was over, a prompt went unanswered)
+    Now,
+    /// a new one after this many ms
+    After(u64),
+    /// no more by itself: PAM's reason stays, Cancel or Enter goes on
+    Stop,
+}
+
+/// What follows a conversation that failed with nothing typed: one that
+/// asked something, or lasted (a fingerprint's turn), starts again at once;
+/// one that failed straight away without asking (a helper that can't
+/// start, a PAM module refusing before the prompt) waits 1 s, then 3 s, then
+/// stops, so it never loops (`quick_fails`: such failures in a row, this one counted)
+pub fn after_untyped_fail(quick_fails: u32, prompted: bool, quick: bool) -> Again {
+    if prompted || !quick {
+        Again::Now
+    } else {
+        match quick_fails {
+            0 | 1 => Again::After(1000),
+            2 => Again::After(3000),
+            _ => Again::Stop,
+        }
+    }
 }
 
 struct Win {
@@ -140,6 +170,14 @@ pub struct Polkit {
     finger_missed: bool,
     miss: slint::Timer,
     gone: slint::Timer,
+    /// the conversation asked something (a prompt), and when it began
+    prompted: bool,
+    started_at: i64,
+    /// what PAM last said was wrong in it (an account locked, nologin…)
+    pam_error: String,
+    /// conversations in a row that failed at once without asking
+    quick_fails: u32,
+    retry: slint::Timer,
 }
 
 impl Default for Polkit {
@@ -161,6 +199,11 @@ impl Default for Polkit {
             finger_missed: false,
             miss: slint::Timer::default(),
             gone: slint::Timer::default(),
+            prompted: false,
+            started_at: 0,
+            pam_error: String::new(),
+            quick_fails: 0,
+            retry: slint::Timer::default(),
         }
     }
 }
@@ -255,6 +298,10 @@ impl Polkit {
     fn start_session(&mut self, st: &State) {
         self.session = None;
         self.ask = Ask::default();
+        self.retry.stop();
+        self.prompted = false;
+        self.pam_error.clear();
+        self.started_at = crate::util::now_ms();
         let Some(r) = self.queue.first() else { return };
         self.conv += 1;
         // (a test runs only its fake helper; the real agent only polkit's)
@@ -276,6 +323,8 @@ impl Polkit {
         if let Some(mut s) = self.session.take() {
             s.stop();
         }
+        self.retry.stop();
+        self.quick_fails = 0;
         if !self.queue.is_empty() {
             let r = self.queue.remove(0);
             r.reply.send(ok);
@@ -308,7 +357,18 @@ impl Polkit {
             self.push(st);
             return;
         }
-        if text.is_empty() || self.queue.is_empty() || self.waiting {
+        if self.queue.is_empty() || self.waiting {
+            return;
+        }
+        // (stopped after failing again and again before asking: Enter tries once more)
+        if self.session.is_none() && !self.retry.running() {
+            self.quick_fails = 0;
+            self.error.clear();
+            self.start_session(st);
+            self.push(st);
+            return;
+        }
+        if text.is_empty() {
             return;
         }
         let Some(s) = &self.session else { return };
@@ -324,8 +384,12 @@ impl Polkit {
             return;
         }
         let now = crate::util::now_ms();
+        if let Line::Error(t) = &line {
+            self.pam_error = t.clone();
+        }
         match line {
             Line::Prompt { echo, text } => {
+                self.prompted = true;
                 self.ask.prompt = text;
                 self.ask.secret = !echo;
                 self.ask.required = true;
@@ -349,11 +413,46 @@ impl Polkit {
                 // (only a typed password is "incorrect"; then PAM asks again: a new conversation)
                 let typed = self.waiting;
                 self.waiting = false;
-                self.error = if typed { "Incorrect password. Try again.".into() } else { String::new() };
                 if typed {
+                    self.quick_fails = 0;
+                    self.error = "Incorrect password. Try again.".into();
                     self.error_count += 1;
+                    self.start_session(st);
+                    return self.push(st);
                 }
-                self.start_session(st);
+                // (nothing typed, over at once: PAM's own reason stays
+                // readable, as the new conversation wipes what it said; a
+                // reader's turn that ran out says nothing, as before)
+                let quick = now - self.started_at < 2000 && !self.prompted;
+                let said = std::mem::take(&mut self.pam_error);
+                self.error = if quick { said } else { String::new() };
+                if quick {
+                    self.quick_fails += 1;
+                } else {
+                    self.quick_fails = 0;
+                }
+                match after_untyped_fail(self.quick_fails, self.prompted, quick) {
+                    Again::Now => self.start_session(st),
+                    Again::After(ms) => {
+                        if let Some(mut s) = self.session.take() {
+                            s.stop();
+                        }
+                        self.ask = Ask::default();
+                        let (to, conv) = (Self::send(st), self.conv);
+                        self.retry.start(slint::TimerMode::SingleShot, Duration::from_millis(ms), move || to(Box::new(M::Retry(conv))));
+                    }
+                    Again::Stop => {
+                        eprintln!("tessera-ui: polkit: the password check fails before asking: stopped trying");
+                        if let Some(mut s) = self.session.take() {
+                            s.stop();
+                        }
+                        self.ask = Ask::default();
+                        if self.error.is_empty() {
+                            self.error = "Couldn't ask for the password. Press Enter to try again.".into();
+                        }
+                        self.error_count += 1;
+                    }
+                }
             }
         }
         self.push(st);
@@ -448,6 +547,12 @@ impl Part for Polkit {
                 self.finger_missed = false;
                 self.push(st);
             }
+            M::Retry(conv) => {
+                if conv == self.conv && self.session.is_none() && !self.queue.is_empty() {
+                    self.start_session(st);
+                    self.push(st);
+                }
+            }
             M::Gone => {
                 if !self.shown() {
                     if let Some(w) = self.win.take() {
@@ -538,6 +643,18 @@ mod tests {
         assert!(!finger_wait(&a, true));
         assert!(!finger_wait(&Ask { required: true, ..a.clone() }, false));
         assert!(!finger_wait(&Ask::default(), false));
+    }
+
+    #[test]
+    fn failures_before_any_question_back_off_then_stop() {
+        // a helper that dies at once, again and again: 1 s, 3 s, then no more
+        assert_eq!(after_untyped_fail(1, false, true), Again::After(1000));
+        assert_eq!(after_untyped_fail(2, false, true), Again::After(3000));
+        assert_eq!(after_untyped_fail(3, false, true), Again::Stop);
+        assert_eq!(after_untyped_fail(9, false, true), Again::Stop);
+        // one that asked, or lasted (the reader's turn): again at once
+        assert_eq!(after_untyped_fail(5, true, false), Again::Now);
+        assert_eq!(after_untyped_fail(0, false, false), Again::Now);
     }
 
     #[test]

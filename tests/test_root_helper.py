@@ -274,6 +274,54 @@ class LoginCopy(unittest.TestCase):
         self.assertFalse((self.share / "shell.new").exists() or (self.share / "shell.old").exists())
         self.assertEqual(self.refresh(), [])  # nothing changed
 
+    def test_the_rust_login_screen_follows_the_installed_one(self):
+        # (the switch put a tessera-ui there; an update refreshes it from
+        # yours, as it does the QML copy; it stayed the switch day's before)
+        home = self.d / "home"
+        bindir = home / ".local/share/tessera/bin"
+        bindir.mkdir(parents=True)
+        bindir.chmod(0o755)
+        mine = bindir / "tessera-ui"
+        mine.write_bytes(b"\x7fELF new")
+        mine.chmod(0o755)
+        (self.share / "shell").mkdir(parents=True)
+        (self.share / "bin").mkdir()
+        (self.share / "bin/tessera-ui").write_bytes(b"\x7fELF old")
+        real = R.caller_home
+        R.caller_home = lambda uid: str(home)
+        try:
+            self.assertIn(str(self.share / "bin/tessera-ui"), self.refresh())
+            self.assertEqual((self.share / "bin/tessera-ui").read_bytes(), b"\x7fELF new")
+            self.assertEqual(stat.S_IMODE((self.share / "bin/tessera-ui").stat().st_mode), 0o755)
+            self.assertNotIn(str(self.share / "bin/tessera-ui"), self.refresh())  # (unchanged)
+            # one another account could have written: the copy stays as it was
+            mine.write_bytes(b"\x7fELF planted")
+            mine.chmod(0o777)
+            self.refresh()
+            self.assertEqual((self.share / "bin/tessera-ui").read_bytes(), b"\x7fELF new")
+            mine.chmod(0o755)
+            bindir.chmod(0o777)
+            self.refresh()
+            self.assertEqual((self.share / "bin/tessera-ui").read_bytes(), b"\x7fELF new")
+            bindir.chmod(0o755)
+            # not a program: refused
+            mine.write_bytes(b"#!/bin/sh\n")
+            self.refresh()
+            self.assertEqual((self.share / "bin/tessera-ui").read_bytes(), b"\x7fELF new")
+            # a link: refused
+            mine.unlink()
+            (self.d / "elsewhere").write_bytes(b"\x7fELF link")
+            mine.symlink_to(self.d / "elsewhere")
+            self.refresh()
+            self.assertEqual((self.share / "bin/tessera-ui").read_bytes(), b"\x7fELF new")
+        finally:
+            R.caller_home = real
+            bindir.chmod(0o755)
+        # (no Rust login screen there: none is added by a refresh)
+        (self.share / "bin/tessera-ui").unlink()
+        self.assertNotIn(str(self.share / "bin/tessera-ui"), self.refresh())
+        self.assertFalse((self.share / "bin/tessera-ui").exists())
+
     def test_from_an_updates_staged_tree(self):
         (self.share / "shell").mkdir(parents=True)
         staged = self.d / "incoming"
@@ -740,6 +788,35 @@ class FaceUnlock(unittest.TestCase):
         self.r.face_admin_off(self.uid, prefix=str(p), run=lambda *a, **k: None)
         self.assertFalse(dropin.exists())
         self.assertFalse((p / "var/lib/tessera/face/polkit-1").exists())
+
+    def test_face_admins_copy_follows_polkits_pam_file(self):
+        p = self.admin_tree()
+        noop = lambda *a, **k: None
+        # (face admin off: nothing to follow)
+        self.assertEqual(self.r.face_admin_refresh(prefix=str(p), run=noop), [])
+        self.assertFalse((p / "var/lib/tessera/face/polkit-1").exists())
+        self.admin_on(p)
+        copy = p / "var/lib/tessera/face/polkit-1"
+        dropin = p / "etc/systemd/system/polkit-agent-helper@.service.d/50-tessera-face.conf"
+        self.assertIn("pam_fprintd", copy.read_text())
+        # fingerprint off for administrator prompts: the copy loses it too
+        without = "".join(l + "\n" for l in self.POLKIT_FP.splitlines() if "pam_fprintd" not in l)
+        (p / "etc/pam.d/polkit-1").write_text(without)
+        self.assertEqual(self.r.face_admin_refresh(prefix=str(p), run=noop), [str(copy)])
+        self.assertNotIn("pam_fprintd", copy.read_text())
+        self.assertIn("pam_howdy", copy.read_text())
+        self.assertEqual(self.r.face_admin_refresh(prefix=str(p), run=noop), [])  # (nothing changed)
+        # /etc's copy gone (the package's file again): the drop-in follows it
+        (p / "etc/pam.d/polkit-1").unlink()
+        (p / "usr/lib/pam.d").mkdir(parents=True)
+        (p / "usr/lib/pam.d/polkit-1").write_text(self.POLKIT_FP)
+        self.r.face_admin_refresh(prefix=str(p), run=noop)
+        self.assertIn(":/usr/lib/pam.d/polkit-1", dropin.read_text())
+        self.assertIn("pam_fprintd", copy.read_text())
+        # no PAM file for polkit at all: face admin is undone
+        (p / "usr/lib/pam.d/polkit-1").unlink()
+        self.r.face_admin_refresh(prefix=str(p), run=noop)
+        self.assertFalse(dropin.exists() or copy.exists())
 
     def test_a_regular_camera_never_approves_administrators(self):
         p = self.admin_tree()
