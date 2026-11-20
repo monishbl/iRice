@@ -97,6 +97,14 @@ Singleton {
                 property list<string> hiddenCalendars: [] // "<account>|<calendar id>" not shown
             }
 
+            // (written by the installer and the Rust shell's Software Update:
+            // declared so the fallback keeps them; "" = not offered yet)
+            property JsonObject features: JsonObject {
+                property list<string> chosen: []
+                property list<string> declined: []
+                property string offer: "" // "pending" | "done"
+            }
+
             property JsonObject appearance: JsonObject {
                 property string mode: "dark" // dark | light | auto (light from sunrise to sunset)
                 property string gaps: "compact" // round windows: none | compact (3 between, 4 at the edges) | comfortable (5, 10)

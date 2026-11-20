@@ -893,7 +893,7 @@ impl Service for About {
                     self.su.updates_finished(h, &tx, &mut self.tu, &self.up, &job);
                     if std::mem::take(&mut self.feat_running) {
                         self.features_finished(&job);
-                    } else if job["state"] == "done" && h.cfg()["features"]["offer"].is_null() {
+                    } else if job["state"] == "done" && h.cfg()["features"]["offer"].as_str().unwrap_or("").is_empty() {
                         // (the first update since this version: the offer, once)
                         self.features_check(true);
                     }
@@ -906,7 +906,7 @@ impl Service for About {
             Ok(ev) => {
                 self.tu.event(h, &tx, *ev);
                 // (Tessera's part applied: the first start of this version offers the rest, once)
-                if self.tu.result.as_ref().is_some_and(|r| helpers::truthy(&r["applied"])) && h.cfg()["features"]["offer"].is_null() {
+                if self.tu.result.as_ref().is_some_and(|r| helpers::truthy(&r["applied"])) && h.cfg()["features"]["offer"].as_str().unwrap_or("").is_empty() {
                     self.features_check(true);
                 }
                 // The update notice's Update: Software Update, with a fresh check
@@ -963,7 +963,7 @@ impl Service for About {
                 if v.is_object() {
                     self.feat = v;
                 }
-                if announce && h.cfg()["features"]["offer"].is_null() {
+                if announce && h.cfg()["features"]["offer"].as_str().unwrap_or("").is_empty() {
                     self.features_announce();
                 }
                 return self.after(h);
