@@ -336,6 +336,16 @@ pub fn picture(path: &str) -> Option<slint::Image> {
     live::cached(&format!("{path}@{when}"), || picture_px(path).map(slint::Image::from_rgba8))
 }
 
+/// The account picture's cache key: its path and change time, so a new
+/// picture written over the same ~/.face shows at the next opening ("" none)
+fn avatar_key(path: &str) -> String {
+    if path.is_empty() {
+        return String::new();
+    }
+    let when = std::fs::metadata(path).and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_millis());
+    format!("{path}@{when}")
+}
+
 fn picture_px(path: &str) -> Option<slint::SharedPixelBuffer<slint::Rgba8Pixel>> {
     if path.is_empty() || path.contains("://") {
         return None;
@@ -758,7 +768,7 @@ impl ControlCenter {
     fn push_avatar(&self, st: &State) {
         let Some(w) = &self.win else { return };
         let path = self.said.avatar.clone();
-        match live::cached_hit(&path) {
+        match live::cached_hit(&avatar_key(&path)) {
             Some(a) => {
                 w.ui.set_has_avatar(a.is_some());
                 w.ui.set_avatar_cookie(a.as_ref().and_then(cookie9).unwrap_or_default());
@@ -1545,7 +1555,7 @@ impl Part for ControlCenter {
                 }
             }
             M::Avatar(path, px) => {
-                let a = live::cached(&path, || px.map(slint::Image::from_rgba8));
+                let a = live::cached(&avatar_key(&path), || px.map(slint::Image::from_rgba8));
                 if path == self.said.avatar {
                     if let Some(w) = &self.win {
                         w.ui.set_has_avatar(a.is_some());
@@ -1740,6 +1750,25 @@ impl Part for ControlCenter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_new_account_picture_over_the_same_file_is_a_new_key() {
+        assert_eq!(avatar_key(""), "");
+        let dir = std::env::temp_dir().join(format!("tessera-cc-avatar-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let face = dir.join("face");
+        std::fs::write(&face, b"one").unwrap();
+        let f = std::fs::File::options().write(true).open(&face).unwrap();
+        f.set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_000)).unwrap();
+        let p = face.to_string_lossy().to_string();
+        let a = avatar_key(&p);
+        f.set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_secs(2_000)).unwrap();
+        drop(f);
+        let b = avatar_key(&p);
+        assert!(a.starts_with(&p) && b.starts_with(&p));
+        assert_ne!(a, b);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn places_in_both_looks() {

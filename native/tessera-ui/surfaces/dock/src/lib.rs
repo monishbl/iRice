@@ -208,6 +208,21 @@ fn shell_ipc(args: Vec<String>) {
     });
 }
 
+/// A panel shown or toggled (Launchpad): standalone, in this process (the
+/// script, python3 and a new tessera-ui only to reach this one cost 100+ ms
+/// a click); beside the QML shell, through it as before
+fn panels(func: &str, panel: &str, output: String) {
+    match panels_call(func, crate::host::standalone()) {
+        Some(call) => crate::shell::ask(&call, serde_json::json!([panel, output])),
+        None => shell_ipc(vec!["panels".into(), func.into(), panel.into(), output]),
+    }
+}
+
+/// The host's call for a panels function (None: the QML shell's IPC)
+fn panels_call(func: &str, standalone: bool) -> Option<String> {
+    standalone.then(|| format!("panels.{func}"))
+}
+
 /// The settings as AppIcon.qml reads them: `iconStyle` "default" is each
 /// app's own logo (mode 0) once Config.qml's defaults are at version 3 or
 /// later (before that it renames "default" to "look" as it loads). Core's
@@ -553,7 +568,7 @@ impl Dock {
         let cfg = st.shell.cfg.clone();
         let windows = st.shell.get::<Windows>().cloned().unwrap_or_default();
         match it.kind {
-            Kind::Launcher => shell_ipc(vec!["panels".into(), "toggle".into(), "launchpad".into(), output.into()]),
+            Kind::Launcher => panels("toggle", "launchpad", output.into()),
             Kind::Minimized => {
                 if let Some(a) = it.windows.first() {
                     clients::restore(a, windows.focused_monitor().map_or(1, |m| m.active.id));
@@ -735,7 +750,7 @@ impl Dock {
         let windows = st.shell.get::<Windows>().cloned().unwrap_or_default();
         let s = Self::settings(st);
         match action {
-            Action::OpenDrawer => shell_ipc(vec!["panels".into(), "open".into(), "launchpad".into(), output]),
+            Action::OpenDrawer => panels("open", "launchpad", output),
             Action::RemoveLauncher => settings::write("appsButton", serde_json::json!(false)),
             Action::Restore => {
                 if let Some(a) = it.windows.first() {
@@ -1169,6 +1184,13 @@ impl Part for Dock {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn launchpad_is_asked_in_process_when_standalone() {
+        assert_eq!(panels_call("toggle", true).as_deref(), Some("panels.toggle"));
+        assert_eq!(panels_call("open", true).as_deref(), Some("panels.open"));
+        assert_eq!(panels_call("toggle", false), None);
+    }
     use tessera_core::services::icons;
 
     #[test]

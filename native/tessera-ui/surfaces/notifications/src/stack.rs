@@ -151,6 +151,11 @@ impl Groups {
             self.open.remove(key);
             return Toggled::Closed;
         }
+        // (another group still folding: it's closed now, as its timer
+        // would have; its timer is spent with the number moving on)
+        if let Some(prev) = self.folding.take() {
+            self.open.remove(&prev);
+        }
         self.generation += 1;
         self.folding = Some(key.to_string());
         Toggled::Folding(self.generation, ms)
@@ -174,6 +179,17 @@ impl Groups {
     pub fn clear(&mut self, key: &str) {
         self.open.remove(key);
         if self.is_folding(key) {
+            self.folding = None;
+            self.generation += 1;
+        }
+    }
+
+    /// Only groups that are still there with more than one card stay open
+    /// (`stackable`: their keys); cleared or dismissed down to one, a group
+    /// that fills up again comes back as a folded stack
+    pub fn keep(&mut self, stackable: &[String]) {
+        self.open.retain(|k| stackable.contains(k));
+        if self.folding.as_ref().is_some_and(|k| !stackable.contains(k)) {
             self.folding = None;
             self.generation += 1;
         }
@@ -537,6 +553,34 @@ mod tests {
         assert!(!g.is_open("Files"));
         g.toggle("Mail", 2, false);
         g.reset();
+        assert!(g.open.is_empty());
+    }
+
+    #[test]
+    fn folding_a_second_group_finishes_the_first() {
+        let mut g = Groups::default();
+        g.toggle("Mail", 3, false);
+        g.toggle("Chat", 3, false);
+        let Toggled::Folding(mail, _) = g.toggle("Mail", 3, false) else { panic!() };
+        let Toggled::Folding(chat, _) = g.toggle("Chat", 3, false) else { panic!() };
+        // Mail is closed as Chat starts folding; its timer then does nothing
+        assert!(!g.is_open("Mail") && !g.is_folding("Mail"));
+        assert!(!g.folded(mail));
+        assert!(g.is_open("Chat") && g.is_folding("Chat"));
+        assert!(g.folded(chat));
+        assert!(g.open.is_empty());
+    }
+
+    #[test]
+    fn groups_gone_or_down_to_one_card_close() {
+        let mut g = Groups::default();
+        g.toggle("Mail", 3, false);
+        g.toggle("Chat", 3, false);
+        let Toggled::Folding(n, _) = g.toggle("Chat", 3, false) else { panic!() };
+        g.keep(&["Mail".to_string()]);
+        assert!(g.is_open("Mail") && !g.is_open("Chat") && g.folding.is_none());
+        assert!(!g.folded(n));
+        g.keep(&[]);
         assert!(g.open.is_empty());
     }
 

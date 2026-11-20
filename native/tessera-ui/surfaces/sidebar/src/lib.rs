@@ -119,6 +119,8 @@ enum M {
     BooruOpen(String),
     BooruPage(u64, Result<Vec<booru::Post>, String>),
     BooruPreview(u64, usize, slint::SharedPixelBuffer<slint::Rgba8Pixel>),
+    /// a chat's or the composer's picture, decoded off the UI thread
+    Picture(String, Option<slint::SharedPixelBuffer<slint::Rgba8Pixel>>),
 }
 
 /// The Anime tab's search (Booru.qml's state)
@@ -186,6 +188,15 @@ pub struct Sidebar {
     searching: bool,
     lens: HashMap<String, Lens>,
     images: HashMap<String, Option<slint::Image>>,
+    /// pictures being decoded (on a thread: a 1568 px JPEG froze the panel)
+    loading: std::collections::HashSet<String>,
+    /// for those threads (set when the window is made)
+    tx: Option<smithay_client_toolkit::reexports::calloop::channel::Sender<Msg>>,
+    /// the streaming answer's blocks, changed in place: only the block that
+    /// grew changes (a new model every 50 ms made every block again)
+    stream: tessera_core::rows::Rows<ui::MdBlock>,
+    /// and the Markdown blocks they were made from (not styled again)
+    stream_memo: Vec<(markdown::Block, f32, ui::MdBlock)>,
     tr: Tr,
     anime: Anime,
     undo_timer: slint::Timer,
@@ -215,6 +226,10 @@ impl Default for Sidebar {
             searching: false,
             lens: HashMap::new(),
             images: HashMap::new(),
+            loading: Default::default(),
+            tx: None,
+            stream: Default::default(),
+            stream_memo: Vec::new(),
             tr: Tr { source: "auto".into(), ..Default::default() },
             anime: Anime::default(),
             undo_timer: Default::default(),
@@ -281,36 +296,64 @@ fn styled(markup: &str) -> StyledText {
 
 /// Markdown blocks as Slint's
 fn md_blocks(text: &str) -> ModelRc<ui::MdBlock> {
+    tessera_core::rows::shared(md_blocks_memo(text, &mut Vec::new()))
+}
+
+/// Markdown blocks as Slint's, reusing those made last time (`memo`) for
+/// blocks that read the same: a streaming answer styles only what grew
+fn md_blocks_memo(text: &str, memo: &mut Vec<(markdown::Block, f32, ui::MdBlock)>) -> Vec<ui::MdBlock> {
     let parsed = markdown::blocks(text);
     let gaps = markdown::gaps(&parsed);
-    let blocks: Vec<ui::MdBlock> = parsed
-        .into_iter()
-        .zip(gaps)
-        .map(|(b, above)| ui::MdBlock {
-            above,
-            kind: match b.kind {
-                markdown::Kind::Paragraph => 0,
-                markdown::Kind::Heading => 1,
-                markdown::Kind::List => 2,
-                markdown::Kind::Quote => 3,
-                markdown::Kind::Code => 4,
-                markdown::Kind::Table => 5,
-                markdown::Kind::Rule => 6,
-            },
-            widths: tessera_core::rows::shared(if b.kind == markdown::Kind::Table { markdown::column_widths(&b.rows, 396.0) } else { Vec::new() }),
-            level: b.level as i32,
-            size: markdown::HEAD[b.level.min(6)],
-            text: if b.kind == markdown::Kind::Heading { styled(&format!("**{}**", b.text)) } else { styled(&b.text) },
-            code: b.code.into(),
-            lang: b.lang.into(),
-            open: b.open,
-            items: tessera_core::rows::shared(b.items.iter().map(|i| ui::MdItem { depth: i.depth as i32, marker: i.marker.as_str().into(), text: styled(&i.text) }).collect::<Vec<_>>()),
-            rows: tessera_core::rows::shared(
-                b.rows.iter().map(|(head, cells)| ui::MdRow { head: *head, cells: tessera_core::rows::shared(cells.iter().map(|c| styled(&if *head { format!("**{c}**") } else { c.clone() })).collect::<Vec<_>>()) }).collect::<Vec<_>>(),
-            ),
-        })
-        .collect();
-    tessera_core::rows::shared(blocks)
+    let mut next: Vec<(markdown::Block, f32, ui::MdBlock)> = Vec::with_capacity(parsed.len());
+    for (i, (b, above)) in parsed.into_iter().zip(gaps).enumerate() {
+        let made = match memo.get(i) {
+            Some((ob, oa, m)) if *ob == b && *oa == above => m.clone(),
+            _ => md_block(b.clone(), above),
+        };
+        next.push((b, above, made));
+    }
+    *memo = next;
+    memo.iter().map(|(_, _, m)| m.clone()).collect()
+}
+
+/// One Markdown block as Slint's
+fn md_block(b: markdown::Block, above: f32) -> ui::MdBlock {
+    ui::MdBlock {
+        above,
+        kind: match b.kind {
+            markdown::Kind::Paragraph => 0,
+            markdown::Kind::Heading => 1,
+            markdown::Kind::List => 2,
+            markdown::Kind::Quote => 3,
+            markdown::Kind::Code => 4,
+            markdown::Kind::Table => 5,
+            markdown::Kind::Rule => 6,
+        },
+        widths: tessera_core::rows::shared(if b.kind == markdown::Kind::Table { markdown::column_widths(&b.rows, 396.0) } else { Vec::new() }),
+        level: b.level as i32,
+        size: markdown::HEAD[b.level.min(6)],
+        text: if b.kind == markdown::Kind::Heading { styled(&format!("**{}**", b.text)) } else { styled(&b.text) },
+        code: b.code.into(),
+        lang: b.lang.into(),
+        open: b.open,
+        items: tessera_core::rows::shared(b.items.iter().map(|i| ui::MdItem { depth: i.depth as i32, marker: i.marker.as_str().into(), text: styled(&i.text) }).collect::<Vec<_>>()),
+        rows: tessera_core::rows::shared(
+            b.rows.iter().map(|(head, cells)| ui::MdRow { head: *head, cells: tessera_core::rows::shared(cells.iter().map(|c| styled(&if *head { format!("**{c}**") } else { c.clone() })).collect::<Vec<_>>()) }).collect::<Vec<_>>(),
+        ),
+    }
+}
+
+/// A picture for the chat (shown at most 200 px wide: decoded to 400 a side)
+fn picture_px(path: &str) -> Option<slint::SharedPixelBuffer<slint::Rgba8Pixel>> {
+    let img = image::ImageReader::open(path).ok()?.with_guessed_format().ok()?.decode().ok()?;
+    let img = if img.width() > 400 || img.height() > 400 { img.thumbnail(400, 400) } else { img };
+    let rgba = img.to_rgba8();
+    Some(slint::SharedPixelBuffer::clone_from_slice(rgba.as_raw(), rgba.width(), rgba.height()))
+}
+
+/// The pictures worth keeping decoded: the open chat's and the composer's
+fn keep_pictures<V>(images: &mut HashMap<String, V>, wanted: &[String]) {
+    images.retain(|k, _| wanted.iter().any(|w| w == k));
 }
 
 impl Sidebar {
@@ -325,11 +368,32 @@ impl Sidebar {
         }
     }
 
+    /// A picture once decoded (on a thread; none until it's there)
     fn image(&mut self, path: &str) -> Option<slint::Image> {
-        self.images.entry(path.to_string()).or_insert_with(|| slint::Image::load_from_path(std::path::Path::new(path)).ok()).clone()
+        if let Some(i) = self.images.get(path) {
+            return i.clone();
+        }
+        if let Some(tx) = self.tx.clone() {
+            if self.loading.insert(path.to_string()) {
+                let p = path.to_string();
+                std::thread::spawn(move || {
+                    let px = picture_px(&p);
+                    let _ = tx.send(Msg::Part(NAME, Box::new(M::Picture(p, px))));
+                });
+            }
+        }
+        None
     }
 
-    fn chat_row(&mut self, r: &chats::Row) -> ui::ChatRow {
+    /// The paths of the pictures shown now (the open chat's, the composer's)
+    fn pictures_shown(&self) -> Vec<String> {
+        let mut v: Vec<String> = self.chat.rows.iter().filter(|r| r.role == "user" && !r.image.is_empty()).flat_map(|r| r.image.split('\n').map(String::from).collect::<Vec<_>>()).collect();
+        v.extend(self.chat.attachments.iter().map(|a| a.path.clone()));
+        v
+    }
+
+    /// `blocks`: the answer's Markdown blocks too (sync_last makes its own)
+    fn chat_row(&mut self, r: &chats::Row, blocks: bool) -> ui::ChatRow {
         let pictures: Vec<slint::Image> = if r.role == "user" && !r.image.is_empty() { r.image.split('\n').filter_map(|p| self.image(p)).collect() } else { Vec::new() };
         let lens = self.lens.get(&r.search).cloned().unwrap_or_default();
         let assistant = r.role == "assistant" && r.status != "error";
@@ -341,7 +405,7 @@ impl Sidebar {
             thinking: styled(&markdown::flatten(&r.thinking)),
             has_thinking: !r.thinking.is_empty(),
             pictures: tessera_core::rows::shared(pictures),
-            blocks: if assistant { md_blocks(&r.text) } else { ModelRc::default() },
+            blocks: if assistant && blocks { md_blocks(&r.text) } else { ModelRc::default() },
             search: r.search.as_str().into(),
             lens_busy: lens.busy,
             lens_note: lens.note.into(),
@@ -352,7 +416,13 @@ impl Sidebar {
     /// Every row again (a new message, a chat opened)
     fn sync_rows(&mut self) {
         let rows: Vec<chats::Row> = self.chat.rows.clone();
-        let new: Vec<ui::ChatRow> = rows.iter().map(|r| self.chat_row(r)).collect();
+        // (a model of its own for the next streaming answer: the rows
+        // holding this one keep it as it is)
+        self.stream = Default::default();
+        self.stream_memo.clear();
+        let wanted = self.pictures_shown();
+        keep_pictures(&mut self.images, &wanted);
+        let new: Vec<ui::ChatRow> = rows.iter().map(|r| self.chat_row(r, true)).collect();
         let Some(w) = &self.win else { return };
         let grew = new.len() != w.rows.row_count();
         // (in place: a row that reads the same keeps its element, its
@@ -362,6 +432,7 @@ impl Sidebar {
         let same = |a: &ui::ChatRow, b: &ui::ChatRow| {
             a.role == b.role && a.text == b.text && a.status == b.status && a.model == b.model && a.has_thinking == b.has_thinking
                 && a.search == b.search && a.lens_busy == b.lens_busy && a.lens_note == b.lens_note && a.lens_ok == b.lens_ok
+                && a.pictures == b.pictures
         };
         let n = new.len();
         for (i, r) in new.into_iter().enumerate() {
@@ -382,7 +453,12 @@ impl Sidebar {
     /// The streaming answer (the last row) only
     fn sync_last(&mut self) {
         let Some(r) = self.chat.rows.last().cloned() else { return };
-        let row = self.chat_row(&r);
+        let mut row = self.chat_row(&r, false);
+        if r.role == "assistant" && r.status != "error" {
+            let blocks = md_blocks_memo(&r.text, &mut self.stream_memo);
+            self.stream.set(blocks);
+            row.blocks = self.stream.model();
+        }
         if let Some(w) = &self.win {
             let n = w.rows.row_count();
             if n == self.chat.rows.len() && n > 0 {
@@ -618,6 +694,8 @@ impl Sidebar {
         let a11y = crate::a11y::A11y::new(&surface, st.tx.clone());
         self.win = Some(Win { output: name.to_string(), surface, ui, a11y, rows, glass_sent: String::new(), tabs, pictures, models, chats });
         self.images.clear();
+        self.loading.clear();
+        self.tx = Some(st.tx.clone());
         self.sync();
     }
 
@@ -686,6 +764,8 @@ impl Sidebar {
             w.surface.wl.commit();
         }
         self.history_open = false;
+        // (open() starts it again: closed, it only woke the loop each minute)
+        self.minute.stop();
         if say {
             shell::closed(NAME);
         }
@@ -1250,6 +1330,14 @@ impl Part for Sidebar {
             }
             M::UndoOver => self.chat.finish_delete(),
             M::NoticeOver => self.chat.notice.clear(),
+            M::Picture(path, px) => {
+                self.loading.remove(&path);
+                if self.pictures_shown().contains(&path) {
+                    self.images.insert(path, px.map(slint::Image::from_rgba8));
+                    self.sync_rows();
+                    self.sync_state();
+                }
+            }
             M::Minute => {
                 if self.shown && self.history_open {
                     self.sync_history();
@@ -1485,5 +1573,32 @@ mod tests {
         assert_eq!(b.row_data(0).unwrap().size, 20.0);
         assert_eq!(b.row_data(1).unwrap().items.row_count(), 2);
         assert_eq!(b.row_data(3).unwrap().code, "ls");
+    }
+
+    #[test]
+    fn streaming_reuses_the_blocks_that_did_not_change() {
+        let mut memo = Vec::new();
+        let a = md_blocks_memo("# Plan\n\nfirst para", &mut memo);
+        let b = md_blocks_memo("# Plan\n\nfirst paragraph grows", &mut memo);
+        assert_eq!(a.len(), 2);
+        assert_eq!(b.len(), 2);
+        // the heading block is the very same (its lists keep their models)
+        assert!(a[0] == b[0]);
+        assert!(a[1] != b[1]);
+        assert_eq!(memo.len(), 2);
+        // and the same as made afresh
+        let fresh = md_blocks("# Plan\n\nfirst paragraph grows");
+        assert_eq!(fresh.row_count(), 2);
+        assert_eq!(fresh.row_data(1).unwrap().kind, b[1].kind);
+    }
+
+    #[test]
+    fn only_shown_pictures_stay_decoded() {
+        let mut m: HashMap<String, Option<i32>> = HashMap::new();
+        m.insert("/a.jpg".into(), Some(1));
+        m.insert("/b.jpg".into(), None);
+        keep_pictures(&mut m, &["/b.jpg".to_string()]);
+        assert_eq!(m.len(), 1);
+        assert!(m.contains_key("/b.jpg"));
     }
 }

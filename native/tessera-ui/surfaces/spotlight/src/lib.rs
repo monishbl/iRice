@@ -599,6 +599,17 @@ impl Spotlight {
             return;
         }
         self.open = false;
+        // (a quick answer still coming stops here, not at the next opening:
+        // its tokens and the network were spent on an answer thrown away;
+        // nor do the lookups for the text typed run after it's gone)
+        if self.answering || self.quick.busy {
+            crate::shell::ask("ai.stopQuick", serde_json::json!([]));
+        }
+        self.answering = false;
+        self.quick = Quick::default();
+        for t in [T_ANSWER, T_CONV, T_DEF, T_FILES] {
+            self.timers[t].stop();
+        }
         if let Some(w) = &self.win {
             w.ui.set_shown(false);
             w.surface.layer.set_keyboard_interactivity(KeyboardInteractivity::None);

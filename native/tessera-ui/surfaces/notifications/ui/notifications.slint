@@ -530,6 +530,8 @@ export component MaterialCard {
     in property <int> group-count: 1;
     in property <bool> group-open;
     in property <bool> tap-expands;
+    // the X's spoken name when it does more than dismiss this card
+    in property <string> close-label;
     callback group-toggled();
     callback activated();
     callback close();
@@ -590,7 +592,7 @@ export component MaterialCard {
         border-radius: 14px;
         background: close-touch.pressed ? Theme.m3-on-surface.with-alpha(0.1) : close-touch.has-hover ? Theme.m3-on-surface.with-alpha(0.08) : transparent;
         accessible-role: button;
-        accessible-label: "Dismiss " + (b.summary != "" ? b.summary : "notification");
+        accessible-label: close-label != "" ? close-label : "Dismiss " + (b.summary != "" ? b.summary : "notification");
         accessible-action-default => { close(); }
         Icon {
             text: "\u{e4f6}"; // x

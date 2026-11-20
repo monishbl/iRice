@@ -92,6 +92,9 @@ enum M {
     Slow,
     SaveNote,
     Image(String, Option<Pixels>),
+    /// File icons and thumbnails that arrived in the last moment: the icon
+    /// list made afresh once for all of them (see M::Image)
+    IconsArrived,
     Zones(Vec<(String, view::ZoneTime)>),
     Quotes(Vec<view::Quote>, bool),
     Battery(Vec<(i64, f64, bool)>),
@@ -226,6 +229,16 @@ pub struct Desktop {
     // data read here
     images: HashMap<String, slint::Image>,
     pending: HashSet<String>,
+    /// Pictures that wouldn't decode, and when (not tried again on every
+    /// update: once a second with the System widget. Tried again after
+    /// RETRY_FAILED_MS, or when the Desktop folder changes)
+    failed: HashMap<String, i64>,
+    /// When each image key was last asked for: the cache drops those not
+    /// asked for in KEEP_IMAGE_MS (a rotating Photos widget's old photos,
+    /// thumbnails of files gone; a stack's other kinds come back in time)
+    used: HashMap<String, i64>,
+    /// One icon-list rebuild for a burst of arriving file icons
+    icons_timer: slint::Timer,
     // a file kind's icon as last drawn (by its theme name and size): shown
     // while a new drawing of it (another file, another theme) is on its way
     last_icon: HashMap<String, slint::Image>,
@@ -246,6 +259,23 @@ pub struct Desktop {
     /// Edit Widgets' gallery (standalone only), and the kind it shows
     gal: Option<gallery::Gal>,
     gal_picked: usize,
+}
+
+/// How long a picture that wouldn't decode is left before it's tried again
+const RETRY_FAILED_MS: i64 = 60_000;
+
+/// Whether a picture may be decoded (again): never failed, or failed long enough ago
+fn retry_ok(failed_at: Option<i64>, now: i64) -> bool {
+    failed_at.is_none_or(|t| now - t >= RETRY_FAILED_MS)
+}
+
+/// How long a decoded picture nothing asks for is kept
+const KEEP_IMAGE_MS: i64 = 10 * 60_000;
+
+/// The decoded pictures kept: those asked for in the last KEEP_IMAGE_MS
+fn prune_images<V>(images: &mut HashMap<String, V>, used: &mut HashMap<String, i64>, now: i64) {
+    used.retain(|_, t| now - *t < KEEP_IMAGE_MS);
+    images.retain(|k, _| used.contains_key(k));
 }
 
 fn hexc(s: &str) -> Option<Color> {
@@ -539,6 +569,35 @@ impl Desktop {
             win.kbd = Some(want_keys);
         }
         self.stack_files(st);
+        // (only the pictures shown lately stay decoded)
+        prune_images(&mut self.images, &mut self.used, crate::util::now_ms());
+        self.failed.retain(|k, _| self.used.contains_key(k));
+    }
+
+    /// The System widget's sample, once a second: only the rows showing it
+    /// are made again (a whole update() rebuilt every widget and icon)
+    fn update_system(&mut self, st: &mut State) {
+        let Some(keys) = self.win.as_ref().map(|w| w.keys.clone()) else { return };
+        let mut fresh: Vec<ui::DeskWidget> = Vec::new();
+        for i in 0..self.placed.len().min(keys.len()) {
+            let w = self.placed[i].clone();
+            let shows = w.kind == "system" || (w.kind == "stack" && self.stack_kinds(&w).iter().any(|k| k == "system"));
+            if shows {
+                fresh.push(self.widget(st, i, &keys[i]));
+            }
+        }
+        if fresh.is_empty() {
+            return;
+        }
+        let Some(win) = self.win.as_ref() else { return };
+        let mut rows: Vec<ui::DeskWidget> = (0..win.widgets.len()).filter_map(|j| win.widgets.get(j)).collect();
+        for r in fresh {
+            if let Some(slot) = rows.iter_mut().find(|x| x.key == r.key) {
+                *slot = r;
+            }
+        }
+        // (the other rows are the same values: set_keyed leaves them be)
+        win.widgets.set_keyed(rows, |r| r.key.clone());
     }
 
     fn stack_panel_at(&self, it: &IconItem) -> (f32, f32) {
@@ -562,8 +621,12 @@ impl Desktop {
 
     /// An image loaded off the UI thread (once; default until it's there)
     fn image(&mut self, st: &State, key: String, job: impl FnOnce() -> Option<Pixels> + Send + 'static) -> Option<slint::Image> {
+        self.used.insert(key.clone(), crate::util::now_ms());
         if let Some(i) = self.images.get(&key) {
             return Some(i.clone());
+        }
+        if !retry_ok(self.failed.get(&key).copied(), crate::util::now_ms()) {
+            return None;
         }
         if self.pending.insert(key.clone()) {
             let to = st.shell.sender(NAME);
@@ -1871,7 +1934,7 @@ impl Part for Desktop {
                 if self.kinds_shown().contains("system") {
                     self.sampler.sample(crate::util::now_ms() as f64 / 1000.0);
                     self.stats = self.sampler.stats();
-                    self.update(st);
+                    self.update_system(st);
                 }
             }
             M::Slow => self.slow(st, false),
@@ -1886,17 +1949,30 @@ impl Part for Desktop {
                     // (a file's icon arriving after the desktop's first frames
                     // often didn't draw: the stacks kept bare labels until
                     // something else redrew them. Their cells made afresh,
-                    // and the frame drawn whole, they show)
+                    // and the frame drawn whole, they show. Once for a burst
+                    // of them: 40 files at login rebuilt 40 icons 40 times)
                     let file_icon = k.starts_with("icon:") || k.starts_with("thumb:");
+                    self.failed.remove(&k);
                     self.images.insert(k, slint::Image::from_rgba8(px));
                     if file_icon {
-                        if let Some(w) = &self.win {
-                            w.icons.set(Vec::new());
-                            w.surface.redraw_all();
+                        if !self.icons_timer.running() {
+                            let to = st.shell.sender(NAME);
+                            self.icons_timer.start(slint::TimerMode::SingleShot, Duration::from_millis(50), move || to(Box::new(M::IconsArrived)));
                         }
+                    } else {
+                        self.update(st);
                     }
-                    self.update(st);
+                } else {
+                    // (remembered: not decoded again on every update)
+                    self.failed.insert(k, crate::util::now_ms());
                 }
+            }
+            M::IconsArrived => {
+                if let Some(w) = &self.win {
+                    w.icons.set(Vec::new());
+                    w.surface.redraw_all();
+                }
+                self.update(st);
             }
             M::Zones(z) => {
                 self.zones = z.into_iter().collect();
@@ -1916,6 +1992,8 @@ impl Part for Desktop {
             M::Folder(e) => {
                 if e != self.entries {
                     self.entries = e;
+                    // (a picture that wouldn't decode may have been replaced)
+                    self.failed.clear();
                     self.after_layout(st);
                 }
             }
@@ -2111,6 +2189,29 @@ mod tests {
         assert_eq!(elide_middle("short.txt", 14), "short.txt");
         assert_eq!(elide_middle("a-very-long-file-name.pdf", 14), "a-very…ame.pdf");
         assert_eq!(elide_middle("a-very-long-file-name.pdf", 14).chars().count(), 14);
+    }
+
+    #[test]
+    fn failed_pictures_wait_before_another_try() {
+        assert!(retry_ok(None, 0));
+        assert!(!retry_ok(Some(1_000), 1_000 + RETRY_FAILED_MS - 1));
+        assert!(retry_ok(Some(1_000), 1_000 + RETRY_FAILED_MS));
+    }
+
+    #[test]
+    fn image_cache_keeps_only_recently_used_keys() {
+        let now = 100 * KEEP_IMAGE_MS;
+        let mut m: HashMap<String, i32> = HashMap::new();
+        m.insert("photo:/a.jpg@100x100".into(), 1);
+        m.insert("photo:/b.jpg@100x100".into(), 2);
+        m.insert("thumb:/gone.png@104".into(), 3);
+        let mut used: HashMap<String, i64> = HashMap::new();
+        used.insert("photo:/a.jpg@100x100".into(), now - KEEP_IMAGE_MS);
+        used.insert("photo:/b.jpg@100x100".into(), now - 1);
+        prune_images(&mut m, &mut used, now);
+        assert_eq!(m.len(), 1);
+        assert_eq!(m.get("photo:/b.jpg@100x100"), Some(&2));
+        assert_eq!(used.len(), 1);
     }
 
     #[test]

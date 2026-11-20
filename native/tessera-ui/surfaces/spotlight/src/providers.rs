@@ -58,10 +58,13 @@ impl Answerer {
         }
         self.id += 1;
         let line = serde_json::json!({"id": self.id, "q": q}).to_string() + "\n";
-        if let Some((_, stdin)) = &mut self.child {
-            if stdin.write_all(line.as_bytes()).and_then(|_| stdin.flush()).is_err() {
-                self.child = None;
-            }
+        let failed = match &mut self.child {
+            Some((_, stdin)) => stdin.write_all(line.as_bytes()).and_then(|_| stdin.flush()).is_err(),
+            None => false,
+        };
+        if failed {
+            // (killed and waited for: dropped, it stayed as a zombie)
+            self.stop();
         }
     }
 

@@ -5,7 +5,40 @@
 
 use super::model::{self, Note};
 use serde::Deserialize;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+
+/// The island's alerts' row ids: negative, one per alert (by its hid) for as
+/// long as it's listed. By place in the list, a new alert at the front gave
+/// every other alert's id to its neighbour, so a click could close or act
+/// on the wrong one, and the rows' hovers and swipes moved across
+#[derive(Debug, Default)]
+pub struct AlertIds {
+    ids: HashMap<i64, i32>,
+    next: i32,
+}
+
+impl AlertIds {
+    /// The row id of the alert with this hid (made the first time)
+    pub fn id(&mut self, hid: i64) -> i32 {
+        if let Some(&i) = self.ids.get(&hid) {
+            return i;
+        }
+        self.next += 1;
+        let i = -self.next;
+        self.ids.insert(hid, i);
+        i
+    }
+
+    /// The hid a row id was given to
+    pub fn hid(&self, id: i32) -> Option<i64> {
+        self.ids.iter().find(|&(_, &v)| v == id).map(|(&h, _)| h)
+    }
+
+    /// Only the alerts still listed keep theirs
+    pub fn keep(&mut self, hids: &[i64]) {
+        self.ids.retain(|h, _| hids.contains(h));
+    }
+}
 
 /// One of the island's alerts in the Tessera group (Island.history), as the
 /// shell sends it: everything a card shows, already worded
@@ -310,6 +343,25 @@ pub fn ring(p: f64, material: bool) -> (String, String) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn alert_ids_follow_the_alert_not_its_place() {
+        let mut ids = AlertIds::default();
+        let a = ids.id(100);
+        let b = ids.id(200);
+        assert!(a < 0 && b < 0 && a != b);
+        // a new alert at the front: the others keep theirs
+        let c = ids.id(300);
+        assert_eq!(ids.id(100), a);
+        assert_eq!(ids.id(200), b);
+        assert_eq!(ids.hid(b), Some(200));
+        assert_eq!(ids.hid(c), Some(300));
+        ids.keep(&[200]);
+        assert_eq!(ids.hid(a), None);
+        assert_eq!(ids.hid(b), Some(200));
+        // a forgotten id isn't given out again
+        assert!(ids.id(100) != a);
+    }
 
     #[test]
     fn the_editor_reads_times() {

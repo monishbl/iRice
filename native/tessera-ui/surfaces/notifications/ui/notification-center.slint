@@ -748,7 +748,8 @@ export component Center inherits Window {
                                     running: false;
                                     triggered => {
                                         self.running = false;
-                                        if r.count > 1 { clear-group(r.gkey); } else if r.b.alert { alert-close(r.b.id); } else { row-close(r.b.id); }
+                                        // (a folded stack goes whole; one card of an open group, just it)
+                                        if r.count > 1 && !r.open { clear-group(r.gkey); } else if r.b.alert { alert-close(r.b.id); } else { row-close(r.b.id); }
                                     }
                                 }
                                 // Swipe sideways to dismiss: past a third of the way it
@@ -783,9 +784,11 @@ export component Center inherits Window {
                                             group-count: r.count;
                                             group-open: r.open;
                                             tap-expands: r.count > 1;
+                                            // (as Glass: X on a folded stack clears the group, as a swipe does)
+                                            close-label: r.count > 1 && !r.open ? "Clear " + r.count + " notifications from " + r.group : "";
                                             group-toggled => { toggle-group(r.gkey); }
                                             activated => { root.row-activated(r.b.id); }
-                                            close => { if r.b.alert { root.alert-close(r.b.id); } else { root.row-close(r.b.id); } }
+                                            close => { if r.count > 1 && !r.open { root.clear-group(r.gkey); } else if r.b.alert { root.alert-close(r.b.id); } else { root.row-close(r.b.id); } }
                                             action(k) => { root.action(r.b.id, k); }
                                             reply-open => { root.reply-open(r.b.id); }
                                             reply-cancel => { root.reply-cancel(r.b.id); }

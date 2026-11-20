@@ -248,6 +248,9 @@ pub struct Menubar {
     lines_rows: HashMap<String, Rows<SharedString>>,
     /// the recording microphone's level meter: its source and parec
     meter: Option<(String, std::process::Child)>,
+    /// when parec was last started (one that ended is started again, not
+    /// more often than meter_may_restart allows)
+    meter_at: Option<std::time::Instant>,
     act_rows_model: Rows<ui::ActRow>,
     alert_rows: Rows<ui::AlertRow>,
     alert_kids: HashMap<u64, (Rows<ui::Ring>, Rows<SharedString>, Rows<SharedString>)>,
@@ -1859,7 +1862,11 @@ impl Menubar {
     /// mono, the peak of each 80 ms (PwNodePeakMonitor's); stopped (its
     /// process, by its own handle) when the card goes
     fn follow_meter(&mut self, st: &State, source: Option<String>) {
-        if self.meter.as_ref().map(|m| &m.0) == source.as_ref() {
+        let same = self.meter.as_ref().map(|m| &m.0) == source.as_ref();
+        // (parec ended: the source unplugged, PipeWire restarted. Reaped
+        // here, and started again: the meter froze, the child a zombie)
+        let ended = self.meter.as_mut().is_some_and(|(_, c)| c.try_wait().ok().flatten().is_some());
+        if same && !(ended && meter_may_restart(self.meter_at, std::time::Instant::now())) {
             return;
         }
         if let Some((_, mut child)) = self.meter.take() {
@@ -1891,8 +1898,11 @@ impl Menubar {
                         break;
                     }
                 }
+                // (it ended: the meter falls to nothing, not frozen where it was)
+                let _ = tx.send(crate::Msg::Part(NAME, Box::new(M::MicLevel(0.0))));
             });
         }
+        self.meter_at = Some(std::time::Instant::now());
         self.meter = Some((src, child));
     }
 
@@ -3044,5 +3054,24 @@ mod art_tests {
         // (fading out towards the bottom, clear at it)
         assert!(at(w / 2, h * 6 / 10).a < 255 && at(w / 2, h * 6 / 10).a > 0);
         assert_eq!(at(w / 2, h - 1).a, 0);
+    }
+}
+
+/// A microphone meter whose parec ended may start it again: not more than
+/// every 2 s (a source that's gone ends each new one at once)
+fn meter_may_restart(last: Option<std::time::Instant>, now: std::time::Instant) -> bool {
+    last.is_none_or(|t| now.duration_since(t) >= std::time::Duration::from_secs(2))
+}
+
+#[cfg(test)]
+mod meter_tests {
+    use super::meter_may_restart;
+
+    #[test]
+    fn an_ended_mic_meter_restarts_but_not_in_a_loop() {
+        let now = std::time::Instant::now();
+        assert!(meter_may_restart(None, now));
+        assert!(!meter_may_restart(Some(now), now + std::time::Duration::from_millis(500)));
+        assert!(meter_may_restart(Some(now), now + std::time::Duration::from_secs(2)));
     }
 }

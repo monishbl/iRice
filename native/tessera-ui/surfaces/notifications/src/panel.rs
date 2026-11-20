@@ -104,6 +104,8 @@ pub struct Panel {
     groups: Vec<Group>,
     rows: Vec<Entry>,
     alerts: Vec<Alert>,
+    /// the alerts' row ids, by hid (center::AlertIds)
+    alert_ids: center::AlertIds,
     replies: HashMap<u32, Shown>,
     tab: i32,
     focus_mode: i32,
@@ -131,6 +133,7 @@ impl Default for Panel {
             groups: Vec::new(),
             rows: Vec::new(),
             alerts: Vec::new(),
+            alert_ids: Default::default(),
             replies: HashMap::new(),
             tab: 0,
             focus_mode: 0,
@@ -447,11 +450,12 @@ impl Notifications {
         if self.nc.groups[e.group].island {
             let i = self.nc.alerts.iter().position(|a| a.hid == e.item).unwrap_or(0);
             let a = self.nc.alerts.get(i).cloned().unwrap_or_default();
+            let alert_id = self.nc.alert_ids.id(a.hid);
             let h24 = st.shell.cfg["appearance"]["clock24"].as_bool().unwrap_or(false);
-            let pic = if a.picture.is_empty() { None } else { self.image(a.picture.trim_start_matches("file://")) };
+            let pic = if a.picture.is_empty() { None } else { self.image(st, a.picture.trim_start_matches("file://"), true) };
             let kind = if a.kind.is_empty() { "Tessera".to_string() } else { a.kind.clone() };
             return ui::Banner {
-                id: -(i as i32) - 1,
+                id: alert_id,
                 app_upper: kind.to_uppercase().into(),
                 app: kind.into(),
                 time: model::time_label(a.at, now_ms(), |t| clock_at(t, h24)).into(),
@@ -484,6 +488,12 @@ impl Notifications {
         }
         let material = st.shell.look.material;
         self.nc.groups = center::groups(&self.store.list, &self.nc.alerts);
+        // (groups cleared, or dismissed down to one card, aren't left open:
+        // new notifications in them came in already fanned out)
+        let stackable: Vec<String> = self.nc.groups.iter().filter(|g| g.items.len() > 1).map(|g| g.key()).collect();
+        self.nc.stacks.keep(&stackable);
+        let hids: Vec<i64> = self.nc.alerts.iter().map(|a| a.hid).collect();
+        self.nc.alert_ids.keep(&hids);
         self.nc.rows = center::entries(&self.nc.groups, &self.nc.stacks.open, self.nc.stacks.folding.as_deref());
         let entries = self.nc.rows.clone();
         let mut rows = Vec::new();
@@ -660,7 +670,7 @@ impl Notifications {
                 eprintln!("nc act {what} at {}", crate::util::now_ms());
             }
         }
-        let alert = |i: i32| if i < 0 { self.nc.alerts.get((-i - 1) as usize).map(|a| a.hid) } else { None };
+        let alert = |i: i32| if i < 0 { self.nc.alert_ids.hid(i).filter(|h| self.nc.alerts.iter().any(|a| a.hid == *h)) } else { None };
         match c {
             C::Dismissed => self.nc_close(st, true),
             C::Closed => self.nc_closed(st),
@@ -752,6 +762,7 @@ impl Notifications {
             }
             C::Link(u) => super::open_link(&u),
             C::ClearAll => {
+                self.nc.stacks.reset();
                 self.clear_all(st);
                 nc("island.clear", json!({}));
             }

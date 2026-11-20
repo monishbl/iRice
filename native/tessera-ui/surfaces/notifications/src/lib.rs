@@ -102,6 +102,44 @@ enum M {
     DismissAfterReply(u32),
     Link(String),
     Pill(String),
+    /// an icon or a sender's picture, decoded on a thread (by its key)
+    Image(String, Option<Decoded>),
+}
+
+/// A decoded icon (with its transparency) or picture (cut square)
+enum Decoded {
+    Rgba(slint::SharedPixelBuffer<slint::Rgba8Pixel>),
+    Rgb(slint::SharedPixelBuffer<slint::Rgb8Pixel>),
+}
+
+/// How many decoded icons and pictures are kept (the oldest go first)
+const IMAGES_KEPT: usize = 64;
+
+/// The cache's key for a file as an icon or as a picture
+fn image_key(path: &str, picture: bool) -> String {
+    format!("{}{path}", if picture { "pic:" } else { "icon:" })
+}
+
+/// A card's icon or picture from its file, small (shown at 40 px; off the
+/// UI thread: a full-size photo as a message's picture held the banner up)
+fn decode_image(path: &str, picture: bool) -> Option<Decoded> {
+    let p = std::path::Path::new(path);
+    let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
+    let svg = ext == "svg" || ext == "svgz";
+    if picture && !svg {
+        // (cut to the circle's square, as image-fit: cover did)
+        return tessera_core::picture::decode(path, 96, 96).map(Decoded::Rgb);
+    }
+    let plain = tessera_core::appicon::Style { mode: 0, tiled: false, dark: false, contrast: 60, tint: [0; 3], tile: None, tile_from: "auto".into(), accent: [0; 3] };
+    tessera_core::appicon::render(p, 96, &plain, None).map(Decoded::Rgba)
+}
+
+/// Room for one more in the cache: the oldest dropped while it's full
+fn make_room<V>(images: &mut HashMap<String, V>, order: &mut std::collections::VecDeque<String>, keep: usize) {
+    while images.len() >= keep {
+        let Some(old) = order.pop_front() else { break };
+        images.remove(&old);
+    }
 }
 
 /// A banner on screen
@@ -148,7 +186,14 @@ pub struct Notifications {
     moved: HashMap<u32, [f32; 5]>,
     drafts: HashMap<u32, String>,
     icons: HashMap<String, Option<String>>,
-    images: HashMap<String, slint::Image>,
+    /// decoded icons and pictures (None: the file wouldn't decode), by
+    /// image_key; the order they came in, and those on their way
+    images: HashMap<String, Option<slint::Image>>,
+    image_order: std::collections::VecDeque<String>,
+    image_wait: std::collections::HashSet<String>,
+    /// Notification Center's rows are behind the list (rebuilt on the next
+    /// refresh while it's open; a banner's layout alone doesn't)
+    nc_dirty: bool,
     win: Option<Win>,
     focused: String,
     expire: slint::Timer,
@@ -429,6 +474,7 @@ impl Notifications {
 
     /// The list changed: tell the shell (soon) and keep it (a little later)
     fn changed(&mut self, st: &State) {
+        self.nc_dirty = true;
         if self.shell && !self.publish.running() {
             self.arm(st, &self.publish, 40, || M::Publish);
         }
@@ -619,16 +665,22 @@ impl Notifications {
         self.timers(st);
     }
 
-    fn image(&mut self, path: &str) -> Option<slint::Image> {
-        if let Some(i) = self.images.get(path) {
-            return Some(i.clone());
+    /// A card's icon (`picture`: a sender's picture), once decoded on a
+    /// thread; none until then (the card is made again when it's there)
+    fn image(&mut self, st: &State, path: &str, picture: bool) -> Option<slint::Image> {
+        let key = image_key(path, picture);
+        if let Some(i) = self.images.get(&key) {
+            return i.clone();
         }
-        let img = slint::Image::load_from_path(std::path::Path::new(path)).ok()?;
-        if self.images.len() > 64 {
-            self.images.clear();
+        if self.image_wait.insert(key.clone()) {
+            let to = st.shell.sender(NAME);
+            let p = path.to_string();
+            std::thread::spawn(move || {
+                let px = decode_image(&p, picture);
+                to(Box::new(M::Image(key, px)));
+            });
         }
-        self.images.insert(path.to_string(), img.clone());
-        Some(img)
+        None
     }
 
     fn row(&mut self, st: &State, s: &Shown, place: Place, index: usize) -> ui::Banner {
@@ -668,7 +720,7 @@ impl Notifications {
         };
         let src = icon_source(&n, &mut lookup);
         let (icon, picture) = match src {
-            Some((f, pic)) => (self.image(&f), pic),
+            Some((f, pic)) => (self.image(st, &f, pic), pic),
             None => (None, false),
         };
         let app = if n.app_name.is_empty() { "Notification".to_string() } else { n.app_name.clone() };
@@ -809,7 +861,9 @@ impl Notifications {
             w.glass_sent.clear();
         }
         self.timers(st);
-        if self.nc_open {
+        // (only when what it lists changed: a banner measured or entering
+        // rebuilt every row and the 42 days of the calendar)
+        if self.nc_open && std::mem::take(&mut self.nc_dirty) {
             self.nc_refresh(st);
         }
         if drawn > 0 && !self.clock.running() {
@@ -1173,10 +1227,23 @@ impl Part for Notifications {
                 }
                 // (Notification Center's composer too: Reply shows again)
                 self.nc_sent_done(id);
+                self.nc_dirty = true;
                 self.refresh(st);
             }
             M::DismissAfterReply(id) => self.dismiss(st, id, notify::DISMISSED),
             M::Link(url) => open_link(&url),
+            M::Image(key, px) => {
+                self.image_wait.remove(&key);
+                let img = px.map(|d| match d {
+                    Decoded::Rgba(b) => slint::Image::from_rgba8(b),
+                    Decoded::Rgb(b) => slint::Image::from_rgb8(b),
+                });
+                make_room(&mut self.images, &mut self.image_order, IMAGES_KEPT);
+                self.images.insert(key.clone(), img);
+                self.image_order.push_back(key);
+                self.nc_dirty = true;
+                self.refresh(st);
+            }
             M::Pill(p) => {
                 match p.as_str() {
                     "expand" => self.expanded = self.banners.len() > 1,
@@ -1268,6 +1335,27 @@ impl Part for Notifications {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn image_cache_drops_the_oldest_and_keeps_misses() {
+        let mut m: HashMap<String, Option<i32>> = HashMap::new();
+        let mut order = std::collections::VecDeque::new();
+        for i in 0..3 {
+            make_room(&mut m, &mut order, 3);
+            let k = image_key(&format!("/p{i}.png"), false);
+            m.insert(k.clone(), if i == 1 { None } else { Some(i) });
+            order.push_back(k);
+        }
+        assert_eq!(m.len(), 3);
+        // (a file that wouldn't decode is remembered too: not tried on every card)
+        assert_eq!(m.get(&image_key("/p1.png", false)), Some(&None));
+        make_room(&mut m, &mut order, 3);
+        assert_eq!(m.len(), 2);
+        assert!(!m.contains_key(&image_key("/p0.png", false)));
+        assert_ne!(image_key("/a", true), image_key("/a", false));
+        assert!(decode_image("/nonexistent/x.png", false).is_none());
+        assert!(decode_image("/nonexistent/x.jpg", true).is_none());
+    }
 
     #[test]
     fn one_banner() {
