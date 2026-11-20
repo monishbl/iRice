@@ -7,7 +7,7 @@
 //! for 10 min | Everyone, Quick Share's and this together.
 //! The helper only runs while receiving, or while you're sharing something.
 
-use crate::proc::{json_line, spawn, Kept};
+use crate::proc::{json_line, spawn, Backoff, Kept};
 use crate::{act, base, Sharing, GREEN, GREY, ORANGE};
 use serde_json::{json, Value};
 use tessera_core::host::Host;
@@ -56,15 +56,30 @@ pub struct LocalSend {
     pub sending_name: String,
     pub error: String,
     pub helper: Kept,
-    /// it ended by itself while needed: not started again until it isn't needed
+    /// it couldn't start (or the sandbox): not started again until it isn't needed
     pub dead: bool,
+    /// the rest after it ended by itself while needed (started again after it,
+    /// as Quick Share's helper is)
+    pub backoff: Backoff,
     pub last_receiving: bool,
     pub last_alias: String,
 }
 
+/// What the sheet and Settings say when the helper ended on its own: its
+/// last error line, if it left one
+pub fn crash_text(err: &str) -> String {
+    let last = err.lines().rev().map(str::trim).find(|l| !l.is_empty()).unwrap_or("");
+    let last: String = last.chars().take(160).collect();
+    if last.is_empty() {
+        "LocalSend stopped. Trying again…".into()
+    } else {
+        format!("LocalSend stopped ({last}). Trying again…")
+    }
+}
+
 impl Sharing {
     pub fn local_available(&self) -> bool {
-        tessera_core::util::on_path("python3")
+        crate::have("python3")
     }
     pub fn local_receiving(&self) -> bool {
         // (one visibility for both: Quick Share's, visibility.rs)
@@ -101,6 +116,8 @@ impl Sharing {
         let needed = self.local_needed();
         if !needed {
             self.local.dead = false;
+            self.local.backoff.reset();
+            self.sched.cancel("ls_retry");
         }
         // (not in a test sandbox: it would announce itself on the real network)
         if needed && tessera_core::env::sandboxed() {
@@ -108,7 +125,7 @@ impl Sharing {
                 eprintln!("tessera-ui: localsend: not started in the sandbox (it would announce on the real network)");
                 self.local.dead = true;
             }
-        } else if needed && !self.local.helper.running && !self.local.dead {
+        } else if needed && !self.local.helper.running && !self.local.dead && !self.sched.has("ls_retry") {
             let script = self.script("localsend.py");
             let gen = self.next_gen();
             let cmd = vec!["python3".to_string(), "-I".into(), script];
@@ -116,6 +133,9 @@ impl Sharing {
                 Some(k) => {
                     eprintln!("tessera-ui: localsend: helper started (receiving {}, looking {}, sends queued {})", self.local_receiving(), self.local.sharing, self.local.queued.len());
                     self.local.helper = k;
+                    self.local.backoff.began();
+                    // (a crash's message goes; the helper says again what still holds)
+                    self.local.error.clear();
                     self.local_mode();
                     self.local_scan();
                 }
@@ -138,7 +158,7 @@ impl Sharing {
         }
     }
 
-    pub fn local_exit(&mut self, gen: u64) {
+    pub fn local_exit(&mut self, gen: u64, err: &str) {
         if gen != self.local.helper.gen {
             return;
         }
@@ -149,7 +169,10 @@ impl Sharing {
         self.local.active.clear();
         self.helper_ended("localsend");
         if needed {
-            self.local.dead = true;
+            // said, and started again after a rest (3 s doubling, at most a minute)
+            self.local.error = crash_text(err);
+            let ms = self.local.backoff.ended(3000, 60_000);
+            self.sched.set("ls_retry", ms);
         }
     }
 
@@ -245,7 +268,9 @@ impl Sharing {
                 } else if ev["dir"] == "in" {
                     self.drop_request(&id);
                     let first = paths.first().cloned().unwrap_or_default();
-                    let sub = if paths.len() == 1 { base(&first) } else { format!("{} files in Downloads", paths.len()) };
+                    // (the folder they landed in, by its own name: Downloads in your language)
+                    let wher = crate::folder_of(&first);
+                    let sub = if paths.len() == 1 { base(&first) } else { format!("{} files in {wher}", paths.len()) };
                     let action = if paths.len() == 1 { act("panels.quickLook", json!([first])) } else { act("share.openDownloads", json!([])) };
                     self.island(h, json!({"kind": "custom", "icon": "check-circle", "title": format!("Received from {}", js(&ev["from"])), "subtitle": sub, "color": GREEN, "action": "Show", "onAction": action}), 6000);
                     self.play(h, "received");
@@ -307,5 +332,30 @@ pub fn js(v: &Value) -> String {
         Value::String(s) => s.clone(),
         Value::Null => String::new(),
         o => o.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_crash_is_said_with_its_last_line() {
+        assert_eq!(crash_text(""), "LocalSend stopped. Trying again…");
+        assert_eq!(crash_text("Traceback…\n  File x\nOSError: boom\n\n"), "LocalSend stopped (OSError: boom). Trying again…");
+    }
+
+    #[test]
+    fn a_helper_that_ends_while_needed_is_started_again_after_a_rest() {
+        let mut s = Sharing::default();
+        s.local.sharing = true; // (the sheet is looking: it's needed)
+        if !s.local_needed() {
+            return; // (no python3 here: never needed)
+        }
+        let gen = s.local.helper.gen;
+        s.local_exit(gen, "OSError: boom");
+        assert!(s.local.error.contains("OSError: boom"));
+        assert!(s.sched.has("ls_retry"));
+        assert!(!s.local.dead);
     }
 }

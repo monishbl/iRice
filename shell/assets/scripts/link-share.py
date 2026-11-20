@@ -30,6 +30,7 @@ Secure by default:
     someone else on the same network could see what passes: the card says so
 The QR code is a private file (0600, the runtime folder), removed at the end.
 """
+import errno
 import hmac
 import html
 import ipaddress
@@ -58,6 +59,14 @@ VIRTUAL = re.compile(r"^(lo|docker|br-|virbr|veth|tailscale|wg|tun|tap|zt|vnet|v
 
 LAN = tuple(ipaddress.ip_network(n) for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"))
 _out = threading.Lock()
+
+
+def ports_to_try(test_host=False):
+    """The ports to listen on, in order. Only the two the firewall opens
+    ("links"): a random port would be one the phone can never reach with a
+    firewall on, so when both are taken it's said, not hidden (the tests,
+    on the loopback address, take any)."""
+    return (0,) if test_host else PORTS
 
 
 def emit(obj):
@@ -427,16 +436,20 @@ def main(argv):
     token = secrets.token_urlsafe(16)
     share = Share(mode, token, computer=name or socket.gethostname(), **share_args)
     # Ports the firewall lets in meanwhile (SharingPorts.qml, "links"):
-    # Cast's file port when it isn't casting, the faster-link one, else any
+    # Cast's file port when it isn't casting, else the faster-link one
     server = None
-    for port in (0,) if os.environ.get("TESSERA_LINKSHARE_HOST") else PORTS + (0,):
+    for port in ports_to_try(bool(os.environ.get("TESSERA_LINKSHARE_HOST"))):
         try:
             server = ThreadingHTTPServer((host, port), handler_for(share))
             break
         except OSError as e:
             why = e
     if server is None:
-        emit({"ev": "error", "message": f"Couldn't start sharing ({why.strerror or why})."})
+        if getattr(why, "errno", None) == errno.EADDRINUSE:
+            emit({"ev": "error", "message": "The sharing ports are in use (a cast or another app holds them). "
+                                            "Stop casting or close that app, then try again."})
+        else:
+            emit({"ev": "error", "message": f"Couldn't start sharing ({why.strerror or why})."})
         return 1
     server.daemon_threads = True
     url = f"http://{host}:{server.server_address[1]}/{token}/"

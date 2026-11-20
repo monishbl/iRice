@@ -57,7 +57,7 @@ pub struct QuickShare {
 
 impl Sharing {
     pub fn quick_available(&self) -> bool {
-        tessera_core::util::on_path("python3")
+        crate::have("python3")
     }
     pub fn quick_visible(&self) -> bool {
         self.visible_now()

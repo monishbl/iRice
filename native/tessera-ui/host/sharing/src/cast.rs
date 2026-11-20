@@ -49,7 +49,7 @@ impl Sharing {
     /// Not while avahi-daemon is off: it would only end, again and again
     /// (the QML also asks Needs; the restart back-off covers it here)
     fn cast_browsing(&self) -> bool {
-        tessera_core::util::on_path("avahi-browse")
+        crate::have("avahi-browse")
     }
 
     pub fn cast_sync(&mut self, h: &mut Host) {

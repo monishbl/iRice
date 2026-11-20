@@ -27,6 +27,29 @@ pub struct Share {
     /// nameKey -> (sent | declined | failed, at ms)
     pub outcomes: HashMap<String, (String, i64)>,
     pub last_real: bool,
+    /// who sent the hidden requests a helper's end dropped: said once in the
+    /// island on the next turn (helper_ended has no Host)
+    pub hidden_failed: Vec<String>,
+    /// the last shared text's file (a second share in the same second gets its own)
+    pub last_text_file: String,
+}
+
+/// Where shared text is written: the runtime folder (the user's own), else
+/// the user's cache folder, never /tmp
+pub fn text_dir_from(runtime: Option<String>, cache: &str) -> String {
+    match runtime.filter(|s| !s.is_empty()) {
+        Some(r) => format!("{r}/tessera-share"),
+        None => format!("{cache}/tessera-share"),
+    }
+}
+
+/// "dir/stem.txt", or "dir/stem (2).txt"… when that is taken
+pub fn text_file_name(dir: &str, stem: &str, taken: impl Fn(&str) -> bool) -> String {
+    let first = format!("{dir}/{stem}.txt");
+    if !taken(&first) {
+        return first;
+    }
+    (2..1000).map(|n| format!("{dir}/{stem} ({n}).txt")).find(|f| !taken(f)).unwrap_or_else(|| format!("{dir}/{stem} {}.txt", tessera_core::util::now_ms()))
 }
 
 impl Sharing {
@@ -130,8 +153,11 @@ impl Sharing {
     // Written to a private folder as a .txt file; the sheet shows the text
     // itself. (Quick Share can also send text and links natively; that needs
     // a sendText in the helper, which doesn't exist yet: TODO as in the QML.)
+    // (never a shared /tmp folder: another user could make it first and read
+    // or swap what's written there; without a runtime folder, the user's own
+    // cache folder, and the folder must be the user's own, 0700)
     fn text_dir() -> String {
-        format!("{}/tessera-share", std::env::var("XDG_RUNTIME_DIR").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| "/tmp".into()))
+        text_dir_from(std::env::var("XDG_RUNTIME_DIR").ok(), &tessera_core::util::xdg("XDG_CACHE_HOME", ".cache").to_string_lossy())
     }
     pub fn share_text(&mut self, h: &mut Host, text: &str, screen: Option<String>) {
         let t = text.trim();
@@ -141,8 +167,13 @@ impl Sharing {
         }
         let is_link = (t.starts_with("http://") || t.starts_with("https://")) && !t.contains(char::is_whitespace);
         let dir = Self::text_dir();
-        let file = format!("{dir}/{} {}.txt", if is_link { "Link" } else { "Text" }, tessera_core::util::now("%Y-%m-%d %H.%M.%S"));
-        let cmd = crate::proc::s(&["sh", "-c", "umask 077; mkdir -p \"$1\" && printf '%s\\n' \"$3\" > \"$2\"", "sh", &dir, &file, t]);
+        let stem = format!("{} {}", if is_link { "Link" } else { "Text" }, tessera_core::util::now("%Y-%m-%d %H.%M.%S"));
+        // (two shares in one second get two files: the first one's send may still be queued)
+        let last = std::mem::take(&mut self.share.last_text_file);
+        let file = text_file_name(&dir, &stem, |f| f == last || std::path::Path::new(f).exists());
+        self.share.last_text_file = file.clone();
+        // (noclobber: never written through something already there)
+        let cmd = crate::proc::s(&["sh", "-c", "umask 077; mkdir -p \"$1\" && [ -O \"$1\" ] && [ ! -L \"$1\" ] && chmod 700 \"$1\" && set -C && printf '%s\\n' \"$3\" > \"$2\"", "sh", &dir, &file, t]);
         self.run(h, Job::TextWrite { file, text: t.to_string(), screen }, &cmd, None);
     }
     pub fn text_written(&mut self, h: &mut Host, file: String, text: String, screen: Option<String>, code: i32) {
@@ -212,13 +243,35 @@ impl Sharing {
     }
     /// A protocol's helper stopped: its open requests failed with it (the card
     /// stayed on "receiving" for good)
+    /// Hidden ones are dropped instead (nothing else would ever drop them: the
+    /// helper that would have said how they ended is gone) and said once in
+    /// the island
     pub fn helper_ended(&mut self, via: &str) {
+        let open = |r: &Value| r["via"] == via && (r["state"] == "asking" || r["state"] == "receiving");
+        let hidden = |r: &Value| r["hidden"].as_bool().unwrap_or(false);
+        for r in self.share.requests.iter().filter(|r| open(r) && hidden(r)) {
+            self.share.hidden_failed.push(crate::localsend::js(&r["from"]));
+        }
+        self.share.requests.retain(|r| !(open(r) && hidden(r)));
         for r in self.share.requests.iter_mut() {
-            if r["via"] == via && (r["state"] == "asking" || r["state"] == "receiving") {
+            if open(&*r) {
                 r["state"] = json!("failed");
                 r["message"] = json!("The transfer stopped before everything arrived.");
             }
         }
+    }
+    /// The island alert for hidden requests that helper_ended dropped
+    pub fn hidden_failed_alert(&mut self, h: &mut Host) {
+        if self.share.hidden_failed.is_empty() {
+            return;
+        }
+        let from = std::mem::take(&mut self.share.hidden_failed);
+        let title = if from.len() == 1 && !from[0].is_empty() { format!("Nothing more from {}", from[0]) } else { "Sharing stopped".to_string() };
+        self.island(
+            h,
+            json!({"kind": "custom", "failure": true, "icon": "warning-circle", "title": title, "subtitle": "The transfer stopped before everything arrived.", "color": crate::ORANGE}),
+            5000,
+        );
     }
     pub fn answer(&mut self, id: &str, accept: bool) {
         let Some(r) = self.find_request(id) else { return };
@@ -458,6 +511,34 @@ mod tests {
         s.share.demo = Some(json!({"localsend": [], "quickshare": [], "items": []}));
         assert!(s.sharing_ipc("send", &["Moto edge".into()]).starts_with("refused"));
         assert!(s.sharing_ipc("accept", &[]).starts_with("refused"));
+    }
+
+    #[test]
+    fn a_helpers_end_drops_hidden_requests_and_fails_the_shown_one() {
+        let mut s = with(json!({"quickShare": "everyone"}));
+        s.add_request(json!({"id": "qs:in-1", "via": "quickshare", "session": "in-1", "from": "Kai", "state": "receiving", "hidden": true}));
+        s.add_request(json!({"id": "qs:in-2", "via": "quickshare", "session": "in-2", "from": "Ada"}));
+        s.add_request(json!({"id": "ls:x", "via": "localsend", "session": "x", "from": "Desk", "hidden": true}));
+        s.helper_ended("quickshare");
+        assert!(s.find_request("qs:in-1").is_none());
+        assert_eq!(s.find_request("qs:in-2").unwrap()["state"], "failed");
+        // (the other protocol's are left alone)
+        assert_eq!(s.find_request("ls:x").unwrap()["state"], "asking");
+        assert_eq!(s.share.hidden_failed, vec!["Kai".to_string()]);
+    }
+
+    #[test]
+    fn shared_text_never_goes_to_a_shared_tmp_folder() {
+        assert_eq!(text_dir_from(Some("/run/user/1000".into()), "/home/a/.cache"), "/run/user/1000/tessera-share");
+        assert_eq!(text_dir_from(None, "/home/a/.cache"), "/home/a/.cache/tessera-share");
+        assert_eq!(text_dir_from(Some(String::new()), "/home/a/.cache"), "/home/a/.cache/tessera-share");
+    }
+
+    #[test]
+    fn two_texts_in_one_second_get_two_files() {
+        assert_eq!(text_file_name("/d", "Text 1", |_| false), "/d/Text 1.txt");
+        let taken = ["/d/Text 1.txt".to_string(), "/d/Text 1 (2).txt".to_string()];
+        assert_eq!(text_file_name("/d", "Text 1", |f| taken.iter().any(|t| t == f)), "/d/Text 1 (3).txt");
     }
 
     #[test]

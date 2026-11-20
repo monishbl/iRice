@@ -117,31 +117,14 @@ impl Sharing {
 
     // ── Downloads ───────────────────────────────────────────────────────
     pub fn transfers_start(&mut self, h: &mut Host) {
-        let dir = Self::downloads_dir();
-        if self.tr.watching || !std::path::Path::new(&dir).is_dir() {
+        if self.tr.watching {
             return;
         }
         self.tr.watching = true;
         let to = h.sender("Sharing");
-        std::thread::spawn(move || unsafe {
-            let fd = libc::inotify_init1(0);
-            if fd < 0 {
-                return;
-            }
-            let Ok(c) = std::ffi::CString::new(dir) else { return };
-            let wd = libc::inotify_add_watch(fd, c.as_ptr(), libc::IN_CREATE | libc::IN_DELETE | libc::IN_MOVED_FROM | libc::IN_MOVED_TO);
-            if wd < 0 {
-                return;
-            }
-            let mut buf = [0u8; 4096];
-            loop {
-                let n = libc::read(fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len());
-                if n <= 0 {
-                    break;
-                }
-                to(Box::new(crate::M::DlEvent));
-            }
-        });
+        // (core's watcher: a Downloads folder made after login is picked up
+        // when it appears, and it owns and closes its inotify fd)
+        tessera_core::util::watch_dir(std::path::PathBuf::from(Self::downloads_dir()), std::time::Duration::from_secs(30), move || to(Box::new(crate::M::DlEvent)));
         self.sched.set("dl_look", 100);
     }
     pub fn transfers_sync(&mut self, h: &mut Host) {

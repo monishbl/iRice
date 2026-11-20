@@ -56,8 +56,7 @@ Scope {
             color: "transparent"
             exclusionMode: ExclusionMode.Ignore
             WlrLayershell.layer: WlrLayer.Overlay
-            // (keys once it's clicked: it doesn't take your typing on its own)
-            WlrLayershell.keyboardFocus: WlrKeyboardFocus.OnDemand
+            WlrLayershell.keyboardFocus: WlrKeyboardFocus.None  // never takes the keyboard: a stranger's request is answered by click only
 
             property real shown: 0
             Component.onCompleted: shown = 1

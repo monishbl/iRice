@@ -659,9 +659,12 @@ pub fn copy(r: &Row, plain: bool) {
             let _ = dec.wait();
         });
     } else if let Some(img) = &r.image {
-        if let Ok(b) = std::fs::read(img) {
-            crate::util::pipe_to(&["wl-copy"], b);
-        }
+        // (the file is wl-copy's input as it is: never read whole on the UI thread)
+        let img = img.clone();
+        std::thread::spawn(move || {
+            let Ok(f) = std::fs::File::open(&img) else { return };
+            let _ = Command::new("wl-copy").stdin(Stdio::from(f)).stdout(Stdio::null()).stderr(Stdio::null()).status();
+        });
     } else {
         crate::util::pipe_to(&["wl-copy", "--type", "text/plain"], r.text.clone().into_bytes());
     }

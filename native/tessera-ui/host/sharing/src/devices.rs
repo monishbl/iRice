@@ -35,9 +35,15 @@ pub struct Device {
     pub prefer: String,
 }
 
-/// merge(LocalSend.peers, QuickShare.devices); each is (name, type, id)
+/// merge(LocalSend.peers, QuickShare.devices); each is (name, type, id).
+/// Merged by name only across the two protocols: an entry holds at most one
+/// device of each, so two LocalSend peers (or two phones) with the same name
+/// stay two entries, the later one keyed by its id and named "Pixel 8 (2)"
+/// (a send never goes to whichever came last)
 pub fn merge(localsend: &[(String, String, String)], quickshare: &[(String, String, String)]) -> Vec<Device> {
     let mut out: Vec<Device> = Vec::new();
+    // each entry's name key (its `key` unless it is a same-name second)
+    let mut bases: Vec<String> = Vec::new();
     let mut add = |name: &str, kind: &str, via: &str, id: &str| {
         let k = {
             let k = name_key(name);
@@ -47,13 +53,22 @@ pub fn merge(localsend: &[(String, String, String)], quickshare: &[(String, Stri
                 k
             }
         };
-        let at = match out.iter().position(|d| d.key == k) {
+        // (this protocol's place in the entry is free, or this very device's)
+        let fits = |d: &Device| {
+            let slot = if via == "quickshare" { &d.quickshare } else { &d.localsend };
+            slot.as_deref().is_none_or(|x| x == id)
+        };
+        let at = match (0..out.len()).find(|&i| bases[i] == k && fits(&out[i])) {
             Some(i) => i,
             None => {
                 let n = name.trim();
+                let n = if n.is_empty() { "Unknown device".to_string() } else { n.to_string() };
+                let same = bases.iter().filter(|b| **b == k).count();
+                let (key, n) = if same == 0 { (k.clone(), n) } else { (format!("{via}:{id}"), format!("{n} ({})", same + 1)) };
+                bases.push(k);
                 out.push(Device {
-                    key: k,
-                    name: if n.is_empty() { "Unknown device".into() } else { n.into() },
+                    key,
+                    name: n,
                     kind: type_of(kind),
                     via: vec![],
                     quickshare: None,
@@ -177,6 +192,27 @@ mod tests {
         assert_eq!(more[4].kind, "mobile");
         // (JSON for the pages keeps both ways to reach each)
         assert_eq!(to_json(&m)[2]["ids"]["quickshare"], "Q1");
+    }
+
+    #[test]
+    fn two_devices_of_one_protocol_with_the_same_name_stay_two() {
+        let m = merge(&[t("Pixel 8", "mobile", "a"), t("Pixel 8", "mobile", "b")], &[]);
+        assert_eq!(m.len(), 2);
+        assert_eq!(m[0].localsend.as_deref(), Some("a"));
+        assert_eq!(m[0].key, "pixel8");
+        assert_eq!(m[1].localsend.as_deref(), Some("b"));
+        assert_eq!(m[1].key, "localsend:b");
+        assert_eq!(m[1].name, "Pixel 8 (2)");
+        // the same peer announced twice is still one
+        assert_eq!(merge(&[t("Desk", "desktop", "a"), t("Desk", "desktop", "a")], &[]).len(), 1);
+        // across protocols they still merge, at most one of each per entry
+        let m = merge(&[t("Pixel 8", "mobile", "a"), t("Pixel 8", "mobile", "b")], &[t("Pixel 8", "phone", "Q1"), t("Pixel 8", "phone", "Q2"), t("Pixel 8", "phone", "Q3")]);
+        assert_eq!(m.len(), 3);
+        assert_eq!(m[0].quickshare.as_deref(), Some("Q1"));
+        assert_eq!(m[1].quickshare.as_deref(), Some("Q2"));
+        assert_eq!(m[2].key, "quickshare:Q3");
+        assert_eq!(m[2].name, "Pixel 8 (3)");
+        assert_eq!(m[2].localsend, None);
     }
 
     #[test]

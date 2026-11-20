@@ -152,22 +152,51 @@ fn pins() -> Vec<Value> {
     util::state_get("clipPins").as_array().cloned().unwrap_or_default()
 }
 
+/// (by the history entry it came from too: the panel's quick re-toggle sends
+/// the history preview's path, not the pinned copy's)
 fn pin_matches(x: &Value, p: &Value) -> bool {
-    x == p || (x["text"].is_string() && x["text"] == p["text"]) || (x["image"].as_str().is_some_and(|s| !s.is_empty()) && x["image"] == p["image"])
+    x == p
+        || (x["text"].is_string() && x["text"] == p["text"])
+        || (x["image"].as_str().is_some_and(|s| !s.is_empty()) && x["image"] == p["image"])
+        || (x["source"].as_str().is_some_and(|s| !s.is_empty()) && x["source"] == p["source"])
 }
 
-/// Clipboard.unpin
+/// A pinned picture's own copy (clip-pins/), the one kind unpin deletes:
+/// never a history preview or any other path a caller sends
+fn in_pin_dir(path: &str, dir: &std::path::Path) -> bool {
+    let p = std::path::Path::new(path);
+    p.parent() == Some(dir) && !p.components().any(|c| matches!(c, std::path::Component::ParentDir))
+}
+
+/// Clipboard.unpin: the stored pins that match go, and only their own
+/// copies (in clip-pins/) are deleted
 pub fn unpin(p: &Value) {
-    let keep: Vec<Value> = pins().into_iter().filter(|x| !pin_matches(x, p)).collect();
+    let (gone, keep): (Vec<Value>, Vec<Value>) = pins().into_iter().partition(|x| pin_matches(x, p));
     util::state_set("clipPins", Value::Array(keep));
-    if let Some(i) = p["image"].as_str() {
-        util::detached(&["rm", "-f", i]);
+    let dir = pin_dir();
+    for x in &gone {
+        if let Some(i) = x["image"].as_str().filter(|i| in_pin_dir(i, &dir)) {
+            util::detached(&["rm", "-f", "--", i]);
+        }
     }
     cb::refresh();
 }
 
 /// Message from the decode thread: a text to pin in full
 struct PinText(String);
+
+/// Message from the copy thread: a picture's pinned copy is ready (its path,
+/// the history id it came from)
+struct PinImage(String, String);
+
+/// `umask 077; mkdir -p dir && cp src dest`, without a shell: the folder
+/// 0700, the copy 0600
+fn copy_private(dir: &std::path::Path, src: &str, dest: &str) -> std::io::Result<()> {
+    use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+    std::fs::DirBuilder::new().recursive(true).mode(0o700).create(dir)?;
+    std::fs::copy(src, dest)?;
+    std::fs::set_permissions(dest, std::fs::Permissions::from_mode(0o600))
+}
 
 pub struct ClipboardSvc {
     ask: Option<mpsc::Sender<()>>,
@@ -193,13 +222,14 @@ impl ClipboardSvc {
         if !image.is_empty() {
             let ext = image.rsplit('.').next().unwrap_or("png").to_string();
             let dest = format!("{}/{}.{}", pin_dir().display(), tessera_core::util::now_ms(), ext);
-            let dir = pin_dir().to_string_lossy().into_owned();
-            // (the copy first: the pin points at it)
-            let _ = Command::new("sh").args(["-c", "umask 077; mkdir -p \"$1\" && cp \"$2\" \"$3\"", "sh", &dir, &image, &dest]).status();
-            let mut next = vec![json!({"image": dest, "source": id})];
-            next.extend(pins());
-            util::state_set("clipPins", Value::Array(next));
-            cb::refresh();
+            let dir = pin_dir();
+            // (the copy first, off the loop: the pin points at it once it's there)
+            let send = h.sender("Clipboard");
+            std::thread::spawn(move || {
+                if copy_private(&dir, &image, &dest).is_ok() {
+                    send(Box::new(PinImage(dest, id)));
+                }
+            });
         } else {
             // cliphist list truncates long text; pin the full entry
             let send = h.sender("Clipboard");
@@ -252,6 +282,17 @@ impl Service for ClipboardSvc {
         }
     }
     fn message(&mut self, _h: &mut Host, msg: Box<dyn std::any::Any + Send>) {
+        let msg = match msg.downcast::<PinImage>() {
+            Ok(p) => {
+                let PinImage(dest, source) = *p;
+                let mut next = vec![json!({"image": dest, "source": source})];
+                next.extend(pins());
+                util::state_set("clipPins", Value::Array(next));
+                cb::refresh();
+                return;
+            }
+            Err(m) => m,
+        };
         if let Ok(p) = msg.downcast::<PinText>() {
             let mut next = vec![json!({"text": p.0})];
             next.extend(pins());
@@ -275,5 +316,36 @@ mod tests {
         assert!(stamp_rows(&mut s, &mut existed, &ids, 2000));
         assert_eq!((s["3"], s.contains_key("1")), (2000, false));
         assert!(!stamp_rows(&mut s, &mut existed, &ids, 3000));
+    }
+
+    #[test]
+    fn unpin_finds_the_pin_by_its_source_and_deletes_only_its_own_copies() {
+        let stored = json!({"image": "/s/clip-pins/1.png", "source": "42"});
+        // (the panel's optimistic pin: the history preview's path, same source)
+        let quick = json!({"image": "/c/tessera-clip/42.png", "source": "42"});
+        assert!(pin_matches(&stored, &quick));
+        assert!(!pin_matches(&json!({"text": "hi"}), &quick));
+        let dir = std::path::Path::new("/s/clip-pins");
+        assert!(in_pin_dir("/s/clip-pins/1.png", dir));
+        assert!(!in_pin_dir("/c/tessera-clip/42.png", dir));
+        assert!(!in_pin_dir("/s/clip-pins/../state.json", dir));
+        assert!(!in_pin_dir("/s/clip-pins", dir));
+    }
+
+    #[test]
+    fn a_pinned_picture_is_copied_privately() {
+        use std::os::unix::fs::PermissionsExt;
+        let base = std::env::temp_dir().join(format!("tessera-pin-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let src = base.join("a.png");
+        std::fs::write(&src, b"png").unwrap();
+        let dir = base.join("clip-pins");
+        let dest = dir.join("1.png");
+        copy_private(&dir, &src.to_string_lossy(), &dest.to_string_lossy()).unwrap();
+        assert_eq!(std::fs::read(&dest).unwrap(), b"png");
+        assert_eq!(std::fs::metadata(&dir).unwrap().permissions().mode() & 0o777, 0o700);
+        assert_eq!(std::fs::metadata(&dest).unwrap().permissions().mode() & 0o777, 0o600);
+        let _ = std::fs::remove_dir_all(&base);
     }
 }

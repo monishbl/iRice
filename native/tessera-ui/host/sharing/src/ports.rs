@@ -29,17 +29,35 @@ pub struct Ports {
     pub job_sets: String,
     /// the need as last seen (a change schedules an ask)
     pub last_need: (String, String),
+    /// closes that failed in a row (each retried after a longer rest)
+    pub close_tries: u32,
 }
 
 impl Default for Ports {
     fn default() -> Self {
-        Self { asked: "?".into(), error: String::new(), failed_with: 0, running: false, job_sets: String::new(), last_need: (String::new(), String::new()) }
+        Self { asked: "?".into(), error: String::new(), failed_with: 0, running: false, job_sets: String::new(), last_need: (String::new(), String::new()), close_tries: 0 }
     }
 }
 
 impl Ports {
     pub fn held(&self) -> bool {
         matches!(self.failed_with, 64 | 126 | 127)
+    }
+}
+
+/// When the shell quits: is anything open (or being opened) that must be
+/// closed on the way out? ("?" never asked: nothing of this run's is open)
+pub fn quit_closes(asked: &str, running: bool, job_sets: &str) -> bool {
+    (!asked.is_empty() && asked != "?") || (running && !job_sets.is_empty())
+}
+
+/// The rest before trying a failed close again: a close that failed is never
+/// left alone (the ports would stay open), 10 s, 30 s, then every 2 min
+pub fn close_retry_ms(tries: u32) -> u64 {
+    match tries {
+        0 | 1 => 10_000,
+        2 => 30_000,
+        _ => 120_000,
     }
 }
 
@@ -76,6 +94,16 @@ impl Sharing {
             // (Wi-Fi Direct, hotspot) and LocalSend's answers come back in
             add(&["localsend", "mdns", "quickshare"], "sending");
         }
+        // a receive that outlives being visible (10 minutes ran out, or No
+        // one mid-transfer): its Wi-Fi upgrade, the hotspot's DHCP and
+        // LocalSend's per-file requests still come in until it ends
+        let (quick_in, local_in) = self.receiving_now();
+        if quick_in {
+            add(&["mdns", "quickshare"], "receiving");
+        }
+        if local_in {
+            add(&["localsend"], "receiving");
+        }
         if self.link.stage == "loading" || self.link.stage == "ready" {
             add(&["links"], "sharing with a QR code");
         }
@@ -90,6 +118,12 @@ impl Sharing {
     pub fn sending_now(&self) -> bool {
         let out = |v: &Vec<serde_json::Value>| v.iter().any(|it| it["kind"] == "send");
         self.quick.send_pending || self.local.send_pending || out(&self.quick.active.values()) || out(&self.local.active.values())
+    }
+
+    /// A receive going, by protocol: (Quick Share, LocalSend)
+    pub fn receiving_now(&self) -> (bool, bool) {
+        let inc = |v: &Vec<serde_json::Value>| v.iter().any(|it| it["kind"] == "receive");
+        (inc(&self.quick.active.values()), inc(&self.local.active.values()))
     }
 
     /// onNeedChanged (called each turn: acts only when the need changed)
@@ -145,8 +179,16 @@ impl Sharing {
         if code == 0 {
             self.ports.asked = self.ports.job_sets.clone();
             self.ports.error.clear();
+            self.ports.close_tries = 0;
+            self.sched.cancel("ports_close_retry");
         } else {
             self.ports.failed_with = code;
+            if self.ports.job_sets.is_empty() && !self.ports.held() {
+                // a close that failed (busy firewall, a timeout): tried again
+                // on its own, not left open until the need next changes
+                self.ports.close_tries += 1;
+                self.sched.set("ports_close_retry", close_retry_ms(self.ports.close_tries));
+            }
             let said = r["error"].as_str().filter(|e| !e.is_empty()).map(str::to_string);
             self.ports.error = format!(
                 "{}{}",
@@ -155,6 +197,15 @@ impl Sharing {
             );
         }
         self.ports_schedule(); // (what's needed may have changed meanwhile)
+    }
+
+    /// A failed close's rest is over: ask again (unless held, or something
+    /// else got through meanwhile)
+    pub fn ports_close_retry(&mut self) {
+        if self.ports.failed_with != 0 && !self.ports.held() {
+            self.ports.failed_with = 0;
+            self.ports_schedule();
+        }
     }
 
     /// Software Update finished: an update installs the newer helper
@@ -179,5 +230,62 @@ mod tests {
         assert!(p.held());
         p.failed_with = 1;
         assert!(!p.held());
+    }
+
+    #[test]
+    fn a_failed_close_is_tried_again_with_longer_rests() {
+        assert_eq!(close_retry_ms(1), 10_000);
+        assert_eq!(close_retry_ms(2), 30_000);
+        assert_eq!(close_retry_ms(3), 120_000);
+        assert_eq!(close_retry_ms(50), 120_000);
+        let mut s = Sharing::default();
+        s.ports.asked = "localsend".into();
+        s.ports.job_sets = String::new();
+        s.ports.running = true;
+        s.ports_done("{\"error\": \"busy\"}", 1);
+        assert_eq!(s.ports.failed_with, 1);
+        assert_eq!(s.ports.close_tries, 1);
+        assert!(s.sched.has("ports_close_retry"));
+        // (a cancelled close waits for Try again instead)
+        let mut s = Sharing::default();
+        s.ports.running = true;
+        s.ports_done("", 126);
+        assert!(!s.sched.has("ports_close_retry"));
+        // a failed open waits for the need to change, as before
+        let mut s = Sharing::default();
+        s.ports.job_sets = "links".into();
+        s.ports.running = true;
+        s.ports_done("", 1);
+        assert!(!s.sched.has("ports_close_retry"));
+        // the retry's rest over: it clears the failure (the next ask closes)
+        let mut s = Sharing::default();
+        s.ports.failed_with = 1;
+        s.ports_close_retry();
+        assert_eq!(s.ports.failed_with, 0);
+        s.ports.failed_with = 127;
+        s.ports_close_retry();
+        assert_eq!(s.ports.failed_with, 127);
+    }
+
+    #[test]
+    fn quitting_closes_what_is_open() {
+        assert!(!quit_closes("?", false, ""));
+        assert!(!quit_closes("", false, ""));
+        assert!(quit_closes("links", false, ""));
+        assert!(quit_closes("", true, "localsend,mdns"));
+        assert!(!quit_closes("", true, ""));
+    }
+
+    #[test]
+    fn a_receive_keeps_its_ports_open_after_visibility_ends() {
+        let mut s = Sharing::default();
+        s.cfg = serde_json::json!({"sharing": {"quickShare": "off"}});
+        assert_eq!(s.ports_need().0, "");
+        s.quick.active.set("in-1", serde_json::json!({"id": "in-1", "kind": "receive"}));
+        assert_eq!(s.ports_need().0, "mdns,quickshare");
+        s.quick.active.clear();
+        s.local.active.set("in-2", serde_json::json!({"id": "in-2", "kind": "receive"}));
+        assert_eq!(s.ports_need().0, "localsend");
+        assert_eq!(s.receiving_now(), (false, true));
     }
 }

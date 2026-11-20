@@ -148,7 +148,7 @@ pub fn enrich(a: &Value) -> Value {
 
 impl Sharing {
     pub fn store_available(&self) -> bool {
-        tessera_core::util::on_path("pacman") || tessera_core::util::on_path("flatpak")
+        crate::have("pacman") || crate::have("flatpak")
     }
     fn store_want(&mut self) {
         self.store.wanted = true;
@@ -440,7 +440,7 @@ impl Sharing {
 
     /// What the App Store surface is told as its state
     pub fn store_feed(&self) -> Value {
-        json!({"open": self.store.panel_open, "catalogue": self.store.status["catalogue"] == false && tessera_core::util::on_path("pacman"), "updates": self.upd.running(),
+        json!({"open": self.store.panel_open, "catalogue": self.store.status["catalogue"] == false && crate::have("pacman"), "updates": self.upd.running(),
             "jobs": self.store.jobs, "app": self.store.panel_app.as_ref().map(enrich).unwrap_or(Value::Null)})
     }
 

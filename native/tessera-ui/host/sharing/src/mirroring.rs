@@ -35,7 +35,7 @@ impl Default for Mirroring {
 
 impl Sharing {
     pub fn mirror_available(&self) -> bool {
-        tessera_core::util::on_path("gnome-network-displays-daemon")
+        crate::have("gnome-network-displays-daemon")
     }
     pub fn mirror_look(&mut self, on: bool) {
         self.mirror.lookers = (self.mirror.lookers + if on { 1 } else { -1 }).max(0);

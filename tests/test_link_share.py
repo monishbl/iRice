@@ -42,6 +42,11 @@ class Pure(unittest.TestCase):
         long = ls.clean_name("x" * 400 + ".jpeg")
         self.assertTrue(long.endswith(".jpeg") and len(long.encode()) <= 200)
 
+    def test_only_the_firewalls_ports_never_a_random_one(self):
+        self.assertEqual(ls.ports_to_try(False), ls.PORTS)
+        self.assertNotIn(0, ls.ports_to_try(False))
+        self.assertEqual(ls.ports_to_try(True), (0,))
+
     def test_nothing_is_overwritten(self):
         with tempfile.TemporaryDirectory() as d:
             Path(d, "photo.jpg").write_bytes(b"old")

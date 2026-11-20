@@ -31,6 +31,9 @@ pub struct LinkShare {
     pub arrived: Vec<String>,
 }
 
+/// The card's words when sharing ended on its own while its code showed
+pub const STOPPED: &str = "Sharing stopped. Make a new code to share again.";
+
 impl LinkShare {
     pub fn busy(&self) -> bool {
         self.stage == "ready" && self.total > 0.0 && self.done < self.total
@@ -132,8 +135,10 @@ impl Sharing {
                 self.link.stage = "error".into();
             }
             "closed" => {
-                if ev["why"] == "expired" && self.link.stage == "ready" {
-                    self.link.error = "The code expired after 10 minutes. Make a new one to share again.".into();
+                // (any end while the code shows: a dead code isn't left up,
+                // and the 'links' ports close with it)
+                if self.link.stage == "ready" {
+                    self.link.error = (if ev["why"] == "expired" { "The code expired after 10 minutes. Make a new one to share again." } else { STOPPED }).to_string();
                     self.link.stage = "error".into();
                 }
             }
@@ -149,6 +154,10 @@ impl Sharing {
             if self.link.error.is_empty() {
                 self.link.error = "Sharing couldn't start. Check that Python 3 is installed, then try again.".into();
             }
+            self.link.stage = "error".into();
+        } else if self.link.stage == "ready" {
+            // it ended on its own (a crash, killed) with the code still up
+            self.link.error = STOPPED.into();
             self.link.stage = "error".into();
         }
     }
@@ -178,5 +187,33 @@ impl Sharing {
         l.total = if stage == "busy" { 100.0 } else { 0.0 };
         l.done = if stage == "busy" { 40.0 } else { 0.0 };
         l.stage = if stage == "busy" { "ready".into() } else { stage.into() };
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_code_that_stops_on_its_own_is_not_left_up() {
+        let mut s = Sharing::default();
+        s.link.mode = "send".into();
+        s.link.stage = "ready".into();
+        s.link_exit(s.link.job.gen);
+        assert_eq!(s.link.stage, "error");
+        assert_eq!(s.link.error, STOPPED);
+        // (and the firewall's 'links' set is no longer needed)
+        assert!(!s.ports_need().0.contains("links"));
+
+        let mut s = Sharing::default();
+        s.link.mode = "receive".into();
+        s.link.stage = "ready".into();
+        let gen = s.link.job.gen;
+        s.link_line(gen, r#"{"ev": "closed", "why": "closed"}"#);
+        assert_eq!(s.link.stage, "error");
+        assert_eq!(s.link.error, STOPPED);
+        s.link.stage = "ready".into();
+        s.link_line(gen, r#"{"ev": "closed", "why": "expired"}"#);
+        assert!(s.link.error.contains("expired"));
     }
 }

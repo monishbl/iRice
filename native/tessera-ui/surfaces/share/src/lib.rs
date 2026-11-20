@@ -488,6 +488,21 @@ pub fn sheet_handles(text: &str, focus: i32, devices: usize) -> bool {
     k(Key::Escape) || k(Key::Tab) || k(Key::Backtab) || k(Key::Return) || text == " " || (on_device && (k(Key::LeftArrow) || k(Key::RightArrow)))
 }
 
+/// The incoming-request card never takes the keyboard: a stranger's request
+/// popping up while the user types elsewhere must not catch a Return (accept)
+/// or an Escape (decline). It is answered by pointer clicks only.
+pub const CARD_KEYBOARD: KeyboardInteractivity = KeyboardInteractivity::None;
+
+/// What Escape does on the card if a key ever reaches it: a request that is
+/// still asking is never answered by a key, only by a click on its buttons.
+pub fn card_escape(state: &str) -> Option<Act> {
+    if state == "asking" {
+        None
+    } else {
+        Some(Act::Drop)
+    }
+}
+
 /// The next place for the keyboard among `total` (wrapping; from none,
 /// forward is the first and back the last)
 pub fn next_focus(cur: i32, forward: bool, total: usize) -> i32 {
@@ -860,7 +875,7 @@ impl Share {
 
     // ── The cards ──────────────────────────────────────────────────────
 
-    fn card_surface(st: &mut State, output: &str, ns: &str, w: u32) -> Option<Rc<Surface>> {
+    fn card_surface(st: &mut State, output: &str, ns: &str, w: u32, keyboard: KeyboardInteractivity) -> Option<Rc<Surface>> {
         let wl_output = st.output_named(output)?;
         Some(st.prepare_surface(Spec {
             layer: Layer::Overlay,
@@ -869,7 +884,7 @@ impl Share {
             anchor: Anchor::empty(),
             size: (w, 300),
             exclusive: -1,
-            keyboard: KeyboardInteractivity::OnDemand,
+            keyboard,
             margin_left: 0,
         }))
     }
@@ -900,7 +915,7 @@ impl Share {
         }
         if self.card.is_none() {
             let width = if st.shell.look.material { 312 } else { 300 } + 2 * MARGIN as u32;
-            let Some(surface) = Self::card_surface(st, &output, NS_CARD, width) else { return };
+            let Some(surface) = Self::card_surface(st, &output, NS_CARD, width, CARD_KEYBOARD) else { return };
             let ui = ui::ShareCard::new().expect("ShareCard");
             globals!(st, ui);
             let to = st.shell.sender(NAME);
@@ -973,14 +988,13 @@ impl Share {
         let Some(r) = self.feed.request.clone() else { return };
         let n = card_buttons(&r.state, r.paths.len()).len();
         if is(Key::Return) {
-            if r.state == "asking" {
-                crate::shell::ask("share", act_call(Act::Answer(true), &r.id));
-            } else if self.card_focus >= 0 {
+            if self.card_focus >= 0 {
                 self.card_button(self.card_focus);
             }
         } else if is(Key::Escape) {
-            let act = if r.state == "asking" { Act::Answer(false) } else { Act::Drop };
-            crate::shell::ask("share", act_call(act, &r.id));
+            if let Some(act) = card_escape(&r.state) {
+                crate::shell::ask("share", act_call(act, &r.id));
+            }
         } else if is(Key::Tab) || is(Key::Backtab) {
             self.card_focus = next_focus(self.card_focus, is(Key::Tab), n);
             if let Some(w) = &self.card {
@@ -1018,7 +1032,7 @@ impl Share {
             st.drop_surface(&w.surface);
         }
         if self.link.is_none() {
-            let Some(surface) = Self::card_surface(st, &output, NS_LINK, 320 + 2 * MARGIN as u32) else { return };
+            let Some(surface) = Self::card_surface(st, &output, NS_LINK, 320 + 2 * MARGIN as u32, KeyboardInteractivity::OnDemand) else { return };
             let ui = ui::LinkCard::new().expect("LinkCard");
             globals!(st, ui);
             let to = st.shell.sender(NAME);
@@ -1391,6 +1405,15 @@ mod tests {
             folder: "Downloads".into(),
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn request_card_never_takes_the_keyboard() {
+        assert_eq!(CARD_KEYBOARD, KeyboardInteractivity::None);
+        // Escape never answers a request that is still asking (only a click does)
+        assert_eq!(card_escape("asking"), None);
+        assert_eq!(card_escape("done"), Some(Act::Drop));
+        assert_eq!(card_escape("failed"), Some(Act::Drop));
     }
 
     #[test]

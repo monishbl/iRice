@@ -64,6 +64,61 @@ pub fn base(p: &str) -> String {
     p.trim_end_matches('/').rsplit('/').next().unwrap_or("").to_string()
 }
 
+thread_local! {
+    static TOOLS: std::cell::RefCell<std::collections::HashMap<String, (bool, std::time::Instant)>> = std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+/// How long a tool's look on PATH holds (each settle asks several, once per
+/// helper line during a transfer: not a stat of every PATH folder each time)
+pub const TOOL_TTL: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// util::on_path, remembered for TOOL_TTL (installed meanwhile: seen within it)
+pub fn have(bin: &str) -> bool {
+    have_with(bin, std::time::Instant::now(), tessera_core::util::on_path)
+}
+
+fn have_with(bin: &str, now: std::time::Instant, look: impl Fn(&str) -> bool) -> bool {
+    TOOLS.with(|t| {
+        let mut t = t.borrow_mut();
+        if let Some((yes, at)) = t.get(bin) {
+            if now.saturating_duration_since(*at) < TOOL_TTL {
+                return *yes;
+            }
+        }
+        let yes = look(bin);
+        t.insert(bin.to_string(), (yes, now));
+        yes
+    })
+}
+
+/// The name of the folder a received file landed in (Downloads in the
+/// user's language, or Settings' folder), else Downloads'
+pub fn folder_of(path: &str) -> String {
+    match path.rsplit_once('/') {
+        Some((d, _)) if !d.is_empty() => base(d),
+        _ => base(&tessera_core::util::user_dir("DOWNLOAD", "Downloads").to_string_lossy()),
+    }
+}
+
+/// text/uri-list for these paths (RFC 2483: one URI a line, CRLF; RFC 8089
+/// file URIs, everything outside the unreserved set and '/' percent-encoded,
+/// so a space, '#', '%' or a newline in a name stays part of its one URI)
+pub fn uri_list(paths: &[String]) -> String {
+    let mut out = String::new();
+    for p in paths {
+        out.push_str("file://");
+        for b in p.as_bytes() {
+            if b.is_ascii_alphanumeric() || b"-._~/".contains(b) {
+                out.push(*b as char);
+            } else {
+                out.push_str(&format!("%{b:02X}"));
+            }
+        }
+        out.push_str("\r\n");
+    }
+    out
+}
+
 /// One-shot commands whose output is wanted (StdioCollector)
 #[derive(Debug)]
 pub enum Job {
@@ -316,7 +371,9 @@ impl Sharing {
         let Some(r) = self.request() else { return Value::Null };
         let it = self.progress_of(r);
         let total = r["total"].as_f64().unwrap_or(0.0);
-        let folder = self.cfg_str("sharing.folder", "");
+        // (Quick Share saves to Settings' folder, sharing.quickShareFolder;
+        // LocalSend to Downloads)
+        let folder = if r["via"] == "quickshare" { self.quick_folder() } else { String::new() };
         json!({"id": localsend::js(&r["id"]), "from": localsend::js(&r["from"]), "type": localsend::js(&r["type"]),
             "what": if r["what"].is_null() { "something".to_string() } else { localsend::js(&r["what"]) },
             "files": r["files"].as_array().map(|a| a.iter().map(|f| json!({"name": localsend::js(&f["name"]), "mime": localsend::js(&f["mime"])})).collect::<Vec<_>>()).unwrap_or_default(),
@@ -353,10 +410,7 @@ impl Sharing {
                 if !self.sheet_note.is_empty() {
                     tessera_core::util::pipe_to(&["wl-copy"], self.sheet_note.clone().into_bytes());
                 } else if !self.sheet_paths.is_empty() {
-                    let mut cmd = vec!["sh", "-c", "printf '%s\\n' \"$@\" | sed 's|^|file://|' | wl-copy -t text/uri-list", "sh"];
-                    let paths = self.sheet_paths.clone();
-                    cmd.extend(paths.iter().map(String::as_str));
-                    proc::detach(&cmd);
+                    tessera_core::util::pipe_to(&["wl-copy", "-t", "text/uri-list"], uri_list(&self.sheet_paths).into_bytes());
                 }
             }
             "reveal" => {
@@ -542,6 +596,7 @@ impl Sharing {
         self.store_sync(h);
         self.transfers_sync(h);
         self.share_sync();
+        self.hidden_failed_alert(h);
         self.publish(h);
         self.sched.arm(h.sender("Sharing"));
     }
@@ -599,6 +654,7 @@ impl Sharing {
     fn due(&mut self, h: &mut Host, name: &'static str) {
         match name {
             "ports" => self.ports_ask(h),
+            "ports_close_retry" => self.ports_close_retry(),
             "qs10" => {
                 if self.level() == "10min" && !visibility::visible("10min", self.quick.everyone_until, tessera_core::util::now_ms()) {
                     self.set_level("off");
@@ -641,13 +697,14 @@ impl Sharing {
     }
 
     /// The sheet is open while the shell's state says so (Panels.open === "share"):
-    /// looked at for a moment after the paths are set, and while it stays open
+    /// looked at for a moment after the paths are set; once open, its close
+    /// is followed by `settled` (each host turn), with a slow look as a backstop
     fn sheet_poll(&mut self, h: &mut Host) {
-        let open = h.state("open").as_str() == Some("share") && self.drawing(h, "share");
+        let open = self.sheet_open(h);
         if open {
             self.sheet_seen = true;
             self.looking_here_set(true);
-            self.sched.set("sheet_poll", 300);
+            self.sched.set("sheet_poll", 5000);
         } else if self.sheet_seen {
             self.sheet_seen = false;
             self.looking_here_set(false);
@@ -656,6 +713,10 @@ impl Sharing {
         } else {
             self.looking_here_set(false);
         }
+    }
+
+    fn sheet_open(&self, h: &Host) -> bool {
+        h.state("open").as_str() == Some("share") && self.drawing(h, "share")
     }
 
     fn handle_call(&mut self, h: &mut Host, call: &str, args: &Value) {
@@ -857,7 +918,7 @@ impl Service for Sharing {
                 _ => {}
             },
             M::Exit(who, gen, code, err) => match who {
-                "localsend" => self.local_exit(gen),
+                "localsend" => self.local_exit(gen, &err),
                 "quickshare" => self.quick_exit(gen),
                 "linkshare" => self.link_exit(gen),
                 "cast" => self.cast_exit(h, gen),
@@ -909,8 +970,25 @@ impl Service for Sharing {
         self.settle(h);
     }
 
+    /// The open sheet's close, as it happens (Panels' turn sets "open"):
+    /// no polling while it stays open
+    fn settled(&mut self, h: &mut Host) {
+        if self.sheet_seen && !self.sheet_open(h) {
+            self.sheet_seen = false;
+            self.sched.cancel("sheet_poll");
+            self.looking_here_set(false);
+            self.settle(h);
+        }
+    }
+
     fn quit(&mut self, h: &mut Host) {
         self.shelf_write();
+        // the firewall's way in closes with the shell (ufw keeps its rules
+        // through a restart): detached, so it outlives the shell
+        if !tessera_core::env::sandboxed() && ports::quit_closes(&self.ports.asked, self.ports.running, &self.ports.job_sets) {
+            let script = self.script("sharing-check.py");
+            proc::detach(&["python3", "-I", script.as_str(), "ports", "none", "the shell quit"]);
+        }
         self.local.helper.stop();
         self.quick.helper.stop();
         self.link.job.stop();
@@ -923,5 +1001,41 @@ impl Service for Sharing {
         self.tr.watch.kept.stop();
         self.shelf.follower.stop();
         let _ = h;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn copied_paths_are_proper_file_uris() {
+        let l = uri_list(&["/home/me/My Photos/a#1.jpg".to_string(), "/tmp/100%\nx.txt".to_string(), "/tmp/é.png".to_string()]);
+        assert_eq!(l, "file:///home/me/My%20Photos/a%231.jpg\r\nfile:///tmp/100%25%0Ax.txt\r\nfile:///tmp/%C3%A9.png\r\n");
+        assert_eq!(uri_list(&["/a-b_c.~d".to_string()]), "file:///a-b_c.~d\r\n");
+    }
+
+    #[test]
+    fn a_tool_is_looked_for_once_per_while() {
+        let looks = std::cell::Cell::new(0);
+        let look = |_: &str| {
+            looks.set(looks.get() + 1);
+            true
+        };
+        let t0 = std::time::Instant::now();
+        assert!(have_with("tessera-test-tool", t0, look));
+        assert!(have_with("tessera-test-tool", t0 + std::time::Duration::from_secs(1), look));
+        assert_eq!(looks.get(), 1);
+        // (after the while, looked for again)
+        assert!(have_with("tessera-test-tool", t0 + TOOL_TTL + std::time::Duration::from_secs(1), look));
+        assert_eq!(looks.get(), 2);
+    }
+
+    #[test]
+    fn a_received_file_names_its_own_folder() {
+        assert_eq!(folder_of("/home/me/Phone/a.jpg"), "Phone");
+        assert_eq!(folder_of("/home/me/Téléchargements/a.jpg"), "Téléchargements");
+        // (no path: Downloads, whatever it's called here)
+        assert_eq!(folder_of(""), base(&tessera_core::util::user_dir("DOWNLOAD", "Downloads").to_string_lossy()));
     }
 }

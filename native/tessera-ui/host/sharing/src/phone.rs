@@ -63,10 +63,10 @@ fn last_line(s: &str, fallback: &str) -> String {
 
 impl Sharing {
     pub fn has_adb(&self) -> bool {
-        tessera_core::util::on_path("adb")
+        crate::have("adb")
     }
     pub fn has_scrcpy(&self) -> bool {
-        tessera_core::util::on_path("scrcpy")
+        crate::have("scrcpy")
     }
     pub fn phone_dev(&self) -> Option<Value> {
         self.phone.devices.iter().find(|d| d["state"] == "device").cloned()
