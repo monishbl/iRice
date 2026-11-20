@@ -1,6 +1,8 @@
 -- Programs started with the session.
 hl.on("hyprland.start", function()
-    hl.exec_cmd("command -v hyprpm >/dev/null && hyprpm reload -n") -- optional plugins (hyprbars)
+    -- optional plugins (hyprbars), only when some are added: with none,
+    -- hyprpm's reload said "run hyprpm update" on screen at every login
+    hl.exec_cmd([[command -v hyprpm >/dev/null && awk '/^\[/ && $0 != "[state]" { f = 1 } END { exit !f }' "/var/cache/hyprpm/$(id -un)/state.toml" 2>/dev/null && hyprpm reload -n]])
     local cfg = (os.getenv("XDG_CONFIG_HOME") ~= nil and os.getenv("XDG_CONFIG_HOME") ~= "") and os.getenv("XDG_CONFIG_HOME") or (os.getenv("HOME") .. "/.config")
     -- (launch-shell.sh picks the icon theme; with rust.standalone set in Settings'
     -- config it starts `tessera-ui --standalone` instead of Quickshell, and falls

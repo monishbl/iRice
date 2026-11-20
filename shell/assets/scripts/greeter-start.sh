@@ -48,7 +48,9 @@ if [[ $STYLE == look && $LOOK == material && -f "$SHARE/material/shell.qml" && -
 fi
 
 genv() { # style
-    local env=(TESSERA_GREETER_STYLE="$1" TESSERA_GREETER_WALLPAPER="$SHARE/wallpaper.jpg" TESSERA_GREETER_CLOCK24="${CLOCK24:-0}")
+    # (TESSERA_ROOT: this copy, for the icon and text fonts; without it the
+    # Rust login screen looked in the folder it was built in, 20 Nov)
+    local env=(TESSERA_ROOT="$SHARE" TESSERA_GREETER_STYLE="$1" TESSERA_GREETER_WALLPAPER="$SHARE/wallpaper.jpg" TESSERA_GREETER_CLOCK24="${CLOCK24:-0}")
     [[ -n $T ]] && env+=(XDG_CONFIG_HOME="$T/config" XDG_CACHE_HOME="$T/cache")
     printf '%s\0' "${env[@]}"
 }
