@@ -54,8 +54,35 @@ pub struct A11y {
     tracker: Pin<Box<PropertyTracker>>,
     active: bool,
     focused: bool,
-    components: HashMap<usize, u32>,
+    components: ComponentIds,
     by_id: HashMap<u32, ItemTreeWeak>,
+}
+
+/// A number for each component (an item tree: the window, a popup, a list
+/// row) by its address, the upper half of its items' node ids. Numbers are
+/// never handed out twice; those of components gone are dropped at each
+/// build, so an address the allocator gives a new component gets a fresh
+/// number and the maps don't grow for the whole session (audit #51)
+#[derive(Default)]
+struct ComponentIds {
+    by_ptr: HashMap<usize, u32>,
+    last: u32,
+}
+
+impl ComponentIds {
+    fn id(&mut self, ptr: usize) -> u32 {
+        if let Some(c) = self.by_ptr.get(&ptr) {
+            return *c;
+        }
+        self.last = self.last.wrapping_add(1).max(1);
+        self.by_ptr.insert(ptr, self.last);
+        self.last
+    }
+
+    /// Only the components `live` says are still there
+    fn keep(&mut self, live: impl Fn(u32) -> bool) {
+        self.by_ptr.retain(|_, c| live(*c));
+    }
 }
 
 impl A11y {
@@ -72,7 +99,7 @@ impl A11y {
             tracker: Box::pin(PropertyTracker::default()),
             active: false,
             focused: false,
-            components: HashMap::new(),
+            components: ComponentIds::default(),
             by_id: HashMap::new(),
         })
     }
@@ -119,9 +146,10 @@ impl A11y {
     fn encode(&mut self, item: &ItemRc) -> NodeId {
         let tree = item.item_tree();
         let ptr = ItemTreeRef::as_ptr(ItemTreeRc::borrow(tree)).as_ptr() as usize;
-        let n = self.components.len() as u32 + 1;
-        let c = *self.components.entry(ptr).or_insert(n);
-        self.by_id.entry(c).or_insert_with(|| ItemTreeRc::downgrade(tree));
+        let c = self.components.id(ptr);
+        // (always this tree's: a dead one's left here made the node's
+        // actions do nothing)
+        self.by_id.insert(c, ItemTreeRc::downgrade(tree));
         NodeId(((c as u64) << 32) | item.index() as u64)
     }
 
@@ -131,6 +159,10 @@ impl A11y {
     }
 
     fn build(&mut self, s: &Rc<Surface>) -> Option<TreeUpdate> {
+        // (components gone since the last build: forgotten)
+        self.by_id.retain(|_, w| w.upgrade().is_some());
+        let by_id = &self.by_id;
+        self.components.keep(|c| by_id.contains_key(&c));
         let window = s.window();
         let inner = WindowInner::from_pub(window);
         let root = ItemRc::new_root(inner.try_component()?);
@@ -233,5 +265,26 @@ impl A11y {
         n.set_children(children);
         nodes.push((id, n));
         id
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn component_numbers_are_never_handed_out_twice() {
+        let mut ids = ComponentIds::default();
+        let (a, b) = (ids.id(0x1000), ids.id(0x2000));
+        assert_eq!((a, b), (1, 2));
+        assert_eq!(ids.id(0x1000), 1);
+        // (a gone; its address given to a new component: a new number, and
+        // b keeps its own)
+        ids.keep(|c| c != a);
+        assert_eq!(ids.id(0x1000), 3);
+        assert_eq!(ids.id(0x2000), 2);
+        // (the gone ones don't stay)
+        ids.keep(|c| c == 2);
+        assert_eq!(ids.by_ptr.len(), 1);
     }
 }

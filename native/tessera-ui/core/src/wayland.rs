@@ -618,18 +618,64 @@ impl slint::platform::Platform for Platform {
             return;
         }
         let text = text.to_string();
+        // (the text on wl-copy's stdin, not its command line: an argument
+        // over 128 KiB failed to start, and the copy daemon's command line
+        // showed the text to every process; audit #47)
         std::thread::spawn(move || {
-            let _ = std::process::Command::new("wl-copy").args(["--", &text]).stdin(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status();
+            use std::io::Write;
+            let child = std::process::Command::new("wl-copy").args(["--type", "text/plain;charset=utf-8"]).stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn();
+            let mut child = match child {
+                Ok(c) => c,
+                Err(e) => {
+                    eprintln!("tessera-ui: copy: can't run wl-copy ({e})");
+                    return;
+                }
+            };
+            if let Some(mut input) = child.stdin.take() {
+                if let Err(e) = input.write_all(text.as_bytes()) {
+                    eprintln!("tessera-ui: copy: wl-copy didn't take the text ({e})");
+                }
+                // (closed here: wl-copy reads to the end, then holds the selection)
+            }
+            match child.wait() {
+                Ok(s) if s.success() => {}
+                Ok(s) => eprintln!("tessera-ui: copy: wl-copy failed ({s})"),
+                Err(e) => eprintln!("tessera-ui: copy: wl-copy: {e}"),
+            }
         });
     }
     fn clipboard_text(&self, clipboard: slint::platform::Clipboard) -> Option<String> {
         if clipboard != slint::platform::Clipboard::DefaultClipboard {
             return None;
         }
-        let out = std::process::Command::new("timeout").args(["2", "wl-paste", "--no-newline", "--type", "text"]).stdin(std::process::Stdio::null()).stderr(std::process::Stdio::null()).output().ok()?;
-        out.status.success().then(|| String::from_utf8_lossy(&out.stdout).into_owned())
+        // (wl-paste on a thread, waited for a short while: an owner that
+        // doesn't answer (a busy app, a frozen terminal) froze every surface
+        // for the whole 2 s; now a paste gives up after PASTE_WAIT; audit #46)
+        let (tx, rx) = std::sync::mpsc::channel();
+        let t = std::time::Instant::now();
+        std::thread::spawn(move || {
+            let out = std::process::Command::new("timeout").args(["2", "wl-paste", "--no-newline", "--type", "text"]).stdin(std::process::Stdio::null()).stderr(std::process::Stdio::null()).output();
+            let _ = tx.send(out);
+        });
+        match rx.recv_timeout(PASTE_WAIT) {
+            Ok(Ok(out)) => {
+                let ms = t.elapsed().as_millis();
+                if ms >= 100 {
+                    eprintln!("tessera-ui: paste: the clipboard took {ms} ms");
+                }
+                out.status.success().then(|| String::from_utf8_lossy(&out.stdout).into_owned())
+            }
+            Ok(Err(_)) => None,
+            Err(_) => {
+                eprintln!("tessera-ui: paste: the clipboard's owner didn't answer in {} ms: nothing pasted", PASTE_WAIT.as_millis());
+                None
+            }
+        }
     }
 }
+
+/// How long a paste waits for the clipboard's owner (Platform::clipboard_text)
+const PASTE_WAIT: std::time::Duration = std::time::Duration::from_millis(400);
 
 // ── State: everything the Wayland handlers touch ────────────────────────────
 

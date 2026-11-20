@@ -109,9 +109,28 @@ pub fn quiet(now: Instant) -> bool {
 /// timer re-arms from when it fired, so a 1 s clock stays on the grid.
 pub fn coalesce(d: Duration) -> Duration {
     let now_ms = epoch().elapsed().as_millis() as u64;
-    let target = now_ms + d.as_millis() as u64;
     let step = if crate::saver::on() { SAVER_GRID_MS } else { GRID_MS };
-    Duration::from_millis(grid_of(target, step) - now_ms)
+    let wall = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64);
+    Duration::from_millis(coalesce_at(now_ms, d.as_millis() as u64, step, wall))
+}
+
+/// How far after the wall clock's whole second the host's shared second
+/// comes (host.rs: a clock read then shows the new second)
+pub const SECOND_AFTER_MS: u64 = 5;
+
+/// `coalesce` at `now_ms` (the epoch's clock) when the wall clock reads
+/// `wall_ms`: the grid laid on the wall clock, its points SECOND_AFTER_MS
+/// after each step of it, so the host's second (just after the wall
+/// clock's) is on it. Laid from the process's start, it moved the second
+/// and every clock shown from it up to a step late (audit #54). (The wall
+/// clock is read each time: a suspend or a clock change moves it against
+/// the epoch's.)
+fn coalesce_at(now_ms: u64, d_ms: u64, step: u64, wall_ms: u64) -> u64 {
+    // (the shift that puts a grid point on each of those wall times; the
+    // steps divide a second)
+    let phase = (wall_ms.wrapping_sub(now_ms) % 1000 + 1000 - SECOND_AFTER_MS) % 1000;
+    let target = now_ms + d_ms + phase;
+    grid_of(target, step) - phase - now_ms
 }
 
 /// The grid point at or after `target` (ms): within 2 ms after a grid point
@@ -388,6 +407,25 @@ mod tests {
         // battery saver's coarser grid
         assert_eq!(grid_of(5250 + 400, SAVER_GRID_MS), 6000);
         assert_eq!(grid_of(6000 + 1000, SAVER_GRID_MS), 7000);
+    }
+
+    #[test]
+    fn the_idle_grid_keeps_the_wall_clocks_second() {
+        // (the wall clock at x.123 s; the host's second due just after the next one)
+        let (now, wall) = (10_000, 1_700_000_000_123u64);
+        let due = 1000 - 123 + SECOND_AFTER_MS;
+        assert_eq!(coalesce_at(now, due, GRID_MS, wall), due);
+        assert_eq!(coalesce_at(now, due, SAVER_GRID_MS, wall), due);
+        // (anything else: on the grid, never early, less than a step late)
+        for d in [0, 1, 40, 300, 999, 4_321] {
+            for step in [GRID_MS, SAVER_GRID_MS] {
+                let c = coalesce_at(now, d, step, wall);
+                assert!(c >= d && c - d < step, "{d} {step}: {c}");
+                // (whole steps from the second, on the wall clock)
+                let at_wall = wall + c;
+                assert!((at_wall - SECOND_AFTER_MS) % step <= 2 || c == d, "{d} {step}: {at_wall}");
+            }
+        }
     }
 
     #[test]

@@ -194,11 +194,14 @@ pub fn image_data(h: &HashMap<String, OwnedValue>) -> Option<(u32, u32, Vec<u8>)
 
 /// (iiibiiay) pixels as RGBA, 8 bits a sample, 3 or 4 channels, rows `stride` apart
 pub fn rgba(w: i32, h: i32, stride: i32, alpha: bool, bits: i32, channels: i32, data: &[u8]) -> Option<Vec<u8>> {
-    if w <= 0 || h <= 0 || w > 4096 || h > 4096 || bits != 8 || !(channels == 3 || channels == 4) || (alpha && channels != 4) {
+    // (a stride of 0 or less from an app: nothing, never a cast to a huge
+    // number that wrapped the check and panicked on a slice, audit #10)
+    if w <= 0 || h <= 0 || w > 4096 || h > 4096 || stride <= 0 || bits != 8 || !(channels == 3 || channels == 4) || (alpha && channels != 4) {
         return None;
     }
     let (w, h, stride, ch) = (w as usize, h as usize, stride as usize, channels as usize);
-    if stride < w * ch || data.len() < stride * (h - 1) + w * ch {
+    let need = stride.checked_mul(h - 1).and_then(|n| n.checked_add(w * ch));
+    if stride < w * ch || !matches!(need, Some(n) if data.len() >= n) {
         return None;
     }
     let mut out = Vec::with_capacity(w * h * 4);
@@ -232,6 +235,9 @@ impl Server {
     #[allow(clippy::too_many_arguments)]
     fn notify(&self, app_name: &str, replaces_id: u32, app_icon: &str, summary: &str, body: &str, actions: Vec<String>, hints: HashMap<String, OwnedValue>, expire_timeout: i32) -> u32 {
         let h = hints_from(&hints);
+        // (the pixels read before the ids are locked, and the picture saved
+        // after: a big one doesn't hold up every other Notify and Close)
+        let pixels = image_data(&hints);
         let Ok(mut ids) = self.ids.lock() else { return 0 };
         let live = ids.live.clone();
         let now = now_ms();
@@ -265,19 +271,35 @@ impl Server {
         // pixels: saved as a picture file (a new name each time: a picture
         // that changes under the same name would stay cached)
         let mut picture = String::new();
-        if let Some((w, hh, px)) = image_data(&hints) {
+        let saved_n = if pixels.is_some() {
             ids.saved += 1;
+            Some(ids.saved)
+        } else {
+            None
+        };
+        drop(ids);
+        if let (Some((w, hh, px)), Some(n)) = (pixels, saved_n) {
             let dir = pictures_dir();
-            let file = dir.join(format!("{id}-{}-{}.png", std::process::id(), ids.saved));
+            let file = dir.join(format!("{id}-{}-{n}.png", std::process::id()));
             let saved = std::fs::create_dir_all(&dir).is_ok() && image::RgbaImage::from_raw(w, hh, px).is_some_and(|img| img.save(&file).is_ok());
             if saved {
-                if let Some(old) = ids.pictures.insert(id, file.clone()) {
-                    let _ = std::fs::remove_file(old);
+                // (closed while it was saved: the file goes too)
+                let kept = match self.ids.lock() {
+                    Ok(mut ids) if ids.live.contains(&id) => {
+                        if let Some(old) = ids.pictures.insert(id, file.clone()) {
+                            let _ = std::fs::remove_file(old);
+                        }
+                        true
+                    }
+                    _ => false,
+                };
+                if kept {
+                    picture = file.to_string_lossy().into_owned();
+                } else {
+                    let _ = std::fs::remove_file(&file);
                 }
-                picture = file.to_string_lossy().into_owned();
             }
         }
-        drop(ids);
         let mut n = model::note_from(id, app_name, app_icon, summary, body, &actions, &h, expire_timeout, &picture, now);
         n.merged = merged;
         let _ = self.tx.send(Msg::Data(Box::new(Event::Notify(n))));
@@ -441,5 +463,17 @@ mod tests {
         assert!(image_data(&picture(4, 4, 16, true, 4, vec![0; 10])).is_none());
         assert!(rgba(1, 1, 4, true, 3, 4, &[0; 4]).is_none());
         assert!(rgba(0, 1, 4, true, 8, 4, &[0; 4]).is_none());
+    }
+
+    #[test]
+    fn a_bad_stride_is_no_picture_never_a_panic() {
+        // (audit #10: a negative stride once cast to a huge one, wrapped the
+        // length check and panicked with the ids locked)
+        assert!(rgba(4, 2, -4, true, 8, 4, &[0; 32]).is_none());
+        assert!(image_data(&picture(4, 2, -4, true, 4, vec![0; 32])).is_none());
+        assert!(rgba(4, 2, 0, true, 8, 4, &[0; 32]).is_none());
+        assert!(rgba(4, 4096, i32::MAX, true, 8, 4, &[0; 64]).is_none());
+        // (a sound one still reads)
+        assert_eq!(rgba(1, 2, 4, true, 8, 4, &[1, 2, 3, 4, 5, 6, 7, 8]), Some(vec![1, 2, 3, 4, 5, 6, 7, 8]));
     }
 }

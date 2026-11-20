@@ -140,6 +140,8 @@ enum M {
     /// ResourceHover: (output, key, open, x, y)
     ResPopover(String, String, bool, f32, f32),
     Art(String, Option<std::path::PathBuf>),
+    /// an island picture fetched off the loop (web art: Self::picture)
+    Picture(String, Option<std::path::PathBuf>),
 }
 
 struct BarEntry {
@@ -471,8 +473,21 @@ impl Menubar {
         if let Some(hit) = self.pictures.get(src) {
             return hit.clone();
         }
-        let path = mpris::art_file(src).or_else(|| src.starts_with('/').then(|| std::path::PathBuf::from(src)));
-        // (web art is fetched on a thread: it shows once it's here)
+        // (web art is fetched on the pool, never here: it shows once it's
+        // here, M::Picture. A fetch here froze the shell up to 8 s, audit #12)
+        let path = match mpris::art_now(src) {
+            mpris::ArtNow::Ready(p) => p.or_else(|| src.starts_with('/').then(|| std::path::PathBuf::from(src))),
+            mpris::ArtNow::Fetch => {
+                if let Some(tx) = tessera_core::shell::loop_sender() {
+                    let url = src.to_string();
+                    tessera_core::work::spawn(move || {
+                        let path = mpris::art_file(&url);
+                        let _ = tx.send(crate::Msg::Part(NAME, Box::new(M::Picture(url, path))));
+                    });
+                }
+                None
+            }
+        };
         let img = path.filter(|p| p.is_file()).and_then(|p| load(&p));
         if self.pictures.len() > 64 {
             self.pictures.clear();
@@ -2256,6 +2271,13 @@ impl Menubar {
                 self.island.hold(on, ms_now());
                 bridge::call(&["rustui", "act", "islandHold", if on { "1" } else { "0" }]);
                 self.arm_sweep(st);
+            }
+            M::Picture(url, path) => {
+                let img = path.filter(|p| p.is_file()).and_then(|p| load(&p));
+                if img.is_some() {
+                    self.pictures.insert(url, img);
+                    self.refresh(st);
+                }
             }
             M::Art(url, path) => {
                 if url == self.art.0 {

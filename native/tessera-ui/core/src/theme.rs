@@ -418,17 +418,81 @@ pub fn snap_accent(color: &str, dark: bool) -> String {
 
 /// The tone Wallpaper.qml finds in a picture (seed.rs), remembered per picture
 fn wallpaper_tone(path: &str) -> Option<String> {
-    use std::sync::Mutex;
-    static LAST: Mutex<Option<(String, Option<String>)>> = Mutex::new(None);
-    let mut last = LAST.lock().ok()?;
-    if let Some((p, tone)) = last.as_ref() {
-        if p == path {
-            return tone.clone();
+    static MEMO: std::sync::Mutex<PictureMemo> = std::sync::Mutex::new(PictureMemo::new());
+    from_picture_memo(&MEMO, path, crate::seed::tone_from_picture)
+}
+
+/// What was read from a picture (its seed or its tone), by picture: its
+/// path and when it was last changed. A few are kept, so going back and
+/// forth between two pictures (a dynamic wallpaper's phases, a time
+/// folder) doesn't read either again (audit #11)
+pub(crate) struct PictureMemo {
+    kept: Vec<(PictureKey, Option<String>)>,
+    /// being read on the pool now
+    reading: Vec<PictureKey>,
+    /// the last one read, whatever the picture (shown until a new one's read)
+    last: Option<String>,
+}
+
+type PictureKey = (String, Option<std::time::SystemTime>);
+
+impl PictureMemo {
+    const KEEP: usize = 6;
+
+    pub(crate) const fn new() -> Self {
+        Self { kept: Vec::new(), reading: Vec::new(), last: None }
+    }
+
+    fn get(&self, key: &PictureKey) -> Option<Option<String>> {
+        self.kept.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone())
+    }
+
+    fn put(&mut self, key: PictureKey, v: Option<String>) {
+        self.reading.retain(|k| *k != key);
+        self.kept.retain(|(k, _)| *k != key);
+        self.kept.push((key, v.clone()));
+        if self.kept.len() > Self::KEEP {
+            self.kept.remove(0);
+        }
+        self.last = v;
+    }
+}
+
+/// A picture's seed or tone. On the UI thread, once one picture has been
+/// read, a new one is read on the pool: until it's here the last one stands,
+/// then the loop reads the config again (Msg::ConfigChanged) and finds it
+/// kept. Decoding a big wallpaper on the loop froze every surface for a
+/// moment at each change. (The very first is read where it's asked, as
+/// before: the shell's first frames are in the right colours, not purple
+/// for a moment.)
+fn from_picture_memo(memo: &'static std::sync::Mutex<PictureMemo>, path: &str, read: fn(&std::path::Path) -> Option<String>) -> Option<String> {
+    let key: PictureKey = (path.to_string(), std::fs::metadata(path).and_then(|m| m.modified()).ok());
+    {
+        let mut m = memo.lock().ok()?;
+        if let Some(v) = m.get(&key) {
+            return v;
+        }
+        if crate::work::on_ui_thread() && !m.kept.is_empty() {
+            if let Some(tx) = crate::shell::loop_sender() {
+                if !m.reading.contains(&key) {
+                    m.reading.push(key.clone());
+                    crate::work::spawn(move || {
+                        let v = read(std::path::Path::new(&key.0));
+                        if let Ok(mut m) = memo.lock() {
+                            m.put(key, v);
+                        }
+                        let _ = tx.send(crate::Msg::ConfigChanged);
+                    });
+                }
+                return m.last.clone();
+            }
         }
     }
-    let tone = crate::seed::tone_from_picture(std::path::Path::new(path));
-    *last = Some((path.to_string(), tone.clone()));
-    tone
+    let v = read(std::path::Path::new(path));
+    if let Ok(mut m) = memo.lock() {
+        m.put(key, v.clone());
+    }
+    v
 }
 
 const BASELINE: &str = "#6750A4";
@@ -440,17 +504,8 @@ fn is_hex(s: &str) -> bool {
 /// The wallpaper's seed (src/seed.rs), remembered per picture: the config is
 /// read again on every change, the picture rarely changes
 fn wallpaper_seed(path: &str) -> Option<String> {
-    use std::sync::Mutex;
-    static LAST: Mutex<Option<(String, Option<String>)>> = Mutex::new(None);
-    let mut last = LAST.lock().ok()?;
-    if let Some((p, seed)) = last.as_ref() {
-        if p == path {
-            return seed.clone();
-        }
-    }
-    let seed = crate::seed::from_picture(std::path::Path::new(path));
-    *last = Some((path.to_string(), seed.clone()));
-    seed
+    static MEMO: std::sync::Mutex<PictureMemo> = std::sync::Mutex::new(PictureMemo::new());
+    from_picture_memo(&MEMO, path, crate::seed::from_picture)
 }
 
 fn variant(style: &str) -> Variant {
@@ -1133,6 +1188,31 @@ mod tests {
         assert_eq!(look_from(&v, None, none).seed, BASELINE);
         let v = json!({"appearance": {"look": "material"}, "wallpaper": {"path": ""}});
         assert_eq!(look_from(&v, None, |_| panic!("no picture to read")).seed, BASELINE);
+    }
+
+    #[test]
+    fn pictures_read_are_kept_a_few_by_path_and_time() {
+        let t = |s: u64| Some(std::time::UNIX_EPOCH + std::time::Duration::from_secs(s));
+        let mut m = PictureMemo::new();
+        assert_eq!(m.get(&("/a.jpg".into(), t(1))), None);
+        m.put(("/a.jpg".into(), t(1)), Some("#112233".into()));
+        m.put(("/b.jpg".into(), t(1)), None);
+        // (going back to a: kept; b had no colour: kept as none)
+        assert_eq!(m.get(&("/a.jpg".into(), t(1))), Some(Some("#112233".into())));
+        assert_eq!(m.get(&("/b.jpg".into(), t(1))), Some(None));
+        // (the same file changed: read again)
+        assert_eq!(m.get(&("/a.jpg".into(), t(2))), None);
+        // (only a few kept, the oldest go first; the last read stands meanwhile)
+        for i in 0..PictureMemo::KEEP as u64 {
+            m.put((format!("/{i}.jpg"), t(1)), Some(format!("#00000{i}")));
+        }
+        assert_eq!(m.kept.len(), PictureMemo::KEEP);
+        assert_eq!(m.get(&("/a.jpg".into(), t(1))), None);
+        assert_eq!(m.last.as_deref(), Some(format!("#00000{}", PictureMemo::KEEP - 1).as_str()));
+        // (a picture read while asked again isn't read twice)
+        m.reading.push(("/c.jpg".into(), t(1)));
+        m.put(("/c.jpg".into(), t(1)), None);
+        assert!(m.reading.is_empty());
     }
 
     #[test]

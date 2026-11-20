@@ -282,15 +282,8 @@ fn watch_db(db: &str, tx: mpsc::Sender<()>) {
             if n <= 0 {
                 return;
             }
-            let mut off = 0usize;
-            let mut hit = false;
-            while off + std::mem::size_of::<libc::inotify_event>() <= n as usize {
-                let ev = &*(buf.as_ptr().add(off) as *const libc::inotify_event);
-                let raw = std::slice::from_raw_parts(buf.as_ptr().add(off + std::mem::size_of::<libc::inotify_event>()), ev.len as usize);
-                let end = raw.iter().position(|&b| b == 0).unwrap_or(raw.len());
-                hit |= raw[..end] == name[..];
-                off += std::mem::size_of::<libc::inotify_event>() + ev.len as usize;
-            }
+            // (read unaligned: util::inotify_events, audit #49)
+            let hit = crate::util::inotify_events(&buf[..n as usize]).iter().any(|(_, raw)| *raw == &name[..]);
             if hit && tx.send(()).is_err() {
                 return;
             }

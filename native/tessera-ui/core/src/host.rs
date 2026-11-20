@@ -230,7 +230,7 @@ pub struct HostPart {
 /// after, so a clock read then shows the new second)
 fn to_next_second(now: std::time::SystemTime) -> std::time::Duration {
     let ms = now.duration_since(std::time::UNIX_EPOCH).map(|d| d.subsec_millis()).unwrap_or(0) as u64;
-    std::time::Duration::from_millis(1000 - ms + 5)
+    std::time::Duration::from_millis(1000 - ms + crate::pacing::SECOND_AFTER_MS)
 }
 
 impl HostPart {

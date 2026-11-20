@@ -69,7 +69,7 @@ impl Damage {
         if all {
             self.state.force_screen_refresh();
         }
-        let probe = Probe { window: inner, tick, stack: vec![Frame { transform: ItemTransform::identity(), clip: LogicalRect::from_size(size) }] };
+        let probe = Probe { window: inner, tick, track_tick: true, stack: vec![Frame { transform: ItemTransform::identity(), clip: LogicalRect::from_size(size) }] };
         let mut renderer = self.state.create_partial_renderer(probe);
         let adapter = inner.window_adapter();
         let mut layers = 0;
@@ -113,7 +113,7 @@ impl Damage {
         let size = LogicalSize::new(w, h);
         let inner = WindowInner::from_pub(window);
         let tick = self.tick.as_ref();
-        let mut probe = Probe { window: inner, tick, stack: vec![Frame { transform: ItemTransform::identity(), clip: LogicalRect::from_size(size) }] };
+        let mut probe = Probe { window: inner, tick, track_tick: false, stack: vec![Frame { transform: ItemTransform::identity(), clip: LogicalRect::from_size(size) }] };
         let adapter = inner.window_adapter();
         inner.draw_contents(|components, _| {
             for (c, origin) in components {
@@ -217,6 +217,11 @@ struct Frame {
 struct Probe<'a> {
     window: &'a WindowInner,
     tick: Pin<&'a Property<u32>>,
+    /// a text input depends on the tick (region: its item's tracker, so it's
+    /// always in the damage). Not in track_all: that pass runs under the
+    /// window's own tracker, and the window depending on the tick asked for
+    /// a frame every frame while a text field showed (audit #2)
+    track_tick: bool,
     stack: Vec<Frame>,
 }
 
@@ -249,7 +254,8 @@ impl ItemRenderer for Probe<'_> {
     }
     fn draw_text_input(&mut self, input: Pin<&TextInput>, _: &ItemRc, _: LogicalSize) {
         // (the caret blinks and the preedit shows from state outside the item)
-        let _ = (self.tick.get(), input.text(), input.color());
+        let _ = if self.track_tick { self.tick.get() } else { self.tick.get_untracked() };
+        let _ = (input.text(), input.color());
     }
     fn draw_path(&mut self, path: Pin<&Path>, item: &ItemRc, _: LogicalSize) {
         let _ = (path.fitted_path_events(item).is_some(), path.fill(), path.stroke(), path.stroke_width());

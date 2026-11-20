@@ -471,6 +471,27 @@ pub fn watch_dir(dir: PathBuf, retry: std::time::Duration, on_change: impl Fn() 
     });
 }
 
+/// The events one read() of an inotify fd gave: each one's mask and name
+/// (without its padding NULs). Read unaligned: the buffer is bytes, and
+/// taking a reference to the 4-aligned struct in it is undefined (it
+/// panicked in debug builds, 18 Nov; audit #49)
+pub fn inotify_events(buf: &[u8]) -> Vec<(u32, &[u8])> {
+    let size = std::mem::size_of::<libc::inotify_event>();
+    let mut out = Vec::new();
+    let mut off = 0usize;
+    while off + size <= buf.len() {
+        // SAFETY: `size` bytes are there at `off`; an unaligned copy, no reference
+        let ev = unsafe { std::ptr::read_unaligned(buf.as_ptr().add(off) as *const libc::inotify_event) };
+        let start = off + size;
+        let end = start.saturating_add(ev.len as usize).min(buf.len());
+        let raw = &buf[start..end];
+        let name = &raw[..raw.iter().position(|&b| b == 0).unwrap_or(raw.len())];
+        out.push((ev.mask, name));
+        off = start.saturating_add(ev.len as usize);
+    }
+    out
+}
+
 /// encodeURIComponent
 pub fn encode(s: &str) -> String {
     let mut out = String::new();
@@ -505,6 +526,30 @@ mod tests {
         std::fs::remove_file(dir.join("a")).unwrap();
         assert!(wait(), "a file removed");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn inotify_events_read_anywhere_in_the_buffer() {
+        let ev = |mask: u32, name: &[u8], pad: usize| {
+            let mut b = Vec::new();
+            b.extend_from_slice(&1i32.to_ne_bytes());
+            b.extend_from_slice(&mask.to_ne_bytes());
+            b.extend_from_slice(&0u32.to_ne_bytes());
+            b.extend_from_slice(&((name.len() + pad) as u32).to_ne_bytes());
+            b.extend_from_slice(name);
+            b.resize(b.len() + pad, 0);
+            b
+        };
+        // (one byte in: the events sit off their alignment, never a panic)
+        let mut buf = vec![0xffu8];
+        buf.extend(ev(libc::IN_MOVED_TO, b"config.json", 5));
+        buf.extend(ev(libc::IN_IGNORED, b"", 0));
+        let got = inotify_events(&buf[1..]);
+        assert_eq!(got, vec![(libc::IN_MOVED_TO, &b"config.json"[..]), (libc::IN_IGNORED, &b""[..])]);
+        // (cut short: what's whole, and no read past the end)
+        let cut = &buf[1..buf.len() - 20];
+        assert_eq!(inotify_events(cut).len(), 1);
+        assert!(inotify_events(&[]).is_empty());
     }
 
     #[test]

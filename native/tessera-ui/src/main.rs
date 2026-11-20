@@ -60,51 +60,79 @@ fn shell_line(state: &mut State, l: &str) {
 /// Watch config.json (the shell writes it whole, then renames or closes it).
 /// Its folder is made first (a first start has none, and a folder that isn't
 /// there can't be watched: no setting would ever apply live); a config.json
-/// that's a link (dotfiles) is watched where it points too
+/// that's a link (dotfiles) is watched where it points too. A folder
+/// replaced (moved away, restored from dotfiles) is watched again, and the
+/// settings read again then (audit #50: the watch stayed on the old folder
+/// and no change applied until a restart)
 fn watch_config(tx: calloop::channel::Sender<Msg>) {
     let path = theme::config_path();
-    let Some(dir) = path.parent().map(|d| d.to_owned()) else { return };
-    let _ = std::fs::create_dir_all(&dir);
-    let target = tessera_core::util::link_target(&path);
-    let names: Vec<Vec<u8>> = [&path, &target].iter().filter_map(|p| p.file_name()).map(|n| n.as_encoded_bytes().to_vec()).collect();
-    let mut dirs = vec![dir];
-    if let Some(t) = target.parent().filter(|t| *t != dirs[0]) {
-        dirs.push(t.to_owned());
+    if path.parent().is_none() {
+        return;
     }
-    std::thread::spawn(move || unsafe {
-        let fd = libc::inotify_init1(libc::IN_CLOEXEC);
-        if fd < 0 {
-            return;
-        }
-        let mut watching = 0;
-        for d in &dirs {
-            let Ok(c) = std::ffi::CString::new(d.as_os_str().as_encoded_bytes()) else { continue };
-            if libc::inotify_add_watch(fd, c.as_ptr(), libc::IN_CLOSE_WRITE | libc::IN_MOVED_TO) >= 0 {
-                watching += 1;
-            }
-        }
-        if watching == 0 {
-            eprintln!("tessera-ui: can't watch {}: settings changes apply at the next start", dirs[0].display());
-            return;
-        }
-        let mut buf = [0u8; 4096];
+    std::thread::spawn(move || {
+        let mut first = true;
+        let mut said = false;
         loop {
-            let n = libc::read(fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len());
-            if n <= 0 {
+            let Some(dir) = path.parent().map(|d| d.to_owned()) else { return };
+            let _ = std::fs::create_dir_all(&dir);
+            let target = tessera_core::util::link_target(&path);
+            let names: Vec<Vec<u8>> = [&path, &target].iter().filter_map(|p| p.file_name()).map(|n| n.as_encoded_bytes().to_vec()).collect();
+            let mut dirs = vec![dir];
+            if let Some(t) = target.parent().filter(|t| *t != dirs[0]) {
+                dirs.push(t.to_owned());
+            }
+            // SAFETY: plain inotify calls on an fd this loop owns and closes
+            let fd = unsafe { libc::inotify_init1(libc::IN_CLOEXEC) };
+            if fd < 0 {
                 return;
             }
-            let mut off = 0usize;
-            let mut hit = false;
-            while off + std::mem::size_of::<libc::inotify_event>() <= n as usize {
-                let ev = &*(buf.as_ptr().add(off) as *const libc::inotify_event);
-                let name = std::slice::from_raw_parts(buf.as_ptr().add(off + std::mem::size_of::<libc::inotify_event>()), ev.len as usize);
-                let name = name.split(|b| *b == 0).next().unwrap_or_default();
-                hit |= names.iter().any(|n| n.as_slice() == name);
-                off += std::mem::size_of::<libc::inotify_event>() + ev.len as usize;
+            let mut watching = 0;
+            for d in &dirs {
+                let Ok(c) = std::ffi::CString::new(d.as_os_str().as_encoded_bytes()) else { continue };
+                if unsafe { libc::inotify_add_watch(fd, c.as_ptr(), libc::IN_CLOSE_WRITE | libc::IN_MOVED_TO | libc::IN_DELETE_SELF | libc::IN_MOVE_SELF) } >= 0 {
+                    watching += 1;
+                }
             }
-            if hit && tx.send(Msg::ConfigChanged).is_err() {
+            if watching == 0 {
+                if !said {
+                    eprintln!("tessera-ui: can't watch {}: trying again; settings changes apply once it's watched", dirs[0].display());
+                    said = true;
+                }
+                unsafe { libc::close(fd) };
+                std::thread::sleep(Duration::from_secs(5));
+                continue;
+            }
+            // (watched again after the folder was replaced: what's there now applies)
+            if !first && tx.send(Msg::ConfigChanged).is_err() {
+                unsafe { libc::close(fd) };
                 return;
             }
+            first = false;
+            let mut buf = [0u8; 4096];
+            loop {
+                let n = unsafe { libc::read(fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) };
+                if n <= 0 {
+                    if n < 0 && std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted {
+                        continue;
+                    }
+                    break;
+                }
+                let (mut hit, mut gone) = (false, false);
+                for (mask, name) in tessera_core::util::inotify_events(&buf[..n as usize]) {
+                    hit |= names.iter().any(|n| n.as_slice() == name);
+                    gone |= mask & (libc::IN_DELETE_SELF | libc::IN_MOVE_SELF | libc::IN_IGNORED) != 0;
+                }
+                if hit && tx.send(Msg::ConfigChanged).is_err() {
+                    unsafe { libc::close(fd) };
+                    return;
+                }
+                if gone {
+                    break;
+                }
+            }
+            unsafe { libc::close(fd) };
+            // (a moment for whatever replaces the folder to finish)
+            std::thread::sleep(Duration::from_millis(200));
         }
     });
 }
@@ -541,6 +569,9 @@ fn no_gl(e: &str, standalone: bool) -> ! {
     // (the QML fallback shows why: modules/fallback)
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
     let _ = std::fs::write(state.join("tessera/fallback"), format!("The Rust shell can't draw on this computer's graphics (EGL: {})\n{now}\n{}\n", e.chars().take(120).collect::<String>(), std::env::var("HYPRLAND_INSTANCE_SIGNATURE").unwrap_or_default()));
+    // (Settings → Health lists it, and the next Rust start counts as a
+    // retry, as launch-shell.sh's own fallback writes it; audit #87)
+    tessera_core::health::event_now("fallback", serde_json::json!({"why": format!("EGL: {}", e.chars().take(160).collect::<String>())}));
     let Some(dir) = std::env::var_os("TESSERA_QML_FALLBACK").map(std::path::PathBuf::from).filter(|d| d.join("assets/scripts/launch-shell.sh").is_file()) else {
         eprintln!("tessera-ui: no QML shell to fall back to (TESSERA_QML_FALLBACK); the next start is the QML shell");
         std::process::exit(1);

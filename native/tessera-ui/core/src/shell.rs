@@ -65,6 +65,7 @@ pub struct Shell {
 
 impl Shell {
     pub fn new(tx: Sender<Msg>, glass: Glass, surfaces: crate::surfaces::Surfaces) -> Self {
+        set_loop_sender(tx.clone());
         Self { look: theme::read(), cfg: crate::saver::overlay(theme::read_json()), glass, plugin: false, tx, surfaces, data: HashMap::new(), started: HashSet::new(), defer_data: false, deferred: Default::default() }
     }
 
@@ -98,9 +99,16 @@ impl Shell {
         }
     }
 
-    /// Every kind of reading held now (a part made again gets each: contain.rs)
+    /// Every kind of reading held now (a part made again gets each:
+    /// contain.rs). Events (is_event) aren't held: a part made again isn't
+    /// handed the last notification or island call a second time.
     pub fn data_types(&self) -> Vec<TypeId> {
-        self.data.keys().copied().collect()
+        self.data.keys().copied().filter(|t| !is_event(*t)).collect()
+    }
+
+    /// An event's value, gone once every part has had it (runloop.rs)
+    pub fn forget(&mut self, id: TypeId) {
+        self.data.remove(&id);
     }
 
     pub fn store(&mut self, value: Box<dyn Any + Send>) -> TypeId {
@@ -108,6 +116,30 @@ impl Shell {
         self.data.insert(id, value);
         id
     }
+}
+
+static LOOP_TX: std::sync::OnceLock<std::sync::Mutex<Sender<Msg>>> = std::sync::OnceLock::new();
+
+/// The loop's channel, kept from the first Shell made (for work done on
+/// the pool that answers by message without a State at hand: the
+/// wallpaper's seed, theme.rs; a picture fetched for a part)
+fn set_loop_sender(tx: Sender<Msg>) {
+    let _ = LOOP_TX.set(std::sync::Mutex::new(tx));
+}
+
+/// A message to the loop from anywhere (None before a Shell was made)
+pub fn loop_sender() -> Option<Sender<Msg>> {
+    LOOP_TX.get().and_then(|t| t.lock().ok().map(|t| t.clone()))
+}
+
+/// Readings that are events, not states: each one counts, not only the
+/// newest (a notification, a notification taken back, an island alert posted
+/// then updated). They reach every part at once, in the order they came, even
+/// while a window animates (runloop.rs): held back in the one-per-type store,
+/// a second one in the same animation replaced the first, which was never
+/// shown (audit #1)
+pub fn is_event(id: TypeId) -> bool {
+    id == TypeId::of::<crate::services::notify::Event>() || id == TypeId::of::<crate::services::bridge::IslandCall>()
 }
 
 /// A command from the shell for one part (a line on stdin)
@@ -408,6 +440,16 @@ mod tests {
         assert!(l.feed(b"").is_empty());
         // (not UTF-8: replaced, never a panic)
         assert_eq!(l.feed(b"\xff\n").len(), 1);
+    }
+
+    #[test]
+    fn events_are_every_one_not_the_newest() {
+        // (notifications and island calls: each reaches every part, and a
+        // part made again isn't handed the last one again)
+        assert!(is_event(TypeId::of::<crate::services::notify::Event>()));
+        assert!(is_event(TypeId::of::<crate::services::bridge::IslandCall>()));
+        assert!(!is_event(TypeId::of::<crate::services::bridge::ShellState>()));
+        assert!(!is_event(TypeId::of::<crate::services::mpris::Players>()));
     }
 
     #[test]

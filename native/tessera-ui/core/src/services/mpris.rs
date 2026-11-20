@@ -156,6 +156,8 @@ fn watch_rule(conn: &Connection, rule: MatchRule<'static>, dirty: mpsc::Sender<(
 }
 
 pub fn spawn(tx: Sender<Msg>) {
+    // (the art cache pruned once a run, on the pool: audit #53)
+    crate::work::spawn(|| prune_art(&art_dir(), ART_KEEP_FILES, ART_KEEP_BYTES));
     std::thread::spawn(move || loop {
         let run = || -> zbus::Result<()> {
             let conn = Connection::session()?;
@@ -200,16 +202,16 @@ pub fn control(bus: &str, method: &'static str) {
     let bus = bus.to_string();
     std::thread::spawn(move || {
         let Some(conn) = session() else { return };
-        let _ = conn.call_method(Some(bus.as_str()), PATH, Some(IFACE), method, &());
+        let _ = checked(conn.call_method(Some(bus.as_str()), PATH, Some(IFACE), method, &()));
     });
 }
 
+static CONN: std::sync::Mutex<Option<Connection>> = std::sync::Mutex::new(None);
+
 /// One session bus connection for the calls below (made once, made again
-/// after it fails). Over D-Bus itself, not busctl: busctl is systemd's
+/// after it fails: `checked`). Over D-Bus itself, not busctl: busctl is systemd's
 /// (not on every system), and prints its numbers in your language ("0,5")
 fn session() -> Option<Connection> {
-    use std::sync::Mutex;
-    static CONN: Mutex<Option<Connection>> = Mutex::new(None);
     let mut c = CONN.lock().unwrap_or_else(|e| e.into_inner());
     if c.is_none() {
         *c = Connection::session().ok();
@@ -217,11 +219,29 @@ fn session() -> Option<Connection> {
     c.clone()
 }
 
+/// The connection is gone (its socket closed: an I/O error), not only
+/// this call refused
+fn is_dead(e: &zbus::Error) -> bool {
+    matches!(e, zbus::Error::InputOutput(_))
+}
+
+/// A call's result: a dead connection is dropped, so the next call makes a
+/// new one (media keys and the player's controls kept using the dead one
+/// until the shell restarted, audit #113)
+fn checked<T>(r: zbus::Result<T>) -> zbus::Result<T> {
+    if let Err(e) = &r {
+        if is_dead(e) {
+            *CONN.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        }
+    }
+    r
+}
+
 /// A number property of the player (Position in µs, Volume 0..1);
 /// blocking: call on a thread
 pub fn number(bus: &str, prop: &str) -> Option<f64> {
     let conn = session()?;
-    let v: OwnedValue = proxy(&conn, bus, IFACE).ok()?.get_property(prop).ok()?;
+    let v: OwnedValue = checked(checked(proxy(&conn, bus, IFACE)).ok()?.get_property(prop)).ok()?;
     number_of(&v)
 }
 
@@ -243,7 +263,7 @@ pub fn set_volume(bus: &str, v: f64) {
     let bus = bus.to_string();
     std::thread::spawn(move || {
         let Some(conn) = session() else { return };
-        let _ = conn.call_method(Some(bus.as_str()), PATH, Some("org.freedesktop.DBus.Properties"), "Set", &(IFACE, "Volume", Value::F64(v.clamp(0.0, 1.0))));
+        let _ = checked(conn.call_method(Some(bus.as_str()), PATH, Some("org.freedesktop.DBus.Properties"), "Set", &(IFACE, "Volume", Value::F64(v.clamp(0.0, 1.0)))));
     });
 }
 
@@ -252,7 +272,7 @@ pub fn raise(bus: &str) {
     let bus = bus.to_string();
     std::thread::spawn(move || {
         let Some(conn) = session() else { return };
-        let _ = conn.call_method(Some(bus.as_str()), PATH, Some("org.mpris.MediaPlayer2"), "Raise", &());
+        let _ = checked(conn.call_method(Some(bus.as_str()), PATH, Some("org.mpris.MediaPlayer2"), "Raise", &()));
     });
 }
 
@@ -282,20 +302,89 @@ pub fn seek(bus: &str, track: &Track, target: i64, now: i64) {
     std::thread::spawn(move || {
         let Some(conn) = session() else { return };
         let now = if now >= 0 { now } else { number(&bus, "Position").unwrap_or(0.0) as i64 };
-        let _ = match seek_plan(&track, target, now) {
+        let _ = checked(match seek_plan(&track, target, now) {
             SeekTo::At(id, t) => match zbus::zvariant::ObjectPath::try_from(id.as_str()) {
                 Ok(p) => conn.call_method(Some(bus.as_str()), PATH, Some(IFACE), "SetPosition", &(p, t)).map(|_| ()),
                 Err(_) => Ok(()),
             },
             SeekTo::By(d) => conn.call_method(Some(bus.as_str()), PATH, Some(IFACE), "Seek", &(d,)).map(|_| ()),
-        };
+        });
     });
 }
 
 /// A local picture for an art address: file:// as is; http(s) fetched once
-/// into the cache (curl, as the shell's own scripts), then that file
+/// into the cache (curl, as the shell's own scripts), then that file.
+/// Blocking (a fetch takes up to 8 s): call on a thread; on the loop,
+/// `art_now` says whether it's needed
 pub fn art_file(url: &str) -> Option<std::path::PathBuf> {
     art_path(url).map(named_by_kind)
+}
+
+/// What `art_now` knows without waiting
+#[derive(Debug, PartialEq)]
+pub enum ArtNow {
+    /// the answer, at once (a picture file named as one; or no art at all)
+    Ready(Option<std::path::PathBuf>),
+    /// `art_file` is needed, on a thread (web art, a browser's file without
+    /// a picture's name)
+    Fetch,
+}
+
+/// An art address as far as the loop can tell it without blocking (no
+/// fetch, no reading of files): menubar's pictures. A fetch on the loop
+/// froze the whole shell for up to 8 s on new web art (audit #12)
+pub fn art_now(url: &str) -> ArtNow {
+    if let Some(p) = url.strip_prefix("file://") {
+        let p = std::path::PathBuf::from(percent_decode(p.split('?').next().unwrap_or(p)));
+        return if picture_named(&p) { ArtNow::Ready(Some(p)) } else { ArtNow::Fetch };
+    }
+    if url.starts_with("http://") || url.starts_with("https://") {
+        ArtNow::Fetch
+    } else {
+        ArtNow::Ready(None)
+    }
+}
+
+/// Named as a picture (Slint loads by the extension)
+fn picture_named(p: &std::path::Path) -> bool {
+    p.extension().and_then(|e| e.to_str()).is_some_and(|e| ["png", "jpg", "jpeg", "webp", "gif", "bmp", "svg", "tif", "tiff", "ico"].contains(&e.to_ascii_lowercase().as_str()))
+}
+
+/// The art cache's size: the newest this many files, this many bytes in all
+const ART_KEEP_FILES: usize = 300;
+const ART_KEEP_BYTES: u64 = 64 << 20;
+
+/// Old art goes: every new web picture and every browser's art file (a new
+/// one per track) was kept for good. The newest stay, up to `files` and
+/// `bytes`; half-fetched files (.part) of an earlier run go too
+pub fn prune_art(dir: &std::path::Path, files: usize, bytes: u64) {
+    let Ok(rd) = std::fs::read_dir(dir) else { return };
+    let mut all: Vec<(std::time::SystemTime, u64, std::path::PathBuf)> = rd
+        .flatten()
+        .filter_map(|e| {
+            let m = e.metadata().ok()?;
+            m.is_file().then(|| (m.modified().unwrap_or(std::time::UNIX_EPOCH), m.len(), e.path()))
+        })
+        .collect();
+    // (newest first)
+    all.sort_by(|a, b| b.0.cmp(&a.0));
+    let (mut total, mut kept) = (0u64, 0usize);
+    let hour_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+    for (t, len, p) in all {
+        // (a .part an hour old is an earlier run's; a newer one may be
+        // fetching now)
+        if p.extension().is_some_and(|e| e == "part") {
+            if t < hour_ago {
+                let _ = std::fs::remove_file(&p);
+            }
+            continue;
+        }
+        total = total.saturating_add(len);
+        kept += 1;
+        if kept > files || total > bytes {
+            let _ = std::fs::remove_file(&p);
+        }
+    }
 }
 
 /// Pictures load by their extension (Slint's image::open): the cache's files
@@ -303,8 +392,7 @@ pub fn art_file(url: &str) -> Option<std::path::PathBuf> {
 /// so no art showed. One without a picture's extension gets a copy in the
 /// cache named for what it is (read from its first bytes)
 fn named_by_kind(p: std::path::PathBuf) -> std::path::PathBuf {
-    let known = p.extension().and_then(|e| e.to_str()).is_some_and(|e| ["png", "jpg", "jpeg", "webp", "gif", "bmp", "svg", "tif", "tiff", "ico"].contains(&e.to_ascii_lowercase().as_str()));
-    if known {
+    if picture_named(&p) {
         return p;
     }
     let Ok(bytes) = std::fs::read(&p) else { return p };
@@ -334,6 +422,9 @@ fn art_path(url: &str) -> Option<std::path::PathBuf> {
     let dir = art_dir();
     let file = dir.join(format!("{:016x}", fnv(url)));
     if !file.exists() {
+        if crate::work::on_ui_thread() {
+            eprintln!("tessera-ui: art fetched on the UI thread (mpris::art_file): use art_now and a thread");
+        }
         let _ = std::fs::create_dir_all(&dir);
         let tmp = file.with_extension("part");
         let ok = std::process::Command::new("curl").args(["-sfL", "--max-time", "8", "-o"]).arg(&tmp).arg(url).status().is_ok_and(|s| s.success());
@@ -448,5 +539,46 @@ mod tests {
         assert_eq!(art_file(""), None);
         assert_eq!(art_file("data:image/png;base64,xx"), None);
         assert_eq!(art_file("file:///a/b.png?track=3"), Some(std::path::PathBuf::from("/a/b.png")));
+        // (what the loop may know at once, without a fetch or a read)
+        assert_eq!(art_now("file:///a/b%20c.JPG?x=1"), ArtNow::Ready(Some(std::path::PathBuf::from("/a/b c.JPG"))));
+        assert_eq!(art_now("file:///tmp/.org.chromium.Chromium.abc"), ArtNow::Fetch);
+        assert_eq!(art_now("https://i.scdn.co/image/ab67"), ArtNow::Fetch);
+        assert_eq!(art_now(""), ArtNow::Ready(None));
+        assert_eq!(art_now("data:image/png;base64,xx"), ArtNow::Ready(None));
+    }
+
+    #[test]
+    fn the_art_cache_keeps_only_the_newest() {
+        let dir = std::env::temp_dir().join(format!("tessera-art-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let at = |s: u64| std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000 + s);
+        for (name, age, len) in [("old", 1, 10), ("mid", 2, 10), ("new", 3, 10), ("x.part", 4, 1)] {
+            let f = std::fs::File::create(dir.join(name)).unwrap();
+            f.set_len(len).unwrap();
+            f.set_modified(at(age)).unwrap();
+        }
+        // (two files at most: the oldest goes, and the half-fetched one)
+        prune_art(&dir, 2, 1 << 20);
+        let left = |d: &std::path::Path| {
+            let mut v: Vec<String> = std::fs::read_dir(d).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+            v.sort();
+            v
+        };
+        assert_eq!(left(&dir), vec!["mid", "new"]);
+        // (by size: 15 bytes keep only the newest)
+        prune_art(&dir, 10, 15);
+        assert_eq!(left(&dir), vec!["new"]);
+        // (no folder: nothing to do)
+        prune_art(&dir.join("none"), 1, 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_dead_connection_is_made_again() {
+        // (an I/O error: the socket is gone, the next call connects again;
+        // a call the player refused keeps the connection)
+        assert!(is_dead(&zbus::Error::InputOutput(std::sync::Arc::new(std::io::Error::other("closed")))));
+        assert!(!is_dead(&zbus::Error::Failure("no".into())));
     }
 }

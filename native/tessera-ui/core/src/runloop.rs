@@ -49,6 +49,14 @@ fn handle_now(state: &mut State, msg: Msg) {
                 }
             }
             let what = state.shell.store(v);
+            // (an event: every part now, each one in turn, then not kept:
+            // shell::is_event)
+            if crate::shell::is_event(what) {
+                state.shell.deferred.retain(|(_, w)| *w != what);
+                state.each_part(|p, st| p.data(st, what));
+                state.shell.forget(what);
+                return;
+            }
             // (while something animates — a panel closing — the shell's
             // state and Hyprland's snapshot, which closing a panel changes,
             // would reach every part in this one turn, and the frame waits

@@ -317,11 +317,65 @@ fn read_item(c: &Connection, key: &str) -> Option<TrayItem> {
     })
 }
 
-fn watch_rule(c: &Connection, rule: MatchRule<'static>, dirty: mpsc::Sender<()>) -> zbus::Result<()> {
+/// What a signal asks to read again
+#[derive(Clone, Copy, PartialEq)]
+enum Why {
+    /// the watcher's list changed: the list, and items not read yet
+    Keys,
+    /// one item changed (its New* signals): that sender's items
+    Item,
+    /// the watcher came or went: everything
+    All,
+}
+
+/// What a burst of signals asks for: everything, or the items of these senders
+#[derive(Default)]
+struct Stale {
+    all: bool,
+    from: std::collections::HashSet<String>,
+}
+
+impl Stale {
+    fn note(&mut self, d: (Why, Option<String>)) {
+        match d {
+            (Why::All, _) | (Why::Item, None) => self.all = true,
+            (Why::Item, Some(s)) => {
+                self.from.insert(s);
+            }
+            (Why::Keys, _) => {}
+        }
+    }
+}
+
+/// The items to read again: new ones, all of them when asked, else those
+/// whose owner sent a signal. A signal from a sender no item is known by
+/// reads them all (as every signal did: about ten calls and an icon lookup
+/// per item, for every item, each time any one app changed its tooltip,
+/// audit #52)
+fn to_read<'k>(keys: &'k [String], items: &HashMap<String, Option<TrayItem>>, owners: &HashMap<String, String>, stale: &Stale) -> Vec<&'k String> {
+    let unknown = stale.from.iter().any(|s| !owners.values().any(|o| o == s));
+    keys.iter().filter(|k| stale.all || unknown || !items.contains_key(*k) || owners.get(*k).is_some_and(|o| stale.from.contains(o))).collect()
+}
+
+/// The unique name an item's service has now (signals carry that, not
+/// the well-known name an item may be registered under)
+fn owner_of(c: &Connection, key: &str) -> String {
+    let (svc, _) = parse_address(key, "");
+    if svc.starts_with(':') {
+        return svc;
+    }
+    c.call_method(Some("org.freedesktop.DBus"), "/org/freedesktop/DBus", Some("org.freedesktop.DBus"), "GetNameOwner", &(svc.as_str(),))
+        .ok()
+        .and_then(|m| m.body().deserialize::<String>().ok())
+        .unwrap_or(svc)
+}
+
+fn watch_rule(c: &Connection, rule: MatchRule<'static>, why: Why, dirty: mpsc::Sender<(Why, Option<String>)>) -> zbus::Result<()> {
     let mut it = MessageIterator::for_match_rule(rule, c, Some(64))?;
     std::thread::spawn(move || {
-        while it.next().is_some() {
-            if dirty.send(()).is_err() {
+        while let Some(m) = it.next() {
+            let sender = if why == Why::Item { m.ok().and_then(|m| m.header().sender().map(|s| s.to_string())) } else { None };
+            if dirty.send((why, sender)).is_err() {
                 return;
             }
         }
@@ -338,15 +392,19 @@ pub fn spawn(tx: Sender<Msg>) {
             let _ = c.request_name(host.as_str());
             let w = proxy(&c, WATCHER, WATCHER_PATH, WATCHER)?;
             let _: zbus::Result<()> = w.call("RegisterStatusNotifierHost", &(host.as_str(),));
-            let (dirty, wake) = mpsc::channel::<()>();
+            let (dirty, wake) = mpsc::channel::<(Why, Option<String>)>();
             let sig = |member: &'static str| MatchRule::builder().msg_type(zbus::message::Type::Signal).interface(WATCHER).and_then(|b| b.member(member)).map(|b| b.build());
-            watch_rule(&c, sig("StatusNotifierItemRegistered")?, dirty.clone())?;
-            watch_rule(&c, sig("StatusNotifierItemUnregistered")?, dirty.clone())?;
-            watch_rule(&c, MatchRule::builder().msg_type(zbus::message::Type::Signal).interface(ITEM)?.build(), dirty.clone())?;
+            watch_rule(&c, sig("StatusNotifierItemRegistered")?, Why::Keys, dirty.clone())?;
+            watch_rule(&c, sig("StatusNotifierItemUnregistered")?, Why::Keys, dirty.clone())?;
+            watch_rule(&c, MatchRule::builder().msg_type(zbus::message::Type::Signal).interface(ITEM)?.build(), Why::Item, dirty.clone())?;
             // (the QML shell's watcher can go and come back: then serve or re-register)
-            watch_rule(&c, MatchRule::builder().msg_type(zbus::message::Type::Signal).sender("org.freedesktop.DBus")?.member("NameOwnerChanged")?.arg(0, WATCHER)?.build(), dirty)?;
+            watch_rule(&c, MatchRule::builder().msg_type(zbus::message::Type::Signal).sender("org.freedesktop.DBus")?.member("NameOwnerChanged")?.arg(0, WATCHER)?.build(), Why::All, dirty)?;
             let mut last: Option<Tray> = None;
             let mut owner_was = ours;
+            // (each item as last read, and its owner's unique name)
+            let mut items: HashMap<String, Option<TrayItem>> = HashMap::new();
+            let mut owners: HashMap<String, String> = HashMap::new();
+            let mut stale = Stale { all: true, ..Default::default() };
             loop {
                 let w = proxy(&c, WATCHER, WATCHER_PATH, WATCHER)?;
                 let keys: Vec<String> = w.get_property("RegisteredStatusNotifierItems").unwrap_or_default();
@@ -355,15 +413,26 @@ pub fn spawn(tx: Sender<Msg>) {
                     owner_was = serve_watcher(&c).unwrap_or(false);
                     let _: zbus::Result<()> = w.call("RegisterStatusNotifierHost", &(host.as_str(),));
                 }
-                let tray = Tray { items: keys.iter().filter_map(|k| read_item(&c, k)).collect() };
+                items.retain(|k, _| keys.contains(k));
+                owners.retain(|k, _| keys.contains(k));
+                let again: Vec<String> = to_read(&keys, &items, &owners, &stale).into_iter().cloned().collect();
+                for k in again {
+                    owners.insert(k.clone(), owner_of(&c, &k));
+                    items.insert(k.clone(), read_item(&c, &k));
+                }
+                let tray = Tray { items: keys.iter().filter_map(|k| items.get(k).cloned().flatten()).collect() };
                 if last.as_ref() != Some(&tray) {
                     tx.send(Msg::Data(Box::new(tray.clone()))).map_err(|_| zbus::Error::Failure("ui gone".into()))?;
                     last = Some(tray);
                 }
-                if wake.recv().is_err() {
-                    return Ok(());
+                stale = Stale::default();
+                match wake.recv() {
+                    Ok(d) => stale.note(d),
+                    Err(_) => return Ok(()),
                 }
-                while wake.recv_timeout(Duration::from_millis(60)).is_ok() {}
+                while let Ok(d) = wake.recv_timeout(Duration::from_millis(60)) {
+                    stale.note(d);
+                }
             }
         };
         if let Err(zbus::Error::Failure(_)) = run() {
@@ -434,6 +503,34 @@ pub fn menu_event(key: &str, menu_path: &str, id: i32) {
 mod tests {
     use super::*;
     use zbus::zvariant::{Dict, Signature, StructureBuilder};
+
+    #[test]
+    fn only_the_item_that_signalled_is_read_again() {
+        let keys: Vec<String> = vec!["org.kde.StatusNotifierItem-12-1".into(), ":1.45/org/ayatana/NotificationItem/nm".into(), ":1.50/StatusNotifierItem".into()];
+        let item = |id: &str| Some(TrayItem { key: id.into(), id: id.into(), title: String::new(), tooltip: String::new(), status: String::new(), icon: Icon::None, menu: String::new(), item_is_menu: false });
+        let mut items = HashMap::new();
+        items.insert(keys[0].clone(), item("a"));
+        items.insert(keys[1].clone(), item("b"));
+        let mut owners = HashMap::new();
+        owners.insert(keys[0].clone(), ":1.12".to_string());
+        owners.insert(keys[1].clone(), ":1.45".to_string());
+        let mut s = Stale::default();
+        // (nothing said: only the one never read)
+        assert_eq!(to_read(&keys, &items, &owners, &s), vec![&keys[2]]);
+        // (the first app's tooltip changed: it, and the new one)
+        s.note((Why::Item, Some(":1.12".into())));
+        assert_eq!(to_read(&keys, &items, &owners, &s), vec![&keys[0], &keys[2]]);
+        // (the watcher's list: no more than before)
+        s.note((Why::Keys, None));
+        assert_eq!(to_read(&keys, &items, &owners, &s).len(), 2);
+        // (a sender no item is known by, or the watcher again: all)
+        let mut u = Stale::default();
+        u.note((Why::Item, Some(":1.99".into())));
+        assert_eq!(to_read(&keys, &items, &owners, &u).len(), 3);
+        let mut a = Stale::default();
+        a.note((Why::All, None));
+        assert_eq!(to_read(&keys, &items, &owners, &a).len(), 3);
+    }
 
     #[test]
     fn addresses_in_both_forms() {
