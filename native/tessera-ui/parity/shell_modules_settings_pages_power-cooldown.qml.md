@@ -18,7 +18,7 @@ No popups on this page.
 | 7 | Glass row: Keep/Frosted/Solid (width 260) cooling.glass, "During cool-down"; hidden in Material (53–63) | power.rs:320–323 `.visible(!cx.material)` | same |
 | 8 | Lighter blur switch, hidden in Material (64–68) | power.rs:325, 333 | same |
 | 9 | Shorter animations, Lower refresh rate (with its detail), Pause live wallpaper switches (69–81) | power.rs:326–334 | same |
-| 10 | Group "Performance": Keep panels loaded (performance.keepPanelsLoaded) with detail (83–94) | power.rs:339–345 | same |
+| 10 | Group "Performance": Keep panels loaded (performance.keepPanelsLoaded) with detail (83–94) | — | left out on purpose: nothing in the Rust shell reads it (QML PanelLoader only); Performance shows only for two or more GPUs |
 
 Nothing missing or different found.
 

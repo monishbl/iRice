@@ -179,7 +179,9 @@ pub fn phone(cx: &mut Ctx, p: &mut Page) {
         p.group("Options")
             .above(24.0)
             .row(Row::new("Look for phones").detail("Off: phones aren't looked for, and the rest of this page waits").switch(e, te))
-            .row(Row::new("Show the phone in the Dock").detail("While it's connected: click it to see its screen").switch(d, td))
+            // (hidden: the Rust Dock has no phone item yet, so phone.dock
+            // does nothing here; the QML fallback's Settings still has it)
+            .row(Row::new("Show the phone in the Dock").detail("While it's connected: click it to see its screen").switch(d, td).visible(false))
             .row(Row::new("Keep the phone's screen off").detail("While it's shown here (saves its battery; it comes back on when you disconnect)").switch(so, ts));
     }
     p.end_more();

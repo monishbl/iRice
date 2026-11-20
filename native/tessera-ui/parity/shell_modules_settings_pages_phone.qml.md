@@ -24,7 +24,7 @@ own parity file). Page spacing 24. No popups. One Timer (camera restart
 | 12 | Not ready: "Phone camera", detail installError (tools fine) / "Needs a virtual camera (v4l2loopback[, built for your K kernel])…" / "Set up a virtual camera…"; "Install"/"Installing…" (no module; busy; disabled while updating) → install(true) or "Set Up"/"Setting up…" (busy) → setUpCam (135–154) | 136–152 | same |
 | 13 | Ready: "Use as webcam" switch (enabled with a phone and scrcpy), detail "Connect your phone first" / "On: the phone's front/back camera" / "Off" → setWebcam(!checked) (155–164) | 153–158 | same |
 | 14 | "Camera" Segmented 200 Back/Front ↔ phone.camera; when the webcam is on: off, then on again 800 ms later (165–182) | 159–163 + bridge `phoneCameraChanged` (RustBridgeDevices 500–504, camAgain) | same |
-| 15 | More › "Options": "Look for phones", "Show the phone in the Dock", "Keep the phone's screen off" switches + details (186–206) | 171–186 | same |
+| 15 | More › "Options": "Look for phones", "Show the phone in the Dock", "Keep the phone's screen off" switches + details (186–206) | 171–186 | "Show the phone in the Dock" hidden on purpose: the Rust Dock has no phone item yet (phone.dock does nothing) |
 | 16 | PagePart "Sharing" (209–212) | 188–193 | same |
 
 ## Test plan

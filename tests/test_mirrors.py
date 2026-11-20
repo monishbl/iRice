@@ -1,7 +1,8 @@
 """Download sources (tools/sources.txt): GitHub, its GitLab mirror, GitHub's
-tarball. The updater fetches from the next source when one is dead, by URL,
-without rewriting the remote; a source that doesn't answer is given up on in
-seconds; setup.sh carries the same list and clones from the first that works.
+tarball. The updater fetches code from the checkout's own remote only (20 Nov:
+GitHub only, no mirror, until one really exists); a source that doesn't
+answer is given up on in seconds; setup.sh carries the same list and clones
+from the first that works.
 The mirror-list check of tools/pac.sh is tests/pac_mirrors.test.sh (run here).
 Nothing here uses the network: dead https sources are a closed local port."""
 import importlib.util
@@ -115,20 +116,27 @@ class UpdaterFallback(unittest.TestCase):
         git(self.seed, "add", "-A")
         git(self.seed, "commit", "-qm", name)
 
-    def test_dead_origin_falls_through_to_the_mirror(self):
+    def test_a_dead_origin_never_falls_through_to_a_mirror(self):
+        # (20 Nov, the user: code updates come from GitHub only, until a
+        # mirror really exists: a listed mirror that answers isn't used)
         dead = str(Path(self.tmp.name) / "gone.git")
         git(self.repo, "remote", "set-url", "origin", dead)
         with mock.patch.dict(os.environ, {"TESSERA_MIRRORS": f"{dead} {DEAD_HTTPS} {self.good}"}):
             t = time.time()
             p = self.m.position(str(self.config), fetch=True)
             self.assertLess(time.time() - t, 15)
-        self.assertNotIn("error", p)
-        self.assertEqual((p["kind"], p["behind"], p["source"]), ("update", 1, str(self.good)))
-        # (the remote isn't rewritten: it's still the dead one)
+            f = self.m.fetch_branch("origin", "main", "origin/main")
+        self.assertIn("Couldn't reach the update server", p["error"])
+        self.assertFalse(f["ok"])
+        self.assertEqual(len(f["why"]), 1, "origin only")
         self.assertEqual(git(self.repo, "remote", "get-url", "origin"), dead)
-        r = self.m.apply(str(self.config), {})
-        self.assertNotIn("error", r)
-        self.assertEqual(git(self.repo, "log", "-1", "--format=%s"), "two")
+        self.assertEqual(git(self.repo, "log", "-1", "--format=%s"), "one")
+
+    def test_the_updater_tries_no_other_source(self):
+        src = (ROOT / "tools/tessera-update.py").read_text()
+        body = src[src.index("def fetch_branch("):src.index("\ndef ", src.index("def fetch_branch(") + 1)]
+        self.assertNotIn("git_sources", body)
+        self.assertNotIn("TESSERA_MIRRORS\", \"\").strip()", body)
 
     def test_every_source_dead_says_so(self):
         dead = str(Path(self.tmp.name) / "gone.git")
@@ -146,8 +154,8 @@ class UpdaterFallback(unittest.TestCase):
         self.assertEqual(len(f["why"]), 1)  # (origin only)
 
     def test_fetch_command_for_tessera_update(self):
+        # (from the checkout's own remote, whatever the mirror list says)
         dead = str(Path(self.tmp.name) / "gone.git")
-        git(self.repo, "remote", "set-url", "origin", dead)
         env = dict(os.environ, TESSERA_MIRRORS=f"{dead} {self.good}")
         # (a copy of the updater in the checkout, as tools/tessera runs it)
         (self.repo / "tools").mkdir()

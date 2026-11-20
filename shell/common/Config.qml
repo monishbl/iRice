@@ -112,7 +112,7 @@ Singleton {
                 property string materialStyle: "tonalSpot"
                 // In the Material look: its own sound set, and the Bibata pointer
                 property bool materialSounds: true
-                property bool materialCursor: true
+                property bool materialCursor: false // (the Rust shell's default: Bibata comes from appearance.cursor)
                 property bool materialBlur: true // (before 3 Nov: the on/off blur; materialTransparency replaced it)
                 // Material: how see-through panels, menus, tiles and tonal buttons
                 // are, 0 (solid) .. 1, over the blurred desktop; text and accent
@@ -254,10 +254,10 @@ Singleton {
                 property string chargingFile: ""
                 property string displaysFile: ""
                 property string pack: "marimba" // style of Tessera's sounds: marimba | soft | keys | taps | minimal | glass (assets/sounds/<pack>)
-                property real volume: 0.6
-                // The log-in sound's own volume: it plays at this, louder than
-                // the rest, even with sound effects off (only `startup` stops it)
-                property real startupVolume: 0.9
+                property real volume: 0.7
+                // The log-in sound's own volume: it plays at this even with sound
+                // effects off (only `startup` stops it)
+                property real startupVolume: 0.7
                 property string startupSound: "" // one of StartupSounds.js; "" = Tessera's own chime
             }
 
@@ -278,7 +278,7 @@ Singleton {
             property JsonObject screenshot: JsonObject {
                 property string editor: "tessera" // tessera (floating thumbnail, click to mark up) | swappy
                 property bool thumbnail: true // Tessera editor: floating thumbnail after a screenshot; off = a notification with Edit
-                property bool markup: true // Swappy only: area screenshots open in Swappy to crop, draw and annotate
+                property bool markup: false // Swappy only: area screenshots open in Swappy to crop, draw and annotate
                 property bool textSearch: true // Search finds screenshots by their words (read and kept on this computer; off deletes the index)
             }
 
@@ -291,7 +291,7 @@ Singleton {
                 property string darkPath: "" // empty = bundled tahoe-dusk
                 // Live wallpaper: a video file, muted and looping; pauses when windows cover the desktop
                 property string live: ""
-                property bool livePauseOnBattery: true
+                property bool livePauseOnBattery: false
                 property string directory: "" // empty = ~/Pictures/Wallpapers
             }
 

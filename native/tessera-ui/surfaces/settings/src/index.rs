@@ -210,6 +210,104 @@ pub fn build(files: &[(String, String)], material: bool) -> Vec<Entry> {
             last = Some(out.len() - 1);
         }
     }
+    // (rows the Rust pages leave out: no hit that opens a page without them)
+    out.retain(|e| !LEFT_OUT.contains(&e.text.as_str()));
+    // The Rust pages' own rows: the QML page files are frozen, so a row
+    // added to a Rust page since is found only here
+    for (page, text, detail) in rust_entries() {
+        if !out.iter().any(|e| e.page == page && e.text == text) {
+            out.push(Entry { page, text, detail, section: false, line: 0 });
+        }
+    }
+    out
+}
+
+/// Captions in the QML page files whose rows the Rust Settings doesn't show
+/// (their settings do nothing in the Rust shell: phone.dock has no Dock item,
+/// performance.keepPanelsLoaded is the QML shell's PanelLoader)
+pub const LEFT_OUT: &[&str] = &["Show the phone in the Dock", "Keep panels loaded"];
+
+/// The Rust pages with rows the QML page files don't have, compiled in:
+/// (the file's page, its source, functions in it that build another page)
+const RUST_PAGES: &[(&str, &str, &[(&str, &str)])] = &[
+    ("update", include_str!("pages/about/update.rs"), &[("options", "update/options"), ("back", "update/back")]),
+    ("health", include_str!("pages/system/health.rs"), &[]),
+];
+
+/// Every Rust page's captions (RUST_PAGES), as (page, text, detail)
+fn rust_entries() -> Vec<(String, String, String)> {
+    let mut out = Vec::new();
+    for (page, src, fns) in RUST_PAGES {
+        out.extend(rust_captions(src, page, fns));
+    }
+    out
+}
+
+/// A string literal's text from just after its opening quote (None: no
+/// closing quote on the line)
+fn literal_at(s: &str) -> Option<String> {
+    let mut out = String::new();
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '"' => return Some(out),
+            '\\' => match chars.next() {
+                Some('n') => out.push(' '),
+                Some(e) => out.push(e),
+                None => return None,
+            },
+            c => out.push(c),
+        }
+    }
+    None
+}
+
+/// A Rust page's captions: `Row::new("…")` and `group("…")`, each with the
+/// `.detail("…")` that follows it (within 3 lines), as (page, text,
+/// detail). The page is `page`, or another for the functions named in
+/// `fns`; a caption built at run time (format!) isn't seen.
+fn rust_captions(src: &str, page: &str, fns: &[(&str, &str)]) -> Vec<(String, String, String)> {
+    let mut out: Vec<(String, String, String)> = Vec::new();
+    let mut here = page.to_string();
+    let mut last: Option<(usize, usize)> = None; // (entry, line)
+    for (n, line) in src.lines().enumerate() {
+        if line.trim_start().starts_with("#[cfg(test)]") {
+            break;
+        }
+        if let Some(rest) = line.strip_prefix("pub fn ").or_else(|| line.strip_prefix("fn ")) {
+            let name = rest.split(|c: char| c == '(' || c == '<').next().unwrap_or("");
+            here = fns.iter().find(|f| f.0 == name).map_or(page, |f| f.1).to_string();
+            last = None;
+        }
+        let mut found: Vec<(usize, bool, String)> = Vec::new(); // (where, a detail, text)
+        for (pat, detail) in [("Row::new(\"", false), ("group(\"", false), (".detail(\"", true)] {
+            let mut from = 0;
+            while let Some(p) = line[from..].find(pat) {
+                let at = from + p;
+                from = at + pat.len();
+                if let Some(text) = literal_at(&line[from..]) {
+                    found.push((at, detail, text));
+                }
+            }
+        }
+        found.sort_by_key(|f| f.0);
+        for (_, detail, text) in found {
+            if detail {
+                if let Some((i, l)) = last {
+                    if n - l <= 3 && out[i].2.is_empty() {
+                        out[i].2 = text;
+                    }
+                }
+                continue;
+            }
+            if text.chars().count() < 3 || text.ends_with('…') || out.iter().any(|e| e.0 == here && e.1 == text) {
+                last = None;
+                continue;
+            }
+            out.push((here.clone(), text, String::new()));
+            last = Some((out.len() - 1, n));
+        }
+    }
     out
 }
 
@@ -306,6 +404,32 @@ mod tests {
         let r = search(&idx, "menu bar");
         assert!(r[0].section && r[0].page == "menubar");
         assert!(search(&idx, "  ").is_empty());
+    }
+
+    #[test]
+    fn rust_page_captions_with_their_details_and_pages() {
+        let src = "pub fn page(cx: &mut Ctx, p: &mut Page) {\n    p.group(\"Tessera\")\n        .row(Row::new(\"Follow \\\"beta\\\"\").detail(\"Which one\").switch(a, b))\n        .row(Row::new(name).detail(\"not this\"));\n    p.group(\"\").row(Row::new(\"Loading…\"));\n}\npub fn options(cx: &mut Ctx, p: &mut Page) {\n    p.group(\"\").row(Row::new(\"Snapshots\"));\n}\n#[cfg(test)]\nmod tests { fn t() { Row::new(\"Not a row\"); } }\n";
+        let got = rust_captions(src, "update", &[("options", "update/options")]);
+        assert_eq!(
+            got,
+            vec![
+                ("update".to_string(), "Tessera".to_string(), String::new()),
+                ("update".to_string(), "Follow \"beta\"".to_string(), "Which one".to_string()),
+                ("update/options".to_string(), "Snapshots".to_string(), String::new()),
+            ]
+        );
+    }
+
+    #[test]
+    fn rows_only_the_rust_pages_have_are_found_and_left_out_ones_arent() {
+        let idx = build(&read_pages(), false);
+        assert!(idx.iter().any(|e| e.page == "update" && e.text == "Set up the rest of Tessera"));
+        assert!(idx.iter().any(|e| e.page == "update/options" && e.text == "Snapshots in the boot menu"));
+        for gone in LEFT_OUT {
+            assert!(!idx.iter().any(|e| e.text == *gone), "{gone}");
+        }
+        let r = search(&idx, "rest of tessera");
+        assert!(r.iter().any(|e| e.page == "update"));
     }
 
     #[test]

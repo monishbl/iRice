@@ -292,7 +292,7 @@ impl Service for Sounds {
                     return;
                 }
                 // Directional sound on: DisplayFx plays it, panned toward the display
-                if !cfg_bool(h.cfg(), "displays.directionalSound", false) {
+                if !cfg_bool(h.cfg(), "displays.directionalSound", true) {
                     if self.screens > self.heard {
                         self.play(h, "displays", false);
                     } else if self.screens < self.heard {

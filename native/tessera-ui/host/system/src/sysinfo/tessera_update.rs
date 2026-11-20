@@ -93,9 +93,41 @@ pub fn restart_at_lock(was_secure: bool, secure: bool, ready: bool, restarting: 
     secure && !was_secure && ready && !restarting
 }
 
+/// What Software Update says when a restart into the update didn't happen
+/// within a minute, by whether the update is still ready or was discarded
+pub fn restart_failed_words(ready: bool) -> &'static str {
+    if ready {
+        "The shell didn't restart. Try Restart shell now again; your update is still ready."
+    } else {
+        "The shell didn't restart, and the prepared update no longer fits this copy of Tessera. Check for updates again."
+    }
+}
+
 /// Was the job cut off (it says running, its process is gone)?
 pub fn job_cut_off(job: &Value, alive: impl Fn(i64) -> bool) -> bool {
     job["state"] == "running" && !job["pid"].as_i64().is_some_and(&alive)
+}
+
+/// How long a job just asked for (stage, or resume after a cut-off) may go
+/// without writing a status of its own before it counts as not started
+pub const ASKED_TIMEOUT_S: f64 = 45.0;
+
+/// The status file as read (`file`), for a job asked for at `asked` (0: none
+/// asked; the placeholder shown meanwhile is pid-less): a file older than
+/// the ask is the last job's, not news (None), until ASKED_TIMEOUT_S have
+/// gone by. Then the helper never wrote its own (python didn't start,
+/// `resume` found nothing to pick up): the file as it is when it's a job
+/// still running, otherwise "didn't start", so the page never shows
+/// "Updating" forever with a Cancel that does nothing.
+pub fn job_seen(file: Option<Value>, asked: f64, now: f64, alive: impl Fn(i64) -> bool) -> Option<Value> {
+    let fresh = |j: &Value| asked <= 0.0 || j["started"].as_f64().unwrap_or(0.0) >= asked - 2.0;
+    let late = asked > 0.0 && now - asked > ASKED_TIMEOUT_S;
+    match file {
+        Some(j) if fresh(&j) => Some(j),
+        Some(j) if late && j["state"] == "running" && j["pid"].as_i64().is_some_and(&alive) => Some(j),
+        _ if late => Some(json!({"state": "error", "error": "The update didn't start.", "started": asked, "finished": now})),
+        _ => None,
+    }
 }
 
 fn pid_alive(pid: i64) -> bool {
@@ -152,6 +184,9 @@ pub struct TesseraUpdate {
     pub was_secure: bool,
     /// when the restart was asked for (a "busy" status after it ends it)
     restart_at: f64,
+    /// the restart didn't happen within a minute: its words wait for what's
+    /// staged now (still ready, or discarded by update-run.sh)
+    restart_timed_out: bool,
     t_job: Ticker,
 }
 
@@ -183,6 +218,7 @@ impl Default for TesseraUpdate {
             cache_error: String::new(),
             was_secure: false,
             restart_at: 0.0,
+            restart_timed_out: false,
             t_job: Ticker::new("tuJob"),
         }
     }
@@ -265,6 +301,19 @@ impl TesseraUpdate {
     }
     pub fn choose(&mut self, id: &str, choice: &str) {
         self.choices.insert(id.to_string(), json!(choice));
+    }
+    /// The conflict choices carried through a chained system update
+    /// (sysupdate.py keeps its --then, choices included, in its status):
+    /// back after a shell restart, where none is made in this shell (a
+    /// choice made since stays)
+    pub fn restore_choices(&mut self, saved: &Value) {
+        if let Some(m) = saved.as_object() {
+            for (k, v) in m {
+                if !self.choices.contains_key(k) {
+                    self.choices.insert(k.clone(), v.clone());
+                }
+            }
+        }
     }
     pub fn dismiss_result(&mut self) {
         self.result = None;
@@ -415,9 +464,12 @@ impl TesseraUpdate {
     }
     fn job_changed(&mut self, h: &mut Host, tx: &Tx, was: &str) {
         let now = self.job.as_ref().and_then(|j| j["state"].as_str()).unwrap_or("").to_string();
-        // (the restart found an update running elsewhere: it didn't go ahead)
-        if self.restarting && now == "busy" && self.job.as_ref().and_then(|j| j["finished"].as_f64()).unwrap_or(0.0) >= self.restart_at - 2.0 {
+        // (the restart found an update running elsewhere, or nothing valid
+        // staged any more (update-run.sh says so in the job's status): it
+        // didn't go ahead, and what's staged is read again)
+        if self.restarting && (now == "busy" || now == "error") && self.job.as_ref().and_then(|j| j["finished"].as_f64()).unwrap_or(0.0) >= self.restart_at - 2.0 {
             self.restarting = false;
+            self.read_staged(tx);
         }
         if self.job_running() || self.restarting {
             if !self.t_job.running() {
@@ -578,7 +630,8 @@ impl TesseraUpdate {
             "tuStart" => {
                 if self.restarting {
                     self.restarting = false;
-                    self.error = "The shell didn't restart. Try Restart shell now again; your update is still ready.".into();
+                    // (the words once what's staged is known: Ev::Staged)
+                    self.restart_timed_out = true;
                     self.read_staged(tx);
                 }
             }
@@ -613,7 +666,7 @@ impl TesseraUpdate {
                 // (a job just asked for: the last job's file, read before the
                 // new one wrote its own, isn't this one's news)
                 let asked = self.job.as_ref().filter(|x| x["state"] == "running" && x["pid"].is_null()).and_then(|x| x["started"].as_f64()).unwrap_or(0.0);
-                let j = j.filter(|j| asked <= 0.0 || j["started"].as_f64().unwrap_or(0.0) >= asked - 2.0);
+                let j = job_seen(j, asked, helpers::now_s(), pid_alive);
                 if let Some(j) = j {
                     // (cut off by a reboot, a logout, a crash: started again
                     // from what it was asked, in the background)
@@ -629,6 +682,9 @@ impl TesseraUpdate {
             }
             Ev::Staged(s) => {
                 self.staged = s;
+                if std::mem::take(&mut self.restart_timed_out) {
+                    self.error = restart_failed_words(self.ready()).into();
+                }
             }
             Ev::ReadyAnswer(a) => {
                 if a == "restart" {
@@ -787,6 +843,43 @@ mod tests {
         assert!(!job_cut_off(&json!({"state": "running", "pid": 4242}), |_| true));
         assert!(job_cut_off(&json!({"state": "running"}), |_| true));
         assert!(!job_cut_off(&json!({"state": "ready", "pid": 4242}), |_| false));
+    }
+
+    #[test]
+    fn a_job_asked_for_that_never_writes_its_status_ends_after_a_while() {
+        let old = json!({"state": "running", "pid": 4242, "started": 100.0});
+        // (no ask: the file as it is)
+        assert_eq!(job_seen(Some(old.clone()), 0.0, 5000.0, |_| false), Some(old.clone()));
+        // (asked at 1000: the last job's file isn't news yet…)
+        assert_eq!(job_seen(Some(old.clone()), 1000.0, 1010.0, |_| false), None);
+        assert_eq!(job_seen(None, 1000.0, 1010.0, |_| false), None);
+        // (…a fresh one is)
+        let fresh = json!({"state": "running", "pid": 7, "started": 1001.0});
+        assert_eq!(job_seen(Some(fresh.clone()), 1000.0, 1002.0, |_| true), Some(fresh));
+        // (and once the wait is over: "didn't start", unless the file's job is really running)
+        let late = 1000.0 + ASKED_TIMEOUT_S + 1.0;
+        let e = job_seen(Some(old.clone()), 1000.0, late, |_| false).unwrap();
+        assert_eq!(e["state"], "error");
+        assert_eq!(job_words(&e).0, "The update didn't finish");
+        assert_eq!(job_seen(None, 1000.0, late, |_| false).unwrap()["state"], "error");
+        assert_eq!(job_seen(Some(old.clone()), 1000.0, late, |_| true), Some(old));
+    }
+
+    #[test]
+    fn a_restart_that_didnt_happen_says_whether_the_update_is_still_ready() {
+        assert!(restart_failed_words(true).contains("still ready"));
+        assert!(!restart_failed_words(false).contains("still ready") && restart_failed_words(false).contains("Check for updates again"));
+    }
+
+    #[test]
+    fn choices_come_back_after_a_restart_without_overriding_new_ones() {
+        let mut t = TesseraUpdate::default();
+        t.choose("setting:a", "new");
+        t.restore_choices(&json!({"setting:a": "keep", "code:f": "mine"}));
+        assert_eq!(t.choices["setting:a"], json!("new"));
+        assert_eq!(t.choices["code:f"], json!("mine"));
+        t.restore_choices(&Value::Null);
+        assert_eq!(t.choices.len(), 2);
     }
 
     #[test]

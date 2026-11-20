@@ -420,7 +420,9 @@ impl SoftwareUpdate {
             return;
         }
         args.push("--then".into());
-        args.push(json!({"tessera": true, "rebuild": [], "at": helpers::now_s()}).to_string());
+        // (the conflict choices with it: a shell restart meanwhile loses the
+        // ones in memory, and updates_finished needs them for stage)
+        args.push(json!({"tessera": true, "rebuild": [], "at": helpers::now_s(), "choices": Value::Object(tu.choices.clone())}).to_string());
         up.update(tx, &args);
     }
 
@@ -483,7 +485,7 @@ impl SoftwareUpdate {
             args.extend(self.tessera_packages(tu, up));
         }
         args.push("--then".into());
-        args.push(json!({"tessera": tessera, "rebuild": rebuild, "at": helpers::now_s()}).to_string());
+        args.push(json!({"tessera": tessera, "rebuild": rebuild, "at": helpers::now_s(), "choices": Value::Object(tu.choices.clone())}).to_string());
         up.update(tx, &args);
     }
 
@@ -525,6 +527,9 @@ impl SoftwareUpdate {
             helpers::notify_send(&["-a", "Tessera", "Sandbox", &format!("Tessera's part would start now in the background (rebuild {}).", if rebuild.is_empty() { "nothing".to_string() } else { rebuild.join(", ") })]);
             return;
         }
+        // (the decisions made before the system part, back if this shell
+        // was restarted meanwhile)
+        tu.restore_choices(&after["choices"]);
         tu.stage(h, tx, &rebuild);
     }
 }

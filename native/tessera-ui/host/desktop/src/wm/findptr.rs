@@ -54,7 +54,7 @@ impl FindPointer {
             self.follow(h);
         }
         if style != "ring" {
-            let theme = if h.st.shell.look.material { super::apptheme::cursor_theme(&cfg, true) } else if cfg["appearance"]["cursor"] == "bibata" { "Bibata-Modern-Classic" } else { "macOS" };
+            let theme = if h.st.shell.look.material { super::apptheme::cursor_theme(&cfg, true) } else if cfg["appearance"]["cursor"].as_str().unwrap_or("bibata") == "bibata" { "Bibata-Modern-Classic" } else { "macOS" };
             // Run on its own (setsid), so it always shrinks back to the size it
             // had (XCURSOR_SIZE, else 24); one at a time (a lock), and only a
             // short hold: every size change reloads the theme

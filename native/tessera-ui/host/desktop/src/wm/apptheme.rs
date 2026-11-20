@@ -49,7 +49,7 @@ fn targets(cfg: &Value) -> String {
 /// The pointer theme for Settings → Appearance: Bibata or macOS; in the Material
 /// look Bibata also when "Material pointer" is on
 pub fn cursor_theme(cfg: &Value, material: bool) -> &'static str {
-    if (material && cfg["appearance"]["materialCursor"].as_bool().unwrap_or(false)) || cfg["appearance"]["cursor"] == "bibata" {
+    if (material && cfg["appearance"]["materialCursor"].as_bool().unwrap_or(false)) || cfg["appearance"]["cursor"].as_str().unwrap_or("bibata") == "bibata" {
         "Bibata-Modern-Classic"
     } else {
         "macOS"

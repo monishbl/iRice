@@ -37,12 +37,24 @@ SHELL_DIR="$REPO/shell"
 exec >>"$T/log" 2>&1
 echo "== $(date '+%F %T') update${MODE:+ ($MODE${LOCKED:+, $LOCKED})}"
 # (the restart into a staged update: is it still good for this copy? If not,
-# the shell isn't touched; the answer goes where the shell reads results)
+# the shell isn't touched, and the answer goes into the background job's
+# status, which the running shell reads every second while it waits for its
+# restart: not the result file, read only when a shell starts)
 if [[ $MODE == finish ]]; then
     ok=$(python3 -I "$REPO/tools/tessera-update.py" staged | python3 -c 'import json, sys; s = json.load(sys.stdin); print("yes" if s.get("ready") and s.get("valid") else "no")' 2>/dev/null)
     if [[ $ok != yes ]]; then
         python3 -I "$REPO/tools/tessera-update.py" discard >/dev/null 2>&1
-        printf '%s' '{"error": "The prepared update no longer fits this copy of Tessera. Check for updates again."}' >"$RUN/tessera-update-result.json"
+        python3 -I - "${XDG_STATE_HOME:-$HOME/.local/state}/tessera/update-job" <<'PY'
+import json, os, sys, time
+d = sys.argv[1]
+os.makedirs(d, exist_ok=True)
+now = time.time()
+st = {"state": "error", "error": "The prepared update no longer fits this copy of Tessera. Check for updates again.",
+      "text": "The update didn't finish", "started": now, "finished": now}
+with open(os.path.join(d, "status.json.tmp"), "w") as f:
+    json.dump(st, f)
+os.replace(os.path.join(d, "status.json.tmp"), os.path.join(d, "status.json"))
+PY
         echo "nothing valid staged: the shell stays"
         exit 1
     fi

@@ -374,18 +374,14 @@ pub fn cooldown(cx: &mut Ctx, p: &mut Page) {
         for r in rows {
             g.row(r);
         }
-        let keep = cx.b("performance.keepPanelsLoaded");
-        let kt = cx.toggle("performance.keepPanelsLoaded");
-        let g = p.group("Performance");
-        g.row(
-            Row::new("Keep panels loaded")
-                .detail("Search, Quick Settings and Notification Center stay ready after their first open: faster and lighter on the processor, about 50 MB more memory")
-                .switch(keep, kt),
-        );
+        // (no "Keep panels loaded" here: performance.keepPanelsLoaded is read
+        // only by the QML shell's PanelLoader, so in the Rust shell the
+        // switch did nothing; the QML Settings still has it)
         // (two or more GPUs, a laptop's Intel or AMD beside an NVIDIA: which
         // one the shell draws on; tessera_core::gpu)
         let gpus = tessera_core::gpu::gpus();
         if gpus.len() > 1 {
+            let g = p.group("Performance");
             let mut labels = vec!["Low power (recommended)".to_string(), "Same as the desktop".to_string()];
             let mut values = vec!["low", "auto"];
             for (f, _) in &gpus {

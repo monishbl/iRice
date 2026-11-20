@@ -29,9 +29,9 @@ was staged: renames and copies, a few seconds. A conflict that appeared
 since (a setting changed) settles keeping yours; a file changed since stops
 it, and nothing changes.
 
-Downloads come from the checkout's remote, else the other sources in
-tools/sources.txt (GitHub, its GitLab mirror), fetched by URL: the remote
-isn't rewritten, and a mirror that doesn't answer is passed over in seconds.
+Downloads come from the checkout's own remote only (Tessera's GitHub
+repository for a normal install). No mirror is tried: the updater runs the
+code it takes, and nothing could tell a mirror's commit from GitHub's.
 
 Channels (config.json's update.channel, or --channel): stable follows the
 branch main, beta the branch beta. Until one is chosen the checkout's own
@@ -76,6 +76,12 @@ CONFIG_QML = "shell/common/Config.qml"
 THEME_QML = "shell/common/Theme.qml"
 KEYMAP = "hypr/tessera/keymap.json"
 MIGRATIONS = "tools/settings-migrations.json"  # {"old.path": "new.path"}
+# Defaults Config.qml changed to what the Rust shell already did (20 Nov:
+# Settings showed one thing, the shell did another). The shell's behaviour
+# doesn't change with them, so an update across that change asks nothing
+# (asking "keep the old default?" would write the old value and change it).
+ALIGNED_DEFAULTS = frozenset({"appearance.materialCursor", "sounds.volume", "sounds.startupVolume", "screenshot.markup",
+                              "wallpaper.livePauseOnBattery"})
 
 
 def git(*args, check=True):
@@ -117,19 +123,19 @@ OLD_KEYMAP = getattr(OLD_NAMES, "OLD_KEYMAP", None)  # (where the shortcuts were
 
 
 def fetch_branch(remote, branch, target):
-    """BRANCH into refs/remotes/TARGET: from REMOTE first, then, when REMOTE
-    is one of Tessera's own sources (tools/sources.txt; or TESSERA_MIRRORS is
-    set), from each other one in turn, by URL: the remote itself is never
-    rewritten. A source that doesn't answer within seconds, or doesn't exist
-    yet (a GitLab mirror not created), is passed over quietly.
-    Returns {"ok", "source", "missing", "why"}: missing when a source that
-    answered has no such branch."""
+    """BRANCH into refs/remotes/TARGET from REMOTE, and only from it: the
+    checkout's own remote (Tessera's GitHub repository for a normal
+    install). No other source is tried, not even Tessera's listed mirrors
+    (tools/sources.txt, TESSERA_MIRRORS): the updater runs the code it
+    takes, a mirror's commit couldn't be checked against GitHub's, and the
+    GitLab mirror doesn't exist yet. An official remote that doesn't answer
+    within seconds is passed over quietly (no 15-minute wait).
+    Returns {"ok", "source", "missing", "why"}: missing when the remote
+    answered and has no such branch."""
     spec = f"+refs/heads/{branch}:refs/remotes/{target}"
     url = git("remote", "get-url", remote, check=False).strip()
     official = SOURCES.is_official(url)
     tries = [(remote, url)]
-    if official or os.environ.get("TESSERA_MIRRORS", "").strip():
-        tries += [(u, u) for u in SOURCES.git_sources() if not SOURCES.same_repo(u, url)]
     env = dict(os.environ, **SOURCES.QUIET_GIT)
     why, missing = [], False
     for i, (src, shown) in enumerate(tries):
@@ -417,7 +423,7 @@ def position(config_dir, fetch=True, channel=None, pin=None):
     if fetch:
         # (only this branch: a copy cloned with one branch gets the other
         # channel's when it's chosen)
-        # (from the remote, else Tessera's mirrors: tools/sources.txt)
+        # (from the checkout's own remote only: fetch_branch)
         f = fetch_branch(remote, branch, target)
         if not f["ok"]:
             if f["missing"]:
@@ -580,7 +586,7 @@ def check(config_dir, fetch=True, channel=None, pin=None):
     # material's sliders: they start from the current material when opened)
     skip = {"appearance.glassLens", "appearance.glassFrost", "appearance.glassSolid", "appearance.glassTint"}
     for key in sorted(set(old_def) & set(new_def)):
-        if old_def[key] == new_def[key] or key in skip:
+        if old_def[key] == new_def[key] or key in skip or key in ALIGNED_DEFAULTS:
             continue
         mine, present = get_path(config, key)
         if present and mine != old_def[key]:
@@ -1009,17 +1015,20 @@ class _Held:
             pass
 
 
-def take(report):
+def take(report, undo=None):
     """Moves this copy to its channel's version, on the channel's branch
     (following it from now on). A newer version on the branch checked out
     is a fast-forward; anything else (another channel, going back to an
     older version) checks the branch out at that version: the commits it
-    leaves stay on the other channel's branch. Returns how to undo it."""
+    leaves stay on the other channel's branch. Returns how to undo it,
+    filled into UNDO as it goes (when given), so a take() that fails
+    halfway can still be undone."""
     target = report.get("target") or report["upstream"]
     upstream = report["upstream"]
     branch = report.get("branch") or ""
     here = local_branch()
-    undo = {"here": here, "branch": branch, "had": None, "upstream": None}
+    undo = {} if undo is None else undo
+    undo.update({"here": here, "branch": branch, "had": None, "upstream": None})
     if report.get("channel") == "custom" or not branch or (branch == here and report.get("kind", "update") == "update"):
         git("merge", "--ff-only", target)
         return undo
@@ -1098,15 +1107,24 @@ def apply(config_dir, choices, extra=(), channel=None, staged=None):
             shutil.copy2(os.path.join(config_dir, name), backup)
 
     progress(15, "Installing the new version")
-    # (written before anything changes, and as each step is done: an update
-    # cut off anywhere, power off, a crash, is put back at the next start:
-    # recover)
-    journal = Journal(config_dir, backup)
     # Code: set your edits aside, take the update, put back what you keep.
     # If anything after taking the update fails, everything goes back exactly
     # as it was (the old version, your edits, your settings) and it says so.
     old_head = git("rev-parse", "HEAD").strip()
     edited = [l for l in git("diff", "--name-only", "-z", "HEAD").split("\0") if l]
+    # (before the journal: a file that no longer merges stops the update
+    # with nothing changed, and nothing for recover() to call cut off)
+    merged = {}  # files kept as both: your edits with the update's merged in
+    for f in edited:
+        if choices.get("code:" + f) == "both":
+            text = three_way(f, report.get("target") or report["upstream"])
+            if text is None:
+                raise SystemExit(f + " no longer merges cleanly: choose mine or new for it")
+            merged[f] = text
+    # (written before anything changes, and as each step is done: an update
+    # cut off anywhere, power off, a crash, is put back at the next start:
+    # recover)
+    journal = Journal(config_dir, backup)
     # Your version of each file you chose the update's for, into the backup
     # folder (as well as the stash), so it's easy to find again
     untracked = [c["title"] for c in report["conflicts"] if c["kind"] == "code" and c.get("change") == "untracked"]
@@ -1128,16 +1146,10 @@ def apply(config_dir, choices, extra=(), channel=None, staged=None):
             if os.path.lexists(src):
                 os.makedirs(os.path.dirname(dst), exist_ok=True)
                 shutil.copy2(src, dst)
-    merged = {}  # files kept as both: your edits with the update's merged in
-    for f in edited:
-        if choices.get("code:" + f) == "both":
-            text = three_way(f, report.get("target") or report["upstream"])
-            if text is None:
-                raise SystemExit(f + " no longer merges cleanly: choose mine or new for it")
-            merged[f] = text
     stash = None
     ui = None
     undo = None
+    taking = {}  # (take()'s undo as it goes: a take that fails halfway is undone too)
     try:
         for f in untracked:
             dest = os.path.join(aside, f)
@@ -1149,15 +1161,23 @@ def apply(config_dir, choices, extra=(), channel=None, staged=None):
         journal.write(step="stashed", stash=stash)
         checkpoint("stashed")
         journal.write(step="taking")
-        undo = take(report)
+        undo = take(report, taking)
         journal.write(step="taken", undo=undo)
         checkpoint("taken")
     except BaseException as e0:
         if isinstance(e0, Cut):
             raise  # (a power cut: nothing runs after it; recover() puts it back)
         try:
+            # (take() may have moved the checkout before it failed: the old
+            # version first, then your edits on it)
+            if taking or git("rev-parse", "HEAD").strip() != old_head:
+                untake(taking, old_head)
             if stash:
                 git("stash", "pop")
+            # All back as it was: no journal left, or the next start's
+            # recover() would reset the checkout over edits made since and
+            # say the update was cut off
+            journal.done()
         finally:
             put_back_untracked()
         raise
@@ -1207,6 +1227,13 @@ def apply(config_dir, choices, extra=(), channel=None, staged=None):
                         " Your settings backup is in " + backup + ".")
         journal.done()
         raise SystemExit("The update didn't finish: " + why + "." + restored)
+    # The commit point: the checkout and its programs are the new version
+    # together. The parts and the move from the old name come after it, and
+    # are best effort: a cut-off from here on leaves the new version in
+    # place (a part not swapped yet is rebuilt by the next update, which
+    # sees its build missing or from other sources), never the old checkout
+    # with the new parts (recover() has no step for parts)
+    journal.done()
     if staged:
         built, failed = install_parts(staged)
         checkpoint("parts")
@@ -1225,7 +1252,6 @@ def apply(config_dir, choices, extra=(), channel=None, staged=None):
                        capture_output=True, timeout=120)
     except (OSError, subprocess.SubprocessError):
         pass
-    journal.done()
     # (a new shell from this update that doesn't stay up goes back to the
     # build before it: launch-shell.sh's rollback_ui; tessera-ui removes the
     # mark once it has been up a minute)
@@ -1598,8 +1624,10 @@ class Job:
         os.makedirs(self.dir, exist_ok=True)
         self.state = {"state": "running", "phase": "prepare", "percent": 0, "text": "Preparing", "detail": "", "how": "",
                       "bytes": 0, "error": "", "started": time.time(), "finished": 0, "pid": os.getpid()}
+        # (with its start time: Cancel signals this process group only while
+        # the pid is still this job's, never a pid reused after a reboot)
         with open(os.path.join(self.dir, "pid"), "w") as f:
-            f.write(str(os.getpid()))
+            f.write(f"{os.getpid()} {proc_start(os.getpid()) or ''}".strip())
         # (a new job, a new log: the details show this one's)
         try:
             open(os.path.join(self.dir, "log"), "w").close()
@@ -1989,12 +2017,59 @@ def resume(a):
     (request.json), in the background; what it had done is redone quickly
     (downloads checked again, builds from the cache)"""
     req = load_json(os.path.join(job_dir(), "request.json"), None)
-    if not isinstance(req, dict) or not job_interrupted():
+    if not job_interrupted():
         return {"resumed": False}
+    if not isinstance(req, dict):
+        # Cut off with nothing to pick up again (what it was asked is gone):
+        # its status says it ended, freshly dated, so the shell stops
+        # showing it running (it waits for a status newer than its ask)
+        discard()
+        end_cut_off_job()
+        return {"resumed": False, "ended": True}
     a.rebuild = req.get("rebuild") or ""
     a.channel = req.get("channel") if req.get("channel") in CHANNELS else None
     out = run_stage(a, req.get("config") or a.config, req.get("choices") or {})
     return dict(out, resumed=True)
+
+
+def end_cut_off_job(directory=None, now=None):
+    """A job that says running but whose process is gone, and can't be
+    resumed: its status says so (state "error", dated now), its pid file goes"""
+    d = directory or job_dir()
+    st_path = os.path.join(d, "status.json")
+    st = load_json(st_path, {})
+    st = st if isinstance(st, dict) else {}
+    now = time.time() if now is None else now
+    st.update(state="error", error="The update was cut off before it finished.", text="The update didn't finish",
+              started=now, finished=now, pid=None)
+    os.makedirs(d, exist_ok=True)
+    write_json(st_path, st)
+    try:
+        os.remove(os.path.join(d, "pid"))
+    except OSError:
+        pass
+
+
+def read_job_pid(directory=None):
+    """The job's pid file: (pid, start time or None), None when there's none"""
+    try:
+        with open(os.path.join(directory or job_dir(), "pid")) as f:
+            parts = f.read().split()
+        return int(parts[0]), (int(parts[1]) if len(parts) > 1 else None)
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def job_group_is_ours(pid, start, started=proc_start, cmdline=proc_cmdline):
+    """May Cancel signal process group PID? Yes while PID is still the job
+    (its start time as written, when written, and tessera-update in its
+    command line), or when PID is gone (the group's other processes, cargo
+    and rustc, keep its id from being given to anyone else). No for a pid
+    reused by another program (a reboot, a stale pid file)."""
+    now = started(pid)
+    if now is None:
+        return True
+    return (start is None or now == start) and "tessera-update" in cmdline(pid)
 
 
 def unblock_signals():
@@ -2025,28 +2100,31 @@ def cancel_job(grace=10.0, sleep=time.sleep, killpg=None, alive=None):
     import signal
     killpg = killpg or os.killpg
     alive = alive or _group_alive
-    try:
-        with open(os.path.join(job_dir(), "pid")) as f:
-            pid = int(f.read().strip())
-    except (OSError, ValueError):
+    got = read_job_pid()
+    if got is None:
         return False
-    try:
-        killpg(pid, signal.SIGTERM)
-    except OSError:
-        pass
-    waited = 0.0
-    while alive(pid) and waited < grace:
-        sleep(0.25)
-        waited += 0.25
-    if alive(pid):
+    pid, start = got
+    # (a pid file left by a job that died, its pid since given to another
+    # program: that program's group is never signalled; the status still
+    # ends cancelled below)
+    if job_group_is_ours(pid, start):
         try:
-            killpg(pid, signal.SIGKILL)
+            killpg(pid, signal.SIGTERM)
         except OSError:
             pass
-        for _ in range(20):
-            if not alive(pid):
-                break
-            sleep(0.1)
+        waited = 0.0
+        while alive(pid) and waited < grace:
+            sleep(0.25)
+            waited += 0.25
+        if alive(pid):
+            try:
+                killpg(pid, signal.SIGKILL)
+            except OSError:
+                pass
+            for _ in range(20):
+                if not alive(pid):
+                    break
+                sleep(0.1)
     st_path = os.path.join(job_dir(), "status.json")
     st = load_json(st_path, {})
     if isinstance(st, dict) and st.get("state") == "running":
@@ -2165,7 +2243,7 @@ def main():
         elif a.command == "peek":
             out = peek(a.config, a.channel, a.mark)
         elif a.command == "fetch":
-            # (tessera update: the branch this checkout follows, from wherever answers)
+            # (tessera update: the branch this checkout follows, from its own remote)
             up = tracked() if is_checkout() else ""
             remote, branch = up.split("/", 1) if up else follow(a.config, a.channel)[1:]
             f = fetch_branch(remote, branch, remote + "/" + branch) if is_checkout() else {"ok": False, "why": [NOT_A_CHECKOUT]}
