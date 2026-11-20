@@ -367,6 +367,16 @@ impl crate::shell::Part for HostPart {
                 if crate::perf::on() {
                     eprintln!("debug: ipc {}", i.args.join(" "));
                 }
+                // `ipc show`: every target some service answers, one `target X` line each
+                if target == "show" && i.args.len() == 1 {
+                    let mut all: Vec<&'static str> = self.services.iter().flat_map(|s| s.ipc_targets().iter().copied()).collect();
+                    all.sort_unstable();
+                    all.dedup();
+                    if let Some(r) = i.reply {
+                        let _ = r.send(all.iter().map(|t| format!("target {t}\n")).collect());
+                    }
+                    return self.settle(st);
+                }
                 let found = self.one(st, |s| s.ipc_targets().contains(&target.as_str()), |s, h| out = s.ipc(h, &target, &func, &rest));
                 if !found {
                     eprintln!("tessera-ui: host: no ipc target {target} ({func})");

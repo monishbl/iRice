@@ -139,7 +139,7 @@ impl Resources {
             if self.fast() && !self.nvidia_busy {
                 self.nvidia_busy = true;
                 let send = h.sender(NAME);
-                capture_then(sh_cmd(NVIDIA, &[]), None, move |c, t| send(Box::new(M::Nvidia(c, t))));
+                capture_then_within(sh_cmd(NVIDIA, &[]), None, Some(Duration::from_secs(10)), move |c, t| send(Box::new(M::Nvidia(c, t))));
             }
         } else if !self.gpu_path.is_empty() {
             match std::fs::read_to_string(&self.gpu_path).ok().map(|t| t.trim().parse::<f64>().unwrap_or(0.0)) {
@@ -163,7 +163,7 @@ impl Resources {
         } else if !self.gpu_searched && !self.gpu_searching {
             self.gpu_searching = true;
             let send = h.sender(NAME);
-            capture_then(sh_cmd(FIND_GPU, &[]), None, move |_, t| send(Box::new(M::GpuFound(t))));
+            capture_then_within(sh_cmd(FIND_GPU, &[]), None, Some(Duration::from_secs(15)), move |_, t| send(Box::new(M::GpuFound(t))));
         }
     }
 

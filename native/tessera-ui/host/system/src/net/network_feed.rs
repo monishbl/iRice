@@ -179,11 +179,33 @@ pub struct NetworkFeed {
     last_sent: Value,
 }
 
+/// What to do with nmcli's last answer about NetworkManager (its age, the answer)
+#[derive(Debug, PartialEq)]
+pub enum NmAnswer {
+    /// fresh: use it
+    Kept(bool),
+    /// stale: use it, and ask again off the UI thread
+    AskAgain(bool),
+    /// none yet: ask
+    AskNow,
+}
+
+pub fn nm_answer(last: Option<(Duration, bool)>) -> NmAnswer {
+    match last {
+        Some((age, ok)) if age < Duration::from_secs(30) => NmAnswer::Kept(ok),
+        Some((_, ok)) => NmAnswer::AskAgain(ok),
+        None => NmAnswer::AskNow,
+    }
+}
+
 impl NetworkFeed {
     /// NetworkManager answers (its run folder, or else nmcli itself: in a
     /// container /run/NetworkManager can be hidden while NetworkManager is
     /// reachable over the system bus, as the QML's Networking sees it).
-    /// nmcli's answer is kept 30 s (this is asked on every refresh)
+    /// nmcli's answer is kept 30 s (this is asked on every refresh); once
+    /// there is one, asking again runs on a thread and the last answer
+    /// stands meanwhile (nmcli on the UI thread hitched the Wi-Fi menu every
+    /// 30 s, up to its 2 s timeout)
     fn nm_running() -> bool {
         if !has_tool("nmcli") {
             return false;
@@ -191,19 +213,33 @@ impl NetworkFeed {
         if std::path::Path::new("/run/NetworkManager").exists() {
             return true;
         }
+        use std::sync::atomic::{AtomicBool, Ordering};
         use std::sync::Mutex;
         static ASKED: Mutex<Option<(std::time::Instant, bool)>> = Mutex::new(None);
-        let mut a = ASKED.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some((t, ok)) = *a {
-            if t.elapsed() < Duration::from_secs(30) {
-                return ok;
+        static ASKING: AtomicBool = AtomicBool::new(false);
+        fn ask() -> bool {
+            crate::util::capture(&["nmcli", "-t", "-f", "RUNNING", "general"], Duration::from_secs(2)).map(|x| x.1.trim() == "running").unwrap_or(false)
+        }
+        let last = *ASKED.lock().unwrap_or_else(|e| e.into_inner());
+        match nm_answer(last.map(|(t, ok)| (t.elapsed(), ok))) {
+            NmAnswer::Kept(ok) => ok,
+            NmAnswer::AskAgain(ok) => {
+                if !ASKING.swap(true, Ordering::SeqCst) {
+                    std::thread::spawn(|| {
+                        let ok = ask();
+                        *ASKED.lock().unwrap_or_else(|e| e.into_inner()) = Some((std::time::Instant::now(), ok));
+                        ASKING.store(false, Ordering::SeqCst);
+                    });
+                }
+                ok
+            }
+            NmAnswer::AskNow => {
+                // (the very first time only: nothing to go on yet)
+                let ok = ask();
+                *ASKED.lock().unwrap_or_else(|e| e.into_inner()) = Some((std::time::Instant::now(), ok));
+                ok
             }
         }
-        let ok = crate::util::capture(&["nmcli", "-t", "-f", "RUNNING", "general"], Duration::from_secs(2))
-            .map(|x| x.1.trim() == "running")
-            .unwrap_or(false);
-        *a = Some((std::time::Instant::now(), ok));
-        ok
     }
 
     fn list(&mut self, h: &mut Host) {
@@ -460,6 +496,13 @@ impl Service for NetworkFeed {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn nmcli_is_asked_on_the_ui_thread_only_the_first_time() {
+        assert_eq!(nm_answer(None), NmAnswer::AskNow);
+        assert_eq!(nm_answer(Some((Duration::from_secs(5), true))), NmAnswer::Kept(true));
+        assert_eq!(nm_answer(Some((Duration::from_secs(31), false))), NmAnswer::AskAgain(false));
+    }
 
     #[test]
     fn the_notice_names_who_manages_wifi() {

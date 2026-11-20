@@ -143,6 +143,16 @@ fn ctl_name(b: &Value) -> String {
     .to_string()
 }
 
+/// The button a history line keeps for an alert: (label, call), for the
+/// kinds whose action still means something later (a download, a drive,
+/// What's new, a missed call)
+fn history_act(e: &Value, kind: &str, act: &Option<Value>) -> Option<(String, Value)> {
+    if !e["action"].is_string() || !["transfer", "usb", "sysupdate", "missedCall"].contains(&kind) {
+        return None;
+    }
+    act.clone().map(|a| (s(e, "action"), a))
+}
+
 /// Seconds-resolution milliseconds
 fn s(v: &Value, k: &str) -> String {
     v[k].as_str().unwrap_or("").to_string()
@@ -323,6 +333,7 @@ impl Island {
         if let Some(key) = e["key"].as_str().filter(|k| !k.is_empty()).map(String::from) {
             if let Some(i) = self.alerts.iter().position(|x| x.event["key"].as_str() == Some(&key)) {
                 let hid = self.record(h, e, self.alerts[i].hid);
+                self.keep_act(h, hid, e, &kind, &a);
                 let al = &mut self.alerts[i];
                 al.event = e.clone();
                 (al.on_action, al.on_action2, al.more) = (a, a2, more);
@@ -342,6 +353,8 @@ impl Island {
         if e["title"].as_str().is_some_and(|t| !t.is_empty()) {
             if let Some(i) = self.alerts.iter().position(|x| x.event["kind"] == kind.as_str() && x.event["title"] == e["title"] && x.expires > now) {
                 let hid = self.record(h, e, 0);
+                // (record() let its history button go: the same alert again keeps it)
+                self.keep_act(h, hid, e, &kind, &a);
                 let al = &mut self.alerts[i];
                 al.event = e.clone();
                 (al.on_action, al.on_action2, al.more) = (a, a2, more);
@@ -356,11 +369,7 @@ impl Island {
         self.next_uid += 1;
         let uid = self.next_uid;
         let hid = self.record(h, e, 0);
-        if e["action"].is_string() {
-            if let (Some(act), true) = (a.clone(), ["transfer", "usb", "sysupdate", "missedCall"].contains(&kind.as_str())) {
-                self.history_acts.insert(hid, (s(e, "action"), act));
-            }
-        }
+        self.keep_act(h, hid, e, &kind, &a);
         let sticky = e["sticky"].as_bool().unwrap_or(false) || kind == "ringing";
         self.alerts.push(Alert { uid, event: e.clone(), on_action: a, on_action2: a2, more, at: now, expires: now + ms + self.burst_index * 600, hid, sticky });
         // (the oldest go first; a ringing call (sticky) stays)
@@ -419,6 +428,15 @@ impl Island {
     // ── History ─────────────────────────────────────────────────────────
 
     /// Island.record: a line for the history (the hid, 0 when it is not kept)
+    /// Its history line's button (Open, What's new) for an alert that has
+    /// one, kept after record() (which lets a line's old button go)
+    fn keep_act(&mut self, h: &mut Host, hid: i64, e: &Value, kind: &str, act: &Option<Value>) {
+        if let Some(b) = history_act(e, kind, act) {
+            self.history_acts.insert(hid, b);
+            self.publish_history(h);
+        }
+    }
+
     fn record(&mut self, h: &mut Host, e: &Value, same: i64) -> i64 {
         let kind = s(e, "kind");
         if UNRECORDED.contains(&kind.as_str()) || e["title"].as_str().map_or(true, str::is_empty) {
@@ -1297,6 +1315,16 @@ impl Wheel {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn history_buttons_for_the_kinds_that_keep_one() {
+        let e = json!({"kind": "transfer", "action": "Open"});
+        let call = Some(json!({"call": "files.open"}));
+        assert_eq!(history_act(&e, "transfer", &call), Some(("Open".to_string(), json!({"call": "files.open"}))));
+        assert_eq!(history_act(&e, "music", &call), None);
+        assert_eq!(history_act(&json!({"kind": "transfer"}), "transfer", &call), None);
+        assert_eq!(history_act(&e, "transfer", &None), None);
+    }
 
     #[test]
     fn a_wheel_notch_is_one_step_and_waits_for_the_switch() {

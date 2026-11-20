@@ -1203,6 +1203,13 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_lock_mark_is_systems_path_and_never_a_shared_tmp() {
+        assert_eq!(locked_mark_for(Some("/run/user/7".into()), Some("abc".into()), 7), std::path::PathBuf::from("/run/user/7/tessera-locked-abc"));
+        assert_eq!(locked_mark_for(None, None, 1000), std::path::PathBuf::from("/run/user/1000/tessera-locked-none"));
+        assert_eq!(locked_mark_for(Some(String::new()), Some(String::new()), 1000), std::path::PathBuf::from("/run/user/1000/tessera-locked-none"));
+    }
+
+    #[test]
     fn auto_turns_the_look_only_when_dark_changes() {
         assert!(!turned(None, true) && !turned(None, false));
         assert!(!turned(Some(true), true) && !turned(Some(false), false));
@@ -1247,6 +1254,14 @@ mod tests {
 /// session's screen is locked (gone at reboot, and another Hyprland session
 /// has another name, so a new login never starts locked)
 fn locked_mark() -> std::path::PathBuf {
-    let sig = std::env::var("HYPRLAND_INSTANCE_SIGNATURE").unwrap_or_else(|_| "none".into());
-    runtime_dir().join(format!("tessera-locked-{sig}"))
+    locked_mark_for(std::env::var("XDG_RUNTIME_DIR").ok(), std::env::var("HYPRLAND_INSTANCE_SIGNATURE").ok(), unsafe { libc::getuid() })
+}
+
+/// The mark's path (the same as System's lock_mark in host-system, which
+/// reads it as it starts): the runtime folder, else /run/user/<uid>, never
+/// a /tmp other users share
+pub fn locked_mark_for(run: Option<String>, sig: Option<String>, uid: u32) -> std::path::PathBuf {
+    let run = run.filter(|s| !s.is_empty()).unwrap_or_else(|| format!("/run/user/{uid}"));
+    let sig = sig.filter(|s| !s.is_empty()).unwrap_or_else(|| "none".into());
+    std::path::PathBuf::from(run).join(format!("tessera-locked-{sig}"))
 }

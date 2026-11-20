@@ -27,6 +27,10 @@ use tessera_core::host::{Host, Service};
 use tessera_core::services::brightness::{self, Backlight};
 use tessera_core::services::hypr::Snapshot;
 
+/// How long one ddcutil read or write may take (they take well under a
+/// second; a monitor asleep, behind a KVM or an MST hub may never answer)
+const DDC_LIMIT: Duration = Duration::from_secs(10);
+
 const NAME: &str = "Brightness";
 
 #[derive(Clone, Debug, PartialEq)]
@@ -177,9 +181,12 @@ impl Brightness {
         self.op_busy = true;
         let send = h.sender(NAME);
         let val = (v * self.max.get(&out).copied().unwrap_or(100) as f64).round() as i64;
-        capture_then(
+        // (a deadline: a monitor that stopped answering DDC/CI must not hold
+        // op_busy, and every later change on every display, for ever)
+        capture_then_within(
             vec!["ddcutil".into(), "--bus".into(), d.bus.to_string(), "--noverify".into(), "setvcp".into(), "10".into(), val.to_string()],
             None,
+            Some(DDC_LIMIT),
             move |_, _| send(Box::new(M::Written)),
         );
     }
@@ -205,9 +212,10 @@ impl Brightness {
         self.read_at.insert(d.output.clone(), now_ms());
         let send = h.sender(NAME);
         let o = d.output.clone();
-        capture_then(
+        capture_then_within(
             vec!["ddcutil".into(), "--bus".into(), d.bus.to_string(), "--brief".into(), "getvcp".into(), "10".into()],
             None,
+            Some(DDC_LIMIT),
             move |_, t| send(Box::new(M::Read(o, t))),
         );
     }
@@ -221,7 +229,7 @@ impl Brightness {
         } else {
             self.detecting = true;
             let send = h.sender(NAME);
-            capture_then(sh_cmd(DETECT, &[]), None, move |_, t| send(Box::new(M::Detected(t))));
+            capture_then_within(sh_cmd(DETECT, &[]), None, Some(Duration::from_secs(60)), move |_, t| send(Box::new(M::Detected(t))));
         }
     }
 

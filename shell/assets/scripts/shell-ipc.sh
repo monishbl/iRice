@@ -15,8 +15,16 @@ if [[ "${1:-}" == call ]]; then
     if [[ -S "$sock" ]]; then
         cfg="${XDG_CONFIG_HOME:-$HOME/.config}/tessera/config.json"
         if [[ "${TESSERA_STANDALONE:-}" == 1 ]] || ! python3 -I -c 'import json, sys; sys.exit(0 if json.load(open(sys.argv[1])).get("rust", {}).get("standalone") is False else 1)' "$cfg" 2>/dev/null; then
+            # (not exec: exit 1 means nothing answers on the socket, a stale
+            # one left by a tessera-ui that crashed while the QML fallback
+            # runs, so the call goes on to the QML shell below)
             for ui in "${TESSERA_UI:-}" "${XDG_DATA_HOME:-$HOME/.local/share}/tessera/bin/tessera-ui" "$HOME/.local/share/tessera/bin/tessera-ui" "$(command -v tessera-ui 2>/dev/null)"; do
-                [[ -n "$ui" && -x "$ui" ]] && exec "$ui" ipc "$@"
+                if [[ -n "$ui" && -x "$ui" ]]; then
+                    "$ui" ipc "$@"
+                    rc=$?
+                    [[ $rc -ne 1 ]] && exit "$rc"
+                    break
+                fi
             done
         fi
     fi

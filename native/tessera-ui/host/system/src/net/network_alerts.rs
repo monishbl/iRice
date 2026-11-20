@@ -127,6 +127,16 @@ enum M {
     Settle,
     Look,
     Result(String, String),
+    /// the watched process (of this start) ended by itself
+    Ended(u64),
+    /// the rest after an end is over: watch again
+    Retry,
+}
+
+/// The rest before watching again after the monitor ended: 5 s, doubling
+/// with each quick end (under a minute after its start), at most 5 min
+pub fn rest_after_end(quick_ends: u32) -> u64 {
+    super::pulse_events::rest_ms(5000, quick_ends, 300_000)
 }
 
 #[derive(Default)]
@@ -138,6 +148,12 @@ pub struct NetworkAlerts {
     settle: slint::Timer,
     /// what Settings → Notifications was last told (networkCanWatch, networkReason)
     sent: Option<String>,
+    /// which start the watch is (an end from an older one is old news)
+    run_id: u64,
+    /// when it started, and how many ended quickly in a row (the rest grows)
+    started_at: f64,
+    quick_ends: u32,
+    retry: slint::Timer,
 }
 
 impl NetworkAlerts {
@@ -166,9 +182,15 @@ impl NetworkAlerts {
         if on && self.watch.is_none() {
             let send = h.sender(NAME);
             let s2 = send.clone();
+            self.run_id += 1;
+            self.started_at = now_ms();
+            let run_id = self.run_id;
             let cmd: Vec<&str> = if self.mode == "nm" { vec!["nmcli", "monitor"] } else { vec!["ip", "monitor", "link", "address"] };
-            self.watch = Some(Watch::start(&cmd, None, move |_| send(Box::new(M::Settle)), move |_, _| {
-                let _ = &s2;
+            // (an end it didn't ask for, nmcli or ip killed: watched again after a rest)
+            self.watch = Some(Watch::start(&cmd, None, move |_| send(Box::new(M::Settle)), move |_, stopped| {
+                if !stopped {
+                    s2(Box::new(M::Ended(run_id)));
+                }
             }));
             self.look(h);
         } else if !on {
@@ -228,6 +250,21 @@ impl Service for NetworkAlerts {
                 self.settle.start(slint::TimerMode::SingleShot, Duration::from_millis(700), move || send(Box::new(M::Look)));
             }
             M::Look => self.look(h),
+            M::Ended(run_id) => {
+                if run_id != self.run_id || self.watch.is_none() {
+                    return;
+                }
+                self.watch = None;
+                self.quick_ends = if now_ms() - self.started_at < 60_000.0 { self.quick_ends + 1 } else { 0 };
+                let send = h.sender(NAME);
+                let wait = rest_after_end(self.quick_ends.saturating_sub(1));
+                self.retry.start(slint::TimerMode::SingleShot, Duration::from_millis(wait), move || send(Box::new(M::Retry)));
+            }
+            M::Retry => {
+                // (what changed meanwhile was missed: learn the state again)
+                self.last = None;
+                self.refresh(h);
+            }
             M::Result(mode, text) => {
                 if mode != self.mode || !self.on {
                     return;
@@ -244,6 +281,7 @@ impl Service for NetworkAlerts {
         }
     }
     fn quit(&mut self, _h: &mut Host) {
+        self.retry.stop();
         if let Some(w) = self.watch.take() {
             w.stop();
         }
@@ -253,6 +291,13 @@ impl Service for NetworkAlerts {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_monitor_is_watched_again_after_a_growing_rest() {
+        assert_eq!(rest_after_end(0), 5000);
+        assert_eq!(rest_after_end(1), 10_000);
+        assert_eq!(rest_after_end(30), 300_000);
+    }
 
     #[test]
     fn nm_lines_with_colons_in_names() {

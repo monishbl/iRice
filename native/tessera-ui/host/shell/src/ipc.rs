@@ -43,7 +43,8 @@ pub fn request_line(args: &[String]) -> String {
     format!("{}\n", serde_json::to_string(args).unwrap_or_else(|_| "[]".into()))
 }
 
-/// The IPC targets this shell answers (`ipc show`)
+/// The IPC targets the shell's own parts answer: what `ipc show` lists only
+/// when the host can't be asked (it lists every service's targets itself)
 pub const TARGETS: &[&str] = &["panels", "shell", "rustui", "island", "cooldown", "conflicts", "lock", "loginIntro", "osd", "polkit", "welcome", "shortcut"];
 
 /// One connection: read the request, route it, wait for the answer, write it
@@ -55,11 +56,16 @@ fn serve(mut s: UnixStream) {
     }
     let reply = match parse_request(&line) {
         None => "tessera-ui ipc: expected a JSON array of arguments\n".to_string(),
-        Some(args) if args[0] == "show" => TARGETS.iter().map(|t| format!("target {t}\n")).collect(),
         Some(args) => {
+            // (`show` goes through the host too: every service's targets, and
+            // an answer proves the host loop is turning, not only this thread)
             let (tx, rx) = std::sync::mpsc::channel::<String>();
             if !tessera_core::host::route_ipc(&args, Some(tx)) {
-                "tessera-ui ipc: the shell is not running standalone\n".to_string()
+                if args[0] == "show" {
+                    TARGETS.iter().map(|t| format!("target {t}\n")).collect()
+                } else {
+                    "tessera-ui ipc: the shell is not running standalone\n".to_string()
+                }
             } else {
                 // (a service answers within the loop's turn; no answer for 10 s: the call is done anyway)
                 match rx.recv_timeout(Duration::from_secs(10)) {
@@ -147,17 +153,30 @@ pub fn client(args: &[String]) -> i32 {
         eprintln!("tessera-ui ipc: call needs a target and a function");
         return 2;
     }
-    match ask(&socket_path(), &args) {
+    let path = socket_path();
+    match ask(&path, &args) {
         Ok(out) => {
             print!("{out}");
             let _ = std::io::stdout().flush();
             0
         }
         Err(e) => {
+            // (a socket nothing listens on is left by a tessera-ui that
+            // crashed: removed, so shell-ipc.sh's next call goes straight to
+            // the QML fallback instead of trying it first)
+            if stale(&e) {
+                let _ = std::fs::remove_file(&path);
+            }
             eprintln!("tessera-ui ipc: no Tessera shell is running ({e})");
             1
         }
     }
+}
+
+/// A connect error that means the socket file is there but nothing listens
+/// (the shell that made it died without its quit())
+pub fn stale(e: &std::io::Error) -> bool {
+    e.kind() == std::io::ErrorKind::ConnectionRefused
 }
 
 #[cfg(test)]
@@ -203,6 +222,17 @@ mod tests {
         let l2 = listen(&path);
         assert!(l2.is_ok(), "(the first is gone: the stale socket is replaced)");
         drop(l2);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_socket_left_by_a_dead_shell_is_stale() {
+        let dir = std::env::temp_dir().join(format!("tessera-ipc-stale-{}", std::process::id()));
+        let path = dir.join("ipc.sock");
+        drop(listen(&path).unwrap());
+        assert!(path.exists(), "(a crash leaves the file)");
+        let e = ask(&path, &["call".into(), "lock".into(), "lock".into()]).unwrap_err();
+        assert!(stale(&e), "{e}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

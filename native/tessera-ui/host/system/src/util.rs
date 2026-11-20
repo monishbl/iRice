@@ -4,7 +4,8 @@
 
 use serde_json::Value;
 use std::io::Read;
-use std::process::{Command, Stdio};
+use std::os::unix::process::CommandExt;
+use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
 /// Run a command to the end (blocking: call on a thread). Stdout as text;
@@ -25,27 +26,77 @@ fn capture_in(cmd: &[&str], timeout: Duration, plain: bool) -> Option<(i32, Stri
     if plain {
         tessera_core::util::plain_locale(&mut c);
     }
+    // (a process group of its own: a timeout ends `sh -c` and what it started)
+    c.process_group(0);
     let mut c = c.args(&cmd[1..]).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn().ok()?;
-    let mut out = c.stdout.take()?;
-    let t = std::thread::spawn(move || {
-        let mut s = String::new();
-        let _ = out.read_to_string(&mut s);
-        s
-    });
+    let rx = read_all(c.stdout.take()?);
     let start = Instant::now();
     let code = loop {
         match c.try_wait() {
             Ok(Some(st)) => break st.code().unwrap_or(-1),
             Ok(None) if start.elapsed() > timeout => {
-                let _ = c.kill();
-                let _ = c.wait();
+                kill_tree(&mut c);
                 break -1;
             }
             Ok(None) => std::thread::sleep(Duration::from_millis(20)),
             Err(_) => break -1,
         }
     };
-    Some((code, t.join().unwrap_or_default()))
+    // (something it left behind may still hold its output open: waited for
+    // until the time is up, never for ever)
+    Some((code, collect(&rx, output_grace(timeout, start.elapsed()))))
+}
+
+/// A pipe read on a thread of its own, chunk by chunk (the channel closes at EOF)
+pub fn read_all(mut out: impl Read + Send + 'static) -> std::sync::mpsc::Receiver<Vec<u8>> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut buf = [0u8; 8192];
+        loop {
+            match out.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => {
+                    if tx.send(buf[..n].to_vec()).is_err() {
+                        break;
+                    }
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(_) => break,
+            }
+        }
+    });
+    rx
+}
+
+/// What `read_all` has read by EOF, or by `within` from now (whatever was
+/// read so far then): text
+pub fn collect(rx: &std::sync::mpsc::Receiver<Vec<u8>>, within: Duration) -> String {
+    let end = Instant::now() + within;
+    let mut out = Vec::new();
+    while let Ok(chunk) = rx.recv_timeout(end.saturating_duration_since(Instant::now())) {
+        out.extend_from_slice(&chunk);
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+/// How long to wait for the output once the child has ended: what is left
+/// of the timeout, at least 200 ms
+pub fn output_grace(timeout: Duration, spent: Duration) -> Duration {
+    timeout.saturating_sub(spent).max(Duration::from_millis(200))
+}
+
+/// End a child started with `process_group(0)` and everything in its group
+/// (a pipeline under sh, a helper it forked), then reap it
+pub fn kill_tree(c: &mut Child) {
+    if let Ok(pid) = libc::pid_t::try_from(c.id()) {
+        if pid > 0 {
+            unsafe {
+                libc::killpg(pid, libc::SIGKILL);
+            }
+        }
+    }
+    let _ = c.kill();
+    let _ = c.wait();
 }
 
 /// `capture` with sh -c (blocking)
@@ -122,6 +173,34 @@ mod tests {
         assert_eq!((c, o.trim()), (0, "hi"));
         let (c, _) = capture(&["sleep", "5"], Duration::from_millis(100)).unwrap();
         assert_eq!(c, -1);
+    }
+
+    #[test]
+    fn a_timeout_ends_what_sh_started_too() {
+        // (the backgrounded sleep holds stdout: killing only sh would leave
+        // the read waiting for it)
+        let t = Instant::now();
+        let (c, _) = sh("sleep 30 & sleep 30; echo late", Duration::from_millis(200)).unwrap();
+        assert_eq!(c, -1);
+        assert!(t.elapsed() < Duration::from_secs(5), "{:?}", t.elapsed());
+    }
+
+    #[test]
+    fn output_left_open_after_the_end_is_not_waited_for_ever() {
+        let t = Instant::now();
+        // (the backgrounded sleep keeps stdout open after sh has ended: what
+        // was written comes back once the time is up)
+        let (c, o) = sh("echo hi; sleep 4 & exit 0", Duration::from_secs(1)).unwrap();
+        assert_eq!((c, o.trim()), (0, "hi"));
+        assert!(t.elapsed() < Duration::from_secs(3), "{:?}", t.elapsed());
+        let (_, o) = sh("echo hi; exec sleep 0.1", Duration::from_secs(2)).unwrap();
+        assert_eq!(o.trim(), "hi");
+    }
+
+    #[test]
+    fn grace_is_what_is_left_at_least_a_little() {
+        assert_eq!(output_grace(Duration::from_secs(10), Duration::from_secs(4)), Duration::from_secs(6));
+        assert_eq!(output_grace(Duration::from_secs(1), Duration::from_secs(4)), Duration::from_millis(200));
     }
 }
 

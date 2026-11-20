@@ -38,7 +38,7 @@ impl AudioProfiles {
         }
         self.listing = true;
         let send = h.sender(NAME);
-        capture_then(script_cmd("audio-profiles.py", &["list"]), None, move |_, t| send(Box::new(M::Listed(t))));
+        capture_then_within(script_cmd("audio-profiles.py", &["list"]), None, Some(std::time::Duration::from_secs(15)), move |_, t| send(Box::new(M::Listed(t))));
     }
 }
 
@@ -70,7 +70,7 @@ impl Service for AudioProfiles {
                 self.switching = profile.clone();
                 self.switching_now = true;
                 let send = h.sender(NAME);
-                capture_then(script_cmd("audio-profiles.py", &["switch", &card, &profile]), None, move |_, _| send(Box::new(M::Switched)));
+                capture_then_within(script_cmd("audio-profiles.py", &["switch", &card, &profile]), None, Some(std::time::Duration::from_secs(20)), move |_, _| send(Box::new(M::Switched)));
             }
             _ => {}
         }

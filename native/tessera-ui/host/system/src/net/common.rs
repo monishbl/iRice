@@ -108,7 +108,15 @@ impl Watch {
                 let _ = si.write_all(text.as_bytes());
             }
             let out = child.stdout.take();
-            *me.child.lock().unwrap() = Some(child);
+            {
+                // (stop() before the child was kept found nothing to end: it
+                // is ended here, under the same lock stop() takes)
+                let mut kept = me.child.lock().unwrap();
+                if me.stopped.load(std::sync::atomic::Ordering::SeqCst) {
+                    let _ = child.kill();
+                }
+                *kept = Some(child);
+            }
             if let Some(out) = out {
                 for line in BufReader::new(out).lines().map_while(Result::ok) {
                     on_line(line);
@@ -132,6 +140,57 @@ impl Watch {
 
 /// A command run to the end on a thread, its whole stdout handed on
 pub fn capture_then(cmd: Vec<String>, stdin: Option<String>, then: impl FnOnce(i32, String) + Send + 'static) {
+    capture_then_within(cmd, stdin, None, then)
+}
+
+/// `capture_then` with a deadline: past it the command and everything it
+/// started (its process group) are killed and `then(-1, "")` runs, so a
+/// caller that waits for the answer (a busy flag) is never held for ever by
+/// a hung tool (ddcutil on a monitor that stopped answering)
+pub fn capture_then_within(cmd: Vec<String>, stdin: Option<String>, timeout: Option<std::time::Duration>, then: impl FnOnce(i32, String) + Send + 'static) {
+    let Some(limit) = timeout else { return capture_then_open(cmd, stdin, then) };
+    std::thread::spawn(move || {
+        let mut c = Command::new(&cmd[0]);
+        tessera_core::util::plain_locale(&mut c);
+        c.args(&cmd[1..]).stdin(if stdin.is_some() { Stdio::piped() } else { Stdio::null() }).stdout(Stdio::piped()).stderr(Stdio::null());
+        c.process_group(0);
+        let Ok(mut child) = c.spawn() else { return then(-1, String::new()) };
+        if let (Some(t), Some(mut si)) = (stdin, child.stdin.take()) {
+            // (on a thread: a child that never reads its input can't hold up the deadline)
+            std::thread::spawn(move || {
+                use std::io::Write;
+                let _ = si.write_all(t.as_bytes());
+            });
+        }
+        let Some(out) = child.stdout.take() else {
+            crate::util::kill_tree(&mut child);
+            return then(-1, String::new());
+        };
+        let rx = crate::util::read_all(out);
+        let start = std::time::Instant::now();
+        loop {
+            match child.try_wait() {
+                Ok(Some(st)) => {
+                    let text = crate::util::collect(&rx, crate::util::output_grace(limit, start.elapsed()));
+                    return then(st.code().unwrap_or(-1), text);
+                }
+                Ok(None) if start.elapsed() > limit => {
+                    crate::util::kill_tree(&mut child);
+                    return then(-1, String::new());
+                }
+                Ok(None) => std::thread::sleep(std::time::Duration::from_millis(20)),
+                Err(_) => {
+                    crate::util::kill_tree(&mut child);
+                    return then(-1, String::new());
+                }
+            }
+        }
+    });
+}
+
+/// capture_then without a deadline (for what may rightly take long: a
+/// password prompt, a join that waits on the network)
+fn capture_then_open(cmd: Vec<String>, stdin: Option<String>, then: impl FnOnce(i32, String) + Send + 'static) {
     std::thread::spawn(move || {
         let mut c = Command::new(&cmd[0]);
         // (its output is read: one language, "." decimals; tessera_core::util::plain_locale)
@@ -173,6 +232,43 @@ mod tests {
         assert!(island_wants(&cfg, "network") && island_wants(&cfg, "music") && !island_wants(&cfg, "charging"));
         let touched = json!({"island": {"events": [], "known": ["network"]}});
         assert!(!island_wants(&touched, "network"));
+    }
+
+    #[test]
+    fn capture_then_within_gives_up_on_a_hung_command() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let t = std::time::Instant::now();
+        capture_then_within(sh_cmd("sleep 30 & sleep 30", &[]), None, Some(std::time::Duration::from_millis(200)), move |c, o| {
+            let _ = tx.send((c, o));
+        });
+        let (c, o) = rx.recv_timeout(std::time::Duration::from_secs(5)).unwrap();
+        assert_eq!((c, o.as_str()), (-1, ""));
+        assert!(t.elapsed() < std::time::Duration::from_secs(5));
+    }
+
+    #[test]
+    fn capture_then_within_hands_on_what_finishes() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        capture_then_within(vec!["cat".into()], Some("in\n".into()), Some(std::time::Duration::from_secs(5)), move |c, o| {
+            let _ = tx.send((c, o));
+        });
+        assert_eq!(rx.recv_timeout(std::time::Duration::from_secs(5)).unwrap(), (0, "in\n".to_string()));
+        let (tx, rx) = std::sync::mpsc::channel();
+        capture_then(sh_cmd("echo $1; exit 3", &["x"]), None, move |c, o| {
+            let _ = tx.send((c, o));
+        });
+        assert_eq!(rx.recv_timeout(std::time::Duration::from_secs(5)).unwrap(), (3, "x\n".to_string()));
+    }
+
+    #[test]
+    fn a_watch_stopped_while_it_starts_does_not_run_on() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let w = Watch::start(&["sleep", "30"], Some("x".into()), |_| {}, move |_, stopped| {
+            let _ = tx.send(stopped);
+        });
+        // (at once: before or while the child is kept, the stop must end it)
+        w.stop();
+        assert_eq!(rx.recv_timeout(std::time::Duration::from_secs(5)), Ok(true));
     }
 
     #[test]

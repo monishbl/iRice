@@ -300,6 +300,19 @@ pub fn names(list: &[Value]) -> String {
     }
 }
 
+/// HyprlandLink's question: the active workspace, with a deadline
+/// (coreutils' timeout ends a hyprctl stuck on a socket that never answers)
+pub const LINK_PROBE: [&str; 5] = ["timeout", "3", "hyprctl", "-j", "activeworkspace"];
+
+/// Settings → About's priority switch: the root helper's `priority on|off`,
+/// with its messages (stderr too) to show. Built as RootHelper builds every
+/// root command (sysinfo/root_helper.rs, accounts/common.rs): the same pick
+/// of the helper and its polkit actions
+pub fn priority_command(on: bool) -> Vec<String> {
+    let pick = tessera_core::old_names::root_pick("/usr/lib/tessera/tessera-root", "/usr/share/polkit-1/actions/org.tessera.root.policy");
+    vec!["sh".into(), "-c".into(), format!("{pick}exec pkexec \"$h\" \"$@\" 2>&1"), "sh".into(), "priority".into(), (if on { "on" } else { "off" }).into()]
+}
+
 #[derive(Default)]
 pub struct Probes {
     // backends
@@ -591,6 +604,7 @@ impl Service for Probes {
                 }
             }
             Msg::Link(id) => {
+                self.link_asking = false;
                 let ours = h.st.shell.get::<tessera_core::services::hypr::Snapshot>().and_then(|s| s.active.get(&s.focused).copied()).map(i64::from);
                 let Some(real) = id else { return }; // (no answer: Hyprland is busy or going; nothing to compare)
                 if ours == Some(real) {
@@ -649,9 +663,15 @@ impl Service for Probes {
                         self.drift = false;
                         return;
                     }
+                    // (one question at a time, given up after 3 s: a Hyprland whose
+                    // socket hangs never piles up threads and hyprctl processes)
+                    if self.link_asking {
+                        return;
+                    }
+                    self.link_asking = true;
                     let send = h.sender("Probes");
                     std::thread::spawn(move || {
-                        let id = capture(&["hyprctl", "-j", "activeworkspace"]).and_then(|o| serde_json::from_str::<Value>(&o).ok()).and_then(|v| v["id"].as_i64());
+                        let id = capture(&LINK_PROBE).and_then(|o| serde_json::from_str::<Value>(&o).ok()).and_then(|v| v["id"].as_i64());
                         send(Box::new(Msg::Link(id)));
                     });
                 }
@@ -726,7 +746,7 @@ impl Service for Probes {
                 self.priority.2 = true;
                 let on = a[0].as_bool().unwrap_or(false);
                 let send = h.sender("Probes");
-                let cmd = vec!["sh".into(), "-c".into(), format!("h=/usr/lib/tessera/tessera-root; [ -x \"$h\" ] || h={}; exec pkexec \"$h\" \"$@\" 2>&1", tessera_core::old_names::ROOT_HELPER), "sh".into(), "priority".into(), (if on { "on" } else { "off" }).into()];
+                let cmd = priority_command(on);
                 run_then(cmd, move |code, out| send(Box::new(Msg::PriorityJob(code, out))));
                 self.publish_priority(h);
             }
@@ -894,6 +914,22 @@ impl Probes {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_priority_switch_picks_the_helper_as_every_root_command_does() {
+        let c = priority_command(true);
+        assert_eq!(c[0], "sh");
+        assert!(c[2].starts_with("h=/usr/lib/tessera/tessera-root; policy=/usr/share/polkit-1/actions/org.tessera.root.policy; "), "{}", c[2]);
+        assert!(c[2].ends_with("exec pkexec \"$h\" \"$@\" 2>&1"), "{}", c[2]);
+        assert_eq!(&c[3..], ["sh", "priority", "on"]);
+        assert_eq!(priority_command(false).last().map(String::as_str), Some("off"));
+    }
+
+    #[test]
+    fn the_link_probe_has_a_deadline() {
+        assert_eq!(&LINK_PROBE[..2], ["timeout", "3"]);
+        assert_eq!(&LINK_PROBE[2..], ["hyprctl", "-j", "activeworkspace"]);
+    }
 
     #[test]
     fn the_stack_script_prints_key_value_lines() {

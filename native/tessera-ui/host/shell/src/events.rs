@@ -281,8 +281,21 @@ enum Go {
 
 impl Startup {
     fn deliver(h: &Host, who: &str, tag: Value) {
-        h.sender(Box::leak(who.to_string().into_boxed_str()))(Box::new(json!({"startup": tag})));
+        h.sender(intern(who))(Box::new(json!({"startup": tag})));
     }
+}
+
+/// A service's name for Host::sender, kept once per name (a startup.later
+/// asked for again and again reuses it; it used to be leaked each time)
+pub fn intern(name: &str) -> &'static str {
+    static NAMES: std::sync::Mutex<Vec<&'static str>> = std::sync::Mutex::new(Vec::new());
+    let mut names = NAMES.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(n) = names.iter().copied().find(|n| *n == name) {
+        return n;
+    }
+    let n: &'static str = Box::leak(name.to_string().into_boxed_str());
+    names.push(n);
+    n
 }
 
 impl Service for Startup {
@@ -341,6 +354,15 @@ pub fn startup_sound_exists(id: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn startup_names_are_kept_once() {
+        let a = intern("ProbesInternTest");
+        let b = intern(&String::from("ProbesInternTest"));
+        assert_eq!(a, "ProbesInternTest");
+        assert!(std::ptr::eq(a, b), "(the same name is not leaked again)");
+        assert!(!std::ptr::eq(a, intern("OtherInternTest")));
+    }
 
     #[test]
     fn args_merge_lists_join_and_the_rest_is_last() {

@@ -54,6 +54,9 @@ pub struct System {
     sleep_pending: bool,
     /// logind's idle inhibitor while Caffeine is on, held by this process
     inhibit: Option<zbus::zvariant::OwnedFd>,
+    /// it is being asked for (off the UI thread), as ask number `inhibit_run`
+    inhibit_asking: bool,
+    inhibit_run: u64,
     sunset: Option<Child>,
     t_until: Ticker,
     t_sleep: Ticker,
@@ -80,6 +83,8 @@ impl Default for System {
             lock_secure: false,
             sleep_pending: false,
             inhibit: None,
+            inhibit_asking: false,
+            inhibit_run: 0,
             sunset: None,
             t_until: Ticker::new("keepUntil"),
             t_sleep: Ticker::new("sleepGuard"),
@@ -114,9 +119,17 @@ fn tty() -> bool {
     helpers::env_is("TTY")
 }
 
+/// The mark a locked session leaves (host-shell's Bridges writes and removes
+/// it, as the lock comes and goes; System only reads it as it starts)
 fn lock_mark() -> String {
-    let run = std::env::var("XDG_RUNTIME_DIR").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| "/tmp".into());
-    let sig = std::env::var("HYPRLAND_INSTANCE_SIGNATURE").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| "none".into());
+    lock_mark_for(std::env::var("XDG_RUNTIME_DIR").ok(), std::env::var("HYPRLAND_INSTANCE_SIGNATURE").ok(), unsafe { libc::getuid() })
+}
+
+/// $XDG_RUNTIME_DIR (else /run/user/<uid>, never a /tmp others share)/tessera-locked-<instance>
+/// (the same path as bridges.rs's locked_mark)
+pub fn lock_mark_for(run: Option<String>, sig: Option<String>, uid: u32) -> String {
+    let run = run.filter(|s| !s.is_empty()).unwrap_or_else(|| format!("/run/user/{uid}"));
+    let sig = sig.filter(|s| !s.is_empty()).unwrap_or_else(|| "none".into());
     format!("{run}/tessera-locked-{sig}")
 }
 
@@ -216,10 +229,20 @@ impl System {
         // (the fd logind hands back: it closes with this process, so a crash
         // can't leave the computer unable to idle; systemd-inhibit helpers
         // outlived crashed shells)
-        if hold && self.inhibit.is_none() {
-            self.inhibit = tessera_core::inhibit::hold("idle", "Caffeine is on");
+        // (asked on a thread: a new system-bus connection and logind's
+        // answer, slow just after a resume, never hold up the frame loop)
+        if hold && self.inhibit.is_none() && !self.inhibit_asking {
+            self.inhibit_asking = true;
+            let (t, run) = (self.tx().clone(), self.inhibit_run);
+            std::thread::spawn(move || {
+                let fd = tessera_core::inhibit::hold("idle", "Caffeine is on");
+                t(Box::new(Inhibited(run, fd)));
+            });
         } else if !hold {
             self.inhibit = None;
+            // (an answer still on its way is for a Caffeine that's over)
+            self.inhibit_run += 1;
+            self.inhibit_asking = false;
         }
     }
 
@@ -242,14 +265,10 @@ impl System {
             self.sleep_pending = false;
             self.t_sleep.stop();
         }
-        // remembered for this Hyprland session, so a shell that restarts while
-        // the screen is locked locks again straight away
-        let mark = lock_mark();
-        if on {
-            tessera_core::services::bridge::run(&["touch", &mark]);
-        } else {
-            tessera_core::services::bridge::run(&["rm", "-f", &mark]);
-        }
+        // (the mark that has a shell restarted while locked lock again is
+        // Bridges' alone: it writes it in order as the lock comes and goes; a
+        // second writer here ran touch / rm on threads of their own, which
+        // could land out of order)
         // (the lock screen follows System.locked)
         h.ask("lock.set", json!([on]));
         self.publish(h);
@@ -656,6 +675,17 @@ impl Service for System {
             }
             Err(m) => m,
         };
+        let msg = match msg.downcast::<Inhibited>() {
+            Ok(i) => {
+                let Inhibited(run, fd) = *i;
+                if run == self.inhibit_run {
+                    self.inhibit_asking = false;
+                    self.inhibit = fd;
+                }
+                return;
+            }
+            Err(m) => m,
+        };
         let msg = match msg.downcast::<Warp>() {
             Ok(w) => {
                 self.warp = w.0;
@@ -690,10 +720,18 @@ impl Service for System {
 
 struct Warp(bool);
 struct Reloaded;
+/// logind's answer to the idle inhibitor asked for as ask number .0
+struct Inhibited(u64, Option<zbus::zvariant::OwnedFd>);
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn the_lock_mark_never_falls_back_to_a_shared_tmp() {
+        assert_eq!(lock_mark_for(Some("/run/user/7".into()), Some("abc".into()), 7), "/run/user/7/tessera-locked-abc");
+        assert_eq!(lock_mark_for(None, None, 1000), "/run/user/1000/tessera-locked-none");
+        assert_eq!(lock_mark_for(Some(String::new()), Some(String::new()), 1000), "/run/user/1000/tessera-locked-none");
+    }
     #[test]
     fn caffeine_words() {
         assert_eq!(awake_subtitle(0), "Staying awake until you turn it off");

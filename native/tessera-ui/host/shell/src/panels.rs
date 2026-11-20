@@ -699,8 +699,10 @@ impl Service for Panels {
     }
     fn ipc(&mut self, h: &mut Host, target: &str, func: &str, args: &[String]) -> Option<String> {
         let out = match target {
-            // shell: ready → "yes" once the desktop has drawn
-            "shell" => (func == "ready").then(|| "yes".to_string()),
+            // shell: ready → "yes" once the desktop has drawn (its first
+            // frame is on screen), "no" before (update-run.sh and
+            // switch-look.sh close their screen on "yes": not onto black)
+            "shell" => (func == "ready").then(|| ready_answer(h.st.first_frame_logged, h.st.started.elapsed()).to_string()),
             // EmojiPicker.qml's target: toggle / open / close, on the focused screen
             "emoji" => {
                 let s = focused(h);
@@ -800,9 +802,28 @@ impl Panels {
     }
 }
 
+/// `shell ready`'s answer: "yes" once a first frame is on screen, or
+/// anyway after a while up (screens off as it started send no frames, and
+/// the TTY watchdog takes a lasting "no" for a frozen shell)
+pub fn ready_answer(drawn: bool, up_for: std::time::Duration) -> &'static str {
+    if drawn || up_for >= std::time::Duration::from_secs(15) {
+        "yes"
+    } else {
+        "no"
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ready_once_drawn_or_up_a_while() {
+        use std::time::Duration;
+        assert_eq!(ready_answer(false, Duration::from_secs(1)), "no");
+        assert_eq!(ready_answer(true, Duration::from_millis(300)), "yes");
+        assert_eq!(ready_answer(false, Duration::from_secs(16)), "yes");
+    }
 
     #[test]
     fn panel_and_surface_names() {

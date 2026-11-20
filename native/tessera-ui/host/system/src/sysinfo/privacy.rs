@@ -144,6 +144,9 @@ enum Ev {
     Location(Vec<String>),
     Graph(Vec<Value>),
     ShareDead,
+    /// camera.sh / location.sh ended (watch.sh killed, a bash error, gdbus missing)
+    CameraDead,
+    LocationDead,
     CastRaw(String),
     Cast { at: f64, target: String, window: bool },
 }
@@ -171,6 +174,20 @@ pub struct Privacy {
     share_retry: Ticker,
     stop_check: Ticker,
     mic_busy: bool,
+    camera_retry: Ticker,
+    location_retry: Ticker,
+    /// (when each watcher started, its quick ends in a row): the rest before
+    /// it starts again grows while it keeps ending at once
+    camera_run: (f64, u32),
+    location_run: (f64, u32),
+}
+
+/// After a watcher that started at `started` ended at `now` having ended
+/// quickly `quick` times in a row before: (the quick ends now, the rest in
+/// ms before starting it again: 5 s, doubling per quick end, at most 5 min)
+pub fn rest_after_end(started: f64, now: f64, quick: u32) -> (u32, u64) {
+    let quick = if now - started < 60_000.0 { quick + 1 } else { 0 };
+    (quick, crate::net::pulse_events::rest_ms(5000, quick.saturating_sub(1), 300_000))
 }
 
 impl Default for Privacy {
@@ -189,6 +206,10 @@ impl Default for Privacy {
             share_retry: Ticker::new("shareRetry"),
             stop_check: Ticker::new("stopCheck"),
             mic_busy: false,
+            camera_retry: Ticker::new("cameraRetry"),
+            location_retry: Ticker::new("locationRetry"),
+            camera_run: (0.0, 0),
+            location_run: (0.0, 0),
         }
     }
 }
@@ -254,6 +275,23 @@ impl Privacy {
             let out = util::sh("pactl -f json list source-outputs; echo; pactl -f json list sources short", Duration::from_secs(10)).map(|(_, o)| o).unwrap_or_default();
             tx(Box::new(Ev::Mic(out)));
         });
+    }
+
+    /// camera.sh: the apps using the camera, a line each change; when it
+    /// ends, the dot is cleared and it is watched again after a rest
+    fn watch_camera(&mut self) {
+        let Some(tx) = self.tx.clone() else { return };
+        let tx2 = tx.clone();
+        self.camera_run.0 = helpers::now_ms();
+        helpers::watch(vec![util::script("camera.sh")], move |l| tx(Box::new(Ev::Camera(list_line(&l)))), move || tx2(Box::new(Ev::CameraDead)));
+    }
+
+    /// location.sh, as camera.sh
+    fn watch_location(&mut self) {
+        let Some(tx) = self.tx.clone() else { return };
+        let tx2 = tx.clone();
+        self.location_run.0 = helpers::now_ms();
+        helpers::watch(vec![util::script("location.sh")], move |l| tx(Box::new(Ev::Location(list_line(&l).iter().map(|a| a.to_string()).collect()))), move || tx2(Box::new(Ev::LocationDead)));
     }
 
     fn watch_share(&self) {
@@ -368,11 +406,8 @@ impl Service for Privacy {
         self.mic_list();
         // Camera and location (their scripts; the events service may also say
         // them through the calls)
-        let (t, t2) = (tx.clone(), tx.clone());
-        let _ = t2;
-        helpers::watch(vec![util::script("camera.sh")], move |l| t(Box::new(Ev::Camera(list_line(&l)))), || {});
-        let t = tx.clone();
-        helpers::watch(vec![util::script("location.sh")], move |l| t(Box::new(Ev::Location(list_line(&l).iter().map(|a| a.to_string()).collect()))), || {});
+        self.watch_camera();
+        self.watch_location();
         self.watch_share();
         // Hyprland's screencast event
         let t = tx.clone();
@@ -422,6 +457,8 @@ impl Service for Privacy {
                         self.publish(h);
                         self.watch_share();
                     }
+                    "cameraRetry" => self.watch_camera(),
+                    "locationRetry" => self.watch_location(),
                     "stopCheck" => {
                         self.stop_failed = !self.shares.is_empty();
                         self.stopping = false;
@@ -461,6 +498,21 @@ impl Service for Privacy {
                 let out = read_graph(&g, &self.shares, hint, helpers::now_ms());
                 self.set_shares(h, out);
             }
+            Ev::CameraDead => {
+                // (its last word may be stale: no dot rather than a stuck one)
+                self.camera_apps.clear();
+                self.publish(h);
+                let (quick, wait) = rest_after_end(self.camera_run.0, helpers::now_ms(), self.camera_run.1);
+                self.camera_run.1 = quick;
+                self.camera_retry.once(self.tx.as_ref().unwrap(), wait);
+            }
+            Ev::LocationDead => {
+                self.location_apps.clear();
+                self.publish(h);
+                let (quick, wait) = rest_after_end(self.location_run.0, helpers::now_ms(), self.location_run.1);
+                self.location_run.1 = quick;
+                self.location_retry.once(self.tx.as_ref().unwrap(), wait);
+            }
             Ev::ShareDead => {
                 // PipeWire restarted: forget the shares in 5 s, then watch again
                 self.share_retry.once(self.tx.as_ref().unwrap(), 5000);
@@ -490,6 +542,16 @@ impl Service for Privacy {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_dead_watcher_comes_back_after_a_growing_rest() {
+        // (ran a while: the quick count starts over, 5 s)
+        assert_eq!(rest_after_end(0.0, 120_000.0, 4), (0, 5000));
+        // (ended at once, again and again: 5 s, 10 s, 20 s… at most 5 min)
+        assert_eq!(rest_after_end(1000.0, 2000.0, 0), (1, 5000));
+        assert_eq!(rest_after_end(1000.0, 2000.0, 1), (2, 10_000));
+        assert_eq!(rest_after_end(1000.0, 2000.0, 40), (41, 300_000));
+    }
 
     #[test]
     fn names() {

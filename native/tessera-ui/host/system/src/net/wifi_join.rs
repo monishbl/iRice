@@ -70,7 +70,7 @@ impl WifiJoin {
         }
         self.known_busy = true;
         let send = h.sender(NAME);
-        capture_then(script_cmd("wifi-enterprise.py", &["known"]), None, move |_, t| send(Box::new(M::Known(t))));
+        capture_then_within(script_cmd("wifi-enterprise.py", &["known"]), None, Some(std::time::Duration::from_secs(20)), move |_, t| send(Box::new(M::Known(t))));
     }
 
     fn forget(&mut self, h: &mut Host, name: &str) {

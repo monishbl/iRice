@@ -53,15 +53,15 @@ pub fn fake_accounts(which: &str) -> Option<Vec<String>> {
 /// RootHelper.pick: the helper that's there (Tessera's, else the old one
 /// until the root setup) as $h
 pub fn root_pick() -> String {
-    tessera_core::old_names::root_pick("/usr/lib/tessera/tessera-root", "/usr/share/polkit-1/actions/org.tessera.root.policy")
+    crate::sysinfo::root_helper::pick()
 }
 
 /// RootHelper.command(args): ["sh", "-c", pick + 'exec pkexec "$h" "$@"', "sh", args…]
-/// (this only builds the command line; the QML runs it on the user's click)
+/// (this only builds the command line; the QML runs it on the user's click;
+/// sysinfo/root_helper.rs builds it, the one place that does)
 pub fn root_command(args: &[&str]) -> Vec<String> {
-    let mut v: Vec<String> = vec!["sh".into(), "-c".into(), format!("{}exec pkexec \"$h\" \"$@\"", root_pick()), "sh".into()];
-    v.extend(args.iter().map(|s| s.to_string()));
-    v
+    let args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+    crate::sysinfo::root_helper::command(&args)
 }
 
 /// RootHelper.knows(subcommand): a shell test, for `sh -c`

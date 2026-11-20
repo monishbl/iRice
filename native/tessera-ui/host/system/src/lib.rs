@@ -220,8 +220,13 @@ impl Service for Mirror {
         self.accounts(h.cfg(), false);
         self.publish(h);
     }
-    fn data(&mut self, h: &mut tessera_core::host::Host, _what: std::any::TypeId) {
-        self.publish(h);
+    fn data(&mut self, h: &mut tessera_core::host::Host, what: std::any::TypeId) {
+        // (only the readings publish() takes from the host; the rest come
+        // through the bus, which settled() follows by its generation: a
+        // Hyprland snapshot per focus change no longer redoes the whole mirror)
+        if mirror_reads(what) {
+            self.publish(h);
+        }
     }
     fn config_changed(&mut self, h: &mut tessera_core::host::Host) {
         let cfg = h.cfg().clone();
@@ -242,10 +247,24 @@ impl Service for Mirror {
 /// The About card's logo, found off the UI thread: its name and file
 struct Logo(String, String);
 
+/// A core reading the mirror publishes from (the battery, idle); others
+/// change nothing it says
+fn mirror_reads(what: std::any::TypeId) -> bool {
+    use std::any::TypeId;
+    what == TypeId::of::<tessera_core::services::status::Battery>() || what == TypeId::of::<tessera_core::idle::Idle>()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn only_the_battery_and_idle_readings_republish() {
+        assert!(mirror_reads(std::any::TypeId::of::<tessera_core::services::status::Battery>()));
+        assert!(mirror_reads(std::any::TypeId::of::<tessera_core::idle::Idle>()));
+        assert!(!mirror_reads(std::any::TypeId::of::<String>()));
+    }
 
     #[test]
     fn resources_change_only_as_shown() {

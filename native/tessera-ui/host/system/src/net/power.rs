@@ -86,6 +86,13 @@ enum M {
     IdleWrite,
     LidClosed,
     LidOpened,
+    /// logind's lid inhibitor and the lid's state, asked for off the UI
+    /// thread for the lid watch of that number
+    LidHeld(u64, Option<zbus::zvariant::OwnedFd>, Option<bool>),
+    /// the lid as logind has it now (after a wake), for that watch
+    LidRead(u64, Option<bool>),
+    /// the lid watch of that number (gdbus monitor) ended by itself
+    LidWatchEnded(u64),
     Report(String),
     /// the notification's Turn off
     SaverOff,
@@ -118,26 +125,80 @@ fn set_profile(mode: String) {
     });
 }
 
-fn spawn_ppd(send: impl Fn(Box<dyn Any + Send>) + Send + 'static) {
+fn spawn_ppd(send: impl Fn(Box<dyn Any + Send>) + Send + Clone + 'static) {
     std::thread::spawn(move || loop {
         let run = || -> zbus::Result<()> {
             let conn = zbus::blocking::Connection::system()?;
             let names = [("net.hadess.PowerProfiles", "/net/hadess/PowerProfiles"), ("org.freedesktop.UPower.PowerProfiles", "/org/freedesktop/UPower/PowerProfiles")];
-            let (dest, path, first) = names
+            let (dest, path, _) = names
                 .iter()
                 .find_map(|(d, p)| ppd_read(&conn, *d, *p).ok().map(|r| (*d, *p, r)))
                 .ok_or_else(|| zbus::Error::Failure("no power-profiles-daemon".into()))?;
-            let rule = zbus::MatchRule::builder().msg_type(zbus::message::Type::Signal).sender(dest)?.interface("org.freedesktop.DBus.Properties")?.member("PropertiesChanged")?.build();
-            let mut signals = zbus::blocking::MessageIterator::for_match_rule(rule, &conn, Some(16))?;
-            let mut last = first.clone();
-            send(Box::new(M::Ppd(Some(first))));
-            while signals.next().is_some() {
-                let now = ppd_read(&conn, dest, path)?;
-                if now != last {
-                    send(Box::new(M::Ppd(Some(now.clone()))));
-                    last = now;
+            // Its owner coming and going (stopped or removed while the shell
+            // runs: no more PropertiesChanged would ever say so, and the
+            // menus offered modes that could no longer be set). The rule
+            // first, then the reading, so a stop in between isn't missed
+            let owner_rule = zbus::MatchRule::builder()
+                .msg_type(zbus::message::Type::Signal)
+                .sender("org.freedesktop.DBus")?
+                .interface("org.freedesktop.DBus")?
+                .member("NameOwnerChanged")?
+                .arg(0, dest)?
+                .build();
+            let mut owners = zbus::blocking::MessageIterator::for_match_rule(owner_rule, &conn, Some(8))?;
+            let first = ppd_read(&conn, dest, path)?;
+            send(Box::new(M::Ppd(Some(first.clone()))));
+            // its changes, on a thread of their own (the rule follows the
+            // name to a daemon started again under it)
+            let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let (d2, s2, c2) = (done.clone(), send.clone(), conn.clone());
+            std::thread::spawn(move || {
+                let watch = || -> zbus::Result<()> {
+                    let rule = zbus::MatchRule::builder().msg_type(zbus::message::Type::Signal).sender(dest)?.interface("org.freedesktop.DBus.Properties")?.member("PropertiesChanged")?.build();
+                    let mut signals = zbus::blocking::MessageIterator::for_match_rule(rule, &c2, Some(16))?;
+                    let mut last = first;
+                    // (a change between the first reading and the rule)
+                    let mut look = true;
+                    loop {
+                        if d2.load(std::sync::atomic::Ordering::SeqCst) {
+                            return Ok(());
+                        }
+                        if look {
+                            if let Ok(now) = ppd_read(&c2, dest, path) {
+                                if now != last {
+                                    s2(Box::new(M::Ppd(Some(now.clone()))));
+                                    last = now;
+                                }
+                            }
+                        }
+                        look = signals.next().is_some();
+                        if !look {
+                            return Ok(());
+                        }
+                    }
+                };
+                let _ = watch();
+            });
+            let gone = |done: &std::sync::atomic::AtomicBool| done.store(true, std::sync::atomic::Ordering::SeqCst);
+            while let Some(m) = owners.next() {
+                let m = match m {
+                    Ok(m) => m,
+                    Err(e) => {
+                        gone(&done);
+                        return Err(e);
+                    }
+                };
+                let body = m.body();
+                let Ok((_, _, new)) = body.deserialize::<(String, String, String)>() else { continue };
+                if new.is_empty() {
+                    // (gone: no modes to offer until it is back)
+                    send(Box::new(M::Ppd(None)));
+                } else if let Ok(now) = ppd_read(&conn, dest, path) {
+                    // (back under the same name)
+                    send(Box::new(M::Ppd(Some(now))));
                 }
             }
+            gone(&done);
             Ok(())
         };
         if run().is_err() {
@@ -185,6 +246,12 @@ pub struct Power {
     lid_is_closed: bool,
     /// asks to sleep since the lid closed, and when (policy::LidGuard)
     lid_guard: policy::LidGuard,
+    /// which lid watch this is (answers for an older one are dropped), when
+    /// it started, its quick ends in a row, and no new one before this time
+    lid_run: u64,
+    lid_started: f64,
+    lid_quick: u32,
+    lid_rest_until: f64,
     hot_since: f64,
     energy_users: i32,
     energy_apps: Value,
@@ -227,6 +294,10 @@ impl Default for Power {
             lid_fd: None,
             lid_is_closed: false,
             lid_guard: policy::LidGuard::default(),
+            lid_run: 0,
+            lid_started: 0.0,
+            lid_quick: 0,
+            lid_rest_until: 0.0,
             hot_since: 0.0,
             energy_users: 0,
             energy_apps: json!([]),
@@ -446,12 +517,21 @@ impl Power {
     /// Hold (or let go of) logind's lid switch, and hear the lid
     fn lid_watch(&mut self, h: &Host) {
         let mine = !tessera_core::env::sandboxed() && self.has_battery() && policy::lid_needs_inhibit(&self.cfg, Self::caffeine());
-        if mine && self.lid.is_empty() {
+        if mine && self.lid.is_empty() && now_ms() >= self.lid_rest_until {
             let send = h.sender(NAME);
+            self.lid_run += 1;
+            self.lid_started = now_ms();
+            let run = self.lid_run;
             // (held by this process: it can't outlive the shell, so logind
-            // handles the lid again the moment Tessera isn't there to)
-            self.lid_fd = tessera_core::inhibit::hold("handle-lid-switch", "Lid settings (Battery & Power)");
-            self.lid_is_closed = tessera_core::inhibit::lid_closed().unwrap_or(false);
+            // handles the lid again the moment Tessera isn't there to. Asked
+            // on a thread: a new system-bus connection and logind's answer
+            // never hold up the frame loop, 1 s ticks, Caffeine toggles)
+            let held = send.clone();
+            std::thread::spawn(move || {
+                let fd = tessera_core::inhibit::hold("handle-lid-switch", "Lid settings (Battery & Power)");
+                held(Box::new(M::LidHeld(run, fd, tessera_core::inhibit::lid_closed())));
+            });
+            let ended = send.clone();
             self.lid.push(Watch::start(
                 &["gdbus", "monitor", "--system", "--dest", "org.freedesktop.login1", "--object-path", "/org/freedesktop/login1"],
                 None,
@@ -462,13 +542,26 @@ impl Power {
                         send(Box::new(M::LidOpened));
                     }
                 },
-                |_, _| {},
+                // (gdbus gone, killed, or the bus restarted: the lid would
+                // go unheard while logind's lid switch stayed held, and a
+                // closed lid did nothing)
+                move |_, stopped| {
+                    if !stopped {
+                        ended(Box::new(M::LidWatchEnded(run)));
+                    }
+                },
             ));
         } else if !mine && !self.lid.is_empty() {
-            self.lid.drain(..).for_each(|w| w.stop());
-            self.lid_fd = None;
-            self.lid_is_closed = false;
+            self.lid_stop();
         }
+    }
+
+    /// Stop hearing the lid and let logind have it again
+    fn lid_stop(&mut self) {
+        self.lid_run += 1; // (an answer still on its way is for the old watch)
+        self.lid.drain(..).for_each(|w| w.stop());
+        self.lid_fd = None;
+        self.lid_is_closed = false;
     }
 
     fn built_in_screens(h: &Host, on: bool) {
@@ -524,10 +617,13 @@ impl Power {
             policy::LidStep::Woke => {
                 // (the lid as logind has it now, not as last heard: a lid-open
                 // wake's event can come after this tick)
+                // (read on a thread: logind can be slow just after a resume)
                 if self.lid_fd.is_some() {
-                    self.lid_is_closed = tessera_core::inhibit::lid_closed().unwrap_or(false);
+                    let (send, run) = (h.sender(NAME), self.lid_run);
+                    std::thread::spawn(move || send(Box::new(M::LidRead(run, tessera_core::inhibit::lid_closed()))));
+                } else {
+                    eprintln!("tessera-ui: awake (the lid is {}): no sleep for a minute", if self.lid_is_closed { "closed" } else { "open" });
                 }
-                eprintln!("tessera-ui: awake (the lid is {}): no sleep for a minute", if self.lid_is_closed { "closed" } else { "open" });
             }
             policy::LidStep::Sleep => {
                 eprintln!("tessera-ui: the lid is closed and it's still awake ({}): sleeping", if on_battery { "on battery" } else { "running hot" });
@@ -640,7 +736,7 @@ impl Power {
             if self.energy_users > 0 && self.ticks % 10 == 1 && !self.reporting {
                 self.reporting = true;
                 let send = h.sender(NAME);
-                capture_then(script_cmd("app-energy.py", &["report"]), None, move |_, t| send(Box::new(M::Report(t))));
+                capture_then_within(script_cmd("app-energy.py", &["report"]), None, Some(Duration::from_secs(30)), move |_, t| send(Box::new(M::Report(t))));
             }
         }
         self.publish(h);
@@ -802,6 +898,28 @@ impl Service for Power {
             M::IdleWrite => self.write_idle(h),
             M::IdleDone(t) => self.own_hypridle = t.trim() == "own",
             M::LidClosed => self.lid_closed(h),
+            M::LidHeld(run, fd, closed) => {
+                // (for the watch running now only; an older one's fd closes here)
+                if run == self.lid_run && !self.lid.is_empty() {
+                    self.lid_fd = fd;
+                    self.lid_is_closed = closed.unwrap_or(false);
+                }
+            }
+            M::LidRead(run, closed) => {
+                if run == self.lid_run && self.lid_fd.is_some() {
+                    self.lid_is_closed = closed.unwrap_or(false);
+                    eprintln!("tessera-ui: awake (the lid is {}): no sleep for a minute", if self.lid_is_closed { "closed" } else { "open" });
+                }
+            }
+            M::LidWatchEnded(run) => {
+                if run == self.lid_run && !self.lid.is_empty() {
+                    eprintln!("tessera-ui: the lid watch ended: logind handles the lid until it starts again");
+                    let (quick, wait) = lid_rest(self.lid_started, now_ms(), self.lid_quick);
+                    self.lid_quick = quick;
+                    self.lid_rest_until = now_ms() + wait as f64;
+                    self.lid_stop();
+                }
+            }
             M::LidOpened => {
                 self.lid_is_closed = false;
                 self.lid_guard.opened();
@@ -827,6 +945,14 @@ impl Service for Power {
     }
 }
 
+/// After the lid watch that started at `started` ended at `now`, having
+/// ended quickly `quick` times in a row before: (the quick ends now, the
+/// rest in ms before it starts again: 5 s, doubling, at most 5 min)
+pub fn lid_rest(started: f64, now: f64, quick: u32) -> (u32, u64) {
+    let quick = if now - started < 60_000.0 { quick + 1 } else { 0 };
+    (quick, super::pulse_events::rest_ms(5000, quick.saturating_sub(1), 300_000))
+}
+
 /// The hottest CPU sensor, °C (x86_pkg_temp, k10temp/coretemp-like zones, or
 /// any thermal zone when those aren't named)
 fn cpu_temp_c() -> Option<f64> {
@@ -846,4 +972,17 @@ fn cpu_temp_c() -> Option<f64> {
         }
     }
     best
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_lid_watch_that_ends_starts_again_after_a_growing_rest() {
+        assert_eq!(lid_rest(0.0, 600_000.0, 3), (0, 5000));
+        assert_eq!(lid_rest(1000.0, 1500.0, 0), (1, 5000));
+        assert_eq!(lid_rest(1000.0, 1500.0, 2), (3, 20_000));
+        assert_eq!(lid_rest(1000.0, 1500.0, 50), (51, 300_000));
+    }
 }
