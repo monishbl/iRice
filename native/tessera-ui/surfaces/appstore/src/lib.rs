@@ -246,7 +246,7 @@ impl AppStore {
         on!(on_menu_pick, |i| M::MenuPick(i));
         on!(on_menu_toggle, |x, y, o| M::MenuToggle(x, y, o));
         on!(on_install_catalogue, | | M::Catalogue);
-        ui.show().expect("show the App Store");
+        ui.show().expect("show Software");
         let a11y = crate::a11y::A11y::new(&surface, st.tx.clone());
         self.win = Some(Win { surface, ui, a11y });
 
@@ -295,7 +295,7 @@ impl AppStore {
             ui.on_pick(move |i| to(Box::new(M::MenuPick(i))));
         }
         ui.on_dismiss(move || to(Box::new(M::MenuDismiss)));
-        ui.show().expect("show the App Store menu");
+        ui.show().expect("show the Software menu");
         w.ui.set_menu_open(true);
         self.menu = Some((surface, ui));
     }

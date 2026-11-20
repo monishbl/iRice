@@ -88,7 +88,7 @@ fn saver_group(cx: &mut Ctx, p: &mut Page, pw: &Value, ppd: bool) {
     let profile_id = cx.toggle("power.saverProfile");
     let off_id = cx.on(|cx, _| cx.ask("system", "saverToggle", Value::Null));
     let detail = match mode {
-        "off" => "Only when you turn it on in Control Center".to_string(),
+        "off" => "Only when you turn it on in Quick Settings".to_string(),
         "battery" => "Whenever the computer runs on battery".to_string(),
         _ => format!("On battery at {level}% or less, until you plug in"),
     };

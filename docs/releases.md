@@ -623,9 +623,9 @@ for one run, and `setup.sh` carries a copy, kept the same by
   `origin`.
 - **Software Update** (`tools/tessera-update.py`, and `tessera update` through
   its `fetch` command) fetches the channel's branch (`main` or `beta`) from
-  `origin`, then, when `origin` is one of these sources, from each other one
-  by URL into the same `origin/<branch>`: your remote is never rewritten. A
-  fork's checkout only uses its own remote.
+  `origin` only, the official GitHub repository (20 Nov, the user's choice:
+  no other git source until a mirror really exists); your remote is never
+  rewritten. A fork's checkout only uses its own remote.
 - **Ready-made tessera-ui** (`tools/native-install.py`) looks in GitHub's
   releases, then the GitLab mirror's packages. Every source is checked
   exactly the same way: the signature against `tools/tessera-ui.pub`, the

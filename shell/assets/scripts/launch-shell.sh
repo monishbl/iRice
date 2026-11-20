@@ -117,7 +117,7 @@ setsid -f "$(dirname -- "${BASH_SOURCE[0]}")/start-idle.sh" "$QS" </dev/null >/d
 # does what the QML shell did (native/tessera-ui/host). This process becomes it,
 # as it becomes the shell below. Without the tessera-ui binary: the QML shell.
 # A safety net: each standalone start is counted in $STARTS, and tessera-ui
-# removes the count once it has stayed up 5 minutes. A crash is retried once
+# removes the count once it has stayed up a minute. A crash is retried once
 # (keep-shell.sh starts it again); a second start that didn't last and this
 # start is the QML shell instead, the basic fallback (16 Nov: only the Rust
 # shell is maintained), with a note in $FALLBACK saying why: the QML shell

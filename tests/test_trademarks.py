@@ -14,10 +14,14 @@ What's read, as the person sees it:
     and the scripts show or send (docstrings and comments aren't shown)
   - the website (site/: visible text and alt, aria-label, title and meta
     text) and README.md
+  - the Rust shell (native/tessera-ui, the one that's maintained): string
+    literals in .rs and .slint outside comments and #[cfg(test)] modules
+    (crash notifications, Settings text, window titles)
 
 Allowed on purpose:
   - search keywords (`keywords: "…"` in services/Search.qml) and Settings
-    search's former names (SettingsMap.formerNames), so a search for an old
+    search's former names (SettingsMap.formerNames, and the Rust Settings'
+    `FORMER` table in surfaces/settings/src/map.rs), so a search for an old
     name still finds the feature;
   - Apple's own wallpaper files, named as Apple names them ("Tahoe Light.jpg")
     when Tessera downloads or looks for them;
@@ -105,6 +109,59 @@ def literals(text, comment="//", block=True):
             i = j + 1
             continue
         i += 1
+
+
+def rust_literals(text):
+    """(offset, body) of each string literal in Rust or Slint source outside
+    comments: "…" and raw r"…" / r#"…"#; char literals and lifetimes ('a)
+    aren't strings."""
+    i, n = 0, len(text)
+    while i < n:
+        if text.startswith("//", i):
+            j = text.find("\n", i)
+            i = n if j < 0 else j
+            continue
+        if text.startswith("/*", i):
+            j = text.find("*/", i + 2)
+            i = n if j < 0 else j + 2
+            continue
+        c = text[i]
+        raw = re.match(r'b?r(#*)"', text[i:i + 12])
+        if raw and (i == 0 or not (text[i - 1].isalnum() or text[i - 1] == "_")):
+            close = '"' + raw.group(1)
+            start = i + raw.end()
+            end = text.find(close, start)
+            end = n if end < 0 else end
+            yield i, text[start:end]
+            i = end + len(close)
+            continue
+        if c == "'":
+            ch = re.match(r"'(?:\\u\{[0-9a-fA-F]+\}|\\.|[^\\'])'", text[i:i + 12])
+            i += ch.end() if ch else 1
+            continue
+        if c == '"':
+            j = i + 1
+            while j < n and text[j] != '"':
+                if text[j] == "\\":
+                    j += 1
+                j += 1
+            yield i, text[i + 1:j]
+            i = j + 1
+            continue
+        i += 1
+
+
+def without_rust_tests(text):
+    """A Rust file minus its #[cfg(test)] module (kept at the end of a file
+    in this codebase: everything from it on is cut)."""
+    m = re.search(r"^\s*#\[cfg\(test\)\]\s*\n\s*(?:pub\s+)?mod\s", text, re.M)
+    return text[:m.start()] if m else text
+
+
+def without_rust_former_names(text):
+    """The Rust Settings' map.rs minus its FORMER table (old names on
+    purpose, so a search for one still finds the page)."""
+    return re.sub(r"pub const FORMER: [^=]*= &\[.*?\n\];", "", text, flags=re.S)
 
 
 def rel(p):
@@ -256,6 +313,36 @@ class UserFacingText(unittest.TestCase):
     def test_readme(self):
         text = (ROOT / "README.md").read_text(encoding="utf-8")
         self.check([(f"README.md:{no}", line, hits(line)) for no, line in enumerate(text.splitlines(), 1)])
+
+    def test_rust_shell(self):
+        """The Rust shell is the one people use: its notifications ("Search
+        stopped working"), Settings text and window titles too."""
+        found = []
+        for p in files("native/tessera-ui/**/*.rs", "native/tessera-ui/**/*.slint"):
+            parts = set(p.relative_to(ROOT).parts)
+            if parts & {"target", "vendor", "review", "tests", "benches"}:
+                continue
+            text = p.read_text(encoding="utf-8", errors="replace")
+            if p.suffix == ".rs":
+                text = without_rust_tests(text)
+            if p.name == "map.rs" and "settings" in parts:
+                text = without_rust_former_names(text)
+            for at, lit in rust_literals(text):
+                found.append((f"{rel(p)}:{text.count(chr(10), 0, at) + 1}", lit, hits(lit)))
+        self.check(found)
+
+    def test_the_rust_scanner_finds_marks(self):
+        src = (
+            "fn f<'a>(s: &'a str) -> char { let c = '\"'; \"Open Search\" }\n"
+            '// "Spotlight" in a comment\n/* "Mission Control" */\n'
+            'let t = r#"Stage Manager"#; let q = "a \\" Quick Look";\n'
+            '#[cfg(test)]\nmod tests { const X: &str = "Launchpad"; }\n'
+        )
+        lits = [s for _, s in rust_literals(without_rust_tests(src))]
+        self.assertEqual(lits, ["Open Search", "Stage Manager", 'a \\" Quick Look'])
+        self.assertEqual(sorted(sum((hits(x) for x in lits), [])), ["Quick Look", "Stage Manager"])
+        table = 'pub const FORMER: &[(&str, &str)] = &[\n    ("spotlight", "search"),\n];\nconst Y: &str = "Spotlight";'
+        self.assertEqual([s for _, s in rust_literals(without_rust_former_names(table))], ["Spotlight"])
 
     def test_options_are_not_product_names(self):
         """A choice in Settings is named for what it does ("Strip",

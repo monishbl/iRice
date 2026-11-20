@@ -21,14 +21,17 @@ site's deploys keep working without it.
 
 Run these from the repository root, logged in with `npx wrangler login`.
 
-1. Create the database, then put the `database_id` it prints into
-   `site/bugs/wrangler.jsonc`:
+1. Only on a fresh Cloudflare account (the deployed Worker's database
+   exists already, named `irice` in `site/bugs/wrangler.jsonc`, kept from
+   before the rename on purpose): create the database, then put the
+   `database_id` it prints into `site/bugs/wrangler.jsonc`. The name must be
+   the one in that file's `database_name`:
 
-       npx wrangler d1 create tessera-bugs
+       npx wrangler d1 create irice
 
-2. Create the tables:
+2. Create the tables (again the `database_name` from wrangler.jsonc):
 
-       npx wrangler d1 migrations apply tessera-bugs --remote --config site/bugs/wrangler.jsonc
+       npx wrangler d1 migrations apply irice --remote --config site/bugs/wrangler.jsonc
 
 3. Add the two secrets:
 

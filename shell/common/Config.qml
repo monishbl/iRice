@@ -509,6 +509,10 @@ Singleton {
                 // after their first open: they open faster and take less CPU,
                 // for some memory (common/PanelLoader.qml)
                 property bool keepPanelsLoaded: false
+                // (the Rust shell's only, kept here so this fallback writing the
+                // file doesn't drop it: Graphics processor, low | auto | a GPU
+                // family; tessera-ui core/src/gpu.rs, "low" when unset)
+                property string gpu: "low"
             }
             property JsonObject keyboard: JsonObject {
                 property string superTap: "overview" // tapping Super alone: overview | spotlight | none

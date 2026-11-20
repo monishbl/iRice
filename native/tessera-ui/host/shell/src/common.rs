@@ -101,20 +101,29 @@ pub fn set_config(path: &str, x: Value) -> bool {
 /// it reads a file written by an older shell (once, at start)
 pub fn upgrade_config() {
     let cfg = tessera_core::theme::read_json();
+    for (path, x) in upgrades(&cfg) {
+        set_config(path, x);
+    }
+}
+
+/// What upgrade_config writes for a settings file, in order: (key, value)
+/// pairs (none for a file that isn't an object)
+pub fn upgrades(cfg: &Value) -> Vec<(&'static str, Value)> {
+    let mut out = vec![];
     if !cfg.is_object() {
-        return;
+        return out;
     }
     // Config.qml's onLoaded, on every load: names from before (the old
     // name's, the badge's own "circle"), and the display switch cue from
     // before it had styles (Empty: from dimOthers)
-    if [tessera_core::old_names::SETTING_VALUE, "circle"].contains(&cfg_str(&cfg, "appearance.menuIcon", "")) {
-        set_config("appearance.menuIcon", json!("tessera"));
+    if [tessera_core::old_names::SETTING_VALUE, "circle"].contains(&cfg_str(cfg, "appearance.menuIcon", "")) {
+        out.push(("appearance.menuIcon", json!("tessera")));
     }
-    if cfg_str(&cfg, "screenshot.editor", "") == tessera_core::old_names::SETTING_VALUE {
-        set_config("screenshot.editor", json!("tessera"));
+    if cfg_str(cfg, "screenshot.editor", "") == tessera_core::old_names::SETTING_VALUE {
+        out.push(("screenshot.editor", json!("tessera")));
     }
     if cfg["workspaces"]["switchCue"].as_str() == Some("") {
-        set_config("workspaces.switchCue", json!(if cfg["workspaces"]["dimOthers"].as_bool().unwrap_or(false) { "glow" } else { "off" }));
+        out.push(("workspaces.switchCue", json!(if cfg["workspaces"]["dimOthers"].as_bool().unwrap_or(false) { "glow" } else { "off" })));
     }
     // (a version that isn't a number, "3" or 3.0, reads as what it says)
     let version = match &cfg["defaultsVersion"] {
@@ -123,23 +132,24 @@ pub fn upgrade_config() {
         _ => 0,
     };
     if version >= 3 {
-        return;
+        return out;
     }
     if version < 1 {
-        set_config("sidebar.booru", json!(false));
+        out.push(("sidebar.booru", json!(false)));
     }
     if version < 2 && cfg.get("welcome").is_none() {
-        set_config("welcome.done", json!(true));
+        out.push(("welcome.done", json!(true)));
     }
     if version < 3 {
-        if cfg_str(&cfg, "appearance.iconStyle", "default") == "default" {
-            set_config("appearance.iconStyle", json!("look"));
+        if cfg_str(cfg, "appearance.iconStyle", "default") == "default" {
+            out.push(("appearance.iconStyle", json!("look")));
         }
-        if cfg_str(&cfg, "appearance.cursor", "") == "macos" {
-            set_config("appearance.cursor", json!("bibata"));
+        if cfg_str(cfg, "appearance.cursor", "") == "macos" {
+            out.push(("appearance.cursor", json!("bibata")));
         }
     }
-    set_config("defaultsVersion", json!(3));
+    out.push(("defaultsVersion", json!(3)));
+    out
 }
 
 // ── Theme.qml's dark, Daylight.qml, TimeFormat.qml ──────────────────────────
@@ -592,5 +602,70 @@ mod tests {
         for id in ["notes", "resources", "recorder", "mixer", "image", "crosshair", "fps"] {
             assert!(d[id]["w"].is_number(), "{id}");
         }
+    }
+
+    fn keys(u: &[(&'static str, Value)]) -> Vec<&'static str> {
+        u.iter().map(|(k, _)| *k).collect()
+    }
+
+    fn value<'a>(u: &'a [(&'static str, Value)], key: &str) -> Option<&'a Value> {
+        u.iter().find(|(k, _)| *k == key).map(|(_, v)| v)
+    }
+
+    #[test]
+    fn upgrades_a_file_from_before_any_version() {
+        // v0, no welcome, no icon style: booru off, welcomed, icons "look"
+        let u = upgrades(&json!({"appearance": {"cursor": "macos"}}));
+        assert_eq!(keys(&u), vec!["sidebar.booru", "welcome.done", "appearance.iconStyle", "appearance.cursor", "defaultsVersion"]);
+        assert_eq!(value(&u, "sidebar.booru"), Some(&json!(false)));
+        assert_eq!(value(&u, "welcome.done"), Some(&json!(true)));
+        assert_eq!(value(&u, "appearance.iconStyle"), Some(&json!("look")));
+        assert_eq!(value(&u, "appearance.cursor"), Some(&json!("bibata")));
+        assert_eq!(value(&u, "defaultsVersion"), Some(&json!(3)));
+    }
+
+    #[test]
+    fn upgrades_v1_and_v2_files() {
+        // v1 with a welcome already: no booru change, the welcome kept
+        let u = upgrades(&json!({"defaultsVersion": 1, "welcome": {"done": false}, "appearance": {"iconStyle": "clear"}}));
+        assert_eq!(keys(&u), vec!["defaultsVersion"]);
+        // v1 without one: welcomed (written by a shell from before it)
+        let u = upgrades(&json!({"defaultsVersion": 1, "appearance": {"iconStyle": "default"}}));
+        assert_eq!(keys(&u), vec!["welcome.done", "appearance.iconStyle", "defaultsVersion"]);
+        // v2: only the icon style and pointer step
+        let u = upgrades(&json!({"defaultsVersion": 2, "appearance": {"iconStyle": "default", "cursor": "bibata"}}));
+        assert_eq!(keys(&u), vec!["appearance.iconStyle", "defaultsVersion"]);
+    }
+
+    #[test]
+    fn a_v3_file_keeps_its_choices() {
+        // (a "default" icon style picked at v3 stays: the upgrade is once)
+        let cfg = json!({"defaultsVersion": 3, "appearance": {"iconStyle": "default", "cursor": "macos"}});
+        assert!(upgrades(&cfg).is_empty());
+        // the version as a string or a float reads as what it says
+        assert!(upgrades(&json!({"defaultsVersion": "3", "appearance": {"iconStyle": "default"}})).is_empty());
+        assert!(upgrades(&json!({"defaultsVersion": 3.0})).is_empty());
+        assert_eq!(keys(&upgrades(&json!({"defaultsVersion": " 2 ", "welcome": {}}))), vec!["appearance.iconStyle", "defaultsVersion"]);
+        // nothing for a file that isn't an object
+        assert!(upgrades(&json!([])).is_empty());
+        assert!(upgrades(&Value::Null).is_empty());
+    }
+
+    #[test]
+    fn old_names_and_the_switch_cue_on_every_load() {
+        let old = tessera_core::old_names::SETTING_VALUE;
+        let cfg = json!({"defaultsVersion": 3, "appearance": {"menuIcon": old}, "screenshot": {"editor": old},
+                         "workspaces": {"switchCue": "", "dimOthers": true}});
+        let u = upgrades(&cfg);
+        assert_eq!(keys(&u), vec!["appearance.menuIcon", "screenshot.editor", "workspaces.switchCue"]);
+        assert_eq!(value(&u, "appearance.menuIcon"), Some(&json!("tessera")));
+        assert_eq!(value(&u, "screenshot.editor"), Some(&json!("tessera")));
+        assert_eq!(value(&u, "workspaces.switchCue"), Some(&json!("glow")));
+        // the badge's own "circle" is Tessera's too; no dimOthers: the cue is off
+        let u = upgrades(&json!({"defaultsVersion": 3, "appearance": {"menuIcon": "circle"}, "workspaces": {"switchCue": ""}}));
+        assert_eq!(value(&u, "appearance.menuIcon"), Some(&json!("tessera")));
+        assert_eq!(value(&u, "workspaces.switchCue"), Some(&json!("off")));
+        // a cue already chosen and another menu icon stay
+        assert!(upgrades(&json!({"defaultsVersion": 3, "appearance": {"menuIcon": "tessera"}, "workspaces": {"switchCue": "glow"}})).is_empty());
     }
 }

@@ -77,9 +77,7 @@
     "language": "auto",
     "placement": "bar"
   },
-  "cloud": {
-    "hiddenCalendars": []
-  },
+  "cloud": {},
   "controlCenter": {
     "background": false,
     "layout": [
@@ -195,11 +193,7 @@
     "enabled": true,
     "style": "ring"
   },
-  "google": {
-    "hiddenCalendars": [],
-    "newEventCalendar": "cloud|ms-817f1f77bd|cal1",
-    "taskListId": ""
-  },
+  "google": {},
   "hotCorners": {
     "bottomLeft": "none",
     "bottomRight": "none",
@@ -270,8 +264,6 @@
     "clockWeight": 640,
     "clockWidth": 112,
     "face": true,
-    "faceCount": 0,
-    "faceDevice": "",
     "fingerprint": true,
     "layout": "macos",
     "lockTransition": "fade",

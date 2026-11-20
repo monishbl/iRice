@@ -424,28 +424,31 @@ impl Bridges {
             self.lock_zoom = true;
             self.lockfx(h, "rest", 0);
         } else {
-            if !self.held {
-                // locked and unlocked again before the lock showed
-                self.unveil(h);
-                self.lockfx(h, "reveal", 300);
-                return;
+            let step = unlock_step(self.held, cfg_str(h.cfg(), "lock.unlockTransition", "zoom"));
+            match step {
+                UnlockStep::Reveal => {
+                    // locked and unlocked again before the lock showed
+                    self.unveil(h);
+                    self.lockfx(h, "reveal", 300);
+                }
+                UnlockStep::Instant => {
+                    self.unveil(h);
+                    self.lockfx(h, "rest", 0);
+                    self.set_held(h, false);
+                }
+                UnlockStep::Lift { zoom } => {
+                    // Lock → desktop: while the lock's content lifts away, the desktop
+                    // is set back behind it and the veil goes up, so the first frame
+                    // without the lock looks just like the last one; the
+                    // compositor lock is let go only by "leave", 220 ms on
+                    self.lock_zoom = zoom;
+                    self.veiled = true;
+                    self.lockfx(h, "prepare", 0);
+                    self.leaving = true;
+                    self.tell_lock(h);
+                    self.later(h, "leave", 220);
+                }
             }
-            let t = cfg_str(h.cfg(), "lock.unlockTransition", "zoom").to_string();
-            if t == "none" {
-                self.unveil(h);
-                self.lockfx(h, "rest", 0);
-                self.set_held(h, false);
-                return;
-            }
-            // Lock → desktop: while the lock's content lifts away, the desktop
-            // is set back behind it and the veil goes up, so the first frame
-            // without the lock looks just like the last one
-            self.lock_zoom = t == "zoom";
-            self.veiled = true;
-            self.lockfx(h, "prepare", 0);
-            self.leaving = true;
-            self.tell_lock(h);
-            self.later(h, "leave", 220);
         }
     }
 
@@ -477,7 +480,7 @@ impl Bridges {
                 self.later(h, "reveal", 60);
             }
         }
-        if e["unlocked"] == true && self.rust_lock {
+        if unlocks(e, self.rust_lock) {
             self.set_locked(h, false);
         }
         if e["sound"] == "error" {
@@ -1248,6 +1251,36 @@ mod tests {
         assert_eq!(m, json!({"a": 1, "b": 3, "c": 4}));
         assert_eq!(merged(json!({"a": 1}), None), json!({"a": 1}));
     }
+
+    #[test]
+    fn the_locked_mark_has_one_name() {
+        let run = std::path::Path::new("/run/user/1000");
+        assert_eq!(locked_mark_in(run, Some("abc_123")), run.join("tessera-locked-abc_123"));
+        // unset or empty: "none", as System, the QML and keep-shell.sh name it
+        assert_eq!(locked_mark_in(run, None), run.join("tessera-locked-none"));
+        assert_eq!(locked_mark_in(run, Some("")), run.join("tessera-locked-none"));
+    }
+
+    #[test]
+    fn unlocking_lets_go_only_after_the_lift() {
+        // not held yet: only the reveal (nothing to let go)
+        assert_eq!(unlock_step(false, "zoom"), UnlockStep::Reveal);
+        assert_eq!(unlock_step(false, "none"), UnlockStep::Reveal);
+        // held: "none" lets go at once; the others lift first ("leave" lets go)
+        assert_eq!(unlock_step(true, "none"), UnlockStep::Instant);
+        assert_eq!(unlock_step(true, "zoom"), UnlockStep::Lift { zoom: true });
+        assert_eq!(unlock_step(true, "fade"), UnlockStep::Lift { zoom: false });
+    }
+
+    #[test]
+    fn only_the_rust_locks_unlock_counts() {
+        assert!(unlocks(&json!({"unlocked": true}), true));
+        // another locker drew it: its word isn't taken
+        assert!(!unlocks(&json!({"unlocked": true}), false));
+        assert!(!unlocks(&json!({"unlocked": false}), true));
+        assert!(!unlocks(&json!({"unlocked": "true"}), true));
+        assert!(!unlocks(&json!({"secure": true}), true));
+    }
 }
 
 /// $XDG_RUNTIME_DIR/tessera-locked-<Hyprland instance>: there while this
@@ -1258,10 +1291,41 @@ fn locked_mark() -> std::path::PathBuf {
 }
 
 /// The mark's path (the same as System's lock_mark in host-system, which
-/// reads it as it starts): the runtime folder, else /run/user/<uid>, never
-/// a /tmp other users share
+/// reads it as it starts, the QML's services/System.qml lockMark and
+/// keep-shell.sh): the runtime folder, else /run/user/<uid>, never a /tmp
+/// other users share; an unset or empty instance is "none"
 pub fn locked_mark_for(run: Option<String>, sig: Option<String>, uid: u32) -> std::path::PathBuf {
     let run = run.filter(|s| !s.is_empty()).unwrap_or_else(|| format!("/run/user/{uid}"));
-    let sig = sig.filter(|s| !s.is_empty()).unwrap_or_else(|| "none".into());
-    std::path::PathBuf::from(run).join(format!("tessera-locked-{sig}"))
+    locked_mark_in(std::path::Path::new(&run), sig.as_deref())
+}
+
+fn locked_mark_in(run: &std::path::Path, sig: Option<&str>) -> std::path::PathBuf {
+    let sig = sig.filter(|s| !s.is_empty()).unwrap_or("none");
+    run.join(format!("tessera-locked-{sig}"))
+}
+
+/// How an unlock goes (Lock.qml's): not held yet (locked and unlocked again
+/// before the lock showed) only reveals; "none" lets go at once; otherwise the
+/// lock's content lifts away first (zoom or not) and "leave" lets go after
+#[derive(Debug, PartialEq)]
+enum UnlockStep {
+    Reveal,
+    Instant,
+    Lift { zoom: bool },
+}
+
+fn unlock_step(held: bool, transition: &str) -> UnlockStep {
+    if !held {
+        UnlockStep::Reveal
+    } else if transition == "none" {
+        UnlockStep::Instant
+    } else {
+        UnlockStep::Lift { zoom: transition == "zoom" }
+    }
+}
+
+/// The lock part's "unlocked" counts only when the Rust lock holds the
+/// session (never one another locker drew)
+fn unlocks(e: &Value, rust_lock: bool) -> bool {
+    e["unlocked"] == true && rust_lock
 }

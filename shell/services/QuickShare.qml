@@ -33,11 +33,53 @@ Singleton {
     readonly property bool available: Tools.has("python3")
     property real everyoneUntil: 0 // "Everyone for 10 minutes" turns itself off
     readonly property bool visible: cfg.quickShare === "everyone" || (cfg.quickShare === "10min" && everyoneUntil > Date.now())
+    // (its end is kept where the Rust shell keeps it, ms since the epoch, so
+    // this fallback taking over neither extends the 10 minutes nor starts
+    // them again: native/tessera-ui/host/sharing/src/visibility.rs. 20 Nov)
+    readonly property string untilPath: Paths.stateHome + "/tessera/sharing-visible-until"
+    FileView {
+        id: untilFile
+        path: root.untilPath
+        blockLoading: true
+        printErrors: false
+    }
+    // The kept end when it's for this choice (no more than 10 minutes
+    // away, maybe already past), else a fresh 10 minutes (visibility.rs
+    // deadline())
+    function keptDeadline() {
+        const now = Date.now();
+        untilFile.reload();
+        const kept = parseInt((untilFile.text() || "").trim(), 10);
+        return kept > 0 && kept <= now + 10 * 60000 ? kept : now + 10 * 60000;
+    }
+    function keepUntil(t) {
+        if (t > 0)
+            Quickshell.execDetached(["sh", "-c", "mkdir -p \"${1%/*}\" && printf '%s\\n' \"$2\" > \"$1\"", "sh", root.untilPath, String(Math.round(t))]);
+        else
+            Quickshell.execDetached(["rm", "-f", root.untilPath]);
+    }
+    // (read while the settings load: the end kept; chosen after: a fresh
+    // 10 minutes, kept; anything else: none kept)
+    function levelChanged() {
+        if (cfg.quickShare === "10min") {
+            everyoneUntil = Config.ready ? Date.now() + 10 * 60000 : keptDeadline();
+            if (Config.ready)
+                keepUntil(everyoneUntil);
+        } else if (Config.ready) {
+            keepUntil(0);
+        }
+    }
+    Connections {
+        target: Config
+        function onReadyChanged() {
+            if (Config.ready && root.cfg.quickShare === "10min" && root.everyoneUntil === 0)
+                root.everyoneUntil = root.keptDeadline();
+        }
+    }
     Connections {
         target: root.cfg
         function onQuickShareChanged() {
-            if (root.cfg.quickShare === "10min")
-                root.everyoneUntil = Date.now() + 10 * 60000;
+            root.levelChanged();
         }
         function onQuickShareHotspotChanged() {
             root.configure();

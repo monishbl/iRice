@@ -166,10 +166,12 @@ if [[ -n "$template" ]]; then
     if [[ "$(cat "/proc/$template/comm" 2>/dev/null)" == tessera-ui ]]; then
         QS="$(command -v qs || echo qs)"
         tcmd=()
-        fresh=()
-        for e in "${tenv[@]}"; do [[ $e == TESSERA_STANDALONE=* ]] || fresh+=("$e"); done
-        tenv=("${fresh[@]}")
     fi
+    # (and never the old shell's TESSERA_STANDALONE: the QML shell tessera-ui
+    # became when EGL didn't start has =0, which would keep it after updates)
+    fresh=()
+    for e in "${tenv[@]}"; do [[ $e == TESSERA_STANDALONE=* ]] || fresh+=("$e"); done
+    tenv=("${fresh[@]}")
 else
     tenv=()
     tcmd=()

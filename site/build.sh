@@ -27,9 +27,26 @@ w["dynamic"] = "off"
 for sec, key in (("sharing", "name"), ("weather", "location"), ("emoji", "klipyKey"), ("notes", "folder"), ("desktop", "photosFolder")):
     if key in d.get(sec, {}):
         d[sec][key] = ""
+# Nothing tied to your accounts or hardware either (dropped, not blanked, so
+# an importer keeps their own): a calendar id for new events or a task list
+# exists only in your account, and the face camera only on your computer
+for sec, key in (("google", "newEventCalendar"), ("google", "taskListId"), ("google", "hiddenCalendars"),
+                 ("cloud", "hiddenCalendars"), ("lock", "faceDevice"), ("lock", "faceCount")):
+    if isinstance(d.get(sec), dict):
+        d[sec].pop(key, None)
 json.dump(d, open(sys.argv[2], "w"), indent=2)
 text = json.dumps(d)
 assert "/home/" not in text, "a home path slipped into the shared settings"
+def account_ids(v):
+    if isinstance(v, dict):
+        for x in v.values():
+            yield from account_ids(x)
+    elif isinstance(v, list):
+        for x in v:
+            yield from account_ids(x)
+    elif isinstance(v, str) and (v.startswith("cloud|") or v.startswith("google|")):
+        yield v
+assert not list(account_ids(d)), "an account's calendar or list id slipped into the shared settings"
 PY
 [[ "$SRC" == "$SAVED" ]] || cp "$work/tessera-config/config.json" "$SAVED"
 cp "$HERE/package/import.sh" "$HERE/package/README.txt" "$work/tessera-config/"

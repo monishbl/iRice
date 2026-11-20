@@ -23,8 +23,17 @@ Singleton {
     Connections {
         target: root.cfg
         function onReceivingChanged() {
+            // (while the settings load: the end the Rust shell kept, as
+            // QuickShare reads it; chosen after: a fresh 10 minutes)
             if (root.cfg.receiving === "10min")
-                root.everyoneUntil = Date.now() + 10 * 60000;
+                root.everyoneUntil = Config.ready ? Date.now() + 10 * 60000 : QuickShare.keptDeadline();
+        }
+    }
+    Connections {
+        target: Config
+        function onReadyChanged() {
+            if (Config.ready && root.cfg.receiving === "10min" && root.everyoneUntil === 0)
+                root.everyoneUntil = QuickShare.keptDeadline();
         }
     }
     Timer {

@@ -100,10 +100,13 @@ if [[ -n "$template" ]]; then
     # the launcher picks standalone again from the settings)
     if is_standalone "$template"; then
         tcmd=()
-        fresh=()
-        for e in "${tenv[@]}"; do [[ $e == TESSERA_STANDALONE=* ]] || fresh+=("$e"); done
-        tenv=("${fresh[@]}")
     fi
+    # (never the old shell's TESSERA_STANDALONE either: the QML shell that
+    # tessera-ui became when EGL didn't start has =0, and kept, every Try
+    # again started the QML shell again; the launcher decides afresh, 20 Nov)
+    fresh=()
+    for e in "${tenv[@]}"; do [[ $e == TESSERA_STANDALONE=* ]] || fresh+=("$e"); done
+    tenv=("${fresh[@]}")
 else
     tenv=()
     tcmd=()

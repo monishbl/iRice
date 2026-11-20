@@ -23,7 +23,22 @@ import qs.common
 Singleton {
     id: root
 
-    readonly property list<string> wanted: Config.ready ? Config.options.rust.surfaces : []
+    // (nothing while this shell is the basic fallback: tessera-ui just failed,
+    // so a hybrid-era rust.surfaces list mustn't hand it the lock or anything
+    // else. The fallback's note is there (modules/fallback), or tessera-ui
+    // became this shell when EGL didn't start (TESSERA_STANDALONE=0). 20 Nov)
+    readonly property bool fallback: Quickshell.env("TESSERA_STANDALONE") === "0" || fallbackNote
+    property bool fallbackNote: false
+    FileView {
+        path: Paths.stateHome + "/tessera/fallback"
+        blockLoading: true
+        watchChanges: true
+        printErrors: false
+        onLoaded: root.fallbackNote = text().trim() !== ""
+        onLoadFailed: root.fallbackNote = false
+        onFileChanged: reload()
+    }
+    readonly property list<string> wanted: Config.ready && !fallback ? Config.options.rust.surfaces : []
     readonly property string binary: Quickshell.env("TESSERA_UI") || Paths.data + "/bin/tessera-ui"
     property var drawn: [] // what it said it draws
     function drawing(name) {

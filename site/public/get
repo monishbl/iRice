@@ -48,7 +48,7 @@ if [[ -d "$dest/.git" ]]; then
     say "Updating the copy in $dest…"
     git -C "$dest" pull --ff-only || { echo "Couldn't update $dest (it has changes of its own). Use Settings → Software Update in Tessera instead."; exit 1; }
 elif [[ -e "$dest" ]]; then
-    echo "$dest exists and isn't an Tessera copy. Pick another folder: bash <(curl -fsSL $site/get) ~/somewhere-else"
+    echo "$dest exists and isn't a Tessera copy. Pick another folder: bash <(curl -fsSL $site/get) ~/somewhere-else"
     exit 1
 else
     say "Getting Tessera into $dest…"

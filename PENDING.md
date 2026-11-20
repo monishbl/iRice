@@ -1,45 +1,36 @@
 # What's pending
 
-Updated 4 November 2026. Main is applied to the laptop.
+Updated 20 November 2026.
 
-## Needs you
-
-- **Restart once** to see the quiet start and the new login screen (installed; not seen yet).
-
-## Next, in your order
-
-1. **The Rust rewrite, helpers first** (the QML interface stays): tessera-events is done; next Quick Share, the Wi-Fi and link-share helpers, the screenshot text index, backups, then glass-ipc. Each benchmarked against docs/benchmarks-baseline.md and docs/benchmarks-events.md.
-2. **Quick Share Bluetooth discovery**: phones take minutes to find the laptop over Bluetooth alone (instant over Wi-Fi); the laptop sends the slower kind of advertisement.
-3. **Rust on the laptop**: `rust` is now a build package; the next install or update offers it (tessera-events was built in the dev container this time).
+Where things stand: the Rust shell (`native/tessera-ui`) is the shell. The QML
+shell in `shell/` is frozen as the basic fallback (it starts only when the Rust
+shell fails twice, with a notice and Try again) and gets compatibility fixes
+only. The site (tessera.monishbl.in) serves `/get`. What only the Rust shell
+has, and each change's status, is kept in
+[native/tessera-ui/RUST-ONLY.md](native/tessera-ui/RUST-ONLY.md); this file
+lists only what waits on something else.
 
 ## Not yet tried on real hardware
 
-- The Tessera boot splashes (Breathe, Orbit, Frost, Bloom) at a real boot; you're on the system's own for now.
-- The quiet start's splash → login handover (at your next restart).
-- tessera-events on real hardware: closing the lid with "keep awake when closed" settings, sleep and wake, plugging a USB drive or mouse, a real screen share and camera (the inhibitors are confirmed held by it).
-- The 3-finger long press for circle to search, and "Search the web" (Google Lens) through to the browser.
-- Quick Share: the laptop on 2.4 GHz while receiving (the 5 GHz group beside it is unit-tested); 2 GB of small files phone→laptop.
+The rows in RUST-ONLY.md whose status says "laptop check pending", "phone
+tests pending" or "needs a real session". At the time of writing:
+
+- Popovers closing on a press on another screen (two screens).
+- Quick Share with a real phone: the share sheet path, receiving over
+  Bluetooth with the faster link, the laptop on 2.4 GHz while receiving.
+- The real polkit prompt and the Bluetooth alerts in a standalone session.
+- The Tessera boot splashes (Breathe, Orbit, Frost, Bloom) at a real boot.
+- The 3-finger long press for circle to search, and "Search the web"
+  (Google Lens) through to the browser.
 
 ## Offered, waiting for a yes
 
-- **Hide GRUB's menu**: it shows for 5 s every boot; hidden, it would show only while you hold Esc or Shift (it's also how you reach snapshots).
-
-## Watch
-
-- **Glass shell froze in the sandbox** in 2 smoke runs on 3 Nov, not since (many runs). The smoke check fails on it and says whether the compositor or the shell was stuck. If your desktop freezes, note the time.
+- **Hide GRUB's menu**: it shows for 5 s every boot; hidden, it would show
+  only while you hold Esc or Shift (it's also how you reach snapshots).
 
 ## Later
 
-- **Website media shows old names**: re-render the hero film (`site/film/hero/film.html`, the Bedside Mode caption) and the screenshots showing "App Store", "Spotlight Search" or "Control Center". `site/public/get` isn't deployed (pushing site/ deploys: ask first).
-- `dev.sh` still lists papirus.
-
-## Done recently (4 Nov)
-
-- **tessera-events** (Rust): one process follows the system for the shell; on the real session 37 processes under the shell became 6 and 200 MB became 49 MB. Without it the shell uses its old watchers.
-- **AI sidebar chat history**: past chats with search, rename, pin, delete with Undo; Settings → AI → Chat history.
-- **Test sandboxes are hidden and silent** (a private virtual KWin display and a silent private PipeWire).
-
-- Login screen switched to Tessera's (greetd); system helper installed (firewall ports only while visible, "Keep Tessera smooth when busy", boot animation picker); Glass plugin reloaded at login.
-- Material vs Glass sweep: Material controls everywhere, settings lined up, Glass given Material's fixes; then Glass got Quick Settings' footer, the lock picture and name, the App Drawer menu and A–Z (a letter lights its whole set), and Search's Clear and Ask AI.
-- Material's lock keeps your Classic layout, with the switch now in Material's Settings.
-- Quick Share's upgrade tests no longer depend on this laptop's firewall.
+- **Website media**: check the hero film and screenshots for the old product
+  names ("App Store", "Spotlight", "Control Center") and re-render any that
+  still show them.
+- The Material sound pack's source is still unknown (SECURITY-AUDIT.md §6, the licence checklist).
