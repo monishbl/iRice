@@ -330,7 +330,7 @@ impl Model {
         // (wayland: the sessions are /usr/share/wayland-sessions ones. With no
         // XDG_SESSION_TYPE greetd's default "tty" was the desktop's, so
         // Electron apps, GNOME and the portals took it for a console; 20 Nov)
-        self.send(Request::StartSession { cmd: command, env: vec!["XDG_SESSION_TYPE=wayland".into()] });
+        self.send(Request::StartSession { cmd: quiet(command), env: vec!["XDG_SESSION_TYPE=wayland".into()] });
     }
 
     /// The preview's answer, 600 ms after Enter
@@ -526,6 +526,19 @@ impl Model {
     }
 }
 
+/// A session's command, quiet: the console is cleared and its cursor hidden,
+/// and what the desktop prints (Hyprland's banner and log) goes to the
+/// journal (journalctl -t tessera-session), not onto the screen between the
+/// login screen and the desktop. As greeter-session.sh does for the greeter.
+pub fn quiet(command: Vec<String>) -> Vec<String> {
+    const WRAP: &str = "printf '\\033[2J\\033[H\\033[?25l'; \
+        command -v systemd-cat >/dev/null && exec systemd-cat -t tessera-session \"$@\"; \
+        exec \"$@\" >/dev/null 2>&1";
+    let mut cmd = vec!["/bin/sh".to_string(), "-c".into(), WRAP.into(), "tessera-session".into()];
+    cmd.extend(command);
+    cmd
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::greetd::{tests::Fake, Client, Event};
@@ -582,9 +595,17 @@ mod tests {
         m.submit("tessera");
         assert_eq!(sent(&m.take()), vec![Request::PostAuthMessageResponse { response: Some("tessera".into()) }]);
         m.heard(Response::Success);
-        assert_eq!(sent(&m.take()), vec![Request::StartSession { cmd: vec!["tessera-session".into()], env: vec!["XDG_SESSION_TYPE=wayland".into()] }]);
+        assert_eq!(sent(&m.take()), vec![Request::StartSession { cmd: quiet(vec!["tessera-session".into()]), env: vec!["XDG_SESSION_TYPE=wayland".into()] }]);
         m.heard(Response::Success);
         assert_eq!(m.take(), vec![Effect::Quit]);
+    }
+
+    #[test]
+    fn sessions_start_quiet() {
+        let c = quiet(vec!["start-hyprland".into(), "--".into(), "-c".into()]);
+        assert_eq!(&c[..2], &["/bin/sh", "-c"]);
+        assert!(c[2].contains("systemd-cat -t tessera-session \"$@\"") && c[2].contains(">/dev/null 2>&1"));
+        assert_eq!(&c[3..], &["tessera-session", "start-hyprland", "--", "-c"]);
     }
 
     #[test]
