@@ -382,7 +382,12 @@ impl Model {
                 AuthKind::Info | AuthKind::Error => {
                     let error = t == AuthKind::Error;
                     let low = msg.to_lowercase();
-                    if ["finger", "swipe", "touch"].iter().any(|w| low.contains(w)) {
+                    if ["timed out", "time out", "timeout"].iter().any(|w| low.contains(w)) {
+                        // (pam_fprintd gave up waiting for a touch and hands over
+                        // to the password: not an error, so nothing red on screen)
+                        self.finger = Finger::None;
+                        self.message.clear();
+                    } else if ["finger", "swipe", "touch"].iter().any(|w| low.contains(w)) {
                         // (pam_fprintd: listening, or the finger didn't match)
                         self.finger = if error { Finger::Miss } else { Finger::Waiting };
                         self.message = msg;
@@ -526,15 +531,21 @@ impl Model {
     }
 }
 
-/// A session's command, quiet: the console is cleared and its cursor hidden,
-/// and what the desktop prints (Hyprland's banner and log) goes to the
-/// journal (journalctl -t tessera-session), not onto the screen between the
-/// login screen and the desktop. As greeter-session.sh does for the greeter.
+/// A session's command, quiet: what the desktop prints (Hyprland's banner
+/// and log) goes to the journal (journalctl -t tessera-session) instead of
+/// onto the console between the login screen and the desktop (which
+/// greeter-session.sh already cleared). greetd runs the words joined by
+/// spaces in a shell line (". /etc/profile; exec <cmd>"), so this only puts
+/// plain words in front, never quoting or a script.
 pub fn quiet(command: Vec<String>) -> Vec<String> {
-    const WRAP: &str = "printf '\\033[2J\\033[H\\033[?25l'; \
-        command -v systemd-cat >/dev/null && exec systemd-cat -t tessera-session \"$@\"; \
-        exec \"$@\" >/dev/null 2>&1";
-    let mut cmd = vec!["/bin/sh".to_string(), "-c".into(), WRAP.into(), "tessera-session".into()];
+    quiet_with(command, std::path::Path::new("/usr/bin/systemd-cat").exists())
+}
+
+pub fn quiet_with(command: Vec<String>, journal: bool) -> Vec<String> {
+    if !journal || command.is_empty() {
+        return command;
+    }
+    let mut cmd = vec!["systemd-cat".to_string(), "-t".into(), "tessera-session".into()];
     cmd.extend(command);
     cmd
 }
@@ -602,10 +613,24 @@ mod tests {
 
     #[test]
     fn sessions_start_quiet() {
-        let c = quiet(vec!["start-hyprland".into(), "--".into(), "-c".into()]);
-        assert_eq!(&c[..2], &["/bin/sh", "-c"]);
-        assert!(c[2].contains("systemd-cat -t tessera-session \"$@\"") && c[2].contains(">/dev/null 2>&1"));
-        assert_eq!(&c[3..], &["tessera-session", "start-hyprland", "--", "-c"]);
+        let c = quiet_with(vec!["start-hyprland".into(), "--".into(), "-c".into()], true);
+        assert_eq!(c, ["systemd-cat", "-t", "tessera-session", "start-hyprland", "--", "-c"]);
+        // greetd joins the words into "exec …": plain words only, nothing a shell would re-read
+        assert!(c.iter().all(|w| !w.contains(['\'', '"', ';', '$', '\\', ' '])));
+        assert_eq!(quiet_with(vec!["Hyprland".into()], false), ["Hyprland"]);
+    }
+
+    #[test]
+    fn the_readers_time_out_is_not_an_error() {
+        let mut m = Model::new(false, people(), sessions());
+        m.begin();
+        m.take();
+        m.heard(Response::AuthMessage { auth_message_type: AuthKind::Info, auth_message: "Place your finger on the fingerprint reader".into() });
+        assert_eq!(m.finger, Finger::Waiting);
+        m.take();
+        m.heard(Response::AuthMessage { auth_message_type: AuthKind::Error, auth_message: "Verification timed out".into() });
+        assert_eq!(m.finger, Finger::None);
+        assert!(m.message.is_empty() && m.error.is_empty());
     }
 
     #[test]
