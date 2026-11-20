@@ -836,7 +836,7 @@ mod tests {
     fn logs_in_through_a_fake_greetd() {
         let (m, started, _) = drive(0, &["tessera"]);
         assert!(m.success);
-        assert_eq!(started, vec![vec!["tessera-session".to_string()]]);
+        assert_eq!(started, vec![quiet(vec!["tessera-session".to_string()])]);
     }
 
     #[test]
