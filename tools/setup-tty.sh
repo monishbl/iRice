@@ -71,12 +71,11 @@ if [[ -f $conf ]] && ! grep -qE '^\s*Experimental\s*=\s*true' "$conf"; then
         sudo sed -i -E 's/^\s*#?\s*Experimental\s*=.*/Experimental = true/' "$conf"
         grep -qE '^Experimental = true' "$conf" || printf '\n[General]\nExperimental = true\n' | sudo tee -a "$conf" >/dev/null
         # ...but not its Ranging and LE Audio control profiles: they make phones
-        # ask to pair when they send with Quick Share (shell/assets/scripts/sharing-check.py)
-        sudo mkdir -p /etc/systemd/system/bluetooth.service.d
-        printf '# Tessera: no Ranging or LE Audio control profiles, which make phones ask to pair for Quick Share\n[Service]\nExecStart=\nExecStart=/usr/lib/bluetooth/bluetoothd --noplugin=rap,vcp,micp,mcp,bass\n' |
-            sudo tee /etc/systemd/system/bluetooth.service.d/tessera-no-rap.conf >/dev/null
-        sudo systemctl daemon-reload
-        sudo systemctl restart bluetooth && echo "Done: reconnect your headphones to see their battery."
+        # ask to pair when they send with Quick Share (shell/assets/scripts/sharing-check.py).
+        # The root helper's own fix writes that drop-in (bluetoothd's real
+        # path, its plugin list) and restarts Bluetooth: one copy of it
+        sudo /usr/bin/python3 -I "$ROOT/shell/assets/scripts/tessera-root.py" fix btpairing &&
+            echo "Done: reconnect your headphones to see their battery."
     fi
 fi
 

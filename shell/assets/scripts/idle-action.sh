@@ -53,14 +53,30 @@ case "$source" in
     ac) on_ac || exit 0 ;;
     battery) on_ac && exit 0 ;;
 esac
+# What dim set, when it dimmed (undim puts the brightness back only then: a
+# screen already at a tenth or less was left alone, and brightnessctl's saved
+# level is still an older dim's)
+dimmed="${dir:+$dir/dimmed}"
+dimmed="${dimmed:-${XDG_RUNTIME_DIR:-/tmp}/tessera-idle-dimmed}"
 case "$action" in
     dim)
         # Down to a tenth (never brighter), remembered so undim puts it back
         if command -v brightnessctl >/dev/null; then
             cur=$(brightnessctl get 2>/dev/null) max=$(brightnessctl max 2>/dev/null)
-            [[ -n $cur && -n $max ]] && (( cur > max / 10 )) && brightnessctl -q -s set "$((max / 10))"
+            if [[ $cur =~ ^[0-9]+$ && $max =~ ^[0-9]+$ ]] && (( cur > max / 10 )) && brightnessctl -q -s set "$((max / 10))"; then
+                echo "$((max / 10))" >"$dimmed" 2>/dev/null
+            fi
         fi ;;
-    undim) command -v brightnessctl >/dev/null && brightnessctl -q -r ;;
+    undim)
+        # (only after a dim of ours, and not when you changed the brightness
+        # meanwhile: yours stays)
+        if [[ -f $dimmed ]]; then
+            was=$(cat "$dimmed" 2>/dev/null)
+            rm -f "$dimmed"
+            if command -v brightnessctl >/dev/null && [[ "$(brightnessctl get 2>/dev/null)" == "$was" ]]; then
+                brightnessctl -q -r
+            fi
+        fi ;;
     lock) lock ;;
     off) hyprctl dispatch 'hl.dsp.dpms({ action = "disable" })' >/dev/null 2>&1 ;;
     on) hyprctl dispatch 'hl.dsp.dpms({ action = "enable" })' >/dev/null 2>&1 ;;

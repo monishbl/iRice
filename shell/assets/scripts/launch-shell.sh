@@ -132,6 +132,13 @@ FALLBACK="${XDG_STATE_HOME:-$HOME/.local/state}/tessera/fallback"
 # journal is still there) is put back first, exactly as it was before it,
 # so the checkout and tessera-ui are never of two versions
 CHECKOUT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../../.." && pwd -P)"
+# (a copied install, ~/.config/quickshell/tessera, has no tools/ next to it:
+# the checkout it came from, which install.sh notes in tessera/source, as
+# tessera-ui's own env.rs finds it)
+if [[ ! -f "$CHECKOUT/tools/tessera-update.py" ]]; then
+    src="$(head -1 "${XDG_DATA_HOME:-$HOME/.local/share}/tessera/source" 2>/dev/null || true)"
+    [[ -n "$src" && -f "$src/tools/tessera-update.py" ]] && CHECKOUT="$src"
+fi
 UPSTATE="${XDG_STATE_HOME:-$HOME/.local/state}/tessera"
 if [[ ( -s "$UPSTATE/update-staged/staged.json" || -s "$UPSTATE/update-journal.json" ) && -f "$CHECKOUT/tools/tessera-update.py" ]]; then
     python3 -I "$CHECKOUT/tools/tessera-update.py" finish --if-ready --config "${XDG_CONFIG_HOME:-$HOME/.config}/tessera" \

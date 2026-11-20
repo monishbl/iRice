@@ -94,6 +94,16 @@ fi
 if [[ -d "$DIR/.git" ]]; then
     echo "Updating Tessera in $DIR"
     update || die "Couldn't download Tessera from any source (${SOURCES[*]}). Check the connection and run this again."
+    # Edits of yours in that checkout are kept aside first, never thrown
+    # away (Software Update keeps them too): git stash list shows them
+    if [[ -n "$(git -C "$DIR" status --porcelain --untracked-files=no 2>/dev/null)" ]]; then
+        # (a stash is a commit: a name for it when git has none set)
+        who=()
+        git -C "$DIR" config user.email >/dev/null 2>&1 || who=(-c user.name="Tessera setup" -c user.email=tessera@localhost)
+        git -C "$DIR" "${who[@]}" stash push -m "tessera setup $(date '+%F %T'): your edits before it updated" >/dev/null ||
+            die "Your edits in $DIR couldn't be kept aside, so nothing changed. Commit them, or update with Software Update (it keeps them)."
+        echo "  Your edits in $DIR are kept aside: git -C \"$DIR\" stash list (git stash pop brings them back)."
+    fi
     git -C "$DIR" reset --hard "origin/$BRANCH"
 else
     echo "Downloading Tessera to $DIR"

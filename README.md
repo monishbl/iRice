@@ -118,7 +118,7 @@ It downloads Tessera to `~/.local/share/tessera/repo` and runs the installer. It
 5. installs what this computer's hardware is missing, as you choose: firmware (Intel SOF sound, Broadcom Wi-Fi), video decoding and Vulkan for each GPU, NVIDIA's driver (only when you tick it), the fingerprint reader's and face camera's drivers (each asked), and a display scale for a sharp screen. See it with `./install.sh --plan`
 6. compiles the shaders and builds the glass plugin against your Hyprland, installing it as `~/.local/share/tessera/tessera-glass.so` (written to a new file and swapped in, so a running session isn't disturbed)
 7. installs the shell (`~/.config/quickshell/tessera`) and its Hyprland config, backing up yours once (`~/.config/hypr.pre-tessera`)
-8. optionally downloads Apple's macOS wallpapers and starts you on them (light by day, dark at night), and saves the look, light or dark and login style you picked
+8. saves the look, light or dark and login style you picked
 9. turns on NetworkManager, Bluetooth, power profiles and, in a VM, the guest tools
 10. sets up the Tessera login screen (greetd), or starts Hyprland when you log in on tty1
 11. checks the result and tells you how to fix anything that's off

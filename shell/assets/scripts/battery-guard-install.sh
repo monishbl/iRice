@@ -16,9 +16,13 @@ case "${1:-status}" in
 [Unit]
 Description=Tessera: sleep before the battery runs out
 After=upower.service
+# (a guard that can't start, its script gone, gives up instead of trying
+# every 30 s for ever)
+StartLimitIntervalSec=10min
+StartLimitBurst=5
 
 [Service]
-ExecStart=/usr/bin/env python3 -I $here/battery-guard.py --sleep-at 3
+ExecStart=/usr/bin/env python3 -I "$here/battery-guard.py" --sleep-at 3
 Restart=on-failure
 RestartSec=30
 

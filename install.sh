@@ -5,7 +5,8 @@
 #   ./install.sh               interactive (full screen) or classic prompts: it asks which
 #   ./install.sh --tui         the interactive installer (tools/installer/tui.py)
 #   ./install.sh --cli         the classic prompts, one question at a time
-#   ./install.sh --yes         no questions: recommended choices
+#   ./install.sh --yes         no questions: recommended choices, and only the essentials
+#                              (no optional features unless --features= names them)
 #   ./install.sh --plan        show the whole plan (packages, files, services), change nothing
 #   ./install.sh --dry-run     the plan and each step's commands, change nothing
 #   ./install.sh --dev         link the shell to this folder instead of copying it
@@ -20,7 +21,8 @@
 #                              terminal, or TERM=dumb); else the steps with ticks and a bar,
 #                              the commands' output in the log (d shows it while it runs)
 # Choices (the interactive installer passes these; with --yes, unset ones are
-# the recommended ones, and nothing asked by name is done):
+# the recommended ones, and nothing asked by name is done; Tessera's optional
+# features only when --features names them):
 #   --look=glass|material  --mode=auto|light|dark  --login=keep|look|text|plain
 #   --icons=colloid,tela-circle,numix-circle,flat-remix,papirus|none
 #   --extras=apps,pointer|none  --hardware=ID,…|none (see --plan)
@@ -231,7 +233,7 @@ ask() { # question, default (y|n) -> 0 for yes
     [[ "$reply" == [yY]* ]]
 }
 
-STEP=0 TOTAL=16
+STEP=0 TOTAL=15
 # step "Title" function [optional]: runs it; on failure, offer Retry / Skip / Abort
 step() {
     local title="$1" fn="$2" optional="${3:-}" ok
@@ -442,7 +444,7 @@ aur_helper() { command -v yay || command -v paru || true; }
 # plan. With --yes: the recommended answers, but never one that removes or
 # turns off something of yours (PulseAudio, another network service, another
 # login screen) or that is asked by name (an NVIDIA driver, biometrics).
-WANT_APPS=0 WANT_POINTER=0 WANT_STYLE=0 WANT_EMOJI=0 WANT_WALLS=0 HW_PLAN="" HW_LATER=0 OTHER_NET="" OTHER_DM=""
+WANT_APPS=0 WANT_POINTER=0 WANT_STYLE=0 WANT_EMOJI=0 HW_PLAN="" HW_LATER=0 OTHER_NET="" OTHER_DM=""
 unattended() { [[ $YES == 1 || $DRY == 1 || $PLAN_ONLY == 1 ]]; }
 want_extra() { # name question default
     [[ $EXTRAS == 0 ]] && return 1
@@ -559,19 +561,41 @@ decide() {
 # The login screen, the desktop look, the glass plugin and the AUR helper
 # are done by their own steps (Login, Desktop look, Building, AUR helper).
 FEAT_PLAN="" FEAT_LATER=0 FEAT_FAILED=() FEAT_DONE=()
+# With --yes and no --features (tessera update, scripted installs): only the
+# essentials, the parts of Tessera itself; never an optional one (biometrics,
+# another login screen, the desktop look, Bluetooth's settings...), and
+# nothing recorded as declined, since nobody was asked (Settings still offers them)
+ESSENTIAL_FEATURES="glass power"
+FEAT_UNASKED=0
+essentials_only() { [[ $YES == 1 && $FEATURES == - ]]; }
+# The essentials not set up yet, from FEAT_PLAN
+essential_features() {
+    local id setup rest out=""
+    while IFS=$'\t' read -r id setup rest; do
+        [[ -z "$id" || $setup == 1 ]] && continue
+        [[ " $ESSENTIAL_FEATURES " == *" $id "* ]] && out+=" $id"
+    done <<<"$FEAT_PLAN"
+    printf '%s' "${out# }"
+}
 feat_line() { [[ -n "$FEAT_PLAN" ]] && awk -F'\t' -v id="$1" '$1 == id' <<<"$FEAT_PLAN"; }
 feat_title() { local l; l=$(feat_line "$1"); [[ -n "$l" ]] && cut -f4 <<<"$l" || printf '%s' "$1"; }
 feature_on() { [[ " $FEATURES " == *" $1 "* ]]; }
 decide_features() {
     FEAT_LATER=0
+    if essentials_only; then
+        FEAT_UNASKED=1
+        FEATURES=""
+    fi
     if ! command -v python3 >/dev/null; then
-        # (Python comes with the packages: asked then, everything ticked)
+        # (Python comes with the packages: asked then, everything ticked;
+        # with --yes alone, the essentials then)
         FEAT_LATER=1
         [[ $FEATURES == - ]] && FEATURES=all
         features_follow
         return 0
     fi
     FEAT_PLAN=$(python3 -I "$ROOT/shell/assets/scripts/features.py" list 2>/dev/null || true)
+    [[ $FEAT_UNASKED == 1 ]] && FEATURES=$(essential_features)
     local id setup group title detail pkgs aur last="" offered=()
     if [[ $FEATURES == - || $FEATURES == all ]]; then
         while IFS=$'\t' read -r id setup group title detail pkgs aur; do
@@ -741,7 +765,9 @@ show_plan() {
     else
         plan_row Hardware "nothing chosen"
     fi
-    if [[ $FEAT_LATER == 1 ]]; then
+    if [[ $FEAT_LATER == 1 && $FEAT_UNASKED == 1 ]]; then
+        plan_row Features "only the essentials (the glass plugin, energy modes), set up after the packages; Settings offers the rest"
+    elif [[ $FEAT_LATER == 1 ]]; then
         plan_row Features "everything this computer can use, set up after the packages (the check needs Python, which comes with them)"
     elif [[ -n "${FEATURES// /}" ]]; then
         first=Features
@@ -1061,7 +1087,11 @@ write_scale() { # output scale
 features_step() {
     if [[ $FEAT_LATER == 1 ]]; then
         FEAT_PLAN=$(python3 -I "$ROOT/shell/assets/scripts/features.py" list 2>/dev/null || true)
-        FEATURES=$(awk -F'\t' '$2 == 0 {print $1}' <<<"$FEAT_PLAN" | grep -vx login | xargs)
+        if [[ $FEAT_UNASKED == 1 ]]; then
+            FEATURES=$(essential_features)
+        else
+            FEATURES=$(awk -F'\t' '$2 == 0 {print $1}' <<<"$FEAT_PLAN" | grep -vx login | xargs)
+        fi
         FEAT_LATER=0
         features_follow
     fi
@@ -1167,6 +1197,13 @@ record_features() {
     [[ $DRY == 1 || -z "$FEAT_PLAN" ]] && return 0
     local chosen declined
     chosen=$(tr ' ' ',' <<<"$(xargs <<<"$FEATURES")")
+    if [[ $FEAT_UNASKED == 1 ]]; then
+        # (nobody was asked: what was set up is recorded, nothing as declined,
+        # and Settings' offer stays as it was)
+        [[ -n "$chosen" ]] || return 0
+        python3 -I "$ROOT/shell/assets/scripts/features.py" record --chosen "$chosen" >/dev/null 2>&1 || true
+        return 0
+    fi
     declined=$(awk -F'\t' '$2 == 0 {print $1}' <<<"$FEAT_PLAN" | while read -r id; do feature_on "$id" || printf '%s,' "$id"; done)
     python3 -I "$ROOT/shell/assets/scripts/features.py" record --chosen "$chosen" --declined "${declined%,}" --offer done >/dev/null 2>&1 || true
 }
@@ -1275,9 +1312,12 @@ build() {
     say "  Compiling shaders…"
     run "$ROOT/tools/build-shaders.sh" || return 1
     # (the plugin's source is kept either way: Settings → Appearance builds it later)
+    # (only Tessera's own plugin folder: anything else a checkout keeps under
+    # hypr/plugin, an old build under another name, stays out)
     run mkdir -p "$DATA/tessera/src/tools" "$DATA/tessera/src/hypr"
     run rm -rf "$DATA/tessera/src/hypr/plugin"
-    run cp -r "$ROOT/hypr/plugin" "$DATA/tessera/src/hypr/plugin"
+    run mkdir -p "$DATA/tessera/src/hypr/plugin"
+    run cp -r "$ROOT/hypr/plugin/tessera-glass" "$DATA/tessera/src/hypr/plugin/tessera-glass"
     run cp "$ROOT/tools/build-plugin.sh" "$ROOT/tools/build-progress.py" "$DATA/tessera/src/tools/"
     if feature_off glass; then
         note "The glass plugin isn't chosen: glass looks frosted (Settings → Appearance builds it)."
@@ -1418,11 +1458,6 @@ install_files() {
         run python3 -I "$CONFIG/quickshell/tessera/assets/scripts/file-manager-share.py" install >/dev/null ||
             warn "Couldn't add Send to a nearby device… to your file manager; Settings → Sharing can try again."
     fi
-    return 0
-}
-
-extras() {
-    [[ $EXTRAS == 0 ]] && { note "Skipped."; return 0; }
     return 0
 }
 
@@ -1627,6 +1662,21 @@ PASS=0 FAILS=0 WARNS=0
 ok() { printf '  %s✓%s %s\n' "$GRN" "$R" "$*"; PASS=$((PASS + 1)); }
 bad() { printf '  %s✗%s %s\n' "$RED" "$R" "$1"; [[ -n "${2:-}" ]] && printf '      %s→ %s%s\n' "$DIM" "$2" "$R"; FAILS=$((FAILS + 1)); }
 meh() { printf '  %s!%s %s\n' "$YEL" "$R" "$1"; [[ -n "${2:-}" ]] && printf '      %s→ %s%s\n' "$DIM" "$2" "$R"; WARNS=$((WARNS + 1)); }
+# The Rust shell's own state (launch-shell.sh writes it; qs log only has the
+# QML shell's): the basic QML fallback's note, and a crash in tessera-ui's log
+shell_health() {
+    local state="${XDG_STATE_HOME:-$HOME/.local/state}/tessera" why log
+    if [[ -s "$state/fallback" ]]; then
+        why=$(head -1 "$state/fallback")
+        meh "Running the basic QML fallback: ${why:-the Rust shell did not stay up}" "tessera logs shows why; tessera repair tries the Rust shell again"
+    fi
+    log="$state/tessera-ui.log"
+    if [[ -f "$log" ]]; then
+        why=$(grep -a -e 'panicked at' -e "can't draw" "$log" 2>/dev/null | tail -1 | sed 's/^tessera-ui: //' | cut -c1-160)
+        [[ -n "$why" ]] && meh "The Rust shell logged a problem: $why" "tessera logs shows the rest"
+    fi
+    return 0
+}
 
 verify() {
     local hv qv c missing=()
@@ -1725,6 +1775,7 @@ verify() {
             bad "The shell reported an error" "$(grep -m1 -A1 'Failed to load' <<<"$qlog" | tail -1)"
         fi
     fi
+    shell_health
     printf '\n  %s%d passed%s' "$GRN" "$PASS" "$R"
     (( WARNS > 0 )) && printf ', %s%d to look at%s' "$YEL" "$WARNS" "$R"
     (( FAILS > 0 )) && printf ', %s%d failed%s' "$RED" "$FAILS" "$R"
@@ -1785,7 +1836,7 @@ ask "Start?" y || { say "Nothing changed."; exit 0; }
 # packages and the builds take most of the time)
 screen_start "Checking your system" 2 "Safety snapshot" 2 "Installing packages" 30 "AUR helper (yay)" 3 \
     "Pointer and app style (optional)" 4 "Emoji styles (optional)" 2 "Icon themes (optional)" 2 "For this computer (optional)" 4 \
-    "Building Tessera" 34 "Installing Tessera" 5 "Wallpapers (optional)" 1 "Your settings" 1 "Desktop look" 1 \
+    "Building Tessera" 34 "Installing Tessera" 5 "Your settings" 1 "Desktop look" 1 \
     "Starting services" 4 "Features" 6 "Login" 6
 adopt_old_names
 step "Checking your system" preflight
@@ -1798,7 +1849,6 @@ step "Icon themes (optional)" icon_themes optional
 step "For this computer (optional)" hardware optional
 step "Building Tessera" build optional
 step "Installing Tessera" install_files
-step "Wallpapers (optional)" extras optional
 step "Your settings" settings optional
 step "Desktop look" desktop_look optional
 step "Starting services" services optional

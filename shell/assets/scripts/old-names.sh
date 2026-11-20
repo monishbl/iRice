@@ -68,6 +68,8 @@ old_names_user_paths() {
 # it put on lines it added (# irice: …)
 OLD_BACKUP_SUFFIX=.pre-irice
 OLD_LINE_MARK=irice
+# (and the root helper's mark on a fingerprint line in a PAM file)
+OLD_FP_MARK="# iRice fingerprint"
 
 # The installer: root's backups (greetd, GRUB, PAM) take the new suffix, and
 # the login screen's entry from before (irice.desktop, starting

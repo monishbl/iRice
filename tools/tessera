@@ -72,6 +72,15 @@ case "${1:-help}" in
         exec python3 -I "$CONFIG/quickshell/tessera/assets/scripts/sysupdate.py" undo --terminal
         ;;
     logs)
+        # The Rust shell's log (launch-shell.sh writes it) when it's the
+        # shell, or when no QML shell runs and there is one; else the QML
+        # shell's (the basic fallback)
+        log="${XDG_STATE_HOME:-$HOME/.local/state}/tessera/tessera-ui.log"
+        if pgrep -u "$(id -u)" -f '(^|/)tessera-ui .*--standalone' >/dev/null 2>&1 ||
+            { [[ -f "$log" ]] && ! pgrep -u "$(id -u)" -x -- 'tessera-shell|qs|quickshell' >/dev/null 2>&1; }; then
+            [[ -f "$log" ]] || { echo "No log yet ($log)."; exit 1; }
+            exec tail -n "${2:-80}" -F "$log"
+        fi
         exec qs log -c tessera -t "${2:-80}" -f
         ;;
     uninstall)
