@@ -623,7 +623,16 @@ impl slint::platform::Platform for Platform {
         // showed the text to every process; audit #47)
         std::thread::spawn(move || {
             use std::io::Write;
-            let child = std::process::Command::new("wl-copy").args(["--type", "text/plain;charset=utf-8"]).stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn();
+            let mut cmd = std::process::Command::new("wl-copy");
+            cmd.args(["--type", "text/plain;charset=utf-8"]).stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+            // (wl-copy forks and holds the selection: it must hear signals)
+            unsafe {
+                std::os::unix::process::CommandExt::pre_exec(&mut cmd, || {
+                    crate::util::child_signals();
+                    Ok(())
+                });
+            }
+            let child = cmd.spawn();
             let mut child = match child {
                 Ok(c) => c,
                 Err(e) => {
@@ -654,7 +663,17 @@ impl slint::platform::Platform for Platform {
         let (tx, rx) = std::sync::mpsc::channel();
         let t = std::time::Instant::now();
         std::thread::spawn(move || {
-            let out = std::process::Command::new("timeout").args(["2", "wl-paste", "--no-newline", "--type", "text"]).stdin(std::process::Stdio::null()).stderr(std::process::Stdio::null()).output();
+            let mut cmd = std::process::Command::new("timeout");
+            cmd.args(["2", "wl-paste", "--no-newline", "--type", "text"]).stdin(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+            // (signals unblocked in the child: the shell's blocked SIGTERM
+            // was inherited, so timeout's TERM never reached a stuck wl-paste)
+            unsafe {
+                std::os::unix::process::CommandExt::pre_exec(&mut cmd, || {
+                    crate::util::child_signals();
+                    Ok(())
+                });
+            }
+            let out = cmd.output();
             let _ = tx.send(out);
         });
         match rx.recv_timeout(PASTE_WAIT) {

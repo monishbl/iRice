@@ -374,7 +374,15 @@ fn watch_rule(c: &Connection, rule: MatchRule<'static>, why: Why, dirty: mpsc::S
     let mut it = MessageIterator::for_match_rule(rule, c, Some(64))?;
     std::thread::spawn(move || {
         while let Some(m) = it.next() {
-            let sender = if why == Why::Item { m.ok().and_then(|m| m.header().sender().map(|s| s.to_string())) } else { None };
+            // (the header, which borrows `m`, in a local of its own)
+            let sender = if why == Why::Item {
+                m.ok().and_then(|m| {
+                    let h = m.header();
+                    h.sender().map(|s| s.to_string())
+                })
+            } else {
+                None
+            };
             if dirty.send((why, sender)).is_err() {
                 return;
             }

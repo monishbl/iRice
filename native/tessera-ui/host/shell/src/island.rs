@@ -427,7 +427,6 @@ impl Island {
 
     // ── History ─────────────────────────────────────────────────────────
 
-    /// Island.record: a line for the history (the hid, 0 when it is not kept)
     /// Its history line's button (Open, What's new) for an alert that has
     /// one, kept after record() (which lets a line's old button go)
     fn keep_act(&mut self, h: &mut Host, hid: i64, e: &Value, kind: &str, act: &Option<Value>) {
@@ -437,6 +436,7 @@ impl Island {
         }
     }
 
+    /// Island.record: a line for the history (the hid, 0 when it is not kept)
     fn record(&mut self, h: &mut Host, e: &Value, same: i64) -> i64 {
         let kind = s(e, "kind");
         if UNRECORDED.contains(&kind.as_str()) || e["title"].as_str().map_or(true, str::is_empty) {
