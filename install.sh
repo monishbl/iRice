@@ -743,6 +743,8 @@ show_plan() {
     fi
     if [[ $DEPS == 1 ]]; then
         for p in "${PACKAGES[@]}"; do want+=("$p"); done
+        # (Dolphin's picker for the apps that ask the desktop for one: file-picker.py)
+        command -v dolphin >/dev/null && want+=(xdg-desktop-portal-kde)
         pm=$(power_manager) && want=("${want[@]/power-profiles-daemon/}")
         gpus=$(gpu_vendors)
         grep -qx intel <<<"$gpus" && want+=("${GPU_INTEL[@]}")
@@ -894,6 +896,7 @@ pkg_installed() { pacman -Qq "$1" >/dev/null 2>&1; }
 install_packages() {
     [[ $DEPS == 0 ]] && { note "Skipped (--no-deps)."; return 0; }
     local want=("${PACKAGES[@]}")
+    command -v dolphin >/dev/null && want+=(xdg-desktop-portal-kde)
     # Things that would conflict with what Tessera uses
     if pkg_installed pulseaudio; then
         if [[ $PULSE != yes ]]; then
@@ -1324,6 +1327,13 @@ PY
 # again (and then an install leaves it off).
 desktop_look() {
     local out
+    # The open/save picker apps ask the desktop for: your Files app's (KDE's
+    # for Dolphin, GNOME's for Nautilus, else GTK's), whatever the look
+    if [[ $DRY == 1 ]]; then
+        note "$(python3 -I "$ROOT/shell/assets/scripts/file-picker.py" show 2>/dev/null) (would be set)"
+    else
+        note "$(python3 -I "$ROOT/shell/assets/scripts/file-picker.py" apply 2>&1)"
+    fi
     feature_off look && { note "Not chosen: your apps' look stays as it is (Settings → Appearance turns it on)."; return 0; }
     if [[ $DRY == 1 ]]; then
         out=$(python3 -I "$ROOT/shell/assets/scripts/desktop-look.py" install --dry-run --text 2>&1)

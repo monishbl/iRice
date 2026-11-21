@@ -31,6 +31,9 @@ PACKAGES=(
     inter-font ttf-jetbrains-mono noto-fonts noto-fonts-emoji
     # Tessera's desktop look (shell/assets/scripts/desktop-look.py): the prompt, and the fixed font with its icons
     starship ttf-jetbrains-mono-nerd
+    # GTK 3 apps and dialogs (VS Code's, the pickers) in Tessera's colours and
+    # light or dark (desktop-theme.py: adw-gtk3 reads gtk-3.0/tessera-colors.css)
+    adw-gtk-theme
 )
 # Video decoding and recording on the GPU (VA-API) for the GPUs found: Intel's and
 # NVIDIA's drivers (AMD's is in mesa). install.sh adds them; left out where a

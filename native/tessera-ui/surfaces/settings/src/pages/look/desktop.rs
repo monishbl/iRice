@@ -57,7 +57,23 @@ pub fn desktop(cx: &mut Ctx, p: &mut Page) {
     let bins: Vec<String> = managers.iter().map(|m| m.0.clone()).collect();
     let fp = cx.on(move |cx, a| {
         let v = if a.i <= 0 { String::new() } else { bins.get(a.i as usize - 1).cloned().unwrap_or_default() };
-        cx.set("desktop.fileManager", v);
+        cx.set("desktop.fileManager", v.clone());
+        // (the open/save picker apps ask the desktop for follows it:
+        // shell/assets/scripts/file-picker.py; told the choice, as the
+        // config may be written a moment later)
+        if let Some(script) = crate::util::asset("shell/assets/scripts/file-picker.py") {
+            std::thread::spawn(move || {
+                let mut c = std::process::Command::new("python3");
+                c.arg("-I").arg(script).arg("apply").arg("--app").arg(&v).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+                unsafe {
+                    std::os::unix::process::CommandExt::pre_exec(&mut c, || {
+                        tessera_core::util::child_signals();
+                        Ok(())
+                    });
+                }
+                let _ = c.status();
+            });
+        }
     });
     p.group("Widgets")
         .footer("Drag a widget to move it; it snaps to the grid. Right-click a widget to change its size, set what it shows (Widget Options) or remove it, or right-click the desktop.")

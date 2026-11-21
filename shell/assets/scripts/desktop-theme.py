@@ -149,14 +149,87 @@ def apply_kde(mode, scheme=None):
         subprocess.run(["gdbus", "emit", "--session", "--object-path", "/KGlobalSettings", "--signal", "org.kde.KGlobalSettings.notifyChange", "0", "0"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5, check=False)
 
 
+# GTK's themes Tessera switches between; a theme of your own is left alone.
+# GTK 3 has no "Adwaita-dark" theme of that name (21 Nov: the name GTK 3 was
+# given, so every GTK 3 dialog, VS Code's and the pickers', came up light):
+# its dark Adwaita is Adwaita plus gtk-application-prefer-dark-theme.
+# adw-gtk3 (the package adw-gtk-theme) takes Tessera's colours from
+# gtk-3.0/tessera-colors.css, so it's used when it's installed.
+GTK_OURS = re.compile(r"^(|Adwaita|Adwaita-dark|adw-gtk3|adw-gtk3-dark|MacTahoe.*)$")
+
+
+def gtk_theme_dirs():
+    data = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share")
+    return [data / "themes", Path.home() / ".themes", Path(os.environ.get("TESSERA_SYSTEM_THEMES", "/usr/share/themes"))]
+
+
+def gtk_theme(dark):
+    if any((d / "adw-gtk3").is_dir() for d in gtk_theme_dirs()):
+        return "adw-gtk3-dark" if dark else "adw-gtk3"
+    return "Adwaita"
+
+
+def apply_gtk(mode):
+    """GTK 3 and 4 apps (and the GTK and GNOME pickers) in light or dark:
+    the theme, and GTK's own settings.ini for apps that don't read gsettings"""
+    dark = mode == "dark"
+    cfg = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
+    now = ""
+    if shutil.which("gsettings"):
+        r = subprocess.run(["gsettings", "get", "org.gnome.desktop.interface", "gtk-theme"], capture_output=True, text=True, timeout=5, check=False)
+        now = r.stdout.strip().strip("'")
+    ini3 = cfg / "gtk-3.0" / "settings.ini"
+    mine = current(ini3, "Settings", "gtk-theme-name")
+    if not GTK_OURS.match(now) or not GTK_OURS.match(mine):
+        return  # (a theme you picked: yours)
+    theme = gtk_theme(dark)
+    if shutil.which("gsettings") and now != theme:
+        subprocess.run(["gsettings", "set", "org.gnome.desktop.interface", "gtk-theme", theme], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5, check=False)
+    prefer = "true" if dark else "false"
+    update_ini(ini3, {"Settings": {"gtk-theme-name": theme, "gtk-application-prefer-dark-theme": prefer}})
+    update_ini(cfg / "gtk-4.0" / "settings.ini", {"Settings": {"gtk-application-prefer-dark-theme": prefer}})
+
+
+def undo_gtk():
+    """tessera uninstall: GTK as it was before Tessera (its colour files and
+    their imports gone, its theme and settings.ini keys back to GTK's
+    defaults; a theme of your own stays)"""
+    cfg = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
+    for v in ("gtk-3.0", "gtk-4.0"):
+        d = cfg / v
+        (d / "tessera-colors.css").unlink(missing_ok=True)
+        css = d / "gtk.css"
+        if css.exists():
+            rest = "".join(l for l in css.read_text().splitlines(True) if "tessera-colors" not in l)
+            if rest.strip():
+                css.write_text(rest)
+            else:
+                css.unlink()
+        ini = d / "settings.ini"
+        if ini.exists() and GTK_OURS.match(current(ini, "Settings", "gtk-theme-name")):
+            text = re.sub(r"^(gtk-theme-name|gtk-application-prefer-dark-theme)=.*\n?", "", ini.read_text(), flags=re.M)
+            if re.sub(r"\[Settings\]", "", text).strip():
+                ini.write_text(text)
+            else:
+                ini.unlink()
+    if shutil.which("gsettings"):
+        r = subprocess.run(["gsettings", "get", "org.gnome.desktop.interface", "gtk-theme"], capture_output=True, text=True, timeout=5, check=False)
+        if GTK_OURS.match(r.stdout.strip().strip("'")):
+            subprocess.run(["gsettings", "reset", "org.gnome.desktop.interface", "gtk-theme"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5, check=False)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("mode", choices=["dark", "light"])
+    parser.add_argument("mode", choices=["dark", "light", "undo-gtk"])
     parser.add_argument("--scheme", type=Path)
     parser.add_argument("--keep-kde", action="store_true")
     args = parser.parse_args()
+    if args.mode == "undo-gtk":
+        undo_gtk()
+        return
     if shutil.which("gsettings"):
         subprocess.run(["gsettings", "set", "org.gnome.desktop.interface", "color-scheme", "prefer-" + args.mode], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5, check=False)
+    apply_gtk(args.mode)
     if not args.keep_kde:
         apply_kde(args.mode, args.scheme)
 

@@ -88,16 +88,8 @@ include() { # file, line, [create if missing]
 if want gtk; then
     include "$CFG/gtk-3.0/gtk.css" "@import 'tessera-colors.css';" create
     include "$CFG/gtk-4.0/gtk.css" "@import 'tessera-colors.css';" create
-    # GTK apps follow light/dark too, on Adwaita (coloured by the files
-    # above); a MacTahoe theme set by an older Tessera is put back to it, any
-    # other theme you chose is left alone
-    if command -v gsettings >/dev/null; then
-        gsettings set org.gnome.desktop.interface color-scheme "prefer-$mode" 2>/dev/null
-        cur=$(gsettings get org.gnome.desktop.interface gtk-theme 2>/dev/null | tr -d "'")
-        if [[ $cur == MacTahoe* || $cur == Adwaita* ]]; then
-            gsettings set org.gnome.desktop.interface gtk-theme "$([[ $mode == dark ]] && echo Adwaita-dark || echo Adwaita)" 2>/dev/null
-        fi
-    fi
+    # (GTK's light/dark and its theme: desktop-theme.py, above, which runs
+    # whether apps are matched or not; adw-gtk3 there takes these colours)
 fi
 if want qt; then
     python3 -I "$DESKTOP" "$desktop_mode" --scheme "$DATA/color-schemes/Tessera.colors"

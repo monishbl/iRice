@@ -105,6 +105,18 @@ if [[ $DRY == 1 ]]; then
 elif [[ -f "$LOOK_PY" ]] && command -v python3 >/dev/null; then
     python3 -I "$LOOK_PY" off >/dev/null 2>&1 && rm -f "${XDG_STATE_HOME:-$HOME/.local/state}/tessera/desktop-look.json" || true
 fi
+# GTK's colours and theme Tessera set (Match apps, light/dark): back to GTK's own
+if [[ $DRY == 1 ]]; then
+    echo "  would take Tessera's GTK colours and theme out (desktop-theme.py undo-gtk)"
+elif [[ -f "$HERE/shell/assets/scripts/desktop-theme.py" ]] && command -v python3 >/dev/null; then
+    python3 -I "$HERE/shell/assets/scripts/desktop-theme.py" undo-gtk >/dev/null 2>&1 || true
+fi
+# The file picker's portal preference Tessera wrote (yours is never touched)
+if [[ $DRY == 1 ]]; then
+    echo "  would remove Tessera's file picker preference (file-picker.py remove)"
+elif [[ -f "$HERE/shell/assets/scripts/file-picker.py" ]] && command -v python3 >/dev/null; then
+    python3 -I "$HERE/shell/assets/scripts/file-picker.py" remove >/dev/null 2>&1 || true
+fi
 # "Send to a nearby device…" in the file managers' menus (it runs a script
 # of the shell copy removed below): out first
 for f in "$CONFIG/quickshell/tessera/assets/scripts/file-manager-share.py" "$HERE/shell/assets/scripts/file-manager-share.py"; do
