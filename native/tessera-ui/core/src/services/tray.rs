@@ -139,35 +139,55 @@ pub fn parse_node(v: &Value) -> Option<MenuNode> {
         Some(Value::I32(i)) => *i,
         _ => return None,
     };
-    let mut n = MenuNode { id, enabled: true, visible: true, ..Default::default() };
-    if let Some(Value::Dict(d)) = f.get(1).map(unwrap) {
-        let props: HashMap<String, &Value> = d
+    let props: HashMap<String, &Value> = match f.get(1).map(unwrap) {
+        Some(Value::Dict(d)) => d
             .iter()
             .filter_map(|(k, v)| match unwrap(k) {
                 Value::Str(k) => Some((k.to_string(), unwrap(v))),
                 _ => None,
             })
-            .collect();
-        let s = |k: &str| match props.get(k).copied() {
-            Some(Value::Str(s)) => s.to_string(),
-            _ => String::new(),
-        };
-        let b = |k: &str, d: bool| match props.get(k).copied() {
-            Some(&Value::Bool(b)) => b,
-            _ => d,
-        };
-        n.label = strip_mnemonic(&s("label"));
-        n.enabled = b("enabled", true);
-        n.visible = b("visible", true);
-        n.separator = s("type") == "separator";
-        if !s("toggle-type").is_empty() {
-            n.checked = Some(matches!(props.get("toggle-state").copied(), Some(Value::I32(1))));
-        }
+            .collect(),
+        _ => HashMap::new(),
+    };
+    let kids: Vec<&Value> = match f.get(2).map(unwrap) {
+        Some(Value::Array(a)) => a.iter().collect(),
+        _ => Vec::new(),
+    };
+    Some(node_of(id, &props, &kids))
+}
+
+/// A node from its parts: id, properties (a{sv}) and children (av, each a (ia{sv}av))
+fn node_of(id: i32, props: &HashMap<String, &Value>, kids: &[&Value]) -> MenuNode {
+    let mut n = MenuNode { id, enabled: true, visible: true, ..Default::default() };
+    let s = |k: &str| match props.get(k).copied().map(unwrap) {
+        Some(Value::Str(s)) => s.to_string(),
+        _ => String::new(),
+    };
+    let b = |k: &str, d: bool| match props.get(k).copied().map(unwrap) {
+        Some(&Value::Bool(b)) => b,
+        _ => d,
+    };
+    n.label = strip_mnemonic(&s("label"));
+    n.enabled = b("enabled", true);
+    n.visible = b("visible", true);
+    n.separator = s("type") == "separator";
+    if !s("toggle-type").is_empty() {
+        n.checked = Some(matches!(props.get("toggle-state").copied().map(unwrap), Some(Value::I32(1))));
     }
-    if let Some(Value::Array(a)) = f.get(2).map(unwrap) {
-        n.children = a.iter().filter_map(parse_node).collect();
-    }
-    Some(n)
+    n.children = kids.iter().filter_map(|k| parse_node(k)).collect();
+    n
+}
+
+/// GetLayout's reply, (u(ia{sv}av)), read as its own types: the layout is a
+/// struct on the wire, not a variant, so it can't be read as one Value
+/// (21 Nov: `(u32, OwnedValue)` failed with "Signature mismatch: got
+/// (u(ia{sv}av)), expected (uv)" for every app, and every tray menu was empty)
+pub fn layout_of(m: &zbus::Message) -> Option<MenuNode> {
+    type Layout = (u32, (i32, HashMap<String, OwnedValue>, Vec<OwnedValue>));
+    let (_rev, (id, props, kids)) = m.body().deserialize::<Layout>().ok()?;
+    let props: HashMap<String, &Value> = props.iter().map(|(k, v)| (k.clone(), unwrap(v))).collect();
+    let kids: Vec<&Value> = kids.iter().map(|v| unwrap(v)).collect();
+    Some(node_of(id, &props, &kids))
 }
 
 // ── The watcher (when nobody else serves one) ───────────────────────────────
@@ -511,8 +531,7 @@ pub fn menu(key: &str, menu_path: &str, reply: impl Fn(Box<dyn std::any::Any + S
         let Ok(p) = proxy(c, &svc, &menu_path, MENU) else { return };
         let _: zbus::Result<bool> = p.call("AboutToShow", &(0i32,));
         let Ok(m) = p.call_method("GetLayout", &(0i32, -1i32, Vec::<String>::new())) else { return };
-        let Ok((_rev, layout)) = m.body().deserialize::<(u32, OwnedValue)>() else { return };
-        if let Some(root) = parse_node(&layout) {
+        if let Some(root) = layout_of(&m) {
             reply(Box::new(TrayMenu { key, root }));
         }
     });
@@ -527,8 +546,7 @@ pub fn submenu(key: &str, menu_path: &str, id: i32, reply: impl Fn(Box<dyn std::
         let Ok(p) = proxy(c, &svc, &menu_path, MENU) else { return };
         let _: zbus::Result<bool> = p.call("AboutToShow", &(id,));
         let Ok(m) = p.call_method("GetLayout", &(id, -1i32, Vec::<String>::new())) else { return };
-        let Ok((_rev, layout)) = m.body().deserialize::<(u32, OwnedValue)>() else { return };
-        if let Some(root) = parse_node(&layout) {
+        if let Some(root) = layout_of(&m) {
             reply(Box::new(TrayMenu { key, root }));
         }
     });
@@ -643,6 +661,30 @@ mod tests {
         let kids: Vec<Value<'static>> = children.into_iter().map(|c| Value::Value(Box::new(c))).collect();
         let arr = zbus::zvariant::Array::from(kids);
         Value::Structure(StructureBuilder::new().add_field(id).append_field(Value::Dict(d)).append_field(Value::Array(arr)).build().unwrap())
+    }
+
+    #[test]
+    fn a_layout_as_apps_send_it() {
+        // (GetLayout's reply on the wire, (u(ia{sv}av)), as Electron apps
+        // send it: no "visible"/"enabled" on most entries)
+        let kids: Vec<Value<'static>> = vec![
+            node(53, &[("label", Value::from("Show App"))], vec![]),
+            node(55, &[("type", Value::from("separator")), ("enabled", Value::from(false))], vec![]),
+            node(57, &[("label", Value::from("Usage: 30%")), ("enabled", Value::from(false))], vec![]),
+            node(59, &[("label", Value::from("Quit"))], vec![]),
+        ];
+        let mut props: HashMap<String, Value<'static>> = HashMap::new();
+        props.insert("children-display".into(), Value::from("submenu"));
+        let m = zbus::Message::method_call("/com/canonical/dbusmenu", "GetLayout").unwrap().build(&(8u32, (0i32, props, kids))).unwrap();
+        // (the very signature a real reply has, as the 21 Nov probe of the Claude app read it)
+        assert_eq!(m.body().signature().to_string(), "(u(ia{sv}av))");
+        let r = layout_of(&m).expect("the layout reads");
+        assert_eq!(r.children.len(), 4);
+        assert_eq!(r.children[0].label, "Show App");
+        assert!(r.children[0].enabled && r.children[0].visible);
+        assert!(r.children[1].separator);
+        assert!(!r.children[2].enabled);
+        assert_eq!(r.children[3].id, 59);
     }
 
     #[test]
