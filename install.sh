@@ -25,6 +25,7 @@
 # features only when --features names them):
 #   --look=glass|material  --mode=auto|light|dark  --login=keep|look|text|plain
 #   --icons=colloid,tela-circle,numix-circle,flat-remix,papirus|none
+#   --aur-helper=yay|paru|none   the AUR helper to set up when there's none (asked; --yes: yay)
 #   --extras=apps,pointer|none  --hardware=ID,…|none (see --plan)
 #   --features=ID,…|none   Tessera's features, set up in one go with one password
 #                          (shell/assets/scripts/features.py list shows them;
@@ -53,7 +54,7 @@ LOG="$CACHE/tessera/install.log"
 
 YES=0 DEV=0 DEPS=1 DRY=0 PLAIN=0 GREETER=ask EXTRAS=1 VERIFY_ONLY=0 ONLY=""
 # (lists: "-" until chosen, then names separated by spaces; "" for none)
-UI=ask PLAN_ONLY=0 SNAPSHOT=1 LOOK="" MODE="" LOGIN_STYLE="" ICONS=- EXTRAS_LIST=- HW=- PULSE=ask NETWORK=ask FEATURES=-
+UI=ask PLAN_ONLY=0 SNAPSHOT=1 AUR_HELPER="" LOOK="" MODE="" LOGIN_STYLE="" ICONS=- EXTRAS_LIST=- HW=- PULSE=ask NETWORK=ask FEATURES=-
 UI_SOURCE="" # (--ui-source; empty: as Settings has it, ready-made by default)
 list() { [[ $1 == none ]] && return 0; printf '%s' "${1//,/ }"; }
 for a in "$@"; do
@@ -73,6 +74,7 @@ for a in "$@"; do
         --plan) PLAN_ONLY=1 ;;
         --no-snapshot) SNAPSHOT=0 ;;
         --look=glass|--look=material) LOOK=${a#*=} ;;
+        --aur-helper=yay|--aur-helper=paru|--aur-helper=none) AUR_HELPER=${a#*=} ;;
         --mode=auto|--mode=light|--mode=dark) MODE=${a#*=} ;;
         --login=keep) GREETER=no ;;
         --login=look|--login=text|--login=plain) GREETER=yes LOGIN_STYLE=${a#*=} ;;
@@ -546,7 +548,34 @@ decide() {
     # Tessera's features, the login screen among them: one list, everything
     # ticked (decide_features)
     decide_features
+    decide_aur_helper
     decide_ui_source
+}
+
+# The AUR helper (Tessera's extras come from the AUR; tessera update keeps
+# them current with yay or paru): the one there is, else yours to pick (yay,
+# paru or none; --yes: yay)
+decide_aur_helper() {
+    local have reply
+    have=$(aur_helper)
+    if [[ -n "$have" ]]; then AUR_HELPER=$(basename "$have"); return 0; fi
+    [[ -n "$AUR_HELPER" ]] && return 0
+    if [[ $DEPS == 0 ]] || feature_off aur; then AUR_HELPER=none; return 0; fi
+    if unattended; then AUR_HELPER=yay; return 0; fi
+    say "  ${B}AUR helper${R}  (Tessera's extras come from the AUR, and tessera update keeps them current with it)"
+    note "    1  yay (recommended)    2  paru    3  none: the AUR extras are left out"
+    if [[ $SCREEN == 1 ]]; then
+        screen_pause "AUR helper"
+        read -r -p "  Which one? [1] " reply </dev/tty 2>/dev/tty || reply=""
+        screen_resume
+    else
+        read -r -p "  Which one? [1] " reply </dev/tty || reply=""
+    fi
+    case "${reply,,}" in
+        2 | paru) AUR_HELPER=paru ;;
+        3 | n | no | none) AUR_HELPER=none ;;
+        *) AUR_HELPER=yay ;;
+    esac
 }
 
 # ── Features ────────────────────────────────────────────────────────────
@@ -735,7 +764,7 @@ show_plan() {
         elif [[ $PULSE == no ]]; then
             plan_row "" "${YEL}keeps PulseAudio, so PipeWire can't be installed: the install stops there${R} (--replace-pulseaudio)"
         fi
-        [[ -z "$(aur_helper)" ]] && aur+=(yay)
+        [[ -z "$(aur_helper)" && $AUR_HELPER != none ]] && aur+=("${AUR_HELPER:-yay}")
         [[ $WANT_POINTER == 1 ]] && mapfile -t -O "${#aur[@]}" aur < <(missing_of "${AUR[@]}")
         [[ $WANT_STYLE == 1 ]] && mapfile -t -O "${#aur[@]}" aur < <(missing_of "${STYLE_AUR[@]}")
         [[ $WANT_EMOJI == 1 ]] && mapfile -t -O "${#aur[@]}" aur < <(missing_of "${EMOJI_AUR[@]}")
@@ -950,38 +979,39 @@ build_quickshell() {
     version_ge "$(qs_version)" "$NEED_QUICKSHELL" || { say "  The build finished, but Quickshell still isn't $NEED_QUICKSHELL or newer."; return 1; }
 }
 
-# yay, the AUR helper: set up unless there's one (Tessera's extras come from
-# the AUR, and `tessera update` uses yay or paru to keep them current). On
-# Manjaro, whose own software app (pamac) builds from the AUR too, only when
-# you say so
-install_yay() {
+# The AUR helper you picked (yay or paru, decide_aur_helper): set up unless
+# there's one (Tessera's extras come from the AUR, and `tessera update` uses
+# yay or paru to keep them current). On Manjaro, whose own software app
+# (pamac) builds from the AUR too, only when you say so
+install_aur_helper() {
     [[ $DEPS == 0 ]] && { note "Skipped."; return 0; }
-    local have
+    local have name=${AUR_HELPER:-yay}
     have=$(aur_helper)
     if [[ -n "$have" ]]; then
         note "$(basename "$have") is installed: Tessera uses it for the AUR."
         return 0
     fi
-    if feature_off aur; then
+    if [[ $name == none ]] || feature_off aur; then
         note "Skipped: no AUR helper chosen. The features from the AUR are left out (Settings sets them up later)."
         return 0
     fi
-    if command -v pamac >/dev/null && ! ask "Install yay too (Tessera's AUR extras and tessera update use it; pamac stays as it is)?" n; then
-        note "Skipped: no yay. The AUR extras are left out (pamac build <name> installs one by hand)."
+    if command -v pamac >/dev/null && ! ask "Install $name too (Tessera's AUR extras and tessera update use it; pamac stays as it is)?" n; then
+        note "Skipped: no $name. The AUR extras are left out (pamac build <name> installs one by hand)."
         return 0
     fi
-    say "  Installing yay (an AUR helper)…"
+    say "  Installing $name (an AUR helper)…"
     local tmp
     tmp=$(mktemp -d)
-    # (from the AUR, else Arch's GitHub mirror of it: aur_clone, tools/pac.sh)
+    # (the -bin package: no Go or Rust toolchain to build it; from the AUR,
+    # else Arch's GitHub mirror of it: aur_clone, tools/pac.sh)
     if [[ $DRY == 1 ]]; then
-        run git clone --depth 1 https://aur.archlinux.org/yay-bin.git "$tmp/yay-bin"
+        run git clone --depth 1 "https://aur.archlinux.org/$name-bin.git" "$tmp/$name-bin"
     else
-        aur_clone yay-bin "$tmp/yay-bin" || return 1
+        aur_clone "$name-bin" "$tmp/$name-bin" || return 1
     fi
-    (cd "$tmp/yay-bin" && run makepkg -si --noconfirm) || return 1
+    (cd "$tmp/$name-bin" && run makepkg -si --noconfirm) || return 1
     rm -rf "$tmp"
-    command -v yay >/dev/null || [[ $DRY == 1 ]]
+    command -v "$name" >/dev/null || [[ $DRY == 1 ]]
 }
 
 # AUR packages, when chosen (want: 1 or 0): missing ones only; with pamac
@@ -1000,12 +1030,16 @@ aur_install() { # want "what" packages…
         return
     fi
     helper=$(aur_helper)
+    if [[ -z "$helper" && $AUR_HELPER == none ]]; then
+        note "Skipped: no AUR helper chosen (${missing[*]} come from the AUR)."
+        return 0
+    fi
     if [[ -z "$helper" && $DRY == 0 ]] && command -v pamac >/dev/null; then
         note "Skipped: no yay or paru (with pamac: pamac build ${missing[*]})"
         return 0
     fi
-    [[ -n "$helper" || $DRY == 1 ]] || { say "  yay isn't installed (the AUR helper step installs it)."; return 1; }
-    run "${helper:-yay}" -S --needed --noconfirm --answerdiff None --answerclean None "${missing[@]}"
+    [[ -n "$helper" || $DRY == 1 ]] || { say "  ${AUR_HELPER:-yay} isn't installed (the AUR helper step installs it)."; return 1; }
+    run "${helper:-${AUR_HELPER:-yay}}" -S --needed --noconfirm --answerdiff None --answerclean None "${missing[@]}"
 }
 # The Bibata pointer and the app style (Darkly, Breeze Plus; default: yes)
 aur_extras() {
@@ -1845,7 +1879,7 @@ ask "Start?" y || { say "Nothing changed."; exit 0; }
 
 # The steps, and how much of the bar each one is (the screen's plan:
 # packages and the builds take most of the time)
-screen_start "Checking your system" 2 "Safety snapshot" 2 "Installing packages" 30 "AUR helper (yay)" 3 \
+screen_start "Checking your system" 2 "Safety snapshot" 2 "Installing packages" 30 "AUR helper" 3 \
     "Pointer and app style (optional)" 4 "Emoji styles (optional)" 2 "Icon themes (optional)" 2 "For this computer (optional)" 4 \
     "Building Tessera" 34 "Installing Tessera" 5 "Your settings" 1 "Desktop look" 1 \
     "Starting services" 4 "Features" 6 "Login" 6
@@ -1853,7 +1887,7 @@ adopt_old_names
 step "Checking your system" preflight
 step "Safety snapshot" snapshot optional
 step "Installing packages" install_packages
-step "AUR helper (yay)" install_yay optional
+step "AUR helper" install_aur_helper optional
 step "Pointer and app style (optional)" aur_extras optional
 step "Emoji styles (optional)" emoji_extras optional
 step "Icon themes (optional)" icon_themes optional

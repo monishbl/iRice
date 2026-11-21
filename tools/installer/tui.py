@@ -192,6 +192,13 @@ class Installer:
                                ("buildTuned", "Build here, tuned", "For this processor only (-C target-cpu=native). Several minutes, and again with each update."),
                                ("build", "Build here, generic", "Runs on any x86-64. Several minutes, and again with each update.")],
                               asked, {m: c["why"] for m, c in can.items() if not c.get("ok")})
+        # The AUR helper, when there's none (Tessera's extras come from the
+        # AUR; tessera update keeps them current with yay or paru)
+        ff = facts.get("features") if isinstance(facts.get("features"), dict) else {}
+        self.has_aur_helper = bool(ff["aur_helper"]) if "aur_helper" in ff else bool(shutil.which("yay") or shutil.which("paru"))
+        self.aur = Radio([("yay", "yay (recommended)", "The most used AUR helper."),
+                          ("paru", "paru", "Another one, with the same commands."),
+                          ("none", "None", "The extras that come from the AUR are left out (Settings sets them up later).")], "yay")
         items = hardware.plan(facts)
         self.hw_groups = hardware.GROUPS
         self.hardware = Checks([{"id": i["id"], "label": i["title"], "detail": i["why"], "ticked": i["ticked"] or i["locked"],
@@ -210,6 +217,7 @@ class Installer:
             None if no_extras else ("icons", "Icon themes"), None if no_extras or not extras else ("extras", "Extras"),
             ("system", "Your system") if system_items else None, ("hardware", "This computer"),
             ("features", "Features") if self.features.items else None,
+            None if self.has_aur_helper else ("aur", "AUR helper"),
             ("review", "Review"), ("install", "Install")] if p]
         self.page = 0
         self.plan_text = ""
@@ -238,6 +246,8 @@ class Installer:
             a.append("--replace-pulseaudio")
         if "network" in sysc:
             a.append("--network=" + ("networkmanager" if sysc["network"] else "keep"))
+        if not self.has_aur_helper:
+            a.append("--aur-helper=" + self.aur.value)
         if self.uisource.value != "auto":
             a.append("--ui-source=" + self.uisource.value)
         return a + [p for p in self.passthrough if p != "--dry-run"]
@@ -285,7 +295,7 @@ class Installer:
 
     def widget(self):
         return {"look": self.look, "mode": self.mode, "login": self.login, "icons": self.icons, "extras": self.extras,
-                "system": self.system, "hardware": self.hardware, "features": self.features, "advanced": self.uisource}.get(self.name)
+                "system": self.system, "hardware": self.hardware, "features": self.features, "aur": self.aur, "advanced": self.uisource}.get(self.name)
 
     # ── Installing: install.sh's output, line by line ──
     # Its lines: "[n/14] Step" starts a step, "✓ ", "! ", "✗ … didn't
@@ -386,6 +396,7 @@ class Installer:
                   "hardware": ("This computer", "Only what's missing for the hardware found here. Asked ones start unticked."),
                   "features": ("Features", "Everything this computer can use, ticked. One password sets them all up; "
                                "Settings sets up any you leave out."),
+                  "aur": ("AUR helper", "Some of Tessera's extras come from the AUR (Arch's community packages)."),
                   "advanced": ("Advanced: Tessera's Rust programs", "tessera-ui and tessera-events. Most people keep the first.")}
         title, sub = titles[n]
         out = [Text(title, style="bold")]

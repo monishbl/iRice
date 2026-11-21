@@ -151,31 +151,55 @@ class SetupFunctions(Fakes):
             f.write_text(self.gpus("0x10de", nvidia="550.1")[2])
             self.assertEqual(subprocess.run([luac, "-p", str(f)], capture_output=True).returncode, 0)
 
-    def install_yay(self, *tools, answer="n"):
+    def install_helper(self, *tools, answer="n", pick="yay"):
         # (only these tools: the computer's own yay or paru mustn't count)
         for t in ("basename", "mktemp", "rm", "dirname"):
             (self.bin / t).symlink_to(subprocess.run(["sh", "-c", f"command -v {t}"], capture_output=True, text=True).stdout.strip())
         for t in tools:
             self.fake(t, "")
         self.fake("git", "echo git \"$@\"\n")
-        code = ('DEPS=1 DRY=1 YES=0 DIM="" R=""; note() { echo "note: $*"; }; say() { echo "$*"; }; '
-                f'ask() {{ echo "asked: $1"; [ {answer} = y ]; }}; run() {{ echo "would run: $*"; }}; install_yay; echo "exit $?"')
-        out = self.fn(["aur_helper", "install_yay"], code, PATH=str(self.bin))[1]
+        code = (f'DEPS=1 DRY=1 YES=0 DIM="" R="" AUR_HELPER={pick}; note() {{ echo "note: $*"; }}; say() {{ echo "$*"; }}; '
+                f'ask() {{ echo "asked: $1"; [ {answer} = y ]; }}; run() {{ echo "would run: $*"; }}; install_aur_helper; echo "exit $?"')
+        out = self.fn(["aur_helper", "install_aur_helper"], code, PATH=str(self.bin))[1]
         for t in list(self.bin.iterdir()):
             t.unlink()
         return out
 
     def test_aur_helper_yay_paru_or_ask_on_manjaro(self):
-        self.assertIn("note: paru is installed", self.install_yay("paru"))
-        self.assertIn("note: yay is installed", self.install_yay("yay", "paru"))
-        out = self.install_yay()
+        self.assertIn("note: paru is installed", self.install_helper("paru"))
+        self.assertIn("note: yay is installed", self.install_helper("yay", "paru"))
+        out = self.install_helper()
         self.assertNotIn("asked", out)  # (plain Arch: always set up)
-        self.assertIn("would run: git clone", out)
-        out = self.install_yay("pamac")
+        self.assertIn("would run: git clone --depth 1 https://aur.archlinux.org/yay-bin.git", out)
+        out = self.install_helper("pamac")
         self.assertIn("asked: Install yay too", out)
         self.assertNotIn("git clone", out)
         self.assertIn("exit 0", out)
-        self.assertIn("would run: git clone", self.install_yay("pamac", answer="y"))
+        self.assertIn("would run: git clone", self.install_helper("pamac", answer="y"))
+        # (paru picked: paru-bin; none: nothing, said so)
+        self.assertIn("would run: git clone --depth 1 https://aur.archlinux.org/paru-bin.git", self.install_helper(pick="paru"))
+        out = self.install_helper(pick="none")
+        self.assertIn("note: Skipped: no AUR helper chosen", out)
+        self.assertNotIn("git clone", out)
+
+    def decide(self, *tools, yes=1, flag=""):
+        for t in ("basename",):
+            (self.bin / t).symlink_to(subprocess.run(["sh", "-c", f"command -v {t}"], capture_output=True, text=True).stdout.strip())
+        for t in tools:
+            self.fake(t, "")
+        code = (f'DEPS=1 DRY=0 PLAN_ONLY=0 YES={yes} AUR_HELPER="{flag}"; feature_off() {{ return 1; }}; '
+                'decide_aur_helper; echo "helper=$AUR_HELPER"')
+        out = self.fn(["aur_helper", "unattended", "decide_aur_helper"], code, PATH=str(self.bin))[1]
+        for t in list(self.bin.iterdir()):
+            t.unlink()
+        return out.strip().splitlines()[-1]
+
+    def test_the_aur_helper_choice(self):
+        self.assertEqual(self.decide(), "helper=yay")  # (--yes: yay)
+        self.assertEqual(self.decide(flag="paru"), "helper=paru")
+        self.assertEqual(self.decide(flag="none"), "helper=none")
+        # (one there already: that one, whatever was asked)
+        self.assertEqual(self.decide("paru", flag="yay"), "helper=paru")
 
 
 class OldConfig(Fakes):

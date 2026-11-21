@@ -335,7 +335,7 @@ def plan(f):
     out.append(item("emoji", G[3], "Apple and Fluent emoji", "Two more emoji styles to pick from in Settings",
                     not miss(["ttf-apple-emoji", "ttf-fluent-emoji"]), [], miss(["ttf-apple-emoji", "ttf-fluent-emoji"])))
     if not f.get("aur_helper"):
-        out.append(item("aur", G[3], "AUR helper (yay)", "Installs and updates the packages above that come from the AUR",
+        out.append(item("aur", G[3], "AUR helper (yay or paru)", "Installs and updates the packages above that come from the AUR",
                         False, offer=False))
     return out
 

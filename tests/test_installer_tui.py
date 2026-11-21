@@ -80,6 +80,18 @@ class Scripted(unittest.TestCase):
         icons = next(f for f in frames if "Icon themes (optional)" in f)
         self.assertIn("[•] Papirus", icons)
 
+    def test_the_aur_helper_page_only_without_one(self):
+        # (yay or paru installed, as in FACTS: no page, no flag)
+        frames, cmd = self.run_tui("enter enter enter enter enter enter enter enter")
+        self.assertFalse(any(a.startswith("--aur-helper") for a in cmd))
+        self.assertFalse(any("AUR helper" in f and "paru" in f for f in frames))
+        # none there: asked, yay first; paru picked
+        facts = {"features": dict(FACTS["features"], aur_helper=False)}
+        frames, cmd = self.run_tui("enter enter enter enter enter enter enter enter enter enter", facts)
+        self.assertIn("--aur-helper=yay", cmd)
+        page = next(f for f in frames if "Some of Tessera's extras come from the AUR" in f)
+        self.assertIn("paru", page)
+
     def test_nvidia_ticked_by_hand(self):
         keys = "enter " * 6 + "down space enter"  # hardware page: down to NVIDIA, tick it
         frames, cmd = self.run_tui(keys.strip())
