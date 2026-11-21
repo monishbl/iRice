@@ -610,9 +610,12 @@ def _fetch_from(base, tree, commit, variant, work, tags, pubkey, repo, want=None
         want_v = (progs.get(name) or {}).get("version")
         if want_v and said != want_v:
             raise Failed(f"{name} in the download says it's {said}, not {want_v}")
+    # (the signed manifest and its signature are kept with the record: the
+    # root helper checks them again before it copies tessera-ui for the
+    # login screen, with its own copy of the release key)
     info = {"source": "ready-made", "variant": variant, "tree": tree, "commit": built_from,
             "version": manifest.get("version", ""), "channel": manifest.get("channel", ""), "tag": tag,
-            "how": how, "bytes": got}
+            "how": how, "bytes": got, "manifest": mdata.decode("utf-8", "replace"), "minisig": _read(mpath + ".minisig")}
     return {"files": {n: files[n] for n in want}, "info": info}
 
 
@@ -765,9 +768,18 @@ def swap_in(dest, files, info, parts=None):
     """Installs FILES ({name: path}, already in DEST's file system) over the
     programs in DEST, one rename each; the replaced ones become <name>.prev.
     The installed program is always whole: the old one or the new one.
-    PARTS: each program's source key (part_keys), recorded with it."""
+    PARTS: each program's source key (part_keys), recorded with it, and
+    its sha256 (a build of yours that changed between its build and here
+    isn't installed: nothing is, then)."""
+    built = info.get("built_sha256")
+    shas = {name: sha256_of(src) for name, src in files.items()}
+    for name in files:
+        if isinstance(built, dict) and built.get(name) and built[name] != shas[name]:
+            raise Failed(f"{name} changed after it was built", "build")
     for name, src in files.items():
-        info_n = dict(info, part=(parts or {}).get(name)) if parts is not None else info
+        info_n = dict(info, part=(parts or {}).get(name)) if parts is not None else dict(info)
+        info_n.pop("built_sha256", None)
+        info_n["sha256"] = shas[name]
         final = os.path.join(dest, name)
         os.chmod(src, 0o755)
         with open(src, "rb") as f:
@@ -1322,10 +1334,14 @@ def _produce(mode, tree, commit, edited, build_ui, todo, offline, dest, repo, sa
         files = build(into, tuned, build_ui, say)
     except Failed as e:
         raise Failed(e.why + (" (and no ready-made build: " + fallback + ")" if fallback else ""), e.kind) from None
-    info = {"source": "built-tuned" if tuned else "built", "variant": local_variant(tuned),
-            "tree": tree if not edited else None, "commit": commit, "edited": edited}
     # (a program whose sources didn't change stays as it is, built or not)
     files = {n: p for n, p in files.items() if n in todo}
+    # Each program's sha256 right after it was built: its record keeps it,
+    # and the root helper copies a build of yours for the login screen only
+    # while it's still exactly that program
+    info = {"source": "built-tuned" if tuned else "built", "variant": local_variant(tuned),
+            "tree": tree if not edited else None, "commit": commit, "edited": edited,
+            "built_sha256": {n: sha256_of(p) for n, p in files.items()}}
     return files, info, fallback
 
 

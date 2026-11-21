@@ -294,7 +294,10 @@ for d in "$DATA/tessera" "$DATA/$OLD_NAME"; do
     run rm -rf "$d/src"
     run rm -f "$d/bin/tessera-events" "$d/bin/tessera-events.new"
     run rm -f "$d/source" "$d/previous-login-manager"
+    # (the Hyprland files as last shipped, the base updates merge your edits against)
+    run rm -rf "$d/hypr-base" "$d/hypr-base.old"
 done
+run rm -f "${XDG_STATE_HOME:-$HOME/.local/state}/tessera/config-sync.json"
 # The tessera command, and starting Hyprland from tty1
 run rm -f "$HOME/.local/bin/tessera" \
     "${XDG_CONFIG_HOME:-$HOME/.config}/fish/conf.d/tessera.fish" "${XDG_CONFIG_HOME:-$HOME/.config}/fish/conf.d/tessera-start-hyprland.fish"

@@ -28,7 +28,9 @@ stops the others.
                                 (tessera undo-update, the recovery screen)
     sysupdate.py cancel         stop it while it's still waiting for the password
     sysupdate.py helper-status  exit 0 when Tessera's root helper is installed
-                                and the same as this folder's
+                                and the same as this folder's; JSON on
+                                stdout: {"current", "login": the login
+                                screen's tessera-ui is behind yours}
 
 Everything that needs root is one pkexec (one password, asked at the
 start, never in the middle): Tessera's root helper (tessera-root.py update),
@@ -69,6 +71,7 @@ checked by its start time (a stale pid may belong to anything by now).
 canned pacman run with delays: the whole UI, nothing installed.
 """
 import fcntl
+import hashlib
 import hmac
 import importlib.util
 import json
@@ -839,6 +842,60 @@ def helper_current(folder=None):
     return True
 
 
+LOGIN_UI = "/usr/share/tessera/bin"  # (the login screen's tessera-ui, where the switch put one)
+
+
+def _sha256(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def login_ui_stale(home=None):
+    """The login screen has a tessera-ui of its own (or had one: its bin/
+    folder), and yours, the installed one, is a different program the root
+    helper would accept (tessera-root.py login_ui_vouched: a ready-made
+    build its signed manifest names, or a build of yours its record
+    matches; the signature itself is root's to check). Then the update's
+    root step refreshes it (setup's refresh_login), the one password the
+    update asks for anyway. Only ever the installed program: one an update
+    has staged, not swapped in yet, waits for the next root step."""
+    share = os.path.join(SYSTEM, LOGIN_UI.lstrip("/"))
+    if not os.path.isdir(share) or os.path.islink(share):
+        return False
+    # (the same place root takes it from: tessera-root.py LOGIN_UI_FROM)
+    mine = os.path.join(home or os.path.expanduser("~"), ".local/share/tessera/bin/tessera-ui")
+    try:
+        with open(mine + ".json") as f:
+            rec = json.load(f)
+        sha = _sha256(mine)
+    except (OSError, ValueError):
+        return False
+    if not isinstance(rec, dict):
+        return False
+    if rec.get("source") in ("built", "built-tuned"):
+        if rec.get("sha256") != sha:
+            return False
+    elif rec.get("source") == "ready-made":
+        try:
+            m = json.loads(rec.get("manifest") or "")
+            variants = m.get("variants") or {}
+            if not rec.get("minisig") or sha not in {((v.get("programs") or {}).get("tessera-ui") or {}).get("sha256") for v in variants.values() if isinstance(v, dict)}:
+                return False
+        except (ValueError, AttributeError):
+            return False
+    else:
+        return False
+    try:
+        return _sha256(os.path.join(share, "tessera-ui")) != sha
+    except FileNotFoundError:
+        return True
+    except OSError:
+        return False
+
+
 def root_command(plan, broker):
     """pkexec's arguments for the root part: the installed helper, or this
     folder's (by path, run by Python) when it's missing or out of date."""
@@ -1381,7 +1438,8 @@ def plan_of(a, fake=False):
     incoming = a[a.index("--incoming") + 1] if "--incoming" in a and a.index("--incoming") + 1 < len(a) else ""
     os.makedirs(DIR, exist_ok=True)
     p["setup_dir"] = (stage_incoming(incoming) if incoming and not fake else None) or SHELL
-    p["setup"] = not fake and not helper_current(p["setup_dir"])
+    # (and the login screen's tessera-ui, when yours is another program now)
+    p["setup"] = not fake and (not helper_current(p["setup_dir"]) or login_ui_stale())
     p["kind"] = "update" if p["system"] or "--aur" in a else "features" if p["features"] else "install"
     p["steps"] = ([("snapshot")] if p["snapshot"] else []) + (["setup"] if p["setup"] else []) + (["system"] if p["system"] else []) + \
         (["packages"] if p["install"] else []) + (["remove"] if p["remove"] else []) + (["aur"] if "--aur" in a or p["aur_install"] else []) + \
@@ -1425,7 +1483,10 @@ if __name__ == "__main__":
         ref = a[a.index("--incoming") + 1] if "--incoming" in a and a.index("--incoming") + 1 < len(a) else ""
         os.makedirs(DIR, exist_ok=True)
         current = helper_current(stage_incoming(ref) if ref else None)
-        print(json.dumps({"current": current}))
+        # ("login": the login screen's tessera-ui is behind yours, so the
+        # update's root step goes ahead even when nothing else needs it;
+        # the exit code is about the helper's own files only)
+        print(json.dumps({"current": current, "login": login_ui_stale()}))
         sys.exit(0 if current else 1)
     fake = "--fake" in a or os.environ.get("TESSERA_FAKE_SYSUPDATE") == "1" or os.environ.get("TESSERA_SANDBOX") == "1"
     sys.exit(run(fake, plan_of(a, fake)))

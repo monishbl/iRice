@@ -29,7 +29,8 @@ pub enum Ev {
     Compat(Option<Value>),
     Hypr(String),
     Snap(String),
-    Helper(i32),
+    /// helper-status: exit code, and whether the login screen's tessera-ui is behind yours
+    Helper(i32, bool),
     Undo(Option<Value>),
 }
 
@@ -51,6 +52,10 @@ pub struct SoftwareUpdate {
     /// "snapper" | "timeshift" | ""
     pub snapshot: String,
     pub helper_current: bool,
+    /// the login screen's tessera-ui (Tessera's greetd copy) is another
+    /// program than yours: Tessera's update takes the root step for it
+    /// even when nothing else needs one (sysupdate.py login_ui_stale)
+    pub login_stale: bool,
     last_incoming: String,
     /// your choice: -1 not yet, 1 keep the current Hyprland, 0 update anyway
     pub hold: i64,
@@ -81,6 +86,7 @@ impl Default for SoftwareUpdate {
             hypr_installed: String::new(),
             snapshot: String::new(),
             helper_current: true,
+            login_stale: false,
             last_incoming: String::new(),
             hold: -1,
             remove_dropped: true,
@@ -244,8 +250,9 @@ impl SoftwareUpdate {
                 c.push(incoming);
             }
             let c: Vec<&str> = c.iter().map(String::as_str).collect();
-            let code = util::capture(&c, Duration::from_secs(60)).map(|(c, _)| c).unwrap_or(-1);
-            t(Box::new(Ev::Helper(code)));
+            let (code, out) = util::capture(&c, Duration::from_secs(60)).unwrap_or((-1, String::new()));
+            let login = serde_json::from_str::<Value>(out.trim()).map(|v| v["login"] == true).unwrap_or(false);
+            t(Box::new(Ev::Helper(code, login)));
         });
     }
 
@@ -287,9 +294,10 @@ impl SoftwareUpdate {
                 self.snapshot = s;
                 self.snap_busy = false;
             }
-            Ev::Helper(code) => {
+            Ev::Helper(code, login) => {
                 self.helper_busy = false;
                 self.helper_current = code == 0 || self.fake;
+                self.login_stale = login && !self.fake;
             }
             Ev::Undo(u) => {
                 self.undo_busy = false;
@@ -451,7 +459,9 @@ impl SoftwareUpdate {
             args.push(remove.join(","));
         }
         let incoming = Self::incoming(tu);
-        if p["setup"] == true && !incoming.is_empty() {
+        // (the login screen's tessera-ui behind yours: the root step
+        // refreshes it, the one password; sysupdate.py decides it again)
+        if (p["setup"] == true || self.login_stale) && !incoming.is_empty() {
             args.push("--incoming".into());
             args.push(incoming);
         }

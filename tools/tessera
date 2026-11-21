@@ -26,8 +26,12 @@ case "${1:-help}" in
     update)
         need_src
         if [[ -d "$SRC/.git" ]]; then
+            # (where it starts from: install.sh merges your Hyprland edits with
+            # the update's against it, tools/config-sync.py)
+            TESSERA_UPDATE_FROM="$(git -C "$SRC" rev-parse HEAD 2>/dev/null || true)"
+            export TESSERA_UPDATE_FROM
             echo "Getting the latest Tessera…"
-            # (from GitHub, else its mirrors in tools/sources.txt; the remote stays)
+            # (from GitHub only, the checkout's own remote)
             python3 -I "$SRC/tools/tessera-update.py" fetch --config "$CONFIG/tessera" >/dev/null ||
                 { echo "Couldn't download the update from GitHub or its mirrors (tools/sources.txt). Check the connection."; exit 1; }
             git -C "$SRC" merge --ff-only --quiet "@{u}" || { echo "Couldn't update $SRC (local changes?)."; exit 1; }

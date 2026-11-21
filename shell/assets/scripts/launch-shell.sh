@@ -143,6 +143,12 @@ UPSTATE="${XDG_STATE_HOME:-$HOME/.local/state}/tessera"
 if [[ ( -s "$UPSTATE/update-staged/staged.json" || -s "$UPSTATE/update-journal.json" ) && -f "$CHECKOUT/tools/tessera-update.py" ]]; then
     python3 -I "$CHECKOUT/tools/tessera-update.py" finish --if-ready --config "${XDG_CONFIG_HOME:-$HOME/.config}/tessera" \
         >"${XDG_RUNTIME_DIR:-/tmp}/tessera-update-result.json" 2>>"$(dirname "$STARTS")/update-at-login.log" || true
+    # (the update merged new Hyprland files into ~/.config/hypr, which
+    # Hyprland read before this: read again; update-run.sh does the same)
+    if python3 -I -c 'import json, sys; sys.exit(0 if (json.load(open(sys.argv[1])).get("config") or {}).get("hypr") else 1)' \
+        "${XDG_RUNTIME_DIR:-/tmp}/tessera-update-result.json" 2>/dev/null; then
+        hyprctl reload config-only >/dev/null 2>&1 || true
+    fi
 fi
 # A shell just updated that doesn't stay up: straight back to the Rust
 # build it had before (tessera-ui.prev), once, saying so; that version is

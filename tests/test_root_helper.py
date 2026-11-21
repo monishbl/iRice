@@ -3,6 +3,7 @@ that goes through it (sysupdate.py), unprivileged: a fake pkexec runs the
 helper as you, a fake pacman and a fake yay stand in, and setup installs
 into a temporary folder. Nothing real is asked or changed.
 """
+import hashlib
 import importlib.util
 import json
 import os
@@ -276,51 +277,70 @@ class LoginCopy(unittest.TestCase):
 
     def test_the_rust_login_screen_follows_the_installed_one(self):
         # (the switch put a tessera-ui there; an update refreshes it from
-        # yours, as it does the QML copy; it stayed the switch day's before)
+        # yours, as it does the QML copy; it stayed the switch day's before.
+        # Yours is accepted as built here: its record has its sha256)
         home = self.d / "home"
         bindir = home / ".local/share/tessera/bin"
         bindir.mkdir(parents=True)
         bindir.chmod(0o755)
         mine = bindir / "tessera-ui"
-        mine.write_bytes(b"\x7fELF new")
-        mine.chmod(0o755)
+        record = bindir / "tessera-ui.json"
+
+        def put(data):
+            mine.write_bytes(data)
+            mine.chmod(0o755)
+            record.write_text(json.dumps({"source": "built", "sha256": hashlib.sha256(data).hexdigest()}))
+            record.chmod(0o644)
+        put(b"\x7fELF new")
         (self.share / "shell").mkdir(parents=True)
         (self.share / "bin").mkdir()
         (self.share / "bin/tessera-ui").write_bytes(b"\x7fELF old")
         real = R.caller_home
         R.caller_home = lambda uid: str(home)
+        ui = self.share / "bin/tessera-ui"
         try:
-            self.assertIn(str(self.share / "bin/tessera-ui"), self.refresh())
-            self.assertEqual((self.share / "bin/tessera-ui").read_bytes(), b"\x7fELF new")
-            self.assertEqual(stat.S_IMODE((self.share / "bin/tessera-ui").stat().st_mode), 0o755)
-            self.assertNotIn(str(self.share / "bin/tessera-ui"), self.refresh())  # (unchanged)
-            # one another account could have written: the copy stays as it was
-            mine.write_bytes(b"\x7fELF planted")
+            self.assertIn(str(ui), self.refresh())
+            self.assertEqual(ui.read_bytes(), b"\x7fELF new")
+            self.assertEqual(stat.S_IMODE(ui.stat().st_mode), 0o755)
+            self.assertNotIn(str(ui), self.refresh())  # (unchanged)
+            # one another account could have written: refused, and the login
+            # screen falls back to the QML one (bin/ stays for the next one)
+            put(b"\x7fELF planted")
             mine.chmod(0o777)
             self.refresh()
-            self.assertEqual((self.share / "bin/tessera-ui").read_bytes(), b"\x7fELF new")
-            mine.chmod(0o755)
+            self.assertFalse(ui.exists())
+            self.assertTrue((self.share / "bin").is_dir())
+            put(b"\x7fELF new")
+            self.refresh()
+            self.assertEqual(ui.read_bytes(), b"\x7fELF new")  # (back, once it's accepted)
             bindir.chmod(0o777)
             self.refresh()
-            self.assertEqual((self.share / "bin/tessera-ui").read_bytes(), b"\x7fELF new")
+            self.assertFalse(ui.exists())
             bindir.chmod(0o755)
-            # not a program: refused
-            mine.write_bytes(b"#!/bin/sh\n")
+            record.chmod(0o666)
             self.refresh()
-            self.assertEqual((self.share / "bin/tessera-ui").read_bytes(), b"\x7fELF new")
+            self.assertFalse(ui.exists())
+            put(b"\x7fELF new")
+            self.refresh()
+            # not a program: refused
+            put(b"#!/bin/sh\n")
+            self.refresh()
+            self.assertFalse(ui.exists())
+            put(b"\x7fELF new")
+            self.refresh()
             # a link: refused
             mine.unlink()
-            (self.d / "elsewhere").write_bytes(b"\x7fELF link")
+            (self.d / "elsewhere").write_bytes(b"\x7fELF new")
             mine.symlink_to(self.d / "elsewhere")
             self.refresh()
-            self.assertEqual((self.share / "bin/tessera-ui").read_bytes(), b"\x7fELF new")
+            self.assertFalse(ui.exists())
         finally:
             R.caller_home = real
             bindir.chmod(0o755)
-        # (no Rust login screen there: none is added by a refresh)
-        (self.share / "bin/tessera-ui").unlink()
-        self.assertNotIn(str(self.share / "bin/tessera-ui"), self.refresh())
-        self.assertFalse((self.share / "bin/tessera-ui").exists())
+        # (no Rust login screen there, nor its folder: none is added by a refresh)
+        shutil.rmtree(self.share / "bin")
+        self.assertNotIn(str(ui), self.refresh())
+        self.assertFalse(ui.exists())
 
     def test_from_an_updates_staged_tree(self):
         (self.share / "shell").mkdir(parents=True)

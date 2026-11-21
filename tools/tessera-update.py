@@ -29,6 +29,13 @@ was staged: renames and copies, a few seconds. A conflict that appeared
 since (a setting changed) settles keeping yours; a file changed since stops
 it, and nothing changes.
 
+Once an update is in, the installed copies follow it (tools/config-sync.py):
+a default install's ~/.config/quickshell/tessera is replaced by the new
+shell/ (a dev install's link stays), and ~/.config/hypr's Tessera files are
+merged three ways with your edits (a clash keeps yours, the new file beside
+it as <file>.new, with a notification). Best effort: never the update's
+failure.
+
 Downloads come from the checkout's own remote only (Tessera's GitHub
 repository for a normal install). No mirror is tried: the updater runs the
 code it takes, and nothing could tell a mirror's commit from GitHub's.
@@ -76,6 +83,10 @@ CONFIG_QML = "shell/common/Config.qml"
 THEME_QML = "shell/common/Theme.qml"
 KEYMAP = "hypr/tessera/keymap.json"
 MIGRATIONS = "tools/settings-migrations.json"  # {"old.path": "new.path"}
+# Every default the Rust shell reads (tools/rust-defaults.py writes it from
+# the Rust sources; tests/test_rust_defaults.py keeps it so): settings only
+# the Rust shell has are checked as Config.qml's are
+RUST_DEFAULTS = "tools/rust-defaults.json"
 # Defaults Config.qml changed to what the Rust shell already did (20 Nov:
 # Settings showed one thing, the shell did another). The shell's behaviour
 # doesn't change with them, so an update across that change asks nothing
@@ -580,7 +591,7 @@ def check(config_dir, fetch=True, channel=None, pin=None):
     report["keeps"] = sorted(local - incoming)  # your edits the update doesn't touch: kept
 
     config = load_json(os.path.join(config_dir, "config.json"), {})
-    old_def, new_def = config_defaults(show(base, CONFIG_QML)), config_defaults(show(new, CONFIG_QML))
+    old_def, new_def = setting_defaults(base), setting_defaults(new)
 
     # Changed defaults for settings left as they were (not the Custom
     # material's sliders: they start from the current material when opened)
@@ -650,6 +661,20 @@ def check(config_dir, fetch=True, channel=None, pin=None):
     # change (part_key), or whose build isn't there
     report["rebuild"] = parts_needed(new)
     return report
+
+
+def setting_defaults(rev):
+    """{"section.key": default} at REV: Config.qml's, and the Rust shell's
+    (RUST_DEFAULTS) for the settings Config.qml doesn't have (the two agree
+    on the rest: tests/test_settings_defaults.py). A version from before
+    the file: Config.qml's only."""
+    d = config_defaults(show(rev, CONFIG_QML))
+    rust = load_json_text(show(rev, RUST_DEFAULTS), {})
+    if isinstance(rust, dict):
+        for k, v in rust.items():
+            if isinstance(k, str) and isinstance(v, (str, int, float, bool)) and k not in d:
+                d[k] = v
+    return d
 
 
 def three_way(f, new):
@@ -1243,6 +1268,11 @@ def apply(config_dir, choices, extra=(), channel=None, staged=None):
         built, failed = rebuild(todo)
         remember_parts(built, "HEAD")
     progress(85, "Finishing up")
+    # The installed copies (a default install's ~/.config/quickshell/tessera
+    # and ~/.config/hypr's Tessera files) up to the new version: the shell's
+    # replaced, hypr's merged with your edits (tools/config-sync.py); best
+    # effort, after the commit point, like the parts
+    config_sync = sync_installed(old_head, backup)
     # What this copy still keeps under Tessera's old name moves over now (its
     # folder too, to ~/tessera, the old name left as a link; never fatal):
     # the shell's restart after the update does it too, for an update run by
@@ -1261,9 +1291,32 @@ def apply(config_dir, choices, extra=(), channel=None, staged=None):
         except OSError:
             pass
     # (the notes, for the new shell's "What's new")
-    return {"applied": True, "backup": backup, "stash": stash, "built": built, "failed": failed, "ui": ui,
+    return {"applied": True, "backup": backup, "stash": stash, "built": built, "failed": failed, "ui": ui, "config": config_sync,
             "now": git("rev-parse", "--short", "HEAD").strip(),
             "changelog": report.get("changelog", []), "notes": report.get("notes", [])}
+
+
+CONFIG_SYNC = os.path.join(REPO, "tools", "config-sync.py")
+
+
+def sync_installed(old_head, backup):
+    """tools/config-sync.py sync, in this process: the installed shell copy
+    replaced, hypr's files merged three ways (your edits kept, clashes as
+    <file>.new with a notification). Never fatal: {"error"} on a failure.
+    Returns its report (its hypr part, for update-run.sh's reload)."""
+    try:
+        import importlib.machinery
+        import importlib.util
+        loader = importlib.machinery.SourceFileLoader("tessera_config_sync", CONFIG_SYNC)
+        spec = importlib.util.spec_from_loader("tessera_config_sync", loader)
+        mod = importlib.util.module_from_spec(spec)
+        loader.exec_module(mod)
+        rep = mod.sync(REPO, old_head, backup=os.path.join(backup, "installed") if backup else None)
+        h = rep.get("hypr") or {}
+        return {"shell": rep.get("shell", ""), "hypr": bool(h.get("any")), "notes": h.get("notes") or [],
+                "new_files": h.get("new_files") or [], "restored": h.get("restored") or []}
+    except Exception as e:  # (never the update's failure: it's in)
+        return {"error": str(e) or e.__class__.__name__}
 
 
 def journal_path():

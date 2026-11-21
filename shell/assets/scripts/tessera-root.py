@@ -144,8 +144,10 @@ With the password, once, at the start:
 Files are read as you (the person who started pkexec or sudo), never as
 root: a symlink in your home can't make root read anything you can't.
 """
+import base64
 import contextlib
 import glob
+import hashlib
 import importlib.util
 import json
 import os
@@ -1577,14 +1579,22 @@ def refresh_login(src, uid, prefix=None):
             written.append(dest)
     # The Rust login screen, where the switch put one (greeter-start.sh
     # prefers it): the one you run now. Only the QML copy was refreshed, so
-    # the login screen stayed the program from the day of the switch
-    ui = os.path.join(share, "bin", "tessera-ui")
-    if os.path.isfile(ui) and not os.path.islink(ui):
+    # the login screen stayed the program from the day of the switch. Only
+    # Tessera's signed build or one built here (read_login_ui); anything
+    # else is refused, and the login screen falls back to the QML one (its
+    # bin/ stays: a later refresh with one that's accepted puts it back)
+    bindir = os.path.join(share, "bin")
+    ui = os.path.join(bindir, "tessera-ui")
+    if os.path.isdir(bindir) and not os.path.islink(bindir) and not os.path.islink(ui):
         try:
-            data = read_login_ui(uid)
+            data, how = read_login_ui(uid)
         except (OSError, Refused) as e:
-            data = None
-            print(f"tessera-root: the login screen's tessera-ui stays as it was ({e})", file=sys.stderr)
+            data, how = None, None
+            if os.path.lexists(ui):
+                os.unlink(ui)
+                written.append(ui)
+            if not isinstance(e, FileNotFoundError):  # (none of yours at all: nothing to say)
+                login_ui_refused(e)
         if data is not None:
             try:
                 with open(ui, "rb") as f:
@@ -1594,6 +1604,7 @@ def refresh_login(src, uid, prefix=None):
             if not same:
                 write_root(ui, data, 0o755)
                 written.append(ui)
+                login_ui_said(how)
     return written
 
 
@@ -1777,29 +1788,147 @@ def caller_home(uid):
 
 
 LOGIN_UI_FROM = ".local/share/tessera/bin/tessera-ui"  # (in the caller's home)
+LOGIN_UI_RECORD = LOGIN_UI_FROM + ".json"  # (tools/native-install.py's record of where it came from)
+MAX_RECORD = 1024 * 1024
+# Tessera's release key (tools/tessera-ui.pub; tests/test_root_helper.py
+# keeps the two the same). Root's own copy: the one in your checkout is
+# yours to change, so it can't vouch for a program root installs
+RELEASE_KEY = """untrusted comment: minisign public key 13D1783A15B8915C
+RWRckbgVOnjREzjnJuW7OPl+iF+D6YISTVCnN/qCIIylPZtHNlNTXoPB
+"""
+# How a tessera-ui accepted for the login screen was vouched for
+LOGIN_UI_HOW = {"signed": "Tessera's signed release build", "built": "built on this computer"}
 
 
-def read_login_ui(uid, home=None):
-    """The Rust login screen to copy for greetd: your installed tessera-ui
-    (tools/native-install.py's, checked there: signature or your own build),
-    read as you. Refused unless it's a program (ELF) that only you (or root)
-    could have written: owned by you or root, not writable by the group or
-    others, nor its folder; so another account can't plant the program that
-    reads every password at the login screen."""
+def _b64(text):
+    try:
+        return base64.b64decode(text.strip(), validate=True)
+    except ValueError:
+        raise Refused("the signature isn't minisign's format") from None
+
+
+def verify_minisign(pubkey_text, data, sig_text):
+    """Raises Refused unless SIG_TEXT is a good minisign signature of DATA
+    by the key PUBKEY_TEXT; returns its trusted comment. (The same check as
+    tools/native-install.py's, which root can't import: it's in your home.)"""
+    keys = [l for l in pubkey_text.splitlines() if l.strip() and not l.startswith("untrusted comment:")]
+    raw = _b64(keys[0]) if keys else b""
+    if len(raw) != 42 or raw[:2] != b"Ed":
+        raise Refused("the release key isn't a minisign public key")
+    keyid, key = raw[2:10], raw[10:]
+    lines = (sig_text or "").splitlines()
+    if len(lines) < 4 or not lines[0].startswith("untrusted comment:") or not lines[2].startswith("trusted comment: "):
+        raise Refused("the signature isn't minisign's format")
+    sig = _b64(lines[1])
+    if len(sig) != 74 or sig[:2] not in (b"Ed", b"ED"):
+        raise Refused("the signature isn't minisign's format")
+    if sig[2:10] != keyid:
+        raise Refused("it's signed with another key than Tessera's release key")
+    trusted = lines[2][len("trusted comment: "):]
+    message = hashlib.blake2b(data, digest_size=64).digest() if sig[:2] == b"ED" else data
+    try:
+        from cryptography.exceptions import InvalidSignature
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+    except ImportError:
+        if not shutil.which("minisign"):
+            raise Refused("nothing here can check signatures (python-cryptography or minisign)") from None
+        with tempfile.TemporaryDirectory(prefix="tessera-root-verify-") as d:
+            for name, content in (("key.pub", pubkey_text.encode()), ("file", data), ("file.minisig", sig_text.encode())):
+                with open(os.path.join(d, name), "wb") as f:
+                    f.write(content)
+            r = subprocess.run(["minisign", "-V", "-q", "-p", os.path.join(d, "key.pub"), "-m", os.path.join(d, "file")],
+                               capture_output=True, timeout=30)
+        if r.returncode != 0:
+            raise Refused("its signature doesn't match: it isn't what the project published") from None
+        return trusted
+    pk = Ed25519PublicKey.from_public_bytes(key)
+    try:
+        pk.verify(sig[10:], message)
+        pk.verify(_b64(lines[3]), sig[10:] + trusted.encode())
+    except InvalidSignature:
+        raise Refused("its signature doesn't match: it isn't what the project published") from None
+    return trusted
+
+
+def login_ui_vouched(data, record, key=None):
+    """How the tessera-ui DATA is vouched for ("signed" or "built"), from
+    its record (tools/native-install.py's tessera-ui.json); Refused when it
+    isn't. A ready-made build only when its sha256 is the one a release
+    manifest gives it and that manifest's signature checks out against
+    Tessera's release key; a build of yours only while its sha256 is the
+    one recorded right after it was built. Anything else is refused."""
+    if not isinstance(record, dict):
+        raise Refused("there's no record of where tessera-ui came from")
+    sha = hashlib.sha256(data).hexdigest()
+    src = record.get("source")
+    if src == "ready-made":
+        manifest, sig = record.get("manifest"), record.get("minisig")
+        if not isinstance(manifest, str) or not isinstance(sig, str) or not manifest or not sig:
+            raise Refused("tessera-ui's signed manifest wasn't kept (an older install): install it again to use it at the login screen")
+        trusted = verify_minisign(RELEASE_KEY if key is None else key, manifest.encode(), sig)
+        try:
+            m = json.loads(manifest)
+        except ValueError:
+            raise Refused("tessera-ui's signed manifest isn't JSON") from None
+        tree = m.get("tree") if isinstance(m, dict) else None
+        if not isinstance(tree, str) or not tree or "tree=" + tree not in trusted.split():
+            raise Refused("tessera-ui's signed manifest is for another version")
+        variants = m.get("variants") if isinstance(m.get("variants"), dict) else {}
+        signed = {((v.get("programs") or {}).get("tessera-ui") or {}).get("sha256") for v in variants.values() if isinstance(v, dict)}
+        if sha not in signed:
+            raise Refused("tessera-ui isn't the program its signed manifest names (its checksum differs)")
+        return "signed"
+    if src in ("built", "built-tuned"):
+        want = record.get("sha256")
+        if not isinstance(want, str) or not want:
+            raise Refused("tessera-ui was built here before its checksum was recorded: build it again to use it at the login screen")
+        if want != sha:
+            raise Refused("tessera-ui changed after it was built here (its checksum differs from the build's record)")
+        return "built"
+    raise Refused("there's no record of where tessera-ui came from")
+
+
+def read_login_ui(uid, home=None, key=None):
+    """The Rust login screen to copy for greetd: your installed tessera-ui,
+    read as you, and how it's vouched for (login_ui_vouched: "signed" or
+    "built"). Refused unless it's a program (ELF) that only you (or root)
+    could have written: it, its record and their folder owned by you or
+    root, not writable by the group or others; so another account can't
+    plant the program that reads every password at the login screen. And
+    refused unless it's Tessera's signed build or yours, as its record says."""
     home = caller_home(uid) if home is None else home
     if not home:
         raise Refused("there's no home folder to take the login screen from")
-    path = os.path.join(home, LOGIN_UI_FROM)
+    path, rec_path = os.path.join(home, LOGIN_UI_FROM), os.path.join(home, LOGIN_UI_RECORD)
     with as_user(uid):
         dst = os.lstat(os.path.dirname(path))
         fst = os.lstat(path)
-    for what, st in (("its folder", dst), ("tessera-ui", fst)):
-        if st.st_uid not in (uid, 0) or st.st_mode & 0o022:
+        try:
+            rst = os.lstat(rec_path)
+        except FileNotFoundError:
+            rst = None
+    for what, st in (("its folder", dst), ("tessera-ui", fst), ("its record", rst)):
+        if st is not None and (st.st_uid not in (uid, 0) or st.st_mode & 0o022):
             raise Refused(f"{what} could be changed by another account: the login screen's copy isn't refreshed")
     data = read_as(uid, path, MAX_UI)
     if not data.startswith(b"\x7fELF"):
         raise Refused("tessera-ui isn't a program")
-    return data
+    if rst is None:
+        raise Refused("there's no record of where tessera-ui came from")
+    try:
+        record = json.loads(read_as(uid, rec_path, MAX_RECORD))
+    except ValueError:
+        raise Refused("tessera-ui's record isn't JSON") from None
+    return data, login_ui_vouched(data, record, key)
+
+
+def login_ui_refused(why):
+    """What's said when the login screen can't have your tessera-ui"""
+    print(f"tessera-root: the login screen uses the QML login screen: tessera-ui wasn't accepted ({why})", file=sys.stderr)
+
+
+def login_ui_said(how):
+    print(f"tessera-root: the login screen's tessera-ui is {LOGIN_UI_HOW.get(how, how)}", file=sys.stderr)
 
 
 def login_wallpaper_from(uid, home, repo):
@@ -1815,6 +1944,9 @@ def login_wallpaper_from(uid, home, repo):
     except (OSError, ValueError, Refused, AttributeError):
         pass
     return read_as(uid, os.path.join(repo, DEFAULT_WALLPAPER), MAX_IMAGE)
+
+
+LOGIN_UI_LAST = {"ui": "", "why": ""}  # (how the last login copy's tessera-ui was vouched for: login-switch on says)
 
 
 def install_login_copy(repo, look, uid, prefix, run, chown=os.chown):
@@ -1840,12 +1972,25 @@ def install_login_copy(repo, look, uid, prefix, run, chown=os.chown):
              ("greeter-session.sh", read_as(uid, os.path.join(repo, "hypr/greeter-session.sh"), MAX_SOURCE), 0o755),
              ("greeter.json", json.dumps(look, sort_keys=True, separators=(",", ":")).encode(), 0o644),
              ("wallpaper.jpg", login_wallpaper_from(uid, caller_home(uid), repo), 0o644)]
-    # The login screen in Rust (tessera-ui --greeter), when you have it;
-    # greeter-start.sh starts the QML one without it
+    # The login screen in Rust (tessera-ui --greeter), when you have it and
+    # it's Tessera's signed build or one built here; greeter-start.sh starts
+    # the QML one without it (its bin/ folder is made either way: a refresh
+    # puts in one that's accepted later)
+    os.makedirs(os.path.join(share, "bin"), mode=0o755, exist_ok=True)
     try:
-        files.append(("bin/tessera-ui", read_login_ui(uid), 0o755))
-    except (OSError, Refused):
-        pass
+        data, how = read_login_ui(uid)
+        files.append(("bin/tessera-ui", data, 0o755))
+        LOGIN_UI_LAST.update(ui=how, why="")
+        login_ui_said(how)
+    except (OSError, Refused) as e:
+        # (none of yours at all: the QML one, nothing to say)
+        missing = isinstance(e, FileNotFoundError)
+        LOGIN_UI_LAST.update(ui="", why="" if missing else str(e))
+        old_ui = os.path.join(share, "bin", "tessera-ui")
+        if os.path.lexists(old_ui) and not os.path.isdir(old_ui):
+            os.unlink(old_ui)
+        if not missing:
+            login_ui_refused(e)
     for rel, data, mode in files:
         write_root(os.path.join(share, rel), data, mode)
         done.append(os.path.join(share, rel))
@@ -2625,7 +2770,10 @@ def main(argv):
             return 0
         if cmd == "login-switch" and len(args) == 3 and args[0] == "on":
             rec = login_switch_on(args[1], args[2], uid)
-            print(json.dumps(rec, sort_keys=True))
+            # (with how its tessera-ui was vouched for: "signed", "built" (on
+            # this computer), or "" and why not: the QML login screen then)
+            ui = {"ui": LOGIN_UI_LAST["ui"], "uiWords": LOGIN_UI_HOW.get(LOGIN_UI_LAST["ui"], ""), "uiWhy": LOGIN_UI_LAST["why"]}
+            print(json.dumps(dict(rec, **ui), sort_keys=True))
             return 0
         if cmd == "login-switch" and len(args) in (1, 2) and args[0] == "off":
             print(json.dumps(login_switch_off(args[1] if len(args) == 2 else None), sort_keys=True))

@@ -577,6 +577,55 @@ class Install(Fixture):
 # ── Modes, and the fallback ───────────────────────────────────────────────
 
 @unittest.skipUnless(HAS_CRYPTO, "python-cryptography isn't installed")
+class KeptForTheLoginScreen(Fixture):
+    """What the root helper checks before it copies tessera-ui for the login
+    screen (tessera-root.py login_ui_vouched, audit #71): a ready-made
+    install keeps its signed manifest and signature in its record, a build
+    here its sha256 from right after the build."""
+
+    def root(self):
+        spec = importlib.util.spec_from_file_location("tessera_root_kept", ROOT / "shell/assets/scripts/tessera-root.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    @unittest.skipUnless(HAS_CRYPTO, "python-cryptography isn't installed")
+    def test_a_ready_made_install_keeps_its_signed_manifest(self):
+        self.publish()
+        r, _ = self.install()
+        self.assertTrue(r["ok"], r)
+        info = ni.read_info(str(self.dest), "tessera-ui")
+        self.assertIn('"tree": "' + self.tree + '"', info["manifest"])
+        self.assertTrue(info["minisig"].startswith("untrusted comment:"))
+        self.assertEqual(info["sha256"], ni.sha256_of(str(self.dest / "tessera-ui")))
+        R = self.root()
+        data = (self.dest / "tessera-ui").read_bytes()
+        self.assertEqual(R.login_ui_vouched(data, info, key=self.key.pub), "signed")
+        with self.assertRaises(R.Refused):
+            R.login_ui_vouched(data, info)  # (the real release key didn't sign this one)
+
+    def test_a_build_here_records_its_sha256(self):
+        r, _ = self.install("build")
+        self.assertTrue(r["ok"], r)
+        info = ni.read_info(str(self.dest), "tessera-ui")
+        self.assertEqual(info["sha256"], ni.sha256_of(str(self.dest / "tessera-ui")))
+        self.assertNotIn("built_sha256", info)
+        R = self.root()
+        data = (self.dest / "tessera-ui").read_bytes()
+        self.assertEqual(R.login_ui_vouched(data, info), "built")
+        with self.assertRaises(R.Refused):
+            R.login_ui_vouched(data + b"x", info)
+
+    def test_a_build_that_changed_before_it_went_in_is_not_installed(self):
+        stage = self.d / "stage"
+        stage.mkdir()
+        fake_program(stage / "tessera-ui", "tessera-ui 0.1.0")
+        info = {"source": "built", "built_sha256": {"tessera-ui": "0" * 64}}
+        with self.assertRaises(ni.Failed):
+            ni.swap_in(str(self.dest), {"tessera-ui": str(stage / "tessera-ui")}, info)
+        self.assertFalse((self.dest / "tessera-ui").exists())
+
+
 class Modes(Fixture):
     def config(self, **rust):
         p = self.d / "config/tessera/config.json"

@@ -1391,13 +1391,24 @@ install_files() {
         note "Your Hyprland config is backed up to $CONFIG/hypr.pre-tessera"
     fi
     run mkdir -p "$CONFIG/hypr/tessera"
-    run cp "$ROOT/hypr/hyprland.lua" "$CONFIG/hypr/hyprland.lua"
-    # Everything in hypr/tessera (Lua modules and the json they read), but leave
-    # files the installer or the user added there (vm.lua) alone
     local f
-    for f in "$ROOT/hypr/tessera/"*; do
-        [[ -f "$f" ]] && run cp "$f" "$CONFIG/hypr/tessera/"
-    done
+    if [[ -n "${TESSERA_UPDATE_FROM:-}" && -f "$CONFIG/hypr/hyprland.lua" ]]; then
+        # tessera update: your edits to these files stay, merged with the
+        # update's (three ways, against what was shipped last: tools/config-sync.py;
+        # a clash keeps yours, with the new one beside it as <file>.new)
+        run python3 -I "$ROOT/tools/config-sync.py" sync --no-shell --old-rev "$TESSERA_UPDATE_FROM" --backup "$installed_backup/merge" ||
+            warn "Couldn't merge the update into $CONFIG/hypr: yours stay as they were"
+    else
+        run cp "$ROOT/hypr/hyprland.lua" "$CONFIG/hypr/hyprland.lua"
+        # Everything in hypr/tessera (Lua modules and the json they read), but leave
+        # files the installer or the user added there (vm.lua) alone
+        for f in "$ROOT/hypr/tessera/"*; do
+            [[ -f "$f" ]] && run cp "$f" "$CONFIG/hypr/tessera/"
+        done
+        # (what was shipped, kept as the base the next update merges against:
+        # $DATA/tessera/hypr-base)
+        run python3 -I "$ROOT/tools/config-sync.py" base >/dev/null || true
+    fi
     # Idle timers come from Settings → Battery & Power (start-idle.sh); a
     # hypridle.conf here is yours and wins over them. Earlier installers copied
     # one in: take that out again when it's unchanged, so the settings work
