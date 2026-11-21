@@ -272,7 +272,43 @@ fn proxy<'a>(c: &Connection, dest: &'a str, path: &'a str, iface: &'a str) -> zb
     Builder::new(c).destination(dest)?.path(path)?.interface(iface)?.cache_properties(CacheProperties::No).build()
 }
 
-fn read_item(c: &Connection, key: &str) -> Option<TrayItem> {
+/// Icon lookups as the tray last made them, by (icon name, the item's
+/// IconThemePath), for the icon theme they were made in: an item that
+/// signals (a tooltip, a status) looks its icon up again only when its
+/// name or folder changed (audit #52). Emptied when the theme changes
+#[derive(Default)]
+struct IconMemo {
+    stamp: String,
+    found: HashMap<(String, String), Option<PathBuf>>,
+}
+
+impl IconMemo {
+    /// Once per burst: a new icon theme (or a rebuilt index) forgets all
+    fn check(&mut self, stamp: String) {
+        if stamp != self.stamp {
+            if !self.stamp.is_empty() || !self.found.is_empty() {
+                crate::icon_theme::forget();
+            }
+            self.found.clear();
+            self.stamp = stamp;
+        }
+    }
+
+    fn find(&mut self, name: &str, theme: &str, look: impl FnOnce() -> Option<PathBuf>) -> Option<PathBuf> {
+        let key = (name.to_string(), theme.to_string());
+        if let Some(hit) = self.found.get(&key) {
+            return hit.clone();
+        }
+        let found = look();
+        // (a miss before the shell's index is built isn't kept, as icon_theme's)
+        if found.is_some() || crate::services::icons::shared().is_some() {
+            self.found.insert(key, found.clone());
+        }
+        found
+    }
+}
+
+fn read_item(c: &Connection, key: &str, memo: &mut IconMemo) -> Option<TrayItem> {
     let (svc, path) = parse_address(key, "");
     let p = proxy(c, &svc, &path, ITEM).ok()?;
     let s = |k: &str| p.get_property::<String>(k).unwrap_or_default();
@@ -282,7 +318,7 @@ fn read_item(c: &Connection, key: &str) -> Option<TrayItem> {
     let name = if attention && !s("AttentionIconName").is_empty() { s("AttentionIconName") } else { s("IconName") };
     let theme = s("IconThemePath");
     let extra = (!theme.is_empty()).then(|| PathBuf::from(&theme));
-    let mut icon = crate::icon_theme::find(&name, extra.as_deref()).map(Icon::File).unwrap_or(Icon::None);
+    let mut icon = memo.find(&name, &theme, || crate::icon_theme::find(&name, extra.as_deref())).map(Icon::File).unwrap_or(Icon::None);
     if icon == Icon::None {
         let pix: Vec<(i32, i32, Vec<u8>)> = p.get_property(if attention { "AttentionIconPixmap" } else { "IconPixmap" }).or_else(|_| p.get_property("IconPixmap")).unwrap_or_default();
         if let Some((w, h, rgba)) = best_pixmap(&pix, 32) {
@@ -290,7 +326,7 @@ fn read_item(c: &Connection, key: &str) -> Option<TrayItem> {
         }
     }
     if icon == Icon::None {
-        icon = crate::icon_theme::find("application-x-executable", None).map(Icon::File).unwrap_or(Icon::None);
+        icon = memo.find("application-x-executable", "", || crate::icon_theme::find("application-x-executable", None)).map(Icon::File).unwrap_or(Icon::None);
     }
     // ToolTip: (icon name, icon pixmaps, title, text)
     let tooltip = p
@@ -413,6 +449,7 @@ pub fn spawn(tx: Sender<Msg>) {
             let mut items: HashMap<String, Option<TrayItem>> = HashMap::new();
             let mut owners: HashMap<String, String> = HashMap::new();
             let mut stale = Stale { all: true, ..Default::default() };
+            let mut memo = IconMemo::default();
             loop {
                 let w = proxy(&c, WATCHER, WATCHER_PATH, WATCHER)?;
                 let keys: Vec<String> = w.get_property("RegisteredStatusNotifierItems").unwrap_or_default();
@@ -424,9 +461,12 @@ pub fn spawn(tx: Sender<Msg>) {
                 items.retain(|k, _| keys.contains(k));
                 owners.retain(|k, _| keys.contains(k));
                 let again: Vec<String> = to_read(&keys, &items, &owners, &stale).into_iter().cloned().collect();
+                if !again.is_empty() {
+                    memo.check(crate::icon_theme::theme_stamp());
+                }
                 for k in again {
                     owners.insert(k.clone(), owner_of(&c, &k));
-                    items.insert(k.clone(), read_item(&c, &k));
+                    items.insert(k.clone(), read_item(&c, &k, &mut memo));
                 }
                 let tray = Tray { items: keys.iter().filter_map(|k| items.get(k).cloned().flatten()).collect() };
                 if last.as_ref() != Some(&tray) {
@@ -538,6 +578,32 @@ mod tests {
         let mut a = Stale::default();
         a.note((Why::All, None));
         assert_eq!(to_read(&keys, &items, &owners, &a).len(), 3);
+    }
+
+    #[test]
+    fn icon_lookups_are_kept_until_the_theme_changes() {
+        let mut m = IconMemo::default();
+        m.check("A".into());
+        let looked = std::cell::Cell::new(0);
+        let look = |m: &mut IconMemo, name: &str, dir: &str| {
+            m.find(name, dir, || {
+                looked.set(looked.get() + 1);
+                Some(PathBuf::from(format!("/i/{name}.svg")))
+            })
+        };
+        assert_eq!(look(&mut m, "app", ""), Some(PathBuf::from("/i/app.svg")));
+        look(&mut m, "app", "");
+        assert_eq!(looked.get(), 1);
+        // (another folder is another lookup)
+        look(&mut m, "app", "/opt/app/icons");
+        assert_eq!(looked.get(), 2);
+        // (the same theme again keeps them; a new one forgets them)
+        m.check("A".into());
+        look(&mut m, "app", "");
+        assert_eq!(looked.get(), 2);
+        m.check("B".into());
+        look(&mut m, "app", "");
+        assert_eq!(looked.get(), 3);
     }
 
     #[test]

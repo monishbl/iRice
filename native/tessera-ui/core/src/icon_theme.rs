@@ -123,6 +123,14 @@ pub fn find(name: &str, extra: Option<&Path>) -> Option<PathBuf> {
     found
 }
 
+/// What icon lookups depend on, as one string: the shell's index (its
+/// theme, and which build of it) and the user's GTK icon theme. When it
+/// changes, remembered answers are stale (the tray's, audit #52)
+pub fn theme_stamp() -> String {
+    let index = crate::services::icons::shared().map(|i| format!("{}@{:p}", i.theme, std::sync::Arc::as_ptr(&i.index))).unwrap_or_default();
+    format!("{index}\n{}", user_theme().unwrap_or_default())
+}
+
 /// The shell's index was (re)built: answers found without it are dropped
 pub fn forget() {
     if let Ok(mut c) = CACHE.lock() {

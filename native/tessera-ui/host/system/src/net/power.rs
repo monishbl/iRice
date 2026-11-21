@@ -114,7 +114,8 @@ fn ppd_read(conn: &zbus::blocking::Connection, dest: &'static str, path: &'stati
 fn set_profile(mode: String) {
     std::thread::spawn(move || {
         let names = [("net.hadess.PowerProfiles", "/net/hadess/PowerProfiles"), ("org.freedesktop.UPower.PowerProfiles", "/org/freedesktop/UPower/PowerProfiles")];
-        let set = zbus::blocking::Connection::system().ok().is_some_and(|conn| {
+        // (core's one system-bus connection, not a new one per change)
+        let set = tessera_core::inhibit::system_bus().is_some_and(|conn| {
             names.iter().any(|(dest, path)| {
                 conn.call_method(Some(*dest), *path, Some("org.freedesktop.DBus.Properties"), "Set", &(*dest, "ActiveProfile", zbus::zvariant::Value::from(mode.as_str()))).is_ok()
             })
@@ -524,11 +525,11 @@ impl Power {
             let run = self.lid_run;
             // (held by this process: it can't outlive the shell, so logind
             // handles the lid again the moment Tessera isn't there to. Asked
-            // on a thread: a new system-bus connection and logind's answer
-            // never hold up the frame loop, 1 s ticks, Caffeine toggles)
+            // on the work pool over core's one system-bus connection:
+            // logind's answer never holds up the frame loop, 1 s ticks,
+            // Caffeine toggles)
             let held = send.clone();
-            std::thread::spawn(move || {
-                let fd = tessera_core::inhibit::hold("handle-lid-switch", "Lid settings (Battery & Power)");
+            tessera_core::inhibit::hold_then("handle-lid-switch", "Lid settings (Battery & Power)", move |fd| {
                 held(Box::new(M::LidHeld(run, fd, tessera_core::inhibit::lid_closed())));
             });
             let ended = send.clone();
@@ -617,10 +618,10 @@ impl Power {
             policy::LidStep::Woke => {
                 // (the lid as logind has it now, not as last heard: a lid-open
                 // wake's event can come after this tick)
-                // (read on a thread: logind can be slow just after a resume)
+                // (read on the work pool: logind can be slow just after a resume)
                 if self.lid_fd.is_some() {
                     let (send, run) = (h.sender(NAME), self.lid_run);
-                    std::thread::spawn(move || send(Box::new(M::LidRead(run, tessera_core::inhibit::lid_closed()))));
+                    tessera_core::inhibit::lid_closed_then(move |closed| send(Box::new(M::LidRead(run, closed))));
                 } else {
                     eprintln!("tessera-ui: awake (the lid is {}): no sleep for a minute", if self.lid_is_closed { "closed" } else { "open" });
                 }

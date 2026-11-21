@@ -154,6 +154,9 @@ pub enum M {
     DlEvent,
 }
 
+/// How long a helper's lines wait to be published together (Sharing::settle_then)
+const PUBLISH_EVERY_MS: u64 = 50;
+
 pub struct Sharing {
     pub sched: Sched,
     /// config.json, as last read (Host::cfg)
@@ -583,6 +586,17 @@ impl Sharing {
     }
 
     fn settle(&mut self, h: &mut Host) {
+        self.settle_then(h, true);
+    }
+
+    /// `settle`, with the publish left for a moment (`now` false: a
+    /// helper's line). A transfer's progress comes as many lines a second,
+    /// and each one rebuilt every feed and the whole shell state; now the
+    /// lines of PUBLISH_EVERY_MS are published once, when it's due (audit
+    /// #116). Anything else publishes at once, what was left included, so
+    /// the end of a transfer (its last line, or its helper's exit) is
+    /// always published
+    fn settle_then(&mut self, h: &mut Host, now: bool) {
         self.modes_check();
         self.share_sync();
         self.local_sync(h);
@@ -597,7 +611,13 @@ impl Sharing {
         self.transfers_sync(h);
         self.share_sync();
         self.hidden_failed_alert(h);
-        self.publish(h);
+        if now {
+            self.sched.cancel("publish");
+            self.publish(h);
+        } else {
+            // (not put off again by the next line: published once per while)
+            self.sched.set_if_later("publish", PUBLISH_EVERY_MS);
+        }
         self.sched.arm(h.sender("Sharing"));
     }
 
@@ -690,6 +710,8 @@ impl Sharing {
                 self.air_check(h);
             }
             "sheet_poll" => self.sheet_poll(h),
+            // (the lines left unpublished: M::Due's settle publishes them)
+            "publish" => {}
             n if n.starts_with("shelf_") => self.shelf_due(h, n),
             // a rest after a helper ended: the sync starts it again
             _ => {}
@@ -901,6 +923,7 @@ impl Service for Sharing {
             };
             tessera_core::wayland::WAKE_MSGS.with(|w| *w.borrow_mut().entry(k).or_default() += 1);
         }
+        let from_line = matches!(*m, M::Line(..));
         match *m {
             M::Line(who, gen, line) => match who {
                 "localsend" => self.local_line(h, gen, &line),
@@ -967,7 +990,7 @@ impl Service for Sharing {
             M::Monitors(m) => self.shelf.monitors = m,
             M::DlEvent => self.sched.set_if_later("dl_look", 300),
         }
-        self.settle(h);
+        self.settle_then(h, !from_line);
     }
 
     /// The open sheet's close, as it happens (Panels' turn sets "open"):

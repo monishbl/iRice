@@ -229,15 +229,13 @@ impl System {
         // (the fd logind hands back: it closes with this process, so a crash
         // can't leave the computer unable to idle; systemd-inhibit helpers
         // outlived crashed shells)
-        // (asked on a thread: a new system-bus connection and logind's
-        // answer, slow just after a resume, never hold up the frame loop)
+        // (asked on the work pool over core's one system-bus connection:
+        // logind's answer, slow just after a resume, never holds up the
+        // frame loop)
         if hold && self.inhibit.is_none() && !self.inhibit_asking {
             self.inhibit_asking = true;
             let (t, run) = (self.tx().clone(), self.inhibit_run);
-            std::thread::spawn(move || {
-                let fd = tessera_core::inhibit::hold("idle", "Caffeine is on");
-                t(Box::new(Inhibited(run, fd)));
-            });
+            tessera_core::inhibit::hold_then("idle", "Caffeine is on", move |fd| t(Box::new(Inhibited(run, fd))));
         } else if !hold {
             self.inhibit = None;
             // (an answer still on its way is for a Caffeine that's over)

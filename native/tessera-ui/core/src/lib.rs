@@ -36,6 +36,7 @@ pub mod host; // (wave 4: the QML shell's side, in Rust; standalone only)
 pub mod icon_theme;
 pub mod idle; // (ext-idle-notify-v1 readings, wayland.rs State::idle_set)
 pub mod icons;
+pub mod paste; // (the clipboard read through data-control, no wl-paste: paste.rs)
 pub mod picture;
 pub mod power_supply; // (/sys/class/power_supply: own batteries, adapters of any name)
 pub mod rank;

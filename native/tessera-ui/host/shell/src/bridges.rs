@@ -278,12 +278,10 @@ pub struct Bridges {
     tahoe_dir: String,
     material_dir: String,
     // lock (Lock.qml) and what it keeps of LockFx
-    locked: bool,
-    held: bool,
-    leaving: bool,
+    /// locked, held, leaving, whose lock it is (Lockstate decides; set_locked runs it)
+    lk: Lockstate,
     /// Lock.qml's `veiled`: the lock's veil follows LockFx's steps (the lock part draws it)
     veiled: bool,
-    rust_lock: bool,
     desktop_zero: bool,
     lock_zoom: bool,
     // login intro
@@ -319,9 +317,9 @@ impl Bridges {
     fn idle_watches(&mut self, h: &mut Host) {
         use tessera_core::idle;
         let charging = h.st.shell.get::<tessera_core::services::status::Battery>().is_some_and(|b| b.present && b.charging);
-        let standby = cfg_bool(h.cfg(), "lock.standby", true) && charging && !self.locked && !h.state("caffeine.on").as_bool().unwrap_or(false);
+        let standby = cfg_bool(h.cfg(), "lock.standby", true) && charging && !self.lk.locked && !h.state("caffeine.on").as_bool().unwrap_or(false);
         let readers = h.state("fingerprint.lockScreen").as_bool().unwrap_or(false) || h.state("face.lockScreen").as_bool().unwrap_or(false);
-        let wake = self.held && !self.leaving && readers;
+        let wake = self.lk.held && !self.lk.leaving && readers;
         h.st.idle_set(idle::STANDBY, standby.then_some((300_000, true)));
         h.st.idle_set(idle::LOCK_WAKE, wake.then_some((500, false)));
         if !standby {
@@ -343,7 +341,7 @@ impl Bridges {
         self.idle_standby = standby;
         // input again while locked: the camera looks at once (the lock itself skips it in Bedside Mode)
         let wake = i.is(idle::LOCK_WAKE);
-        if self.idle_wake && !wake && self.held && !self.leaving {
+        if self.idle_wake && !wake && self.lk.held && !self.lk.leaving {
             h.tell("lock", json!({"wake": true}));
         }
         self.idle_wake = wake;
@@ -392,81 +390,46 @@ impl Bridges {
     // ── Lock.qml: lock and unlock, with their transitions ───────────────
 
     fn set_locked(&mut self, h: &mut Host, locked: bool) {
-        if self.locked == locked {
-            return;
-        }
-        self.locked = locked;
-        h.set_state("locked", json!(locked));
-        // (and to System, which sleeps only once the lock is confirmed:
-        // Lock.qml told it; standalone nothing did, so Sleep and the closed-lid
-        // guard waited 3 s, gave up and stayed awake. 17 Nov: a closed laptop
-        // ran 2 hours on battery)
-        h.ask("system.locked", json!([locked]));
-        // (the mark a shell started again while locked finds: `locked_mark`)
-        let mark = locked_mark();
-        if locked {
-            let _ = std::fs::write(&mark, b"");
-        } else {
-            let _ = std::fs::remove_file(&mark);
-        }
-        self.cancel("leave");
-        if self.intro_shown {
-            self.finish_intro(h); // (the lock plays its own)
-        }
-        if locked {
-            self.leaving = false;
-            if self.held {
-                return;
-            }
-            // Acquire the compositor lock immediately. Animation must never
-            // leave an unlocked, input-transparent password-entry interval.
-            self.set_held(h, true);
-            self.lock_zoom = true;
-            self.lockfx(h, "rest", 0);
-        } else {
-            let step = unlock_step(self.held, cfg_str(h.cfg(), "lock.unlockTransition", "zoom"));
-            match step {
-                UnlockStep::Reveal => {
-                    // locked and unlocked again before the lock showed
-                    self.unveil(h);
-                    self.lockfx(h, "reveal", 300);
-                }
-                UnlockStep::Instant => {
-                    self.unveil(h);
-                    self.lockfx(h, "rest", 0);
-                    self.set_held(h, false);
-                }
-                UnlockStep::Lift { zoom } => {
-                    // Lock → desktop: while the lock's content lifts away, the desktop
-                    // is set back behind it and the veil goes up, so the first frame
-                    // without the lock looks just like the last one; the
-                    // compositor lock is let go only by "leave", 220 ms on
-                    self.lock_zoom = zoom;
-                    self.veiled = true;
-                    self.lockfx(h, "prepare", 0);
-                    self.leaving = true;
-                    self.tell_lock(h);
-                    self.later(h, "leave", 220);
-                }
-            }
-        }
+        let steps = self.lk.set_locked(locked, &cfg_str(h.cfg(), "lock.unlockTransition", "zoom"), self.intro_shown, drawing(h, "lock"));
+        self.run_lock(h, steps);
     }
 
-    fn set_held(&mut self, h: &mut Host, held: bool) {
-        if self.held == held {
-            return;
+    /// What Lockstate decided, done, in its order
+    fn run_lock(&mut self, h: &mut Host, steps: Vec<LockStep>) {
+        for step in steps {
+            match step {
+                LockStep::Locked(locked) => {
+                    h.set_state("locked", json!(locked));
+                    // (and to System, which sleeps only once the lock is confirmed:
+                    // Lock.qml told it; standalone nothing did, so Sleep and the closed-lid
+                    // guard waited 3 s, gave up and stayed awake. 17 Nov: a closed laptop
+                    // ran 2 hours on battery)
+                    h.ask("system.locked", json!([locked]));
+                    // (the mark a shell started again while locked finds: `locked_mark`)
+                    let mark = locked_mark();
+                    if locked {
+                        let _ = std::fs::write(&mark, b"");
+                    } else {
+                        let _ = std::fs::remove_file(&mark);
+                    }
+                }
+                LockStep::CancelLeave => self.cancel("leave"),
+                LockStep::FinishIntro => self.finish_intro(h), // (the lock plays its own)
+                LockStep::Zoom(z) => self.lock_zoom = z,
+                LockStep::Veil => self.veiled = true,
+                LockStep::Unveil => self.unveil(h),
+                LockStep::Fx(step, ms) => self.lockfx(h, step, ms),
+                LockStep::TellLock => self.tell_lock(h),
+                LockStep::Later(kind, ms) => self.later(h, kind, ms),
+            }
         }
-        self.held = held;
-        // (whoever draws the lock as it begins keeps it)
-        self.rust_lock = held && drawing(h, "lock");
-        self.tell_lock(h);
     }
 
     fn tell_lock(&self, h: &mut Host) {
         let (finger, face) = (h.state("fingerprint.lockScreen").as_bool().unwrap_or(false), h.state("face.lockScreen").as_bool().unwrap_or(false));
         // (faceKind: a regular camera's PAM file asks for a blink too)
         let (kind, device) = (h.state("face.kind").as_str().unwrap_or("ir").to_string(), h.state("face.device").as_str().unwrap_or("").to_string());
-        h.tell("lock", json!({"held": self.held && self.rust_lock, "leaving": self.leaving, "finger": finger, "face": face, "faceKind": kind, "faceDevice": device}));
+        h.tell("lock", json!({"held": self.lk.held && self.lk.rust_lock, "leaving": self.lk.leaving, "finger": finger, "face": face, "faceKind": kind, "faceDevice": device}));
     }
 
     /// What the lock screen (Rust) says: secure, unlocked, sound, refused
@@ -474,15 +437,15 @@ impl Bridges {
         if let Some(secure) = e["secure"].as_bool() {
             h.set_state("lockSecure", json!(secure));
             h.ask("system.lockSecure", json!([secure]));
-            if secure && self.locked {
+            if secure && self.lk.locked {
                 self.lockfx(h, "rest", 0);
-            } else if !secure && !self.locked {
+            } else if !secure && !self.lk.locked {
                 self.later(h, "reveal", 60);
             }
         }
-        if unlocks(e, self.rust_lock) {
-            self.set_locked(h, false);
-        }
+        let transition = cfg_str(h.cfg(), "lock.unlockTransition", "zoom").to_string();
+        let steps = self.lk.unlocked(e, &transition, self.intro_shown, drawing(h, "lock"));
+        self.run_lock(h, steps);
         if e["sound"] == "error" {
             h.ask("sound.play", json!(["error"]));
         }
@@ -491,10 +454,10 @@ impl Bridges {
         // had. Nothing covers the screen, so the shell isn't locked either:
         // as a lock undone before it showed. Left "locked", Super+L, the idle
         // and lid locks did nothing until a restart, and sleep was refused)
-        if e["refused"] == true && self.rust_lock {
+        if e["refused"] == true && self.lk.rust_lock {
             eprintln!("tessera-ui: lock: the compositor refused the session lock");
-            self.set_held(h, false);
-            self.set_locked(h, false);
+            let steps = self.lk.refused(&transition, self.intro_shown, drawing(h, "lock"));
+            self.run_lock(h, steps);
         }
     }
 
@@ -546,7 +509,7 @@ impl Bridges {
         self.intro_playing = false;
         self.intro_shown = false;
         h.tell("lock", json!({"intro": "stop"}));
-        if !self.locked {
+        if !self.lk.locked {
             self.lockfx(h, "rest", 0);
         }
     }
@@ -790,7 +753,7 @@ impl Bridges {
     // ── Hot corners ─────────────────────────────────────────────────────
 
     fn hot_corner(&mut self, h: &mut Host, a: &Value) {
-        if self.locked {
+        if self.lk.locked {
             return;
         }
         let action = a[0].as_str().unwrap_or("");
@@ -809,19 +772,18 @@ impl Bridges {
         match kind {
             // the lock's content has lifted away: the compositor lets go
             "leave" => {
-                self.later(h, "reveal", 150); // (in case the lock doesn't report letting go)
-                self.leaving = false;
-                self.set_held(h, false);
+                let steps = self.lk.leave(drawing(h, "lock"));
+                self.run_lock(h, steps);
             }
             "reveal" => {
-                if !self.locked && self.desktop_zero {
+                if !self.lk.locked && self.desktop_zero {
                     let ms = if cfg_str(h.cfg(), "lock.unlockTransition", "zoom") == "zoom" { 560 } else { 360 };
                     self.lockfx(h, "reveal", ms);
                 }
             }
             // once, on a new setup: when the desktop is up and unlocked
             "welcome" => {
-                if !cfg_bool(h.cfg(), "welcome.done", false) && !self.locked && !self.w_shown && drawing(h, "welcome") {
+                if !cfg_bool(h.cfg(), "welcome.done", false) && !self.lk.locked && !self.w_shown && drawing(h, "welcome") {
                     self.welcome_open(h);
                 } else if !cfg_bool(h.cfg(), "welcome.done", false) {
                     self.later(h, "welcome", 5000);
@@ -933,7 +895,7 @@ impl Service for Bridges {
         // session's mark is made by Sounds, which starts after this)
         let sig = std::env::var("HYPRLAND_INSTANCE_SIGNATURE").unwrap_or_else(|_| "none".into());
         let started = runtime_dir().join(format!("tessera-session-started-{sig}")).exists();
-        if !started && !self.locked && cfg_bool(h.cfg(), "lock.loginIntro", false) && !cfg_bool(h.cfg(), "appearance.reduceMotion", false) {
+        if !started && !self.lk.locked && cfg_bool(h.cfg(), "lock.loginIntro", false) && !cfg_bool(h.cfg(), "appearance.reduceMotion", false) {
             self.arm_intro(h);
         }
         self.later(h, "welcome", 2500);
@@ -944,11 +906,13 @@ impl Service for Bridges {
         // session locked and lets this copy take it back
         // (misc:allow_session_lock_restore), instead of its "lockscreen app
         // died" screen until a restart (16 Nov)
-        if locked_mark().exists() {
+        let marked = locked_mark().exists();
+        if marked {
             eprintln!("tessera-ui: lock: the shell before ended while locked: locking again");
             tessera_core::health::event("lock", json!({}));
-            self.set_locked(h, true);
         }
+        let steps = self.lk.restore(marked, self.intro_shown, drawing(h, "lock"));
+        self.run_lock(h, steps);
         h.set_state("menubar.resources", json!(cfg_bool(h.cfg(), "menubar.resources", false)));
     }
     fn settled(&mut self, h: &mut Host) {
@@ -1272,6 +1236,106 @@ mod tests {
         assert_eq!(unlock_step(true, "fade"), UnlockStep::Lift { zoom: false });
     }
 
+    /// A fake Bridges for Lockstate: what its steps did (the shell state,
+    /// the mark, what the lock part was told, the timers)
+    #[derive(Default)]
+    struct Rec {
+        state: Option<bool>,
+        mark: bool,
+        told: Vec<(bool, bool)>, // (held by the Rust lock, leaving)
+        timers: Vec<&'static str>,
+        fx: Vec<&'static str>,
+        veiled: bool,
+    }
+
+    impl Rec {
+        fn run(&mut self, lk: &Lockstate, steps: Vec<LockStep>) {
+            for s in steps {
+                match s {
+                    LockStep::Locked(l) => {
+                        self.state = Some(l);
+                        self.mark = l;
+                    }
+                    LockStep::TellLock => self.told.push((lk.held && lk.rust_lock, lk.leaving)),
+                    LockStep::Later(k, _) => self.timers.push(k),
+                    LockStep::Fx(f, _) => self.fx.push(f),
+                    LockStep::Veil => self.veiled = true,
+                    LockStep::Unveil => self.veiled = false,
+                    LockStep::CancelLeave | LockStep::FinishIntro | LockStep::Zoom(_) => {}
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_lock_holds_marks_and_lets_go_only_after_the_lift() {
+        let (mut lk, mut r) = (Lockstate::default(), Rec::default());
+        // lock: held at once, by the Rust lock, the mark written
+        let s = lk.set_locked(true, "zoom", false, true);
+        r.run(&lk, s);
+        assert!(lk.locked && lk.held && lk.rust_lock);
+        assert_eq!((r.state, r.mark), (Some(true), true));
+        assert_eq!(r.told, [(true, false)]);
+        assert_eq!(r.fx, ["rest"]);
+        // locking again does nothing
+        assert!(lk.set_locked(true, "zoom", false, true).is_empty());
+        // unlocked by the lock part: the lift, still held until "leave"
+        let s = lk.unlocked(&json!({"unlocked": true}), "zoom", false, true);
+        r.run(&lk, s);
+        assert!(!lk.locked && lk.held && lk.leaving);
+        assert_eq!((r.state, r.mark), (Some(false), false));
+        assert_eq!(r.timers, ["leave"]);
+        assert!(r.veiled);
+        assert_eq!(r.told.last(), Some(&(true, true)));
+        // "leave" (220 ms on): let go
+        let s = lk.leave(true);
+        r.run(&lk, s);
+        assert!(!lk.held && !lk.leaving && !lk.rust_lock);
+        assert_eq!(r.told.last(), Some(&(false, false)));
+        assert_eq!(r.timers, ["leave", "reveal"]);
+    }
+
+    #[test]
+    fn another_lockers_unlock_is_ignored() {
+        let (mut lk, mut r) = (Lockstate::default(), Rec::default());
+        // (the lock begins while tessera-ui doesn't draw it: not the Rust lock)
+        let s = lk.set_locked(true, "zoom", false, false);
+        r.run(&lk, s);
+        assert!(lk.locked && lk.held && !lk.rust_lock);
+        assert!(lk.unlocked(&json!({"unlocked": true}), "zoom", false, true).is_empty());
+        assert!(lk.locked && r.mark);
+    }
+
+    #[test]
+    fn no_transition_lets_go_at_once_and_a_refused_lock_isnt_locked() {
+        let (mut lk, mut r) = (Lockstate::default(), Rec::default());
+        let s = lk.set_locked(true, "none", false, true);
+        r.run(&lk, s);
+        let s = lk.unlocked(&json!({"unlocked": true}), "none", false, true);
+        r.run(&lk, s);
+        assert!(!lk.locked && !lk.held && !lk.leaving);
+        assert!(r.timers.is_empty());
+        assert_eq!(r.fx, ["rest", "rest"]);
+        // refused by the compositor: let go, unlocked, the mark gone
+        let s = lk.set_locked(true, "none", false, true);
+        r.run(&lk, s);
+        let s = lk.refused("zoom", false, true);
+        r.run(&lk, s);
+        assert!(!lk.locked && !lk.held && !r.mark);
+        assert_eq!(r.fx.last(), Some(&"reveal"));
+    }
+
+    #[test]
+    fn a_mark_at_start_locks_again() {
+        let (mut lk, mut r) = (Lockstate::default(), Rec::default());
+        assert!(lk.restore(false, false, true).is_empty());
+        assert!(!lk.locked);
+        let s = lk.restore(true, true, true);
+        assert!(s.contains(&LockStep::FinishIntro));
+        r.run(&lk, s);
+        assert!(lk.locked && lk.held && lk.rust_lock && r.mark);
+    }
+
     #[test]
     fn only_the_rust_locks_unlock_counts() {
         assert!(unlocks(&json!({"unlocked": true}), true));
@@ -1328,4 +1392,133 @@ fn unlock_step(held: bool, transition: &str) -> UnlockStep {
 /// session (never one another locker drew)
 fn unlocks(e: &Value, rust_lock: bool) -> bool {
     e["unlocked"] == true && rust_lock
+}
+
+/// The lock's own state (Lock.qml's locked, held, leaving and rustLock),
+/// and what each change asks for, as steps: decided here without a Host,
+/// so it can be tested (audit #88); Bridges::run_lock does the steps
+#[derive(Default, Debug)]
+struct Lockstate {
+    locked: bool,
+    /// the compositor's session lock is held
+    held: bool,
+    /// the lock's content is lifting away; "leave" lets go
+    leaving: bool,
+    /// tessera-ui's lock part drew this lock (decided as the hold begins)
+    rust_lock: bool,
+}
+
+/// One thing a lock change asks Bridges to do
+#[derive(Debug, Clone, PartialEq)]
+enum LockStep {
+    /// "locked" in the shell state and to System; the mark written or removed
+    Locked(bool),
+    CancelLeave,
+    FinishIntro,
+    Zoom(bool),
+    Veil,
+    Unveil,
+    /// a LockFx step and its length
+    Fx(&'static str, i64),
+    /// the lock part told held, leaving and the rest
+    TellLock,
+    Later(&'static str, u64),
+}
+
+impl Lockstate {
+    /// Lock or unlock (`transition`: lock.unlockTransition; `intro`: the
+    /// login intro shows; `draws_lock`: tessera-ui draws the lock now)
+    fn set_locked(&mut self, locked: bool, transition: &str, intro: bool, draws_lock: bool) -> Vec<LockStep> {
+        let mut out = Vec::new();
+        if self.locked == locked {
+            return out;
+        }
+        self.locked = locked;
+        out.push(LockStep::Locked(locked));
+        out.push(LockStep::CancelLeave);
+        if intro {
+            out.push(LockStep::FinishIntro);
+        }
+        if locked {
+            self.leaving = false;
+            if self.held {
+                return out;
+            }
+            // Acquire the compositor lock immediately. Animation must never
+            // leave an unlocked, input-transparent password-entry interval.
+            out.extend(self.hold(true, draws_lock));
+            out.push(LockStep::Zoom(true));
+            out.push(LockStep::Fx("rest", 0));
+        } else {
+            match unlock_step(self.held, transition) {
+                UnlockStep::Reveal => {
+                    // locked and unlocked again before the lock showed
+                    out.push(LockStep::Unveil);
+                    out.push(LockStep::Fx("reveal", 300));
+                }
+                UnlockStep::Instant => {
+                    out.push(LockStep::Unveil);
+                    out.push(LockStep::Fx("rest", 0));
+                    out.extend(self.hold(false, draws_lock));
+                }
+                UnlockStep::Lift { zoom } => {
+                    // Lock → desktop: while the lock's content lifts away, the desktop
+                    // is set back behind it and the veil goes up, so the first frame
+                    // without the lock looks just like the last one; the
+                    // compositor lock is let go only by "leave", 220 ms on
+                    out.push(LockStep::Zoom(zoom));
+                    out.push(LockStep::Veil);
+                    out.push(LockStep::Fx("prepare", 0));
+                    self.leaving = true;
+                    out.push(LockStep::TellLock);
+                    out.push(LockStep::Later("leave", 220));
+                }
+            }
+        }
+        out
+    }
+
+    /// Hold the session lock or let it go
+    fn hold(&mut self, held: bool, draws_lock: bool) -> Vec<LockStep> {
+        if self.held == held {
+            return Vec::new();
+        }
+        self.held = held;
+        // (whoever draws the lock as it begins keeps it)
+        self.rust_lock = held && draws_lock;
+        vec![LockStep::TellLock]
+    }
+
+    /// The lock part's word: its "unlocked" unlocks, for its own lock only
+    fn unlocked(&mut self, e: &Value, transition: &str, intro: bool, draws_lock: bool) -> Vec<LockStep> {
+        if unlocks(e, self.rust_lock) {
+            self.set_locked(false, transition, intro, draws_lock)
+        } else {
+            Vec::new()
+        }
+    }
+
+    /// The compositor refused tessera-ui's lock: let go, and not locked
+    fn refused(&mut self, transition: &str, intro: bool, draws_lock: bool) -> Vec<LockStep> {
+        let mut out = self.hold(false, draws_lock);
+        out.extend(self.set_locked(false, transition, intro, draws_lock));
+        out
+    }
+
+    /// At start: the mark of a shell that ended while locked locks again
+    fn restore(&mut self, marked: bool, intro: bool, draws_lock: bool) -> Vec<LockStep> {
+        if marked {
+            self.set_locked(true, "zoom", intro, draws_lock)
+        } else {
+            Vec::new()
+        }
+    }
+
+    /// "leave", 220 ms after the lift began: let go
+    fn leave(&mut self, draws_lock: bool) -> Vec<LockStep> {
+        let mut out = vec![LockStep::Later("reveal", 150)]; // (in case the lock doesn't report letting go)
+        self.leaving = false;
+        out.extend(self.hold(false, draws_lock));
+        out
+    }
 }

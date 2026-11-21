@@ -657,12 +657,25 @@ impl slint::platform::Platform for Platform {
         if clipboard != slint::platform::Clipboard::DefaultClipboard {
             return None;
         }
-        // (wl-paste on a thread, waited for a short while: an owner that
+        // (read on a thread, waited for a short while: an owner that
         // doesn't answer (a busy app, a frozen terminal) froze every surface
-        // for the whole 2 s; now a paste gives up after PASTE_WAIT; audit #46)
+        // for the whole 2 s; now a paste gives up after PASTE_WAIT. Read
+        // through data-control (paste.rs), no process; wl-paste only where
+        // the compositor offers neither protocol; audit #46)
         let (tx, rx) = std::sync::mpsc::channel();
         let t = std::time::Instant::now();
         std::thread::spawn(move || {
+            match crate::paste::read_text(t + std::time::Duration::from_secs(2)) {
+                Some(crate::paste::Got::Text(text)) => {
+                    let _ = tx.send(Some(text));
+                    return;
+                }
+                Some(crate::paste::Got::Nothing) => {
+                    let _ = tx.send(None);
+                    return;
+                }
+                None => {}
+            }
             let mut cmd = std::process::Command::new("timeout");
             cmd.args(["2", "wl-paste", "--no-newline", "--type", "text"]).stdin(std::process::Stdio::null()).stderr(std::process::Stdio::null());
             // (signals unblocked in the child: the shell's blocked SIGTERM
@@ -673,18 +686,17 @@ impl slint::platform::Platform for Platform {
                     Ok(())
                 });
             }
-            let out = cmd.output();
+            let out = cmd.output().ok().filter(|o| o.status.success()).map(|o| String::from_utf8_lossy(&o.stdout).into_owned());
             let _ = tx.send(out);
         });
         match rx.recv_timeout(PASTE_WAIT) {
-            Ok(Ok(out)) => {
+            Ok(text) => {
                 let ms = t.elapsed().as_millis();
                 if ms >= 100 {
                     eprintln!("tessera-ui: paste: the clipboard took {ms} ms");
                 }
-                out.status.success().then(|| String::from_utf8_lossy(&out.stdout).into_owned())
+                text
             }
-            Ok(Err(_)) => None,
             Err(_) => {
                 eprintln!("tessera-ui: paste: the clipboard's owner didn't answer in {} ms: nothing pasted", PASTE_WAIT.as_millis());
                 None

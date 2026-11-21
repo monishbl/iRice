@@ -213,9 +213,28 @@ pub fn build(files: &[(String, String)], material: bool) -> Vec<Entry> {
     // (rows the Rust pages leave out: no hit that opens a page without them)
     out.retain(|e| !LEFT_OUT.contains(&e.text.as_str()));
     // The Rust pages' own rows: the QML page files are frozen, so a row
-    // added to a Rust page since is found only here
+    // added to a Rust page since is found only here. One the QML pages
+    // have, in either look, isn't added again: on its page, or on another
+    // page of its section (a QML file and a Rust file can split a
+    // section's pages differently), unless the Rust row is on a subpage of
+    // that page (it says where the row really is). The QML's say which
+    // look shows a row; the Rust captions here don't know
+    let section = |p: &str| map::section_of(p).map(|s| s.id);
+    let mut qml: Vec<(String, String)> = Vec::new();
+    for (file, text) in files {
+        let page = map::page_of_file(file).0;
+        for look in [false, true] {
+            for (_, key, said) in captions(text, look) {
+                if key != "detail" {
+                    qml.push((page.clone(), said));
+                }
+            }
+        }
+    }
     for (page, text, detail) in rust_entries() {
-        if !out.iter().any(|e| e.page == page && e.text == text) {
+        let in_qml = qml.iter().any(|(p, t)| *t == text && (*p == page || (section(p).is_some() && section(p) == section(&page) && !page.starts_with(&format!("{p}/")))));
+        let have = in_qml || out.iter().any(|e| e.page == page && e.text == text);
+        if !have {
             out.push(Entry { page, text, detail, section: false, line: 0 });
         }
     }
@@ -227,11 +246,53 @@ pub fn build(files: &[(String, String)], material: bool) -> Vec<Entry> {
 /// performance.keepPanelsLoaded is the QML shell's PanelLoader)
 pub const LEFT_OUT: &[&str] = &["Show the phone in the Dock", "Keep panels loaded"];
 
-/// The Rust pages with rows the QML page files don't have, compiled in:
-/// (the file's page, its source, functions in it that build another page)
+/// Every Rust settings page's source, compiled in, so rows only the Rust
+/// pages have are found too (audit #130): (the file's page, its source,
+/// functions in it that build another page). A file of helpers is under
+/// the page that shows them. (Not here: about/drive.rs and
+/// about/importexport.rs, which no page uses now; input/keymap.rs,
+/// system/art.rs, about/sysinfo.rs, about/version.rs and keys.rs, whose
+/// rows, if any, are built from names known at run time.)
 const RUST_PAGES: &[(&str, &str, &[(&str, &str)])] = &[
-    ("update", include_str!("pages/about/update.rs"), &[("options", "update/options"), ("back", "update/back")]),
+    // look
+    ("appearance", include_str!("pages/look/appearance.rs"), &[("glass", "appearance/glass")]),
+    ("appearance", include_str!("pages/look/desktoplook.rs"), &[]),
+    ("appearance", include_str!("pages/look/glassplugin.rs"), &[]),
+    ("wallpaper", include_str!("pages/look/wallpaper.rs"), &[]),
+    ("desktop", include_str!("pages/look/desktop.rs"), &[]),
+    ("menubar", include_str!("pages/look/menubar.rs"), &[]),
+    ("lock", include_str!("pages/look/lock.rs"), &[]),
+    // notify
+    ("notifications", include_str!("pages/notify/notifications.rs"), &[("island", "notifications/island"), ("startup", "notifications/startup")]),
+    ("focus", include_str!("pages/notify/focus.rs"), &[]),
+    ("windowrules", include_str!("pages/notify/windowrules.rs"), &[]),
+    // devices
+    ("displays", include_str!("pages/devices/displays.rs"), &[]),
+    ("sound", include_str!("pages/devices/sound.rs"), &[]),
+    ("network", include_str!("pages/devices/network.rs"), &[]),
+    ("phone", include_str!("pages/devices/phone.rs"), &[]),
+    // input
+    ("mouse", include_str!("pages/input/mouse.rs"), &[]),
+    ("mouse/gestures", include_str!("pages/input/gestures.rs"), &[]),
+    ("shortcuts", include_str!("pages/input/shortcuts.rs"), &[]),
+    ("shortcuts", include_str!("pages/input/dictation.rs"), &[]),
+    ("shortcuts", include_str!("pages/input/importexport.rs"), &[]),
+    // accounts
+    ("accounts", include_str!("pages/accounts/accounts.rs"), &[]),
+    ("calendar", include_str!("pages/accounts/calendar.rs"), &[]),
+    ("ai", include_str!("pages/accounts/ai.rs"), &[]),
+    ("defaultapps", include_str!("pages/accounts/defaultapps.rs"), &[]),
+    // system
+    ("security", include_str!("pages/system/security.rs"), &[("biometrics", "biometrics"), ("sheet", "biometrics"), ("camera_row", "biometrics")]),
+    ("power", include_str!("pages/system/power.rs"), &[("cooldown", "power/cooldown")]),
+    ("accessibility", include_str!("pages/system/access.rs"), &[]),
     ("health", include_str!("pages/system/health.rs"), &[]),
+    // about
+    ("update", include_str!("pages/about/update.rs"), &[("options", "update/options"), ("back", "update/back")]),
+    ("about", include_str!("pages/about/about.rs"), &[]),
+    ("about/health", include_str!("pages/about/health.rs"), &[]),
+    ("about/bugreport", include_str!("pages/about/bugreport.rs"), &[]),
+    ("about/loginitems", include_str!("pages/about/loginitems.rs"), &[]),
 ];
 
 /// Every Rust page's captions (RUST_PAGES), as (page, text, detail)
@@ -262,7 +323,7 @@ fn literal_at(s: &str) -> Option<String> {
     None
 }
 
-/// A Rust page's captions: `Row::new("…")` and `group("…")`, each with the
+/// A Rust page's captions: `Row::new("…")`, `Row::link("…")` and `group("…")`, each with the
 /// `.detail("…")` that follows it (within 3 lines), as (page, text,
 /// detail). The page is `page`, or another for the functions named in
 /// `fns`; a caption built at run time (format!) isn't seen.
@@ -271,7 +332,8 @@ fn rust_captions(src: &str, page: &str, fns: &[(&str, &str)]) -> Vec<(String, St
     let mut here = page.to_string();
     let mut last: Option<(usize, usize)> = None; // (entry, line)
     for (n, line) in src.lines().enumerate() {
-        if line.trim_start().starts_with("#[cfg(test)]") {
+        // (the file's tests, at its end; an item's own #[cfg(test)] inside isn't that)
+        if line.starts_with("#[cfg(test)]") {
             break;
         }
         if let Some(rest) = line.strip_prefix("pub fn ").or_else(|| line.strip_prefix("fn ")) {
@@ -280,7 +342,7 @@ fn rust_captions(src: &str, page: &str, fns: &[(&str, &str)]) -> Vec<(String, St
             last = None;
         }
         let mut found: Vec<(usize, bool, String)> = Vec::new(); // (where, a detail, text)
-        for (pat, detail) in [("Row::new(\"", false), ("group(\"", false), (".detail(\"", true)] {
+        for (pat, detail) in [("Row::new(\"", false), ("Row::link(\"", false), ("group(\"", false), (".detail(\"", true)] {
             let mut from = 0;
             while let Some(p) = line[from..].find(pat) {
                 let at = from + p;
@@ -430,6 +492,25 @@ mod tests {
         }
         let r = search(&idx, "rest of tessera");
         assert!(r.iter().any(|e| e.page == "update"));
+    }
+
+    #[test]
+    fn every_rust_page_is_searched() {
+        let idx = build(&read_pages(), false);
+        // (Software Update's row, only in the Rust page)
+        let r = search(&idx, "set up the rest");
+        assert!(r.iter().any(|e| e.page == "update" && e.text == "Set up the rest of Tessera"), "{r:?}");
+        // (each Rust page file gives the index something, and nothing twice)
+        for (page, src, fns) in RUST_PAGES {
+            let got = rust_captions(src, page, fns);
+            assert!(!got.is_empty(), "{page}: no captions read");
+        }
+        let mut seen = std::collections::HashSet::new();
+        for e in &idx {
+            assert!(seen.insert((e.page.clone(), e.text.clone())), "twice: {} / {}", e.page, e.text);
+        }
+        // (a Rust row the QML pages have already isn't added again)
+        assert_eq!(idx.iter().filter(|e| e.page == "menubar" && e.text == "Show the dock").count(), 1);
     }
 
     #[test]

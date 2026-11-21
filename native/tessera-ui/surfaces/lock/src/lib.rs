@@ -216,6 +216,9 @@ enum M {
     Photo(String, Option<slint::SharedPixelBuffer<slint::Rgb8Pixel>>),
     /// Bedside Mode's photos, listed on a thread
     Photos(Vec<String>),
+    /// a notification's icon (its key), found and decoded on the pool:
+    /// premultiplied RGBA at NOTE_ICON_PX, None when there's none
+    NoteIcon(String, Option<slint::SharedPixelBuffer<slint::Rgba8Pixel>>),
     Avatar(Option<(Vec<u8>, Vec<u8>)>),
     Art(String, Option<(Vec<u8>, Vec<u8>)>),
     /// the player's position (bus, µs), read once a second while its timeline shows
@@ -418,6 +421,8 @@ pub struct Lock {
     days_rows: Rows<ui::LDay>,
     /// notification icons, loaded once each
     icons: std::collections::HashMap<String, Option<Image>>,
+    /// the icons being found and decoded on the pool now (audit #70)
+    icons_asked: std::collections::HashSet<String>,
     /// the hands' angles, only ever growing (they turn forward past 12)
     angles: (f32, f32),
     /// the player whose position is read now (the reader thread's target)
@@ -491,6 +496,7 @@ impl Default for Lock {
             apps_rows: Rows::new(),
             days_rows: Rows::new(),
             icons: Default::default(),
+            icons_asked: Default::default(),
             angles: (-1.0, -1.0),
             position_for: Default::default(),
             position_thread: false,
@@ -624,6 +630,39 @@ fn art_files(url: &str) -> Option<(Vec<u8>, Vec<u8>)> {
     let side = 120;
     let px = shape::square_picture(path, side)?;
     Some((shape::cut(&px, side, "cookie9"), shape::cut(&px, side, "circle")))
+}
+
+/// The notification icons' size, in pixels (the cards show them at 26-34
+/// logical px, so this is sharp up to a scale of 3.5)
+const NOTE_ICON_PX: u32 = 120;
+
+/// A notification icon's file: a picture, the app's icon by name, its
+/// desktop entry's Icon=, else dialog-information (Notifications.iconFor).
+/// On the pool: icon lookups read folders
+fn note_icon_file(i: &str) -> Option<std::path::PathBuf> {
+    if let Some(f) = i.strip_prefix("file://") {
+        return Some(std::path::PathBuf::from(f));
+    }
+    if i.starts_with('/') {
+        return Some(std::path::PathBuf::from(i));
+    }
+    let name = i.strip_prefix("image://icon/").unwrap_or(i);
+    let name = name.split('?').next().unwrap_or(name);
+    let entry = (!name.is_empty()).then(|| crate::util::desktop_field(name, "Icon")).flatten();
+    (!name.is_empty()).then(|| crate::icon_theme::find(name, None)).flatten().or_else(|| entry.and_then(|e| crate::icon_theme::find(&e, None))).or_else(|| crate::icon_theme::find("dialog-information", None))
+}
+
+/// An icon file decoded at `size` (square, centred: the cards fit it
+/// whole), as premultiplied RGBA. Plain data, so it can cross to the UI
+/// thread, where it becomes an Image
+fn note_icon_pixels(path: &std::path::Path, size: u32) -> Option<slint::SharedPixelBuffer<slint::Rgba8Pixel>> {
+    let img = crate::appicon::load(path, size)?;
+    let mut px = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(img.w as u32, img.h as u32);
+    for (o, p) in px.make_mut_slice().iter_mut().zip(img.px.iter()) {
+        let c = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
+        *o = slint::Rgba8Pixel { r: c(p[0]), g: c(p[1]), b: c(p[2]), a: c(p[3]) };
+    }
+    Some(px)
 }
 
 impl Lock {
@@ -809,7 +848,7 @@ impl Lock {
         self.settings(st);
         self.clock(st, true);
         self.widgets(st);
-        self.notes_push();
+        self.notes_push(st);
         self.player(st);
         self.field();
         self.bedside(st);
@@ -923,7 +962,7 @@ impl Lock {
         });
         // (the notes' "5m ago" moves with the clock)
         if !force {
-            self.notes_push();
+            self.notes_push(st);
         }
     }
 
@@ -1061,26 +1100,20 @@ impl Lock {
     }
 
     /// The notifications: the shelf's apps, the newest cards
-    fn notes_push(&mut self) {
+    fn notes_push(&mut self, st: &State) {
         let now = crate::util::now_ms();
         let h24 = self.wins.first().is_some_and(|w| w.ui.global::<ui::LockData>().get_h24());
         // (Notifications.iconFor: a picture, the app's icon, its desktop
-        // entry's Icon=, else dialog-information; each loaded once)
+        // entry's Icon=, else dialog-information; each loaded once. Found
+        // and decoded on the pool, not here as it locks: until it's back
+        // the card shows no icon; audit #70)
         for n in &self.notes {
-            if !self.icons.contains_key(&n.icon) {
-                let i = n.icon.as_str();
-                let path = if let Some(f) = i.strip_prefix("file://") {
-                    Some(std::path::PathBuf::from(f))
-                } else if i.starts_with('/') {
-                    Some(std::path::PathBuf::from(i))
-                } else {
-                    let name = i.strip_prefix("image://icon/").unwrap_or(i);
-                    let name = name.split('?').next().unwrap_or(name);
-                    let entry = (!name.is_empty()).then(|| crate::util::desktop_field(name, "Icon")).flatten();
-                    (!name.is_empty()).then(|| crate::icon_theme::find(name, None)).flatten().or_else(|| entry.and_then(|e| crate::icon_theme::find(&e, None))).or_else(|| crate::icon_theme::find("dialog-information", None))
-                };
-                let img = path.and_then(|p| Image::load_from_path(&p).ok());
-                self.icons.insert(n.icon.clone(), img);
+            if !self.icons.contains_key(&n.icon) && self.icons_asked.insert(n.icon.clone()) {
+                let (key, to) = (n.icon.clone(), Self::send(st));
+                crate::work::spawn(move || {
+                    let px = note_icon_file(&key).and_then(|p| note_icon_pixels(&p, NOTE_ICON_PX));
+                    to(Box::new(M::NoteIcon(key, px)));
+                });
             }
         }
         let newest: Vec<&Note> = self.notes.iter().rev().collect();
@@ -1989,7 +2022,7 @@ impl Part for Lock {
         self.clock(st, true);
         self.widgets(st);
         self.drift(st, false);
-        self.notes_push();
+        self.notes_push(st);
         self.rules(st);
         // (a new wallpaper: each screen decodes it again, in after_frame)
         let path = crate::wallpaper::showing_now(&st.shell.cfg, st.shell.look.material);
@@ -2357,6 +2390,14 @@ impl Part for Lock {
                     d.set_photo(img.clone().unwrap_or_default());
                 });
             }
+            M::NoteIcon(key, px) => {
+                self.icons_asked.remove(&key);
+                // (a notification gone meanwhile: not kept)
+                if self.notes.iter().any(|n| n.icon == key) {
+                    self.icons.insert(key, px.map(Image::from_rgba8_premultiplied));
+                    self.notes_push(st);
+                }
+            }
             M::Photos(list) => {
                 if list != self.sb.photos {
                     self.sb.photos = list;
@@ -2449,7 +2490,7 @@ impl Part for Lock {
         }
         // (its size known: the cards that fit, Bedside Mode's spot)
         if sized {
-            self.notes_push();
+            self.notes_push(st);
             self.drift(st, true);
         }
         self.intro.after_frame(st, &path);
@@ -2505,7 +2546,7 @@ impl Lock {
                     at: n["at"].as_f64().unwrap_or(0.0) as i64,
                 })
                 .collect();
-            self.notes_push();
+            self.notes_push(st);
         }
         // The veil (Lock.qml's lockveil), as LockFx steps: made from the
         // lock's own pictures while they're still here (before `held` goes)
@@ -2560,6 +2601,26 @@ mod tests {
         assert_eq!(names(super::list_photos(&d, 10)), ["a.jpg", "b.webp", "c.PNG", "d.jpeg"]);
         assert_eq!(names(super::list_photos(&d, 2)), ["a.jpg", "b.webp"]);
         assert!(super::list_photos(&format!("{d}/missing"), 10).is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn note_icons_are_decoded_as_plain_pixels() {
+        let dir = std::env::temp_dir().join(format!("tessera-lock-icons-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let svg = dir.join("app.svg");
+        std::fs::write(&svg, br##"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10" fill="#ff0000"/></svg>"##).unwrap();
+        // (a picture by its file:// address or path, as it's sent)
+        let key = format!("file://{}", svg.display());
+        assert_eq!(super::note_icon_file(&key).as_deref(), Some(svg.as_path()));
+        let px = super::note_icon_pixels(&svg, 16).expect("decoded");
+        assert_eq!((px.width(), px.height()), (16, 16));
+        let mid = px.as_slice()[8 * 16 + 8];
+        assert_eq!((mid.r, mid.g, mid.b, mid.a), (255, 0, 0, 255));
+        // (not a picture: none, never a panic)
+        std::fs::write(dir.join("bad.png"), b"x").unwrap();
+        assert!(super::note_icon_pixels(&dir.join("bad.png"), 16).is_none());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

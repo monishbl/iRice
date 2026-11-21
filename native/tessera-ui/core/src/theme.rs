@@ -419,7 +419,7 @@ pub fn snap_accent(color: &str, dark: bool) -> String {
 /// The tone Wallpaper.qml finds in a picture (seed.rs), remembered per picture
 fn wallpaper_tone(path: &str) -> Option<String> {
     static MEMO: std::sync::Mutex<PictureMemo> = std::sync::Mutex::new(PictureMemo::new());
-    from_picture_memo(&MEMO, path, crate::seed::tone_from_picture)
+    from_picture_memo(&MEMO, "wallpaper-tone-cache.json", path, crate::seed::tone_from_picture)
 }
 
 /// What was read from a picture (its seed or its tone), by picture: its
@@ -432,6 +432,8 @@ pub(crate) struct PictureMemo {
     reading: Vec<PictureKey>,
     /// the last one read, whatever the picture (shown until a new one's read)
     last: Option<String>,
+    /// the kept ones were read back from the state folder (once, at start)
+    loaded: bool,
 }
 
 type PictureKey = (String, Option<std::time::SystemTime>);
@@ -440,7 +442,36 @@ impl PictureMemo {
     const KEEP: usize = 6;
 
     pub(crate) const fn new() -> Self {
-        Self { kept: Vec::new(), reading: Vec::new(), last: None }
+        Self { kept: Vec::new(), reading: Vec::new(), last: None, loaded: false }
+    }
+
+    /// The kept ones as written to the state folder: oldest first, so the
+    /// last is the last read
+    fn to_json(&self) -> Value {
+        Value::Array(
+            self.kept
+                .iter()
+                .map(|((path, t), v)| {
+                    let t = t.and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| serde_json::json!([d.as_secs(), d.subsec_nanos()]));
+                    serde_json::json!({"path": path, "mtime": t, "v": v})
+                })
+                .collect(),
+        )
+    }
+
+    /// Read back what `to_json` wrote (anything else: nothing kept)
+    fn load_json(&mut self, j: &Value) {
+        let Some(list) = j.as_array() else { return };
+        for e in list {
+            let Some(path) = e.get("path").and_then(Value::as_str) else { continue };
+            let t = e.get("mtime").and_then(Value::as_array).and_then(|a| {
+                let secs = a.first()?.as_u64()?;
+                let nanos = u32::try_from(a.get(1)?.as_u64()?).ok()?;
+                Some(std::time::UNIX_EPOCH + std::time::Duration::new(secs, nanos))
+            });
+            let v = e.get("v").and_then(Value::as_str).filter(|v| is_hex(v)).map(str::to_string);
+            self.put((path.to_string(), t), v);
+        }
     }
 
     fn get(&self, key: &PictureKey) -> Option<Option<String>> {
@@ -458,28 +489,41 @@ impl PictureMemo {
     }
 }
 
-/// A picture's seed or tone. On the UI thread, once one picture has been
-/// read, a new one is read on the pool: until it's here the last one stands,
-/// then the loop reads the config again (Msg::ConfigChanged) and finds it
-/// kept. Decoding a big wallpaper on the loop froze every surface for a
-/// moment at each change. (The very first is read where it's asked, as
-/// before: the shell's first frames are in the right colours, not purple
-/// for a moment.)
-fn from_picture_memo(memo: &'static std::sync::Mutex<PictureMemo>, path: &str, read: fn(&std::path::Path) -> Option<String>) -> Option<String> {
+/// A picture's seed or tone. On the UI thread it's never read there: the
+/// answers are kept by picture (path and time changed) in the state folder
+/// (`file`), so the first frames at start are in the right colours without
+/// decoding the wallpaper first. A picture not kept yet (a new one, or the
+/// same file changed) is read on the pool: until it's here the last one
+/// read stands (from the last run, at start), then the loop reads the
+/// config again (Msg::ConfigChanged) and finds it kept. Decoding a big
+/// wallpaper on the loop froze every surface for a moment at each change,
+/// and held up the first frame at start (audit #11).
+fn from_picture_memo(memo: &'static std::sync::Mutex<PictureMemo>, file: &'static str, path: &str, read: fn(&std::path::Path) -> Option<String>) -> Option<String> {
     let key: PictureKey = (path.to_string(), std::fs::metadata(path).and_then(|m| m.modified()).ok());
     {
         let mut m = memo.lock().ok()?;
+        if !m.loaded {
+            m.loaded = true;
+            // (a small file; read where it's asked, as the config is)
+            if let Some(j) = std::fs::read_to_string(crate::util::state_dir().join(file)).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()) {
+                m.load_json(&j);
+            }
+        }
         if let Some(v) = m.get(&key) {
             return v;
         }
-        if crate::work::on_ui_thread() && !m.kept.is_empty() {
+        if crate::work::on_ui_thread() {
             if let Some(tx) = crate::shell::loop_sender() {
                 if !m.reading.contains(&key) {
                     m.reading.push(key.clone());
                     crate::work::spawn(move || {
                         let v = read(std::path::Path::new(&key.0));
-                        if let Ok(mut m) = memo.lock() {
+                        let kept = memo.lock().ok().map(|mut m| {
                             m.put(key, v);
+                            m.to_json()
+                        });
+                        if let Some(kept) = kept {
+                            save_kept(file, &kept);
                         }
                         let _ = tx.send(crate::Msg::ConfigChanged);
                     });
@@ -488,11 +532,30 @@ fn from_picture_memo(memo: &'static std::sync::Mutex<PictureMemo>, path: &str, r
             }
         }
     }
+    // (off the UI thread, or no loop to tell: read here)
     let v = read(std::path::Path::new(path));
-    if let Ok(mut m) = memo.lock() {
+    // (a picture that isn't there isn't worth keeping for next time)
+    let worth = key.1.is_some() && !crate::work::on_ui_thread();
+    let kept = memo.lock().ok().map(|mut m| {
         m.put(key, v.clone());
+        m.to_json()
+    });
+    if let Some(kept) = kept.filter(|_| worth) {
+        save_kept(file, &kept);
     }
     v
+}
+
+/// The kept answers written for the next start
+fn save_kept(file: &str, kept: &Value) {
+    if cfg!(test) {
+        return;
+    }
+    let dir = crate::util::state_dir();
+    let _ = std::fs::create_dir_all(&dir);
+    if let Err(e) = crate::util::write_atomic(&dir.join(file), kept.to_string().as_bytes()) {
+        eprintln!("tessera-ui: couldn't keep the wallpaper's colours ({file}): {e}");
+    }
 }
 
 const BASELINE: &str = "#6750A4";
@@ -505,7 +568,7 @@ fn is_hex(s: &str) -> bool {
 /// read again on every change, the picture rarely changes
 fn wallpaper_seed(path: &str) -> Option<String> {
     static MEMO: std::sync::Mutex<PictureMemo> = std::sync::Mutex::new(PictureMemo::new());
-    from_picture_memo(&MEMO, path, crate::seed::from_picture)
+    from_picture_memo(&MEMO, "wallpaper-seed-cache.json", path, crate::seed::from_picture)
 }
 
 fn variant(style: &str) -> Variant {
@@ -1213,6 +1276,28 @@ mod tests {
         m.reading.push(("/c.jpg".into(), t(1)));
         m.put(("/c.jpg".into(), t(1)), None);
         assert!(m.reading.is_empty());
+    }
+
+    #[test]
+    fn pictures_read_are_kept_for_the_next_start() {
+        let t = |s: u64, n: u32| Some(std::time::UNIX_EPOCH + std::time::Duration::new(s, n));
+        let mut m = PictureMemo::new();
+        m.put(("/a.jpg".into(), t(5, 7)), Some("#112233".into()));
+        m.put(("/b.jpg".into(), None), None);
+        m.put(("/c.jpg".into(), t(9, 0)), Some("#445566".into()));
+        let mut back = PictureMemo::new();
+        back.load_json(&serde_json::from_str(&m.to_json().to_string()).unwrap());
+        assert_eq!(back.get(&("/a.jpg".into(), t(5, 7))), Some(Some("#112233".into())));
+        assert_eq!(back.get(&("/b.jpg".into(), None)), Some(None));
+        // (the time to the nanosecond: a changed file is read again)
+        assert_eq!(back.get(&("/a.jpg".into(), t(5, 8))), None);
+        // (the last read stands until a new picture is read)
+        assert_eq!(back.last.as_deref(), Some("#445566"));
+        // (anything else written there: nothing kept, nothing broken)
+        let mut junk = PictureMemo::new();
+        junk.load_json(&json!({"x": 1}));
+        junk.load_json(&json!([{"path": 3}, {"path": "/d.jpg", "v": "not a colour"}]));
+        assert_eq!(junk.get(&("/d.jpg".into(), None)), Some(None));
     }
 
     #[test]

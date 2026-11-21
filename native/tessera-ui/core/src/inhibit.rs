@@ -42,7 +42,13 @@ static CONN: std::sync::Mutex<Option<zbus::blocking::Connection>> = std::sync::M
 
 /// One system-bus connection for these calls, made once (each call made
 /// its own before: a connect, auth and Hello every time, and a zbus
-/// executor thread started and dropped), made again after it dies
+/// executor thread started and dropped), made again after it dies.
+/// Shared with other one-off system-bus calls (host/system's energy mode,
+/// audit #135); call it off the UI thread
+pub fn system_bus() -> Option<zbus::blocking::Connection> {
+    system()
+}
+
 fn system() -> Option<zbus::blocking::Connection> {
     let mut c = CONN.lock().unwrap_or_else(|e| e.into_inner());
     if c.is_none() {
