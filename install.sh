@@ -802,7 +802,7 @@ show_plan() {
     fi
     plan_row "" "your keyring unlocks with your login password (a marked line in its PAM file, kept as .pre-tessera)"
     feature_off look && plan_row Look "kept as it is (Tessera's desktop look isn't chosen)" ||
-    plan_row Look "Tessera's desktop look: Tessera Sans Flex for apps (~/.local/share/fonts/tessera; SIL Open Font License), grayscale font smoothing,$([[ $WANT_STYLE == 1 ]] && echo " Darkly and Breeze Plus for Qt apps,") no greeting in the terminal, the starship prompt in Tessera's colours, kitty to match (what it replaces kept as *.pre-tessera; Settings → Appearance turns it off)"
+    plan_row Look "Tessera's desktop look: Tessera Sans Flex for apps (~/.local/share/fonts/tessera; SIL Open Font License), grayscale font smoothing,$([[ $WANT_STYLE == 1 ]] && echo " Darkly and Breeze Plus for Qt apps,") no greeting in the terminal, the starship prompt in Tessera's colours for fish (icon-less in editors' terminals; bash and zsh left alone), kitty to match (what it replaces kept as *.pre-tessera; Settings → Appearance turns it off)"
     p="NetworkManager"
     if [[ -n "$OTHER_NET" ]]; then
         [[ $NETWORK == yes ]] && p="NetworkManager instead of $OTHER_NET (after a reboot)" || p="(keeps $OTHER_NET: Tessera's Wi-Fi menus won't work)"
@@ -1283,7 +1283,7 @@ PY
 # font (Tessera Sans Flex, Tessera's copy of Google Sans Flex, installed for apps),
 # JetBrains Mono Nerd Font as the fixed one, Darkly and Breeze Plus for Qt
 # apps (when the app style was installed), grayscale font smoothing; no
-# greeting in fish (CachyOS's fastfetch one too), the starship prompt in
+# greeting in fish (CachyOS's fastfetch one too), the starship prompt (fish only) in
 # Tessera's colours, kitty to match. What it replaces is kept as
 # *.pre-tessera; a prompt framework (oh-my-zsh, powerlevel10k, tide…) is
 # left alone. Settings → Appearance → Tessera's desktop look turns it off

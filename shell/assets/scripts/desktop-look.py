@@ -99,6 +99,9 @@ class Paths:
         self.state_dir = os.path.join(env_dir("XDG_STATE_HOME", ".local/state"), "tessera")
         self.state = os.path.join(self.state_dir, "desktop-look.json")
         self.starship = os.path.join(self.cfg, "starship.toml")
+        # (the same prompt without Nerd Font icons, for terminals that draw
+        # them as boxes: editors' own terminals, fish_ours picks it)
+        self.starship_plain = os.path.join(self.cfg, "tessera", "starship-plain.toml")
         self.fish = os.path.join(self.cfg, "fish")
         self.fish_conf = os.path.join(self.fish, "config.fish")
         self.fish_ours = os.path.join(self.fish, "conf.d", "tessera-terminal.fish")
@@ -421,7 +424,13 @@ def fish_prompt_owner(p):
     return None
 
 
-def fish_ours(starship):
+# Terminals inside editors draw with the editor's own font, rarely a Nerd
+# Font (21 Nov: VS Code showed the prompt's icons as boxes): there the
+# prompt has no icons. TESSERA_PROMPT=plain|nerd decides it yourself.
+PLAIN_TERMINALS = ("vscode", "zed")
+
+
+def fish_ours(starship, plain_path=None):
     lines = [HEADER + " (" + WHERE + "):",
              "# no greeting" + (", and the starship prompt" if starship else "") + ". Tessera writes this file; turning the look off removes it.",
              "if status is-interactive",
@@ -429,7 +438,14 @@ def fish_ours(starship):
              "    function fish_greeting",
              "    end"]
     if starship:
-        lines += ["    if test \"$TERM\" != linux; and command -q starship",
+        lines += ["    if test \"$TERM\" != linux; and command -q starship"]
+        if plain_path:
+            lines += ["        if test \"$TESSERA_PROMPT\" = plain; or begin; test \"$TESSERA_PROMPT\" != nerd",
+                      "                and begin; contains -- \"$TERM_PROGRAM\" " + " ".join(PLAIN_TERMINALS) + "; or test \"$TERMINAL_EMULATOR\" = JetBrains-JediTerm; end",
+                      "            end; and test -f " + shlex.quote(plain_path),
+                      "            set -gx STARSHIP_CONFIG " + shlex.quote(plain_path),
+                      "        end"]
+        lines += [
                   "        function starship_transient_prompt_func",
                   "            starship module character",
                   "        end",
@@ -838,6 +854,16 @@ def restore_apps(p, state, d):
 
 
 # ── On and off ──
+def write_plain(p, d, mode, accent, nerd):
+    """The icon-less prompt beside the Nerd one (only when that one has
+    icons; Tessera's own file, made again with the colours)"""
+    if not nerd:
+        if os.path.exists(p.starship_plain):
+            d.remove(p.starship_plain, "removed " + home(p.starship_plain))
+        return
+    d.write(p.starship_plain, starship_toml(mode, accent, False), "wrote " + home(p.starship_plain))
+
+
 def apply(p, state, d):
     """Everything set up; returns notes (lines starting "! " need a look)"""
     notes = []
@@ -859,11 +885,12 @@ def apply(p, state, d):
             d.backup(p.starship)
         d.write(p.starship, text, "wrote " + home(p.starship))
         state["starship"] = sha(text)
+    write_plain(p, d, mode, state.get("accent", ""), nerd)
 
     # fish
     if which("fish") or os.path.isdir(p.fish) or shell == "fish":
         owner = fish_prompt_owner(p)
-        d.write(p.fish_ours, fish_ours(owner is None), "wrote " + home(p.fish_ours))
+        d.write(p.fish_ours, fish_ours(owner is None, p.starship_plain if nerd else None), "wrote " + home(p.fish_ours))
         conf = read(p.fish_conf)
         if conf is not None and fish_needs_quiet(conf):
             add_block(d, p.fish_conf, FISH_QUIET)
@@ -874,20 +901,14 @@ def apply(p, state, d):
         else:
             notes.append("fish: no greeting, the starship prompt")
 
-    # zsh and bash: starship, unless something else draws the prompt
+    # zsh and bash: Tessera's prompt is fish's only (21 Nov, the user: "this
+    # theme must be only for fish"); the lines earlier versions added go
     for kind, path in (("zsh", p.zshrc), ("bash", p.bashrc)):
         text = read(path)
-        if text is None and shell != kind:
-            continue
-        owner = rc_owner(text or "", kind)
-        if owner:
-            if text and BEGIN in text:
-                remove_block(d, path, kind + "rc" in created)
-            notes.append(kind + ": " + owner + " sets your prompt, so it's left alone")
-            continue
-        if add_block(d, path, RC_BLOCK[kind]):
-            created.add(kind + "rc")
-        notes.append(kind + ": the starship prompt")
+        if text is not None and BEGIN in text:
+            remove_block(d, path, kind + "rc" in created)
+            created.discard(kind + "rc")
+            notes.append(kind + ": Tessera's prompt lines taken out (its prompt is fish's only)")
 
     # kitty
     if which("kitty") or os.path.isdir(p.kitty):
@@ -921,6 +942,8 @@ def restore(p, state, d):
     elif cur is not None:
         notes.append("starship.toml isn't Tessera's any more: left as it is")
     d.remove(p.fish_ours, "removed " + home(p.fish_ours))
+    if os.path.exists(p.starship_plain):
+        d.remove(p.starship_plain, "removed " + home(p.starship_plain))
     remove_block(d, p.fish_conf, False)
     remove_block(d, p.zshrc, "zshrc" in created)
     remove_block(d, p.bashrc, "bashrc" in created)
@@ -970,6 +993,8 @@ def main(argv=None):
             text = starship_toml(current_mode(p, state), state.get("accent", ""), nerd_font())
             d.write(p.starship, text, "wrote " + home(p.starship))
             state["starship"] = sha(text)
+        if state.get("on", True) is not False:
+            write_plain(p, d, current_mode(p, state), state.get("accent", ""), nerd_font())
         if state.get("on", True) is not False and "Icons/Theme" in state.get("kde", {}):
             icons = breeze_plus(current_mode(p, state))
             if icons:

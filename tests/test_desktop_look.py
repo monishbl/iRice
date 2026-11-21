@@ -14,6 +14,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "shell/assets/scripts/desktop-look.py"
 BEGIN = "# >>> Tessera's terminal look >>>"
+END = "# <<< Tessera's terminal look <<<"
 
 CACHY_FISH = "source /usr/share/cachyos-fish-config/cachyos-config.fish\n\n# overwrite greeting\n#function fish_greeting\n#end\n"
 USER_STARSHIP = "format = '$all'\n[character]\nsuccess_symbol = '[>](bold green)'\n"
@@ -108,9 +109,15 @@ else: d[sys.argv[3]] = sys.argv[4]; json.dump(d, open(f, "w"))
         self.assertIn(BEGIN + "\n", conf)
         self.assertIn("function fish_greeting\nend\n", conf)
         self.assertEqual(self.text(".config/fish/config.fish.pre-tessera"), CACHY_FISH)
-        # bash: starship after your lines (a plain PS1 isn't a framework)
-        self.assertIn('eval "$(starship init bash)"', self.text(".bashrc"))
-        self.assertEqual(self.text(".bashrc.pre-tessera"), ARCH_BASHRC)
+        # bash: left alone (Tessera's prompt is fish's only, 21 Nov)
+        self.assertEqual(self.text(".bashrc"), ARCH_BASHRC)
+        self.assertIsNone(self.text(".bashrc.pre-tessera"))
+        # editors' terminals (VS Code, Zed, JetBrains): the icon-less prompt
+        plain = self.text(".config/tessera/starship-plain.toml")
+        self.assertIsNotNone(plain)
+        self.assertNotIn("\ue0b6", plain)
+        self.assertIn("set -gx STARSHIP_CONFIG", ours)
+        self.assertIn("vscode", ours)
         # kitty: Tessera's piece first, your lines after it (they win)
         kitty = self.text(".config/kitty/kitty.conf")
         self.assertTrue(kitty.startswith(BEGIN + "\ninclude tessera-look.conf\n"))
@@ -160,12 +167,23 @@ else: d[sys.argv[3]] = sys.argv[4]; json.dump(d, open(f, "w"))
     def test_new_files_go_again(self):
         # nothing of yours: made, and removed again
         out = self.run_look("install", TESSERA_LOGIN_SHELL="/bin/zsh")
-        self.assertIn('eval "$(starship init zsh)"', self.text(".zshrc"))
+        self.assertIsNone(self.text(".zshrc"))  # (fish's prompt only: no .zshrc made)
         self.assertIsNone(self.text(".config/starship.toml.pre-tessera"))
         self.run_look("off")
         for rel in (".zshrc", ".config/starship.toml", ".config/kitty/kitty.conf", ".config/kitty/tessera-look.conf"):
             self.assertIsNone(self.text(rel), rel)
         self.assertNotIn("Google Sans", self.text(".config/kdeglobals") or "")
+
+    def test_old_bash_and_zsh_prompt_lines_go(self):
+        # (earlier versions added starship to .bashrc/.zshrc: taken out again,
+        # the rest of the file as it was)
+        block = BEGIN + "\n# (x: the starship prompt)\nif [[ $- == *i* ]]; then eval \"$(starship init bash)\"; fi\n" + END + "\n"
+        self.put(".bashrc", ARCH_BASHRC + "\n" + block)
+        self.put(".zshrc", "alias l=ls\n\n" + block.replace("bash", "zsh"))
+        self.run_look("install")
+        self.assertNotIn("starship", self.text(".bashrc"))
+        self.assertIn("alias ls='ls --color=auto'", self.text(".bashrc"))
+        self.assertEqual(self.text(".zshrc"), "alias l=ls\n")
 
     def test_prompt_frameworks_are_left_alone(self):
         omz = "export ZSH=\"$HOME/.oh-my-zsh\"\nZSH_THEME=robbyrussell\nsource $ZSH/oh-my-zsh.sh\n"
@@ -173,11 +191,9 @@ else: d[sys.argv[3]] = sys.argv[4]; json.dump(d, open(f, "w"))
         p10k = "source ~/powerlevel10k/powerlevel10k.zsh-theme\n[[ -f ~/.p10k.zsh ]] && source ~/.p10k.zsh\n"
         out = self.run_look("install", TESSERA_LOGIN_SHELL="/bin/zsh")
         self.assertEqual(self.text(".zshrc"), omz)
-        self.assertTrue(any("oh-my-zsh" in n and "left alone" in n for n in out["notes"]), out["notes"])
         self.put(".zshrc", p10k)
         out = self.run_look("on", TESSERA_LOGIN_SHELL="/bin/zsh")
         self.assertEqual(self.text(".zshrc"), p10k)
-        self.assertTrue(any("powerlevel10k" in n for n in out["notes"]), out["notes"])
         # fish with your own prompt: no greeting, but no starship either
         self.put(".config/fish/functions/fish_prompt.fish", "function fish_prompt\n echo '> '\nend\n")
         self.run_look("on")
